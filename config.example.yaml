@@ -1,0 +1,380 @@
+# ============================================================================
+# hczkbot 配置文件（YAML 格式）
+# ============================================================================
+# 本文件是完整配置示例，实际使用时只需保留你需要的字段，未配置的字段会使用默认值。
+#
+# 配置文件查找顺序（hczkbot 自动按以下顺序查找）：
+#   1. 命令行 --config 指定的路径
+#   2. ~/.hczkbot/config.yaml
+#   3. ~/.hczkbot/config.yml
+#   4. ~/.hczkbot/config.json
+#
+# 环境变量引用：可在任意字符串值中使用 ${VAR_NAME} 引用环境变量，
+#   例如 apiKey: ${ANTHROPIC_API_KEY}，加载时会自动替换。
+#   注意：引用的环境变量必须已设置，否则会报错。
+# ============================================================================
+
+
+# ----------------------------------------------------------------------------
+# 智能体默认设置
+# ----------------------------------------------------------------------------
+agents:
+  defaults:
+    # 工作区目录（会话历史、记忆、文档等存储位置）
+    workspace: ~/.hczkbot/workspace
+
+    # 默认模型预设名（优先级高于下面的 model/provider 字段）
+    # 若设置了 modelPresets，这里填预设名，如 "default"
+    modelPreset: null
+
+    # 默认模型（格式：provider/model）
+    model: openai/deepseek-v4-pro
+
+    # Provider 选择策略：auto（根据 apiKey 自动检测）或指定 provider 名
+    provider: deepseek
+
+    # LLM 生成参数
+    maxTokens: 8192
+    contextWindowTokens: 65536
+    temperature: 0.1
+
+    # 工具调用参数
+    maxToolIterations: 200          # 单轮对话最大工具调用次数
+    maxConcurrentSubagents: 1       # 最大并发子代理数
+    maxToolResultChars: 16000       # 工具结果字符上限
+
+    # 重试策略：standard（标准）或 persistent（持久重试）
+    providerRetryMode: standard
+
+    # 推理强度（部分模型支持）：low/medium/high/adaptive/none
+    reasoningEffort: null
+
+    # 时区（影响 cron 任务、时间显示）
+    timezone: Asia/Shanghai
+
+    # 智能体身份
+    botName: hczk-bot
+    botIcon: "🐺"
+
+    # 会话管理
+    unifiedSession: false           # true 时跨渠道共享单一会话
+    sessionTtlMinutes: 15           # 空闲会话自动压缩阈值（分钟，0=禁用）
+    maxMessages: 120                # 历史回放消息上限
+    consolidationRatio: 0.5         # 上下文压缩目标比例
+
+    # 禁用的 skill 列表（按名称）
+    disabledSkills: []
+
+    # Dream 记忆整合配置
+    dream:
+      enabled: true
+      intervalH: 2                  # 整合间隔（小时）
+      maxBatchSize: 50              # 单次整合最大消息数
+      maxIterations: 3              # 整合最大迭代次数
+
+
+# ----------------------------------------------------------------------------
+# LLM Provider 配置
+# ----------------------------------------------------------------------------
+# 本配置保留 Anthropic 和 OpenAI 兼容协议两种 provider。
+# 其他厂商的模型（DeepSeek、通义千问、Moonshot 等）均可通过 OpenAI 兼容协议访问，
+# 只需修改 apiBase 地址和 apiKey 即可，无需额外 SDK。
+#
+# Provider 配置说明：
+#   apiKey    - API 密钥（可用 ${ENV_VAR} 引用环境变量）
+#   apiBase   - 接口地址（OpenAI 兼容协议的 base URL）
+#   apiType   - 请求方式：auto / chat_completions / responses（仅 openai provider 有效）
+#   extraHeaders - 自定义请求头（如 APP-Code 等）
+#   extraBody  - 自定义请求体字段
+#   extraQuery - 自定义 URL 查询参数
+providers:
+  # Anthropic Claude（使用 Anthropic 专用 SDK）
+  anthropic:
+    apiKey: ${ANTHROPIC_API_KEY}
+
+  # OpenAI（默认地址为 https://api.openai.com/v1）
+  openai:
+    apiKey: sk-3266ed02e6504c15a872b5ad3abbdb49
+    apiBase: https://api.deepseek.com   # 默认值，可按需修改
+
+  # Ollama（本地模型，无需 apiKey）
+  ollama:
+    apiBase: http://127.0.0.1:11434/v1
+
+  # ── 通过 OpenAI 兼容协议访问其他厂商的示例 ──────────────────────────────
+  # 以下为注释示例，取消注释并填入对应密钥即可使用。
+  # 任意支持 OpenAI Chat Completions 协议的厂商均可照此配置。
+
+  # DeepSeek
+  # deepseek:
+  #   apiKey: ${DEEPSEEK_API_KEY}
+  #   apiBase: https://api.deepseek.com/v1
+
+  # 通义千问（阿里云）
+  # dashscope:
+  #   apiKey: ${DASHSCOPE_API_KEY}
+  #   apiBase: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+  # Moonshot（月之暗面）
+  # moonshot:
+  #   apiKey: ${MOONSHOT_API_KEY}
+  #   apiBase: https://api.moonshot.cn/v1
+
+  # 智谱 AI
+  # zhipu:
+  #   apiKey: ${ZHIPU_API_KEY}
+  #   apiBase: https://open.bigmodel.cn/api/paas/v4
+
+  # 硅基流动（SiliconFlow）
+  # siliconflow:
+  #   apiKey: ${SILICONFLOW_API_KEY}
+  #   apiBase: https://api.siliconflow.cn/v1
+
+  # 自定义 OpenAI 兼容服务
+  # my-llm:
+  #   apiKey: ${MY_LLM_API_KEY}
+  #   apiBase: https://my-llm.example.com/v1
+  #   extraHeaders:
+  #     X-Custom-Header: "custom-value"
+
+
+# ----------------------------------------------------------------------------
+# 模型预设
+# ----------------------------------------------------------------------------
+# 预设可复用完整模型配置，通过 agents.defaults.modelPreset 引用
+modelPresets:
+  # Anthropic Claude 预设
+  claude:
+    label: "默认模型"
+    model: anthropic/claude-opus-4-5
+    provider: anthropic
+    maxTokens: 8192
+    contextWindowTokens: 65536
+    temperature: 0.1
+
+  # 高性能预设（Anthropic Claude，开启高强度推理）
+  high-performance:
+    label: "高性能"
+    model: anthropic/claude-opus-4-5
+    provider: anthropic
+    maxTokens: 16384
+    contextWindowTokens: 200000
+    temperature: 0.1
+    reasoningEffort: high
+
+  # OpenAI 预设
+  openai:
+    label: "OpenAI"
+    model: openai/gpt-4o
+    provider: openai
+    maxTokens: 4096
+    contextWindowTokens: 65536
+    temperature: 0.3
+
+  # 本地模型预设（Ollama）
+  local:
+    label: "本地模型"
+    model: ollama/qwen2.5:14b
+    provider: ollama
+    maxTokens: 4096
+    contextWindowTokens: 32768
+    temperature: 0.1
+
+  # ── 自定义 provider 预设示例 ──────────────────────────────────────────
+  # 取消注释并修改 provider 名和模型名即可切换到其他厂商
+
+  # DeepSeek 预设
+  # deepseek:
+  #   label: "DeepSeek"
+  #   model: deepseek/deepseek-chat
+  #   provider: deepseek
+  #   maxTokens: 8192
+  #   contextWindowTokens: 65536
+  #   temperature: 0.1
+
+
+# ----------------------------------------------------------------------------
+# 工具配置
+# ----------------------------------------------------------------------------
+tools:
+  # Web 搜索工具
+  web:
+    search:
+      enable: true
+      provider: duckduckgo        # duckduckgo / bocha / volcengine
+      maxResults: 5
+      timeout: 15
+    fetch:
+      enable: true
+      useJinaReader: false        # 使用 Jina Reader 优化网页抓取
+
+  # Shell 执行工具
+  exec:
+    enable: true
+    timeout: 60                   # 默认超时（秒，最大 600）
+    sandbox: ""                   # 沙箱后端：空字符串 / bwrap
+    restrictToWorkspace: false    # 限制命令在工作区内执行
+
+  # 文件系统工具
+  file:
+    enable: true
+
+  # 自我检查工具
+  my:
+    enable: true
+    allowSet: true                # 允许 agent 修改自身配置
+
+  # 图像生成工具
+  imageGeneration:
+    enabled: false                # 默认关闭
+    provider: openrouter
+    model: black-forest-labs/flux-1-dev
+    maxImagesPerTurn: 1
+
+  # CLI 应用工具
+  cliApps:
+    enable: false
+
+  # 是否限制文件操作在工作区内
+  restrictToWorkspace: false
+
+  # WebUI 是否允许访问本地服务
+  webuiAllowLocalServiceAccess: true
+
+  # SSRF 白名单（CIDR 格式，允许 agent 访问的内部网络段）
+  ssrfWhitelist: []
+
+  # MCP 服务器配置（可配置多个）
+  mcpServers: {}
+    # 示例：文件系统 MCP 服务器
+    # filesystem:
+    #   type: stdio
+    #   command: npx
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/dir"]
+    #   enabledTools: ["*"]       # ["*"] 表示全部工具
+
+    # 示例：HTTP MCP 服务器
+    # remote-api:
+    #   type: streamableHttp
+    #   url: http://127.0.0.1:8080/mcp
+    #   headers:
+    #     Authorization: "Bearer token"
+    #   toolTimeout: 30
+
+
+# ----------------------------------------------------------------------------
+# 聊天渠道配置
+# ----------------------------------------------------------------------------
+channels:
+  sendProgress: true              # 发送工具执行进度
+  sendToolHints: true             # 发送工具调用提示
+  showReasoning: true             # 显示推理过程
+  extractDocumentText: true       # 自动提取文档文本
+  sendMaxRetries: 3               # 发送失败重试次数
+
+  # WebSocket 渠道（WebUI 使用）
+  websocket:
+    enabled: true
+
+  # Telegram 渠道
+  # telegram:
+  #   enabled: true
+  #   token: ${TELEGRAM_BOT_TOKEN}
+  #   allowFrom: []               # 允许的用户 ID 列表
+
+  # Discord 渠道
+  # discord:
+  #   enabled: true
+  #   token: ${DISCORD_BOT_TOKEN}
+
+  # 飞书渠道
+  # feishu:
+  #   enabled: true
+  #   appId: ${FEISHU_APP_ID}
+  #   appSecret: ${FEISHU_APP_SECRET}
+
+  # 钉钉渠道
+  # dingtalk:
+  #   enabled: true
+  #   clientId: ${DINGTALK_CLIENT_ID}
+  #   clientSecret: ${DINGTALK_CLIENT_SECRET}
+
+
+# ----------------------------------------------------------------------------
+# 音频转录配置
+# ----------------------------------------------------------------------------
+transcription:
+  enable: true
+  provider: openai                # openai / assemblyai
+  model: whisper-1
+  apiKey: ${OPENAI_API_KEY}
+
+
+# ----------------------------------------------------------------------------
+# API 服务器配置（hczkbot serve / hczkbot platform 使用）
+# ----------------------------------------------------------------------------
+api:
+  host: 127.0.0.1                 # 绑定地址（生产环境建议用反向代理）
+  port: 8900                      # 端口
+  timeout: 120.0                  # 单次请求超时（秒）
+
+
+# ----------------------------------------------------------------------------
+# 网关配置（hczkbot gateway 使用）
+# ----------------------------------------------------------------------------
+gateway:
+  host: 127.0.0.1
+  port: 8765
+  openBrowser: false              # 启动时是否自动打开浏览器
+
+  # 心跳机制（周期性任务检查）
+  heartbeat:
+    enabled: false
+    intervalS: 300                # 检查间隔（秒）
+    keepRecentMessages: 8         # 保留的最近消息数
+
+
+# ----------------------------------------------------------------------------
+# 桓宸智科 AI 平台集成配置（hczkbot platform 使用）
+# ----------------------------------------------------------------------------
+platform:
+  # 是否启用平台集成
+  enabled: true
+
+  # JWT 共享密钥（HS256）
+  # 生产环境强烈建议通过环境变量 JWT_AGENT_SHARED_SECRET 注入，不要硬编码在此
+  jwtSecret: ${JWT_AGENT_SHARED_SECRET:hczk-agent-jwt-secret-2026-very-long-and-secure}
+
+  # JWT 签发者标识（固定值，与平台约定）
+  jwtIssuer: hczk-platform
+
+  # JWT 时钟偏差（秒），允许的时间误差
+  jwtLeewaySeconds: 30
+
+  # 智能体元信息（/api/agent/info 返回）
+  agentName: "客服智能体"
+  agentVersion: "1.0.0"
+  agentDescription: "基于 hczkbot 的智能客服助手"
+  agentType: "customer-service"   # 智能体类型标识
+
+  # 平台工具调用配置
+  skillsRequestTimeout: 30.0      # 工具发现 HTTP 请求超时（秒）
+  skillsToolTimeout: 60.0         # 单个工具执行超时（秒）
+
+  # 知识库文档存储目录（空则使用 workspace 下的 platform-documents）
+  documentsDir: ""
+
+
+# ----------------------------------------------------------------------------
+# 配置示例结束
+# ----------------------------------------------------------------------------
+# 快速开始：
+#   1. 复制本文件到 ~/.hczkbot/config.yaml
+#   2. 设置必要的环境变量（API Key、JWT 密钥等）
+#   3. 运行 hczkbot platform 启动平台集成模式
+#
+# 环境变量设置示例（在 shell 中）：
+#   export ANTHROPIC_API_KEY="sk-ant-xxx"
+#   export JWT_AGENT_SHARED_SECRET="your-shared-secret"
+#   hczkbot platform
+# ============================================================================
