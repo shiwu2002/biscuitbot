@@ -26,7 +26,7 @@ from hczkbot.utils.media_decode import FileSizeExceeded, save_base64_data_url
 
 TranscriptionProviderName = str
 
-_DEFAULT_PROVIDER: TranscriptionProviderName = "groq"
+_DEFAULT_PROVIDER: TranscriptionProviderName = "dashscope"
 _MAX_AUDIO_BYTES_FALLBACK = 25 * 1024 * 1024
 _AUDIO_MIME_ALLOWED: frozenset[str] = frozenset({
     "audio/aac",
@@ -101,9 +101,15 @@ def _resolve_transcription_api_key(provider: str, provider_cfg: Any) -> str:
 
 
 def _resolve_transcription_api_base(provider: str, provider_cfg: Any) -> str:
-    api_base = getattr(provider_cfg, "api_base", None) if provider_cfg else None
-    if api_base:
-        return api_base
+    # Resolve api_base: domain from LLM provider > provider default.
+    # We only inherit the DOMAIN from the LLM provider (not the full path)
+    # because transcription APIs may use different paths than LLM APIs
+    # (e.g. DashScope LLM uses /compatible-mode/v1 but transcription uses its own path).
+    # Each transcription client appends its own service-specific path.
+    llm_api_base = getattr(provider_cfg, "api_base", None) if provider_cfg else None
+    if llm_api_base:
+        from hczkbot.providers.image_generation import extract_domain
+        return extract_domain(llm_api_base)
     return _provider_default_api_base(provider) or ""
 
 
@@ -130,15 +136,13 @@ def resolve_transcription_config(config: Any) -> EffectiveTranscriptionConfig:
         spec = get_transcription_provider(provider)
     default_model = spec.default_model if spec else ""
     provider_cfg = _provider_config(config, provider)
-    # Transcription-specific api_base overrides the provider's api_base
-    transcription_api_base = getattr(top, "api_base", None) if top else None
     return EffectiveTranscriptionConfig(
         enabled=bool(getattr(top, "enabled", True)),
         provider=provider,
         model=(getattr(top, "model", None) or default_model).strip(),
         language=getattr(top, "language", None) or getattr(channels, "transcription_language", None),
         api_key=_resolve_transcription_api_key(provider, provider_cfg),
-        api_base=transcription_api_base or _resolve_transcription_api_base(provider, provider_cfg),
+        api_base=_resolve_transcription_api_base(provider, provider_cfg),
         max_duration_sec=int(getattr(top, "max_duration_sec", 120)),
         max_upload_mb=int(getattr(top, "max_upload_mb", 25)),
     )

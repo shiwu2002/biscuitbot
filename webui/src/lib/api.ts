@@ -645,7 +645,6 @@ export async function updateImageGenerationSettings(
   query.set("enabled", String(update.enabled));
   query.set("provider", update.provider);
   query.set("model", update.model);
-  query.set("api_base", update.apiBase ?? "");
   query.set("default_aspect_ratio", update.defaultAspectRatio);
   query.set("default_image_size", update.defaultImageSize);
   query.set("max_images_per_turn", String(update.maxImagesPerTurn));
@@ -664,7 +663,6 @@ export async function updateTranscriptionSettings(
   query.set("enabled", String(update.enabled));
   query.set("provider", update.provider);
   query.set("model", update.model);
-  query.set("api_base", update.apiBase ?? "");
   query.set("language", update.language);
   query.set("max_duration_sec", String(update.maxDurationSec));
   query.set("max_upload_mb", String(update.maxUploadMb));

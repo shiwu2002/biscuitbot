@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
@@ -17,22 +18,33 @@ from loguru import logger
 from hczkbot.providers.registry import find_by_name
 from hczkbot.utils.helpers import detect_image_mime
 
-_OPENROUTER_ATTRIBUTION_HEADERS = {
-    "HTTP-Referer": "https://github.com/HKUDS/hczkbot",
-    "X-OpenRouter-Title": "hczkbot",
-    "X-OpenRouter-Categories": "cli-agent,personal-agent",
-}
+
+def extract_domain(url: str) -> str:
+    """Extract scheme://hostname[:port] from a URL, discarding the path.
+
+    Examples:
+        extract_domain("https://dashscope.aliyuncs.com/compatible-mode/v1")
+        → "https://dashscope.aliyuncs.com"
+        extract_domain("https://api.openai.com/v1")
+        → "https://api.openai.com"
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.hostname:
+        return url.rstrip("/")
+    result = f"{parsed.scheme}://{parsed.hostname}"
+    if parsed.port:
+        result += f":{parsed.port}"
+    return result
+
 _DEFAULT_TIMEOUT_S = 120.0
-_AIHUBMIX_TIMEOUT_S = 300.0
-_AIHUBMIX_ASPECT_RATIO_SIZES = {
-    "1:1": "1024x1024",
-    "3:4": "1024x1536",
-    "9:16": "1024x1536",
-    "4:3": "1536x1024",
-    "16:9": "1536x1024",
-}
 _GEMINI_DEFAULT_TIMEOUT_S = 120.0
 _GEMINI_IMAGEN_ASPECT_RATIOS = {"1:1", "9:16", "16:9", "3:4", "4:3"}
+
+
+def _url_has_path(url: str) -> bool:
+    """Return True if *url* contains a non-empty path after the domain."""
+    parsed = urlparse(url)
+    return bool(parsed.path and parsed.path.strip("/"))
 _OLLAMA_DEFAULT_SIDE = 1024
 _OLLAMA_SIZE_PRESETS = {
     "1K": 1024,
@@ -89,28 +101,6 @@ def _b64_image_data_url(value: str) -> str:
         raise ImageGenerationError("generated image payload was not a supported image")
     return f"data:{mime};base64,{encoded}"
 
-
-def _aihubmix_size(aspect_ratio: str | None, image_size: str | None) -> str:
-    """Return an OpenAI Images API size string for AIHubMix.
-
-    The WebUI emits compact size hints like ``1K`` for OpenRouter. AIHubMix's
-    Images API expects OpenAI-style dimensions or ``auto``, so only pass
-    through explicit dimension strings and otherwise derive the closest
-    supported orientation from aspect ratio.
-    """
-    if image_size and "x" in image_size.lower():
-        return image_size
-    if aspect_ratio in _AIHUBMIX_ASPECT_RATIO_SIZES:
-        return _AIHUBMIX_ASPECT_RATIO_SIZES[aspect_ratio]
-    return "auto"
-
-
-def _aihubmix_model_path(model: str) -> str:
-    if "/" in model:
-        return model
-    if model.startswith(("gpt-image-", "dall-e-")):
-        return f"openai/{model}"
-    return model
 
 
 async def _download_image_data_url(
@@ -197,9 +187,27 @@ class ImageGenerationProvider(ABC):
         self.timeout = timeout if timeout is not None else self.default_timeout
         self._client = client
 
+    def _base_path(self) -> str:
+        """Return the default URL path prefix for this provider.
+
+        Used by ``_resolve_base_url`` when the caller supplies only a domain
+        (e.g. ``https://api.openai.com``).  The domain is combined with this
+        path to form the full base URL (e.g. ``https://api.openai.com/v1``).
+
+        Subclasses that use a non-empty path prefix should override this.
+        """
+        return ""
+
     def _resolve_base_url(self, api_base: str | None) -> str:
         if api_base:
-            return api_base.rstrip("/")
+            base = api_base.rstrip("/")
+            # If the caller supplied only a domain (no path), append the
+            # provider's default path prefix so the URL is usable directly.
+            # e.g. "https://api.openai.com" → "https://api.openai.com/v1"
+            base_path = self._base_path()
+            if base_path and not _url_has_path(base):
+                base = f"{base}{base_path}"
+            return base
         spec = find_by_name(self.provider_name)
         if spec and spec.default_api_base:
             return spec.default_api_base.rstrip("/")
@@ -244,193 +252,6 @@ class ImageGenerationProvider(ABC):
             return await c.post(url, headers=headers, json=body)
 
 
-class OpenRouterImageGenerationClient(ImageGenerationProvider):
-    """Small async client for OpenRouter Chat Completions image generation."""
-
-    provider_name = "openrouter"
-    missing_key_message = (
-        "OpenRouter API key is not configured. Set providers.openrouter.apiKey."
-    )
-
-    def _default_base_url(self) -> str:
-        return "https://openrouter.ai/api/v1"
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str] | None = None,
-        aspect_ratio: str | None = None,
-        image_size: str | None = None,
-    ) -> GeneratedImageResponse:
-        if not self.api_key:
-            raise ImageGenerationError(self.missing_key_message)
-
-        content: str | list[dict[str, Any]]
-        references = list(reference_images or [])
-        if references:
-            blocks: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-            blocks.extend(
-                {"type": "image_url", "image_url": {"url": image_path_to_data_url(path)}}
-                for path in references
-            )
-            content = blocks
-        else:
-            content = prompt
-
-        body: dict[str, Any] = {
-            "model": model,
-            "messages": [{"role": "user", "content": content}],
-            "modalities": ["image", "text"],
-            "stream": False,
-        }
-        image_config: dict[str, str] = {}
-        if aspect_ratio:
-            image_config["aspect_ratio"] = aspect_ratio
-        if image_size:
-            image_config["image_size"] = image_size
-        if image_config:
-            body["image_config"] = image_config
-        body.update(self.extra_body)
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            **_OPENROUTER_ATTRIBUTION_HEADERS,
-            **self.extra_headers,
-        }
-        url = f"{self.api_base}/chat/completions"
-        response = await self._http_post(url, headers=headers, body=body)
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = response.text[:500]
-            raise ImageGenerationError(f"OpenRouter image generation failed: {detail}") from exc
-
-        data = response.json()
-        images: list[str] = []
-        text_parts: list[str] = []
-        for choice in data.get("choices") or []:
-            if not isinstance(choice, dict):
-                continue
-            message = choice.get("message") or {}
-            if isinstance(message.get("content"), str):
-                text_parts.append(message["content"])
-            for image in message.get("images") or []:
-                if not isinstance(image, dict):
-                    continue
-                image_url = image.get("image_url") or image.get("imageUrl") or {}
-                url_value = image_url.get("url") if isinstance(image_url, dict) else None
-                if isinstance(url_value, str) and url_value.startswith("data:image/"):
-                    images.append(url_value)
-
-        self._require_images(images, data)
-
-        return GeneratedImageResponse(
-            images=images,
-            content="\n".join(part for part in text_parts if part).strip(),
-            raw=data,
-        )
-
-
-class AIHubMixImageGenerationClient(ImageGenerationProvider):
-    """Small async client for AIHubMix unified image generation."""
-
-    provider_name = "aihubmix"
-    missing_key_message = (
-        "AIHubMix API key is not configured. Set providers.aihubmix.apiKey."
-    )
-    default_timeout = _AIHUBMIX_TIMEOUT_S
-
-    def _default_base_url(self) -> str:
-        return "https://aihubmix.com/v1"
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str] | None = None,
-        aspect_ratio: str | None = None,
-        image_size: str | None = None,
-    ) -> GeneratedImageResponse:
-        if not self.api_key:
-            raise ImageGenerationError(self.missing_key_message)
-
-        refs = list(reference_images or [])
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            **self.extra_headers,
-        }
-        size = _aihubmix_size(aspect_ratio, image_size)
-
-        client = self._client or httpx.AsyncClient(timeout=self.timeout)
-        try:
-            return await self._generate_with_client(
-                client,
-                prompt=prompt,
-                model=model,
-                reference_images=refs,
-                size=size,
-                headers=headers,
-            )
-        finally:
-            if self._client is None:
-                await client.aclose()
-
-    async def _generate_with_client(
-        self,
-        client: httpx.AsyncClient,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str],
-        size: str,
-        headers: dict[str, str],
-    ) -> GeneratedImageResponse:
-        image_input: str | list[str] | None = None
-        if reference_images:
-            image_refs = [image_path_to_data_url(path) for path in reference_images]
-            image_input = image_refs[0] if len(image_refs) == 1 else image_refs
-
-        input_body: dict[str, Any] = {
-            "prompt": prompt,
-            "n": 1,
-            "size": size,
-        }
-        if image_input is not None:
-            input_body["image"] = image_input
-        input_body.update(self.extra_body)
-
-        body = {"input": input_body}
-        model_path = _aihubmix_model_path(model)
-        url = f"{self.api_base}/models/{model_path}/predictions"
-        try:
-            response = await self._http_post(
-                url,
-                headers={**headers, "Content-Type": "application/json"},
-                body=body,
-                client=client,
-            )
-        except httpx.TimeoutException as exc:
-            raise ImageGenerationError("AIHubMix image generation timed out") from exc
-        except httpx.RequestError as exc:
-            raise ImageGenerationError(f"AIHubMix image generation request failed: {exc}") from exc
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = response.text[:500]
-            raise ImageGenerationError(f"AIHubMix image generation failed: {detail}") from exc
-
-        payload = response.json()
-        images = await _aihubmix_images_from_payload(client, payload)
-
-        self._require_images(images, payload)
-
-        return GeneratedImageResponse(images=images, content="", raw=payload)
 
 
 def _http_error_detail(response: httpx.Response) -> str:
@@ -514,11 +335,16 @@ class OllamaImageGenerationClient(ImageGenerationProvider):
     def _default_base_url(self) -> str:
         return "http://localhost:11434/api"
 
+    def _base_path(self) -> str:
+        return "/api"
+
     def _resolve_base_url(self, api_base: str | None) -> str:
         if api_base:
             base = api_base.rstrip("/")
             if base.endswith("/v1"):
                 return f"{base[:-3]}/api"
+            if not _url_has_path(base):
+                return f"{base}/api"
             return base
         return self._default_base_url()
 
@@ -593,12 +419,18 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
     def _default_base_url(self) -> str:
         return "https://generativelanguage.googleapis.com/v1beta"
 
+    def _base_path(self) -> str:
+        return "/v1beta"
+
     def _resolve_base_url(self, api_base: str | None) -> str:
         # Gemini chat completions use the registry's OpenAI-compatible shim.
         # Image generation must hit the native Generative Language API, so we
         # intentionally bypass the shared registry lookup here.
         if api_base:
-            return api_base.rstrip("/")
+            base = api_base.rstrip("/")
+            if not _url_has_path(base):
+                return f"{base}/v1beta"
+            return base
         return self._default_base_url()
 
     async def generate(
@@ -737,169 +569,6 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
         )
 
 
-async def _aihubmix_images_from_payload(
-    client: httpx.AsyncClient,
-    payload: dict[str, Any],
-) -> list[str]:
-    images: list[str] = []
-    candidates: list[Any] = []
-    if "data" in payload:
-        candidates.append(payload["data"])
-    if "output" in payload:
-        candidates.append(payload["output"])
-
-    async def collect(value: Any) -> None:
-        if isinstance(value, list):
-            for item in value:
-                await collect(item)
-            return
-        if isinstance(value, str):
-            if value.startswith("data:image/"):
-                images.append(value)
-            elif value.startswith(("http://", "https://")):
-                images.append(await _download_image_data_url(client, value))
-            return
-        if not isinstance(value, dict):
-            return
-
-        b64_json = value.get("b64_json")
-        if isinstance(b64_json, str) and b64_json:
-            images.append(_b64_image_data_url(b64_json))
-        elif b64_json is not None:
-            await collect(b64_json)
-
-        bytes_base64 = value.get("bytesBase64") or value.get("bytes_base64") or value.get("base64")
-        if isinstance(bytes_base64, str) and bytes_base64:
-            images.append(_b64_image_data_url(bytes_base64))
-
-        image_url = value.get("image_url") or value.get("imageUrl")
-        if isinstance(image_url, dict):
-            await collect(image_url.get("url"))
-        elif image_url is not None:
-            await collect(image_url)
-
-        url_value = value.get("url")
-        if url_value is not None:
-            await collect(url_value)
-
-        for key in ("images", "image", "output"):
-            if key in value:
-                await collect(value[key])
-
-    for candidate in candidates:
-        await collect(candidate)
-    return images
-
-
-_MINIMAX_TIMEOUT_S = 300.0
-
-_MINIMAX_ASPECT_RATIO_SIZES = {
-    "1:1": "1:1",
-    "16:9": "16:9",
-    "4:3": "4:3",
-    "3:2": "3:2",
-    "2:3": "2:3",
-    "3:4": "3:4",
-    "9:16": "9:16",
-    "21:9": "21:9",
-}
-
-
-class MiniMaxImageGenerationClient(ImageGenerationProvider):
-    """Async client for MiniMax image generation API."""
-
-    provider_name = "minimax"
-    missing_key_message = (
-        "MiniMax API key is not configured. Set providers.minimax.apiKey."
-    )
-    default_timeout = _MINIMAX_TIMEOUT_S
-
-    def _default_base_url(self) -> str:
-        return "https://api.minimaxi.com/v1"
-
-    def _resolve_aspect_ratio(self, aspect_ratio: str | None) -> str:
-        if aspect_ratio and aspect_ratio in _MINIMAX_ASPECT_RATIO_SIZES:
-            return _MINIMAX_ASPECT_RATIO_SIZES[aspect_ratio]
-        return "1:1"
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str] | None = None,
-        aspect_ratio: str | None = None,
-        image_size: str | None = None,
-    ) -> GeneratedImageResponse:
-        if not self.api_key:
-            raise ImageGenerationError(self.missing_key_message)
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            **self.extra_headers,
-        }
-
-        body: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "response_format": "base64",
-        }
-
-        resolved_ratio = self._resolve_aspect_ratio(aspect_ratio)
-        body["aspect_ratio"] = resolved_ratio
-
-        refs = list(reference_images or [])
-        if refs:
-            image_refs = [image_path_to_data_url(path) for path in refs]
-            body["subject_reference"] = [
-                {"type": "character", "image_file": ref} for ref in image_refs
-            ]
-
-        body.update(self.extra_body)
-
-        return await self._generate_with_client(body, headers)
-
-    async def _generate_with_client(
-        self,
-        body: dict[str, Any],
-        headers: dict[str, str],
-    ) -> GeneratedImageResponse:
-        url = f"{self.api_base}/image_generation"
-        try:
-            response = await self._http_post(url, headers=headers, body=body)
-        except httpx.TimeoutException as exc:
-            raise ImageGenerationError("MiniMax image generation timed out") from exc
-        except httpx.RequestError as exc:
-            raise ImageGenerationError(f"MiniMax image generation request failed: {exc}") from exc
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = response.text[:500]
-            raise ImageGenerationError(f"MiniMax image generation failed: {detail}") from exc
-
-        payload = response.json()
-        images = _minimax_images_from_payload(payload)
-
-        self._require_images(images, payload)
-
-        return GeneratedImageResponse(images=images, content="", raw=payload)
-
-
-def _minimax_images_from_payload(payload: dict[str, Any]) -> list[str]:
-    """Extract base64 images from MiniMax API response.
-
-    MiniMax returns images in ``data.image_base64`` (list of base64 strings).
-    """
-    images: list[str] = []
-    data = payload.get("data")
-    if not isinstance(data, dict):
-        return images
-    for b64 in data.get("image_base64") or []:
-        if isinstance(b64, str) and b64:
-            images.append(_b64_image_data_url(b64))
-    return images
 
 
 # ---------------------------------------------------------------------------
@@ -947,6 +616,9 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
 
     def _default_base_url(self) -> str:
         return "https://api.openai.com/v1"
+
+    def _base_path(self) -> str:
+        return "/v1"
 
     @staticmethod
     def _strip_model_prefix(model: str) -> str:
@@ -1035,98 +707,6 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
         return GeneratedImageResponse(images=images, content="", raw=payload)
 
 
-class CustomImageGenerationClient(ImageGenerationProvider):
-    """OpenAI-compatible Images API for user-configured custom providers."""
-
-    provider_name = "custom"
-    missing_base_message = (
-        "Custom image generation API base is not configured. Set providers.custom.apiBase."
-    )
-
-    def _default_base_url(self) -> str:
-        return ""
-
-    @staticmethod
-    def _custom_size(aspect_ratio: str | None, image_size: str | None) -> str:
-        if image_size:
-            requested = image_size.strip()
-            if requested:
-                if requested.lower() == "1k":
-                    return "1024x1024"
-                return requested
-        return _openai_size("gpt-image-2", aspect_ratio, None)
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str] | None = None,
-        aspect_ratio: str | None = None,
-        image_size: str | None = None,
-    ) -> GeneratedImageResponse:
-        if not self.api_base:
-            raise ImageGenerationError(self.missing_base_message)
-
-        if reference_images:
-            logger.warning(
-                "Custom image generation does not support reference images; "
-                "ignoring {} reference image(s) for {}",
-                len(reference_images),
-                model,
-            )
-
-        headers: dict[str, str] = {
-            "Content-Type": "application/json",
-        }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        headers.update(self.extra_headers)
-
-        body: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "response_format": "b64_json",
-            "n": 1,
-            "size": self._custom_size(aspect_ratio, image_size),
-        }
-        body.update(self.extra_body)
-
-        logger.info("Custom Images API request: POST {}/images/generations body={}", self.api_base, body)
-
-        response = await self._http_post(
-            f"{self.api_base}/images/generations",
-            headers=headers,
-            body=body,
-        )
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = response.text[:1000]
-            logger.error("Custom Images API error ({}): {}", response.status_code, detail)
-            raise ImageGenerationError(
-                f"Custom image generation failed (HTTP {response.status_code}): {detail}"
-            ) from exc
-
-        payload = response.json()
-        logger.info("Custom Images API response ({}): {}", response.status_code,
-                       {k: v for k, v in payload.items() if k != "data"})
-
-        client = self._client
-        owns_client = client is None
-        if owns_client:
-            client = httpx.AsyncClient(timeout=self.timeout)
-        try:
-            images = await _openai_images_from_payload(client, payload)
-        finally:
-            if owns_client:
-                await client.aclose()
-
-        self._require_images(images, payload)
-
-        return GeneratedImageResponse(images=images, content="", raw=payload)
-
 
 def _openai_size(
     model: str,
@@ -1208,128 +788,6 @@ async def _openai_images_from_payload(
     return images
 
 
-# ---------------------------------------------------------------------------
-# StepFun (阶跃星辰) image generation
-# ---------------------------------------------------------------------------
-
-_STEPFUN_ASPECT_RATIO_SIZES = {
-    "1:1": "1024x1024",
-    "16:9": "1280x800",
-    "9:16": "800x1280",
-    "3:4": "768x1360",
-    "4:3": "1360x768",
-}
-
-
-class StepFunImageGenerationClient(ImageGenerationProvider):
-    """Async client for StepFun (阶跃星辰) image generation.
-
-    Supports:
-    - Text-to-image via step-image-edit-2 (default model)
-    - Reference-image-guided generation via style_reference (step-1x-medium)
-    """
-
-    provider_name = "stepfun"
-    missing_key_message = (
-        "StepFun API key is not configured. Set providers.stepfun.apiKey."
-    )
-    default_timeout = 120.0
-
-    def _default_base_url(self) -> str:
-        return "https://api.stepfun.com/v1"
-
-    async def generate(
-        self,
-        *,
-        prompt: str,
-        model: str,
-        reference_images: list[str] | None = None,
-        aspect_ratio: str | None = None,
-        image_size: str | None = None,
-    ) -> GeneratedImageResponse:
-        if not self.api_key:
-            raise ImageGenerationError(self.missing_key_message)
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-            **self.extra_headers,
-        }
-
-        body: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "response_format": "b64_json",
-            "n": 1,
-        }
-
-        # Map aspect ratio / image_size to StepFun size string
-        size = _stepfun_size(aspect_ratio, image_size)
-        if size:
-            body["size"] = size
-
-        # step-1x-medium supports style_reference for reference-image-guided generation
-        refs = list(reference_images or [])
-        if refs and "1x" in model:
-            body["style_reference"] = {
-                "source_url": image_path_to_data_url(refs[0]),
-            }
-
-        body.update(self.extra_body)
-
-        response = await self._http_post(
-            f"{self.api_base}/images/generations",
-            headers=headers,
-            body=body,
-        )
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            detail = response.text[:500]
-            raise ImageGenerationError(
-                f"StepFun image generation failed: {detail}"
-            ) from exc
-
-        payload = response.json()
-        images = _stepfun_images_from_payload(payload)
-
-        self._require_images(images, payload)
-
-        return GeneratedImageResponse(images=images, content="", raw=payload)
-
-
-def _stepfun_size(
-    aspect_ratio: str | None,
-    image_size: str | None,
-) -> str:
-    """Resolve aspect ratio / image_size to StepFun size string.
-
-    StepFun expects ``WIDTHxHEIGHT`` (note: width x height, not the more
-    common ``HxW`` order used by other providers).  The accepted sizes are
-    ``1024x1024``, ``768x1360``, ``896x1184``, ``1360x768``, ``1184x896``.
-    """
-    if image_size and "x" in image_size.lower():
-        return image_size
-    if aspect_ratio and aspect_ratio in _STEPFUN_ASPECT_RATIO_SIZES:
-        return _STEPFUN_ASPECT_RATIO_SIZES[aspect_ratio]
-    return "1024x1024"
-
-
-def _stepfun_images_from_payload(payload: dict[str, Any]) -> list[str]:
-    """Extract base64 images from StepFun API response.
-
-    StepFun returns images in ``data[].b64_json`` (base64 strings).
-    """
-    images: list[str] = []
-    for item in payload.get("data") or []:
-        if not isinstance(item, dict):
-            continue
-        b64 = item.get("b64_json")
-        if isinstance(b64, str) and b64:
-            images.append(_b64_image_data_url(b64))
-    return images
-
 
 # ---------------------------------------------------------------------------
 # Zhipu (智谱) image generation
@@ -1361,6 +819,9 @@ class ZhipuImageGenerationClient(ImageGenerationProvider):
 
     def _default_base_url(self) -> str:
         return "https://open.bigmodel.cn/api/paas/v4"
+
+    def _base_path(self) -> str:
+        return "/api/paas/v4"
 
     async def generate(
         self,
@@ -1506,35 +967,63 @@ def _dashscope_size(
 
 _DASHSCOPE_DEFAULT_API_BASE = "https://dashscope.aliyuncs.com"
 _DASHSCOPE_SUBMIT_PATH_OLD = "/api/v1/services/aigc/text2image/image-synthesis"
-_DASHSCOPE_SUBMIT_PATH_NEW = "/api/v1/services/aigc/image-generation/generation"
+_DASHSCOPE_SUBMIT_PATH_NEW = "/api/v1/services/aigc/multimodal-generation/generation"
 _DASHSCOPE_TASK_PATH = "/api/v1/tasks"
 _DASHSCOPE_POLL_INTERVAL_S = 2.0
 _DASHSCOPE_MAX_POLL_ATTEMPTS = 60
 
-# Models that use the newer messages-based API (wan2.6+)
+# Models that use the newer messages-based API (wan2.6+, qwen-image*)
 _DASHSCOPE_NEW_MODELS = frozenset({
     "wan2.6-t2i",
     "wan2.6-image",
     "wan2.5-t2i-preview",
 })
 
+# Models that support synchronous (direct) response — no polling needed.
+# qwen-image and wan2.6 models return the image URL directly in the POST response.
+_DASHSCOPE_SYNC_MODELS = frozenset({
+    "qwen-image-2.0-pro",
+    "qwen-image-2.0",
+    "qwen-image-plus",
+    "qwen-image-max",
+    "qwen-image-edit",
+    "wan2.6-t2i",
+    "wan2.6-image",
+})
+
+
+def _dashscope_model_mode(model: str) -> str:
+    """Determine the API mode for a DashScope image model.
+
+    Returns:
+        "sync"  — qwen-image/wan2.6 models that respond directly (千问/万相2.6同步模式)
+        "async_new" — newer wan2.x models using messages format (万相V2异步模式)
+        "async_old" — older wanx models using prompt format (万相V1异步模式)
+    """
+    if model in _DASHSCOPE_SYNC_MODELS or model.startswith("qwen-image"):
+        return "sync"
+    if model.startswith("wan2."):
+        return "async_new"
+    return "async_old"
+
 
 class DashScopeImageGenerationClient(ImageGenerationProvider):
-    """Async client for DashScope (阿里灵积/万相) image generation API.
+    """Async client for DashScope (阿里灵积) image generation API.
 
-    Uses DashScope's native asynchronous text-to-image API.
-    Submits a task, then polls until the result is ready.
+    Supports two text-to-image modes under DashScope:
 
-    Supports two API formats:
-    - **Newer models** (wan2.6-t2i, wan2.6-image, wan2.5-t2i-preview):
-      use ``/api/v1/services/aigc/image-generation/generation`` with
-      ``input.messages`` format.  Result images appear in
-      ``output.choices[].message.content[].image``.
-    - **Older models** (wanx2.1-t2i-turbo, wanx2.1-t2i-plus,
-      wanx2.0-t2i-turbo, wanx-v1, etc.):
-      use ``/api/v1/services/aigc/text2image/image-synthesis`` with
-      ``input.prompt`` format.  Result images appear in
-      ``output.results[].url``.
+    - **千问模式 (qwen-image)**: Synchronous response.
+      Models: qwen-image-2.0-pro, qwen-image-plus, qwen-image-max, etc.
+      Uses ``/api/v1/services/aigc/image-generation/generation`` with
+      ``input.messages`` format.  The image URL is returned directly in
+      the POST response at ``output.choices[].message.content[].image``.
+
+    - **万相模式 (wanx / wan2.x)**: Asynchronous task-based.
+      Models: wanx2.1-t2i-turbo, wanx2.1-t2i-plus, wanx-v1, wan2.6-t2i, etc.
+      Submits a task (with ``X-DashScope-Async: enable``), then polls
+      ``/api/v1/tasks/{task_id}`` until the result is ready.
+      - Newer wan2.x models use ``input.messages`` format.
+      - Older wanx models use ``input.prompt`` format.
     """
 
     provider_name = "dashscope"
@@ -1544,6 +1033,12 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
     def _default_base_url(self) -> str:
         return _DASHSCOPE_DEFAULT_API_BASE
 
+    def _base_path(self) -> str:
+        # DashScope image paths are determined by model mode at request time,
+        # not at client construction time.  Return empty so that a bare domain
+        # like "https://dashscope.aliyuncs.com" is kept as-is.
+        return ""
+
     def _resolve_base_url(self, api_base: str | None) -> str:
         """Override to skip the LLM registry's default_api_base.
 
@@ -1551,14 +1046,29 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         (``/api/v1/...``) than the LLM compatible-mode endpoint
         (``/compatible-mode/v1``), so we must not fall back to the
         registry's ``default_api_base``.
+
+        If the user provides an api_base that already includes a known
+        DashScope path (e.g. the full endpoint URL), strip it so that
+        only the domain remains — the endpoint path is always determined
+        by the model mode.
         """
         if api_base:
-            return api_base.rstrip("/")
-        return self._default_base_url()
-
-    def _is_new_model(self, model: str) -> bool:
-        """Check if the model uses the newer messages-based API."""
-        return model in _DASHSCOPE_NEW_MODELS
+            base = api_base.rstrip("/")
+            # Strip known DashScope paths — api_base should be just the domain
+            for suffix in (
+                _DASHSCOPE_SUBMIT_PATH_NEW,
+                _DASHSCOPE_SUBMIT_PATH_OLD,
+                "/compatible-mode/v1",
+                "/api/v1",
+            ):
+                if base.endswith(suffix):
+                    base = base[: -len(suffix)]
+            result = base.rstrip("/") or self._default_base_url()
+            logger.debug("DashScope _resolve_base_url: input={}, result={}", api_base, result)
+            return result
+        result = self._default_base_url()
+        logger.debug("DashScope _resolve_base_url: input=None, result={}", result)
+        return result
 
     async def generate(
         self,
@@ -1578,10 +1088,24 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
             )
 
         size = _dashscope_size(aspect_ratio, image_size)
-        is_new = self._is_new_model(model)
+        mode = _dashscope_model_mode(model)
 
-        if is_new:
+        # Build request body based on model mode
+        if mode == "async_old":
             body: dict[str, Any] = {
+                "model": model,
+                "input": {
+                    "prompt": prompt,
+                },
+                "parameters": {
+                    "n": 1,
+                    "size": size,
+                },
+            }
+            submit_path = _DASHSCOPE_SUBMIT_PATH_OLD
+        else:
+            # Both sync (qwen-image) and async_new (wan2.x) use messages format
+            body = {
                 "model": model,
                 "input": {
                     "messages": [
@@ -1597,129 +1121,149 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
                 },
             }
             submit_path = _DASHSCOPE_SUBMIT_PATH_NEW
-        else:
-            body = {
-                "model": model,
-                "input": {
-                    "prompt": prompt,
-                },
-                "parameters": {
-                    "n": 1,
-                    "size": size,
-                },
-            }
-            submit_path = _DASHSCOPE_SUBMIT_PATH_OLD
 
         body.update(self.extra_body)
 
+        # Sync models don't need the async header
+        is_sync = mode == "sync"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
-            "X-DashScope-Async": "enable",
+            **({"X-DashScope-Async": "enable"} if not is_sync else {}),
             **self.extra_headers,
         }
 
         submit_url = f"{self.api_base}{submit_path}"
+        logger.info("DashScope image generation: mode={}, model={}, url={}", mode, model, submit_url)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            # Step 1: Submit the task
+            # Submit the request
             try:
                 submit_resp = await client.post(submit_url, headers=headers, json=body)
             except httpx.TimeoutException as exc:
-                raise ImageGenerationError("DashScope image generation submit timed out") from exc
+                raise ImageGenerationError("DashScope image generation request timed out") from exc
             except httpx.RequestError as exc:
-                raise ImageGenerationError(f"DashScope image generation submit failed: {exc}") from exc
+                raise ImageGenerationError(f"DashScope image generation request failed: {exc}") from exc
 
             try:
                 submit_resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 detail = submit_resp.text[:500]
                 raise ImageGenerationError(
-                    f"DashScope image generation submit failed (HTTP {submit_resp.status_code}): {detail}"
+                    f"DashScope image generation failed (HTTP {submit_resp.status_code}): {detail}"
                 ) from exc
 
             submit_data = submit_resp.json()
+
+            # --- Sync mode: image URL is in the direct response ---
+            if is_sync:
+                return await self._handle_sync_response(client, submit_data)
+
+            # --- Async mode: poll for the result ---
             task_id = (submit_data.get("output") or {}).get("task_id")
             if not task_id:
                 err_msg = (submit_data.get("output") or {}).get("message") or submit_data.get("message") or "no task_id returned"
                 raise ImageGenerationError(f"DashScope image generation submit failed: {err_msg}")
 
-            # Step 2: Poll for the result
-            poll_url = f"{self.api_base}{_DASHSCOPE_TASK_PATH}/{task_id}"
-            poll_headers = {
-                "Authorization": f"Bearer {self.api_key}",
-            }
+            return await self._poll_until_done(client, task_id)
 
-            for attempt in range(_DASHSCOPE_MAX_POLL_ATTEMPTS):
-                await asyncio.sleep(_DASHSCOPE_POLL_INTERVAL_S)
+    async def _handle_sync_response(
+        self,
+        client: httpx.AsyncClient,
+        data: dict[str, Any],
+    ) -> GeneratedImageResponse:
+        """Parse a synchronous DashScope response (千问模式)."""
+        output = data.get("output") or {}
+        images: list[str] = []
 
-                try:
-                    poll_resp = await client.get(poll_url, headers=poll_headers)
-                except httpx.RequestError as exc:
-                    logger.warning("DashScope poll error (attempt {}): {}", attempt + 1, exc)
-                    continue
+        choices = output.get("choices")
+        if isinstance(choices, list):
+            for choice in choices:
+                content = (choice.get("message") or {}).get("content") or []
+                for item in content:
+                    url = item.get("image")
+                    if isinstance(url, str) and url:
+                        images.append(await _download_image_data_url(client, url))
 
-                try:
-                    poll_resp.raise_for_status()
-                except httpx.HTTPStatusError:
-                    logger.warning("DashScope poll HTTP {} (attempt {})", poll_resp.status_code, attempt + 1)
-                    continue
+        self._require_images(images, data)
+        return GeneratedImageResponse(images=images, content="", raw=data)
 
-                poll_data = poll_resp.json()
-                output = poll_data.get("output") or {}
-                task_status = output.get("task_status", "")
+    async def _poll_until_done(
+        self,
+        client: httpx.AsyncClient,
+        task_id: str,
+    ) -> GeneratedImageResponse:
+        """Poll a DashScope async task until it completes (万相模式)."""
+        poll_url = f"{self.api_base}{_DASHSCOPE_TASK_PATH}/{task_id}"
+        poll_headers = {
+            "Authorization": f"Bearer {self.api_key}",
+        }
 
-                if task_status == "SUCCEEDED":
-                    images: list[str] = []
+        for attempt in range(_DASHSCOPE_MAX_POLL_ATTEMPTS):
+            await asyncio.sleep(_DASHSCOPE_POLL_INTERVAL_S)
 
-                    # New models: output.choices[].message.content[].image
-                    choices = output.get("choices")
-                    if isinstance(choices, list):
-                        for choice in choices:
-                            content = (choice.get("message") or {}).get("content") or []
-                            for item in content:
-                                url = item.get("image")
-                                if isinstance(url, str) and url:
-                                    images.append(await _download_image_data_url(client, url))
+            try:
+                poll_resp = await client.get(poll_url, headers=poll_headers)
+            except httpx.RequestError as exc:
+                logger.warning("DashScope poll error (attempt {}): {}", attempt + 1, exc)
+                continue
 
-                    # Old models: output.results[].url
-                    results = output.get("results")
-                    if isinstance(results, list):
-                        for result in results:
-                            url = result.get("url")
+            try:
+                poll_resp.raise_for_status()
+            except httpx.HTTPStatusError:
+                logger.warning("DashScope poll HTTP {} (attempt {})", poll_resp.status_code, attempt + 1)
+                continue
+
+            poll_data = poll_resp.json()
+            output = poll_data.get("output") or {}
+            task_status = output.get("task_status", "")
+
+            if task_status == "SUCCEEDED":
+                images: list[str] = []
+
+                # New models: output.choices[].message.content[].image
+                choices = output.get("choices")
+                if isinstance(choices, list):
+                    for choice in choices:
+                        content = (choice.get("message") or {}).get("content") or []
+                        for item in content:
+                            url = item.get("image")
                             if isinstance(url, str) and url:
                                 images.append(await _download_image_data_url(client, url))
 
-                    self._require_images(images, poll_data)
-                    return GeneratedImageResponse(images=images, content="", raw=poll_data)
+                # Old models: output.results[].url
+                results = output.get("results")
+                if isinstance(results, list):
+                    for result in results:
+                        url = result.get("url")
+                        if isinstance(url, str) and url:
+                            images.append(await _download_image_data_url(client, url))
 
-                if task_status in ("FAILED", "UNKNOWN"):
-                    err_msg = output.get("message") or "task failed"
-                    err_code = output.get("code") or ""
-                    raise ImageGenerationError(
-                        f"DashScope image generation failed: {err_code} {err_msg}".strip()
-                    )
+                self._require_images(images, poll_data)
+                return GeneratedImageResponse(images=images, content="", raw=poll_data)
 
-                # Still PENDING or RUNNING, continue polling
-                if task_status not in ("PENDING", "RUNNING"):
-                    logger.warning("DashScope unknown task status: {}", task_status)
+            if task_status in ("FAILED", "UNKNOWN"):
+                err_msg = output.get("message") or "task failed"
+                err_code = output.get("code") or ""
+                raise ImageGenerationError(
+                    f"DashScope image generation failed: {err_code} {err_msg}".strip()
+                )
 
-            raise ImageGenerationError(
-                f"DashScope image generation timed out after {_DASHSCOPE_MAX_POLL_ATTEMPTS} polls"
-            )
+            # Still PENDING or RUNNING, continue polling
+            if task_status not in ("PENDING", "RUNNING"):
+                logger.warning("DashScope unknown task status: {}", task_status)
+
+        raise ImageGenerationError(
+            f"DashScope image generation timed out after {_DASHSCOPE_MAX_POLL_ATTEMPTS} polls"
+        )
 
 
 # ---------------------------------------------------------------------------
 # Provider registration
 # ---------------------------------------------------------------------------
 
-register_image_gen_provider(AIHubMixImageGenerationClient)
-register_image_gen_provider(CustomImageGenerationClient)
 register_image_gen_provider(DashScopeImageGenerationClient)
 register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)
-register_image_gen_provider(MiniMaxImageGenerationClient)
 register_image_gen_provider(OpenAIImageGenerationClient)
-register_image_gen_provider(OpenRouterImageGenerationClient)
-register_image_gen_provider(StepFunImageGenerationClient)
 register_image_gen_provider(ZhipuImageGenerationClient)

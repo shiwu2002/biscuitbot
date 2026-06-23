@@ -45,42 +45,9 @@ class TranscriptionProviderSpec:
 
 TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
     TranscriptionProviderSpec(
-        name="groq",
-        default_model="whisper-large-v3",
-        adapter="hczkbot.providers.transcription:GroqTranscriptionProvider",
-    ),
-    TranscriptionProviderSpec(
         name="openai",
         default_model="whisper-1",
         adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
-    ),
-    TranscriptionProviderSpec(
-        name="openrouter",
-        default_model="openai/whisper-1",
-        adapter="hczkbot.providers.transcription:OpenRouterTranscriptionProvider",
-    ),
-    TranscriptionProviderSpec(
-        name="xiaomi_mimo",
-        default_model="mimo-v2.5-asr",
-        adapter="hczkbot.providers.transcription:XiaomiMiMoTranscriptionProvider",
-        aliases=("mimo", "xiaomi"),
-    ),
-    TranscriptionProviderSpec(
-        name="stepfun",
-        default_model="stepaudio-2.5-asr",
-        adapter="hczkbot.providers.transcription:StepFunTranscriptionProvider",
-    ),
-    TranscriptionProviderSpec(
-        name="assemblyai",
-        default_model="universal-3-pro,universal-2",
-        adapter="hczkbot.providers.transcription:AssemblyAITranscriptionProvider",
-    ),
-    TranscriptionProviderSpec(
-        name="siliconflow",
-        default_model="FunAudioLLM/SenseVoiceSmall",
-        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
-        aliases=("silicon",),
-        default_api_base="https://api.siliconflow.cn/v1",
     ),
     TranscriptionProviderSpec(
         name="dashscope",

@@ -44,7 +44,6 @@ class TranscriptionConfig(Base):
     enabled: bool = True
     provider: str | None = None  # Validated by hczkbot.audio.transcription_registry.
     model: str | None = None
-    api_base: str | None = None  # Override provider API base for transcription
     language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")
     max_duration_sec: int = Field(default=120, ge=1, le=600)
     max_upload_mb: int = Field(default=25, ge=1, le=100)

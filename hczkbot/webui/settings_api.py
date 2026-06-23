@@ -738,7 +738,6 @@ def settings_payload(
                 selected_image_provider and selected_image_provider["configured"]
             ),
             "model": image_config.model,
-            "api_base": image_config.api_base,
             "default_aspect_ratio": image_config.default_aspect_ratio,
             "default_image_size": image_config.default_image_size,
             "max_images_per_turn": image_config.max_images_per_turn,
@@ -750,7 +749,6 @@ def settings_payload(
             "provider": transcription.provider,
             "provider_configured": transcription.configured,
             "model": transcription.model,
-            "api_base": transcription.api_base,
             "language": transcription.language,
             "max_duration_sec": transcription.max_duration_sec,
             "max_upload_mb": transcription.max_upload_mb,
@@ -1196,15 +1194,6 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
             image_config.model = model
             changed = True
 
-    api_base = _query_first_alias(query, "api_base", "apiBase")
-    if api_base is not None:
-        api_base = api_base.strip() or None
-        if api_base is not None and len(api_base) > 500:
-            raise WebUISettingsError("image generation api_base is too long")
-        if image_config.api_base != api_base:
-            image_config.api_base = api_base
-            changed = True
-
     default_aspect_ratio = _query_first_alias(
         query,
         "default_aspect_ratio",
@@ -1299,15 +1288,6 @@ def update_transcription_settings(query: QueryParams) -> dict[str, Any]:
             raise WebUISettingsError("transcription model is too long")
         if transcription.model != model:
             transcription.model = model
-            changed = True
-
-    api_base = _query_first_alias(query, "api_base", "apiBase")
-    if api_base is not None:
-        api_base = api_base.strip() or None
-        if api_base is not None and len(api_base) > 500:
-            raise WebUISettingsError("transcription api_base is too long")
-        if transcription.api_base != api_base:
-            transcription.api_base = api_base
             changed = True
 
     language = _query_first(query, "language")

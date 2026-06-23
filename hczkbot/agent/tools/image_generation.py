@@ -20,6 +20,7 @@ from hczkbot.config_base import Base
 from hczkbot.providers.image_generation import (
     ImageGenerationError,
     ImageGenerationProvider,
+    extract_domain,
     get_image_gen_provider,
 )
 from hczkbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
@@ -37,9 +38,8 @@ if TYPE_CHECKING:
 class ImageGenerationToolConfig(Base):
     """Image generation tool configuration."""
     enabled: bool = False
-    provider: str = "openai"
-    model: str = "openai/gpt-5.4-image-2"
-    api_base: str | None = None  # Override provider API base for image generation
+    provider: str = "dashscope"
+    model: str = "wanx2.1-t2i-turbo"
     default_aspect_ratio: str = "1:1"
     default_image_size: str = "1K"
     max_images_per_turn: int = Field(default=4, ge=1, le=8)
@@ -125,11 +125,17 @@ class ImageGenerationTool(Tool):
         cls = get_image_gen_provider(self.config.provider)
         if cls is None:
             return None
-        # Image-specific api_base overrides the provider's api_base
-        effective_api_base = self.config.api_base or (provider.api_base if provider else None)
+        # Resolve api_base: domain from LLM provider > provider default.
+        # We only inherit the DOMAIN from the LLM provider (not the full path)
+        # because image/transcription APIs may use different paths than LLM APIs
+        # (e.g. DashScope LLM uses /compatible-mode/v1 but images use /api/v1/...).
+        # Each image generation client appends its own service-specific path.
+        api_base = None
+        if provider and provider.api_base:
+            api_base = extract_domain(provider.api_base)
         kwargs = {
             "api_key": provider.api_key if provider else None,
-            "api_base": effective_api_base,
+            "api_base": api_base,
             "extra_headers": provider.extra_headers if provider else None,
             "extra_body": provider.extra_body if provider else None,
         }
