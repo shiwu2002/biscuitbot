@@ -42,6 +42,22 @@
       "apiKey": "${DEEPSEEK_API_KEY}",
       "apiBase": "https://api.deepseek.com"
     },
+    "dashscope": {
+      "apiKey": "${DASHSCOPE_API_KEY}",
+      "apiBase": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    },
+    "zhipu": {
+      "apiKey": "${ZHIPU_API_KEY}",
+      "apiBase": "https://open.bigmodel.cn/api/paas/v4"
+    },
+    "moonshot": {
+      "apiKey": "${MOONSHOT_API_KEY}",
+      "apiBase": "https://api.moonshot.ai/v1"
+    },
+    "stepfun": {
+      "apiKey": "${STEPFUN_API_KEY}",
+      "apiBase": "https://api.stepfun.com/v1"
+    },
     "ollama": {
       "apiBase": "http://127.0.0.1:11434/v1"
     }
@@ -62,6 +78,38 @@
       "provider": "deepseek",
       "maxTokens": 8192,
       "contextWindowTokens": 65536,
+      "temperature": 0.1
+    },
+    "qwen-max": {
+      "label": "通义千问 Max（阿里）",
+      "model": "dashscope/qwen-max",
+      "provider": "dashscope",
+      "maxTokens": 8192,
+      "contextWindowTokens": 131072,
+      "temperature": 0.1
+    },
+    "qwen-plus": {
+      "label": "通义千问 Plus（阿里）",
+      "model": "dashscope/qwen-plus",
+      "provider": "dashscope",
+      "maxTokens": 8192,
+      "contextWindowTokens": 131072,
+      "temperature": 0.1
+    },
+    "qwen-coder": {
+      "label": "通义灵码（阿里）",
+      "model": "dashscope/qwen-coder-plus",
+      "provider": "dashscope",
+      "maxTokens": 16384,
+      "contextWindowTokens": 131072,
+      "temperature": 0.1
+    },
+    "qwen-vl": {
+      "label": "通义千问 VL（视觉）",
+      "model": "dashscope/qwen-vl-max-latest",
+      "provider": "dashscope",
+      "maxTokens": 4096,
+      "contextWindowTokens": 32768,
       "temperature": 0.1
     },
     "claude": {
@@ -104,6 +152,38 @@
       "maxTokens": 4096,
       "contextWindowTokens": 32768,
       "temperature": 0.1
+    },
+    "glm-4": {
+      "label": "GLM-4-Plus（智谱）",
+      "model": "zhipu/glm-4-plus",
+      "provider": "zhipu",
+      "maxTokens": 8192,
+      "contextWindowTokens": 128000,
+      "temperature": 0.1
+    },
+    "glm-4-flash": {
+      "label": "GLM-4-Flash（智谱/免费）",
+      "model": "zhipu/glm-4-flash",
+      "provider": "zhipu",
+      "maxTokens": 8192,
+      "contextWindowTokens": 128000,
+      "temperature": 0.1
+    },
+    "kimi-k2": {
+      "label": "Kimi K2（月之暗面）",
+      "model": "moonshot/kimi-k2-0711-preview",
+      "provider": "moonshot",
+      "maxTokens": 8192,
+      "contextWindowTokens": 131072,
+      "temperature": 0.1
+    },
+    "step-2": {
+      "label": "Step-2（阶跃星辰）",
+      "model": "stepfun/step-2-16k",
+      "provider": "stepfun",
+      "maxTokens": 8192,
+      "contextWindowTokens": 131072,
+      "temperature": 0.1
     }
   },
 
@@ -134,7 +214,9 @@
       "allowSet": true
     },
     "imageGeneration": {
-      "enabled": false
+      "enabled": false,
+      "provider": "dashscope",
+      "model": "wanx-v1"
     },
     "cliApps": {
       "enable": false
@@ -158,9 +240,9 @@
 
   "transcription": {
     "enable": true,
-    "provider": "openai",
-    "model": "whisper-1",
-    "apiKey": "${OPENAI_API_KEY}"
+    "provider": "dashscope",
+    "model": "paraformer-realtime-v2",
+    "apiKey": "${DASHSCOPE_API_KEY}"
   },
 
   "api": {

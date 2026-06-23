@@ -137,6 +137,49 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         thinking_style="thinking_type",
     ),
 
+    # === 国内提供商 =======================================================
+    # DashScope (阿里通义): Qwen 系列，OpenAI 兼容
+    # 同时提供图片生成（万相 wanx）和语音识别（Paraformer）能力
+    ProviderSpec(
+        name="dashscope",
+        keywords=("qwen", "dashscope", "tongyi"),
+        env_key="DASHSCOPE_API_KEY",
+        display_name="DashScope (阿里通义)",
+        backend="openai_compat",
+        default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        thinking_style="enable_thinking",
+    ),
+    # Zhipu (智谱): GLM 系列，OpenAI 兼容
+    # 提供图片生成（CogView/GLM-Image）能力
+    ProviderSpec(
+        name="zhipu",
+        keywords=("zhipu", "glm", "zai"),
+        env_key="ZHIPU_API_KEY",
+        display_name="Zhipu AI (智谱)",
+        backend="openai_compat",
+        default_api_base="https://open.bigmodel.cn/api/paas/v4",
+    ),
+    # Moonshot (月之暗面): Kimi 系列，OpenAI 兼容
+    ProviderSpec(
+        name="moonshot",
+        keywords=("moonshot", "kimi"),
+        env_key="MOONSHOT_API_KEY",
+        display_name="Moonshot (月之暗面/Kimi)",
+        backend="openai_compat",
+        default_api_base="https://api.moonshot.ai/v1",
+    ),
+    # Step Fun (阶跃星辰): Step 系列，OpenAI 兼容
+    # 同时提供图片生成和语音识别（ASR）能力
+    ProviderSpec(
+        name="stepfun",
+        keywords=("stepfun", "step"),
+        env_key="STEPFUN_API_KEY",
+        display_name="Step Fun (阶跃星辰)",
+        backend="openai_compat",
+        default_api_base="https://api.stepfun.com/v1",
+        reasoning_as_content=True,
+    ),
+
     # === 本地部署 ========================================================
     # Ollama: 本地模型服务，OpenAI 兼容
     ProviderSpec(

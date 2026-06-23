@@ -118,7 +118,7 @@ class AgentDefaults(Base):
 
     workspace: str = "~/.hczkbot/workspace"
     model_preset: str | None = None  # Active preset name — takes precedence over fields below
-    model: str = "anthropic/claude-opus-4-5"
+    model: str = "deepseek/deepseek-v4-pro"
     provider: str = (
         "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
     )
@@ -139,7 +139,7 @@ class AgentDefaults(Base):
         serialization_alias="toolHintMaxLength",
     )  # Max characters for tool hint display (e.g. "$ cd …/project && npm test")
     reasoning_effort: str | None = None  # low / medium / high / adaptive / none — LLM thinking effort; None preserves the provider default
-    timezone: str = "UTC"  # IANA timezone, e.g. "Asia/Shanghai", "America/New_York"
+    timezone: str = "Asia/Shanghai"  # IANA timezone, e.g. "Asia/Shanghai", "America/New_York"
     bot_name: str = "hczkbot"  # Display name shown in CLI prompts (e.g. "{name} is thinking...")
     bot_icon: str = "🐺"  # Short icon (emoji or text) shown next to the bot name in CLI; "" to omit
     unified_session: bool = False  # Share one session across all channels (single-user multi-device)
@@ -206,6 +206,10 @@ class ProvidersConfig(Base):
     anthropic: ProviderConfig = Field(default_factory=ProviderConfig)  # Anthropic (Claude)
     openai: ProviderConfig = Field(default_factory=ProviderConfig)  # OpenAI (GPT) 或兼容 API
     deepseek: ProviderConfig = Field(default_factory=ProviderConfig)  # DeepSeek (V3/R1)
+    dashscope: ProviderConfig = Field(default_factory=ProviderConfig)  # 阿里通义 (Qwen)
+    zhipu: ProviderConfig = Field(default_factory=ProviderConfig)  # 智谱 (GLM)
+    moonshot: ProviderConfig = Field(default_factory=ProviderConfig)  # 月之暗面 (Kimi)
+    stepfun: ProviderConfig = Field(default_factory=ProviderConfig)  # 阶跃星辰
     ollama: ProviderConfig = Field(default_factory=ProviderConfig)  # Ollama 本地模型
 
     @model_validator(mode="after")

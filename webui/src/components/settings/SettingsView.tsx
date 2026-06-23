@@ -197,20 +197,7 @@ type CustomMcpTransport = "stdio" | "streamableHttp" | "sse";
 
 const CONTEXT_WINDOW_TOKEN_OPTIONS = [65_536, 262_144] as const;
 const DEFERRED_MODEL_LIST_PROVIDERS = new Set([
-  "aihubmix",
-  "atomic_chat",
-  "byteplus",
-  "byteplus_coding_plan",
-  "huggingface",
-  "lm_studio",
-  "novita",
   "ollama",
-  "openrouter",
-  "ovms",
-  "siliconflow",
-  "vllm",
-  "volcengine",
-  "volcengine_coding_plan",
 ]);
 const DEFERRED_MODEL_LIST_QUERY_MIN_LENGTH = 2;
 

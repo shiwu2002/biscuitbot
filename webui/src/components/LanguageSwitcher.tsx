@@ -52,7 +52,7 @@ export function LanguageSwitcher() {
             <DropdownMenuRadioItem key={option.code} value={option.code}>
               <span className="flex min-w-0 items-center gap-2">
                 <span>{option.nativeLabel}</span>
-                {option.nativeLabel !== option.label ? (
+                {String(option.nativeLabel) !== option.label ? (
                   <span className="truncate text-xs text-muted-foreground">
                     {option.label}
                   </span>

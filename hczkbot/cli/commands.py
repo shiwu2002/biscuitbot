@@ -431,6 +431,186 @@ def main(
 # ============================================================================
 
 
+def _has_any_api_key(config) -> bool:
+    """Check if any provider has an API key configured."""
+    from hczkbot.providers.registry import PROVIDERS
+
+    for spec in PROVIDERS:
+        if spec.is_direct or spec.is_local or spec.is_oauth:
+            continue
+        pc = getattr(config.providers, spec.name, None)
+        if pc and pc.api_key:
+            return True
+    return False
+
+
+def _run_quick_setup(config, config_path: Path) -> None:
+    """Guided quick setup: pick provider → enter API key → select model → done.
+
+    Runs automatically when onboard detects no API keys configured.
+    Uses questionary for interactive prompts; falls back gracefully if unavailable.
+    """
+    try:
+        import questionary
+    except ImportError:
+        console.print("[yellow]![/yellow] Quick setup requires 'questionary'. Install with:")
+        console.print("  pip install questionary")
+        console.print(f"\n  Or manually edit: [cyan]{config_path}[/cyan]")
+        return
+
+    from hczkbot.providers.registry import PROVIDERS
+    from hczkbot.config.loader import save_config
+    from rich.align import Align
+
+    # --- Step 0: Welcome ---
+    console.print()
+    console.print(Align.center(f"{__logo__} [bold cyan]hczkbot Quick Setup[/bold cyan]"))
+    console.print(Align.center("[dim]Let's get you started in 3 steps[/dim]"))
+    console.print()
+
+    # Build provider choices (skip gateway-only, oauth, direct, local providers)
+    provider_choices = []
+    for spec in PROVIDERS:
+        if spec.is_direct or spec.is_local or spec.is_oauth or spec.is_transcription_only:
+            continue
+        label = spec.display_name or spec.name.title()
+        provider_choices.append((spec.name, label))
+
+    if not provider_choices:
+        console.print("[red]No providers available.[/red]")
+        return
+
+    # --- Step 1: Select Provider ---
+    selected_name = questionary.select(
+        "Step 1/3 — Select your LLM provider:",
+        choices=[label for _, label in provider_choices],
+        default=provider_choices[0][1] if provider_choices else None,
+    ).ask()
+
+    if not selected_name:
+        console.print("[yellow]Setup cancelled.[/yellow]")
+        return
+
+    # Map display name back to internal name
+    provider_name = next(name for name, label in provider_choices if label == selected_name)
+    spec = next(s for s in PROVIDERS if s.name == provider_name)
+
+    # --- Step 2: Enter API Key ---
+    key_hint = ""
+    key_urls = {
+        "deepseek": "https://platform.deepseek.com/api_keys",
+        "openai": "https://platform.openai.com/api-keys",
+        "anthropic": "https://console.anthropic.com/settings/keys",
+        "dashscope": "https://dashscope.console.aliyun.com/apiKey",
+        "zhipu": "https://open.bigmodel.cn/usercenter/apikeys",
+        "moonshot": "https://platform.moonshot.cn/console/api-keys",
+        "stepfun": "https://platform.stepfun.com/console/apikey",
+    }
+    url = key_urls.get(provider_name, "")
+    if url:
+        console.print(f"  [dim]Get your key: {url}[/dim]")
+
+    api_key = questionary.password("Step 2/3 — Enter your API key:").ask()
+    if not api_key:
+        console.print("[yellow]Setup cancelled.[/yellow]")
+        return
+
+    # Apply API key and base URL to config
+    provider_cfg = getattr(config.providers, provider_name, None)
+    if provider_cfg is not None:
+        provider_cfg.api_key = api_key
+        if spec.default_api_base and not provider_cfg.api_base:
+            provider_cfg.api_base = spec.default_api_base
+
+    # --- Step 3: Select Model (with sensible defaults per provider) ---
+    model_defaults = {
+        "deepseek": ("deepseek/deepseek-v4-pro", [
+            "deepseek/deepseek-v4-pro (推荐，综合能力最强)",
+            "deepseek/deepseek-r1 (推理模型)",
+            "deepseek/deepseek-chat (轻量快速)",
+        ]),
+        "openai": ("openai/gpt-4o", [
+            "openai/gpt-4o (推荐)",
+            "openai/o3 (推理模型)",
+            "openai/gpt-4o-mini (经济)",
+        ]),
+        "anthropic": ("anthropic/claude-sonnet-4", [
+            "anthropic/claude-sonnet-4 (推荐)",
+            "anthropic/claude-opus-4-5 (最强)",
+            "anthropic/claude-haiku-4 (经济)",
+        ]),
+        "dashscope": ("dashscope/qwen-max", [
+            "dashscope/qwen-max (通义千问 Max 推荐)",
+            "dashscope/qwen-plus (经济)",
+            "dashscope/qwen-coder-plus (代码专用)",
+        ]),
+        "zhipu": ("zhipu/glm-4-plus", [
+            "zhipu/glm-4-plus (GLM-4 Plus 推荐)",
+            "zhipu/glm-4-flash (免费)",
+        ]),
+        "moonshot": ("moonshot/kimi-k2-0711-preview", [
+            "moonshot/kimi-k2-0711-preview (Kimi K2 推荐)",
+        ]),
+        "stepfun": ("stepfun/step-2-16k", [
+            "stepfun/step-2-16k (Step-2 推荐)",
+        ]),
+    }
+
+    default_model, model_choices = model_defaults.get(provider_name, (f"{provider_name}/default", [f"{provider_name}/default"]))
+
+    selected_model = questionary.select(
+        f"Step 3/3 — Select model ({selected_name}):",
+        choices=model_choices,
+        default=model_choices[0],
+    ).ask()
+
+    if not selected_model:
+        selected_model = default_model
+
+    # Extract just the model identifier (strip the description in parentheses)
+    model_id = selected_model.split(" (")[0].strip()
+
+    # Apply model and provider to agent defaults
+    config.agents.defaults.model = model_id
+    config.agents.defaults.provider = provider_name
+
+    # Auto-fill context window for known models
+    _context_hints = {
+        "deepseek/deepseek-v4-pro": 65536,
+        "deepseek/deepseek-r1": 65536,
+        "openai/gpt-4o": 128000,
+        "openai/o3": 200000,
+        "anthropic/claude-sonnet-4": 200000,
+        "anthropic/claude-opus-4-5": 200000,
+        "dashscope/qwen-max": 131072,
+        "zhipu/glm-4-plus": 128000,
+        "moonshot/kimi-k2-0711-preview": 131072,
+        "stepfun/step-2-16k": 131072,
+    }
+    ctx = _context_hints.get(model_id)
+    if ctx:
+        config.agents.defaults.context_window_tokens = ctx
+
+    # Save
+    save_config(config, config_path)
+
+    # --- Done ---
+    console.print()
+    console.print(Align.center("[bold green]✓ Setup complete![/bold green]"))
+    console.print()
+    console.print(f"  Provider: [cyan]{selected_name}[/cyan]")
+    console.print(f"  Model:    [cyan]{model_id}[/cyan]")
+    console.print(f"  Config:   [cyan]{config_path}[/cyan]")
+    console.print()
+    console.print("  You can now run:")
+    console.print(f"    [green]hczkbot agent -m \"Hello!\"[/green]")
+    console.print(f"    [green]hczkbot gateway[/green]")
+    console.print()
+    console.print("  For more options (channels, presets, tools), run:")
+    console.print("    [dim]hczkbot onboard --wizard[/dim]")
+    console.print()
+
+
 @app.command()
 def onboard(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
@@ -499,6 +679,10 @@ def onboard(
             console.print(f"[red]✗[/red] Error during configuration: {e}")
             console.print("[yellow]Please run 'hczkbot onboard' again to complete setup.[/yellow]")
             raise typer.Exit(1)
+
+    # Quick setup: when no API key is configured, guide user through essential steps
+    if not _has_any_api_key(config):
+        _run_quick_setup(config, config_path)
     _onboard_plugins(config_path)
 
     # Create workspace, preferring the configured workspace path.
@@ -516,16 +700,26 @@ def onboard(
         gateway_cmd += f" --config {config_path}"
 
     console.print(f"\n{__logo__} hczkbot is ready!")
-    console.print("\nNext steps:")
-    if wizard:
+    if _has_any_api_key(config):
+        console.print("\nNext steps:")
+        console.print(f"  1. Chat:     [cyan]{agent_cmd}[/cyan]")
+        console.print(f"  2. Gateway:  [cyan]{gateway_cmd}[/cyan]")
+        console.print(f"  3. Advanced: [cyan]hczkbot onboard --wizard[/cyan]")
+    elif wizard:
+        console.print("\nNext steps:")
         console.print(f"  1. Chat: [cyan]{agent_cmd}[/cyan]")
         console.print(f"  2. Start gateway: [cyan]{gateway_cmd}[/cyan]")
     else:
+        console.print("\nNext steps:")
         console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
-        console.print("     Get one at: https://openrouter.ai/keys")
+        console.print("     DeepSeek:   https://platform.deepseek.com/api_keys")
+        console.print("     OpenAI:      https://platform.openai.com/api-keys")
+        console.print("     Anthropic:   https://console.anthropic.com/settings/keys")
+        console.print("     DashScope:   https://dashscope.console.aliyun.com/apiKey")
+        console.print("     Zhipu (智谱): https://open.bigmodel.cn/usercenter/apikeys")
         console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
     console.print(
-        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/hczkbot#-chat-apps[/dim]"
+        "\n[dim]Docs: https://github.com/hczkbot/hczkbot[/dim]"
     )
 
 
