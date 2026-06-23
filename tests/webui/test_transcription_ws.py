@@ -23,7 +23,9 @@ async def test_webui_transcribe_audio_rejects_unconfigured_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": ""}},
+    })
     config.transcription.provider = "groq"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
@@ -47,9 +49,10 @@ async def test_webui_transcribe_audio_rejects_unsupported_mime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "gsk-test"}},
+    })
     config.transcription.provider = "groq"
-    config.providers.groq.api_key = "gsk-test"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
 
@@ -69,10 +72,11 @@ async def test_webui_transcribe_audio_rejects_oversized_audio(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "gsk-test"}},
+    })
     config.transcription.provider = "groq"
     config.transcription.max_upload_mb = 1
-    config.providers.groq.api_key = "gsk-test"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
     monkeypatch.setattr("hczkbot.audio.transcription.get_media_dir", lambda _channel=None: tmp_path)
@@ -95,9 +99,10 @@ async def test_webui_transcribe_audio_returns_text_and_removes_temp_file(
     config_path = tmp_path / "config.json"
     media_dir = tmp_path / "media"
     media_dir.mkdir()
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "gsk-test"}},
+    })
     config.transcription.provider = "groq"
-    config.providers.groq.api_key = "gsk-test"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
     monkeypatch.setattr(

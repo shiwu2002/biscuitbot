@@ -184,46 +184,29 @@ class ProviderConfig(Base):
 class ProvidersConfig(Base):
     """Configuration for LLM providers.
 
-    Supports custom providers via extra fields — any additional field
-    becomes an OpenAI-compatible custom provider.
+    三大核心提供商 + 自定义 OpenAI 兼容端点：
+      - openai:    OpenAI 官方或兼容 API（GPT、o 系列等）
+      - anthropic: Anthropic 官方 API（Claude 系列）
+      - deepseek:  DeepSeek 官方 API（DeepSeek-V3/R1 等）
+      - ollama:    本地 Ollama 模型服务
+      - custom:    任意 OpenAI 兼容端点
+
+    通过 apiBase 可将三家官方 API 指向兼容代理地址，例如：
+      - openai.apiBase = "https://your-proxy.com/v1"  → 代理访问 OpenAI 模型
+      - anthropic.apiBase = "https://your-proxy.com"  → 代理访问 Claude 模型
+      - deepseek.apiBase = "https://your-proxy.com"   → 代理访问 DeepSeek 模型
+
+    也支持通过 extra 字段添加自定义提供商，例如：
+      "my-gateway": { "apiKey": "sk-xxx", "apiBase": "https://..." }
     """
 
     model_config = ConfigDict(extra="allow")
 
-    custom: ProviderConfig = Field(default_factory=ProviderConfig)  # Any OpenAI-compatible endpoint
-    anthropic: ProviderConfig = Field(default_factory=ProviderConfig)
-    openai: ProviderConfig = Field(default_factory=ProviderConfig)
-    openrouter: ProviderConfig = Field(default_factory=ProviderConfig)
-    assemblyai: ProviderConfig = Field(default_factory=ProviderConfig)  # AssemblyAI voice transcription
-    huggingface: ProviderConfig = Field(default_factory=ProviderConfig)
-    skywork: ProviderConfig = Field(default_factory=ProviderConfig)  # Skywork / APIFree API gateway
-    deepseek: ProviderConfig = Field(default_factory=ProviderConfig)
-    groq: ProviderConfig = Field(default_factory=ProviderConfig)
-    zhipu: ProviderConfig = Field(default_factory=ProviderConfig)
-    dashscope: ProviderConfig = Field(default_factory=ProviderConfig)
-    vllm: ProviderConfig = Field(default_factory=ProviderConfig)
-    ollama: ProviderConfig = Field(default_factory=ProviderConfig)  # Ollama local models
-    lm_studio: ProviderConfig = Field(default_factory=ProviderConfig)  # LM Studio local models
-    atomic_chat: ProviderConfig = Field(default_factory=ProviderConfig)  # Atomic Chat local models
-    ovms: ProviderConfig = Field(default_factory=ProviderConfig)  # OpenVINO Model Server (OVMS)
-    gemini: ProviderConfig = Field(default_factory=ProviderConfig)
-    moonshot: ProviderConfig = Field(default_factory=ProviderConfig)
-    minimax: ProviderConfig = Field(default_factory=ProviderConfig)
-    minimax_anthropic: ProviderConfig = Field(default_factory=ProviderConfig)  # MiniMax Anthropic endpoint (thinking)
-    mistral: ProviderConfig = Field(default_factory=ProviderConfig)
-    stepfun: ProviderConfig = Field(default_factory=ProviderConfig)  # Step Fun (阶跃星辰) — LLM + ASR (set apiBase to Plan URL for ASR)
-    xiaomi_mimo: ProviderConfig = Field(default_factory=ProviderConfig)  # Xiaomi MIMO (小米)
-    longcat: ProviderConfig = Field(default_factory=ProviderConfig)  # LongCat
-    ant_ling: ProviderConfig = Field(default_factory=ProviderConfig)  # Ant Ling
-    aihubmix: ProviderConfig = Field(default_factory=ProviderConfig)  # AiHubMix API gateway
-    siliconflow: ProviderConfig = Field(default_factory=ProviderConfig)  # SiliconFlow (硅基流动)
-    novita: ProviderConfig = Field(default_factory=ProviderConfig)  # Novita AI
-    volcengine: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine (火山引擎)
-    volcengine_coding_plan: ProviderConfig = Field(default_factory=ProviderConfig)  # VolcEngine Coding Plan
-    byteplus: ProviderConfig = Field(default_factory=ProviderConfig)  # BytePlus (VolcEngine international)
-    byteplus_coding_plan: ProviderConfig = Field(default_factory=ProviderConfig)  # BytePlus Coding Plan
-    qianfan: ProviderConfig = Field(default_factory=ProviderConfig)  # Qianfan (百度千帆)
-    nvidia: ProviderConfig = Field(default_factory=ProviderConfig)  # NVIDIA NIM (nvapi- keys)
+    custom: ProviderConfig = Field(default_factory=ProviderConfig)  # 任意 OpenAI 兼容端点
+    anthropic: ProviderConfig = Field(default_factory=ProviderConfig)  # Anthropic (Claude)
+    openai: ProviderConfig = Field(default_factory=ProviderConfig)  # OpenAI (GPT) 或兼容 API
+    deepseek: ProviderConfig = Field(default_factory=ProviderConfig)  # DeepSeek (V3/R1)
+    ollama: ProviderConfig = Field(default_factory=ProviderConfig)  # Ollama 本地模型
 
     @model_validator(mode="after")
     def convert_extra_providers(self):

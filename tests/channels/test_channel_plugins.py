@@ -220,7 +220,7 @@ async def test_manager_loads_plugin_from_dict_config():
         channels=ChannelsConfig.model_validate({
             "fakeplugin": {"enabled": True, "allowFrom": ["*"]},
         }),
-        providers=SimpleNamespace(groq=SimpleNamespace(api_key="", api_base="")),
+        providers=SimpleNamespace(openai=SimpleNamespace(api_key="", api_base="")),
     )
 
     with patch(
@@ -247,7 +247,9 @@ async def test_base_channel_reads_current_transcription_config_each_call(
     from hczkbot.providers import transcription as transcription_mod
 
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "", "apiBase": ""}},
+    })
     config.transcription.provider = "openai"
     config.transcription.model = "whisper-custom"
     config.transcription.language = "en"
@@ -295,8 +297,8 @@ async def test_base_channel_reads_current_transcription_config_each_call(
         config.transcription.provider = "groq"
         config.transcription.model = "whisper-large-v3-turbo"
         config.transcription.language = "ko"
-        config.providers.groq.api_key = "groq-key"
-        config.providers.groq.api_base = "http://groq.local/v1/audio/transcriptions"
+        config.providers.model_extra["groq"].api_key = "groq-key"
+        config.providers.model_extra["groq"].api_base = "http://groq.local/v1/audio/transcriptions"
         save_config(config, config_path)
 
         assert await channel.transcribe_audio("/tmp/does-not-matter.wav") == "groq-ok"
@@ -325,9 +327,10 @@ async def test_base_channel_respects_disabled_transcription_config(
     monkeypatch: pytest.MonkeyPatch,
 ):
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "groq-key"}},
+    })
     config.transcription.enabled = False
-    config.providers.groq.api_key = "groq-key"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
 

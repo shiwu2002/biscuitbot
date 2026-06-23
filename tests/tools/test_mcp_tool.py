@@ -108,13 +108,19 @@ def _fake_mcp_module(
     exc_mod = ModuleType("mcp.shared.exceptions")
 
     class _FakeMcpError(Exception):
-        def __init__(self, code: int = -1, message: str = "error"):
-            self.error = SimpleNamespace(code=code, message=message)
-            super().__init__(message)
+        def __init__(self, error_data: object = None):
+            if error_data is None:
+                error_data = SimpleNamespace(code=-1, message="error")
+            self.error = error_data
+            super().__init__(error_data)
 
     exc_mod.McpError = _FakeMcpError
     monkeypatch.setitem(sys.modules, "mcp.shared", shared_mod)
     monkeypatch.setitem(sys.modules, "mcp.shared.exceptions", exc_mod)
+
+    types_mod = ModuleType("mcp.types")
+    types_mod.ErrorData = SimpleNamespace
+    monkeypatch.setitem(sys.modules, "mcp.types", types_mod)
 
 
 def _make_wrapper(session: object, *, timeout: float = 0.1) -> MCPToolWrapper:
@@ -863,9 +869,10 @@ async def test_prompt_wrapper_execute_handles_timeout() -> None:
 @pytest.mark.asyncio
 async def test_prompt_wrapper_execute_handles_mcp_error() -> None:
     from mcp.shared.exceptions import McpError
+    from mcp.types import ErrorData
 
     async def get_prompt(name: str, arguments: dict | None = None) -> object:
-        raise McpError(code=42, message="invalid argument")
+        raise McpError(ErrorData(code=42, message="invalid argument"))
 
     wrapper = _make_prompt_wrapper(SimpleNamespace(get_prompt=get_prompt))
     result = await wrapper.execute()

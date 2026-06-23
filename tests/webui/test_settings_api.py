@@ -379,111 +379,14 @@ def test_settings_payload_includes_effective_transcription_config(
     assert payload["transcription"]["language"] == "en"
 
 
-def test_settings_payload_exposes_openrouter_transcription_provider(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.openrouter.api_key = "sk-or-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = settings_payload()
-
-    providers = {provider["name"]: provider for provider in payload["transcription"]["providers"]}
-    assert providers["openrouter"]["label"] == "OpenRouter"
-    assert providers["openrouter"]["configured"] is True
-
-
-def test_settings_payload_exposes_siliconflow_transcription_provider(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.siliconflow.api_key = "sf-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = settings_payload()
-
-    providers = {provider["name"]: provider for provider in payload["transcription"]["providers"]}
-    assert providers["siliconflow"]["label"] == "SiliconFlow"
-    assert providers["siliconflow"]["configured"] is True
-    assert providers["siliconflow"]["default_api_base"] == "https://api.siliconflow.cn/v1"
-
-
-def test_settings_payload_exposes_xiaomi_mimo_transcription_provider(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.xiaomi_mimo.api_key = "mimo-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = settings_payload()
-
-    providers = {provider["name"]: provider for provider in payload["transcription"]["providers"]}
-    assert providers["xiaomi_mimo"]["label"] == "Xiaomi MIMO"
-    assert providers["xiaomi_mimo"]["configured"] is True
-
-
-def test_settings_payload_exposes_assemblyai_transcription_provider(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.transcription.provider = "assemblyai"
-    config.providers.assemblyai.api_key = "aai-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = settings_payload()
-
-    assert payload["transcription"]["provider"] == "assemblyai"
-    assert payload["transcription"]["provider_configured"] is True
-    providers = {provider["name"]: provider for provider in payload["transcription"]["providers"]}
-    assert providers["assemblyai"]["label"] == "AssemblyAI"
-    assert providers["assemblyai"]["configured"] is True
-    assert providers["assemblyai"]["default_api_base"] == "https://api.assemblyai.com/v2"
-    provider_rows = {provider["name"]: provider for provider in payload["providers"]}
-    assert provider_rows["assemblyai"]["configured"] is True
-    assert provider_rows["assemblyai"]["model_selectable"] is False
-
-
-def test_model_configuration_rejects_transcription_only_provider(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.assemblyai.api_key = "aai-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    with pytest.raises(WebUISettingsError, match="does not support chat models"):
-        create_model_configuration(
-            {
-                "label": ["Voice only"],
-                "provider": ["assemblyai"],
-                "model": ["universal-3-pro"],
-            }
-        )
-
-
 def test_update_transcription_settings_writes_top_level_only(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     config_path = tmp_path / "config.json"
-    config = Config()
+    config = Config.model_validate({"providers": {"groq": {"apiKey": "gsk-test"}}})
     config.channels.transcription_provider = "openai"
     config.channels.transcription_language = "en"
-    config.providers.groq.api_key = "gsk-test"
     save_config(config, config_path)
     monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
 
@@ -508,80 +411,6 @@ def test_update_transcription_settings_writes_top_level_only(
     assert saved.transcription.max_duration_sec == 90
     assert saved.transcription.max_upload_mb == 20
     assert payload["transcription"]["provider"] == "groq"
-    assert payload["transcription"]["provider_configured"] is True
-
-
-def test_update_transcription_settings_accepts_openrouter(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.openrouter.api_key = "sk-or-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = update_transcription_settings(
-        {
-            "provider": ["openrouter"],
-            "model": ["nvidia/parakeet-tdt-0.6b-v3"],
-        }
-    )
-
-    saved = load_config(config_path)
-    assert saved.transcription.provider == "openrouter"
-    assert saved.transcription.model == "nvidia/parakeet-tdt-0.6b-v3"
-    assert payload["transcription"]["provider"] == "openrouter"
-    assert payload["transcription"]["provider_configured"] is True
-
-
-def test_update_transcription_settings_accepts_xiaomi_mimo(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.xiaomi_mimo.api_key = "mimo-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = update_transcription_settings(
-        {
-            "provider": ["xiaomi_mimo"],
-            "model": ["mimo-v2.5-asr"],
-            "language": ["zh"],
-        }
-    )
-
-    saved = load_config(config_path)
-    assert saved.transcription.provider == "xiaomi_mimo"
-    assert saved.transcription.model == "mimo-v2.5-asr"
-    assert saved.transcription.language == "zh"
-    assert payload["transcription"]["provider"] == "xiaomi_mimo"
-    assert payload["transcription"]["provider_configured"] is True
-
-
-def test_update_transcription_settings_accepts_assemblyai(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.assemblyai.api_key = "aai-test"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = update_transcription_settings(
-        {
-            "provider": ["assemblyai"],
-            "model": ["universal-3-pro"],
-        }
-    )
-
-    saved = load_config(config_path)
-    assert saved.transcription.provider == "assemblyai"
-    assert saved.transcription.model == "universal-3-pro"
-    assert payload["transcription"]["provider"] == "assemblyai"
     assert payload["transcription"]["provider_configured"] is True
 
 
@@ -764,61 +593,4 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
     assert payload["models"][0]["id"] == "custom-gpt"
 
 
-@pytest.mark.parametrize(
-    ("api_base", "expected_url"),
-    [
-        ("https://api.minimaxi.com/anthropic", "https://api.minimaxi.com/anthropic/v1/models"),
-        ("https://api.minimaxi.com/anthropic/v1", "https://api.minimaxi.com/anthropic/v1/models"),
-    ],
-)
-def test_provider_models_payload_fetches_minimax_anthropic_models(
-    api_base: str,
-    expected_url: str,
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.providers.minimax_anthropic.api_key = "sk-test"
-    config.providers.minimax_anthropic.api_base = api_base
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
 
-    def fake_get(url: str, **kwargs):
-        assert url == expected_url
-        assert kwargs["headers"]["X-Api-Key"] == "sk-test"
-        assert "Authorization" not in kwargs["headers"]
-        return httpx.Response(
-            200,
-            json={"data": [{"id": "MiniMax-M2.7-highspeed"}]},
-            request=httpx.Request("GET", url),
-        )
-
-    monkeypatch.setattr("hczkbot.webui.settings_api.httpx.get", fake_get)
-
-    payload = provider_models_payload({"provider": ["minimax_anthropic"]})
-
-    assert payload["status"] == "available"
-    assert payload["catalog_kind"] == "official"
-    assert payload["models"] == [
-        {
-            "id": "MiniMax-M2.7-highspeed",
-            "label": None,
-            "owned_by": None,
-            "context_window": None,
-        }
-    ]
-
-
-def test_provider_models_payload_requires_gateway_key(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    config_path = tmp_path / "config.json"
-    save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    payload = provider_models_payload({"provider": ["openrouter"]})
-
-    assert payload["status"] == "not_configured"
-    assert payload["models"] == []

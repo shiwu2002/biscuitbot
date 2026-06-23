@@ -45,7 +45,7 @@ async def test_generate_image_tool_stores_artifact_and_source_images(
     FakeImageClient.instances = []
     monkeypatch.setattr(
         "hczkbot.agent.tools.image_generation.get_image_gen_provider",
-        lambda name: FakeImageClient if name == "openrouter" else None,
+        lambda name: FakeImageClient if name == "openai" else None,
     )
     ref = tmp_path / "ref.png"
     ref.write_bytes(PNG_BYTES)
@@ -87,7 +87,7 @@ async def test_generate_image_tool_reports_missing_key(tmp_path: Path) -> None:
 
     result = await tool.execute(prompt="draw")
 
-    assert result.startswith("Error: OpenRouter API key is not configured")
+    assert result.startswith("Error: OpenAI API key is not configured")
 
 
 @pytest.mark.asyncio

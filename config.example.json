@@ -1,0 +1,196 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.hczkbot/workspace",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "maxTokens": 8192,
+      "contextWindowTokens": 65536,
+      "temperature": 0.1,
+      "maxToolIterations": 200,
+      "maxConcurrentSubagents": 1,
+      "maxToolResultChars": 16000,
+      "providerRetryMode": "standard",
+      "reasoningEffort": null,
+      "timezone": "Asia/Shanghai",
+      "botName": "hczk-bot",
+      "botIcon": "🐺",
+      "unifiedSession": false,
+      "sessionTtlMinutes": 15,
+      "maxMessages": 120,
+      "consolidationRatio": 0.5,
+      "disabledSkills": [],
+      "dream": {
+        "enabled": true,
+        "intervalH": 2,
+        "maxBatchSize": 50,
+        "maxIterations": 3
+      }
+    }
+  },
+
+  "providers": {
+    "anthropic": {
+      "apiKey": "${ANTHROPIC_API_KEY}",
+      "apiBase": "https://api.anthropic.com"
+    },
+    "openai": {
+      "apiKey": "${OPENAI_API_KEY}",
+      "apiBase": "https://api.openai.com/v1"
+    },
+    "deepseek": {
+      "apiKey": "${DEEPSEEK_API_KEY}",
+      "apiBase": "https://api.deepseek.com"
+    },
+    "ollama": {
+      "apiBase": "http://127.0.0.1:11434/v1"
+    }
+  },
+
+  "modelPresets": {
+    "deepseek": {
+      "label": "DeepSeek V4 Pro",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "deepseek",
+      "maxTokens": 8192,
+      "contextWindowTokens": 65536,
+      "temperature": 0.1
+    },
+    "deepseek-r1": {
+      "label": "DeepSeek R1（推理）",
+      "model": "deepseek/deepseek-r1",
+      "provider": "deepseek",
+      "maxTokens": 8192,
+      "contextWindowTokens": 65536,
+      "temperature": 0.1
+    },
+    "claude": {
+      "label": "Claude Opus 4.5",
+      "model": "anthropic/claude-opus-4-5",
+      "provider": "anthropic",
+      "maxTokens": 8192,
+      "contextWindowTokens": 200000,
+      "temperature": 0.1
+    },
+    "claude-sonnet": {
+      "label": "Claude Sonnet 4",
+      "model": "anthropic/claude-sonnet-4",
+      "provider": "anthropic",
+      "maxTokens": 8192,
+      "contextWindowTokens": 200000,
+      "temperature": 0.1
+    },
+    "gpt4o": {
+      "label": "GPT-4o",
+      "model": "openai/gpt-4o",
+      "provider": "openai",
+      "maxTokens": 4096,
+      "contextWindowTokens": 128000,
+      "temperature": 0.3
+    },
+    "o3": {
+      "label": "OpenAI o3（推理）",
+      "model": "openai/o3",
+      "provider": "openai",
+      "maxTokens": 16384,
+      "contextWindowTokens": 200000,
+      "temperature": 0.1,
+      "reasoningEffort": "high"
+    },
+    "local": {
+      "label": "本地模型（Ollama）",
+      "model": "ollama/qwen2.5:14b",
+      "provider": "ollama",
+      "maxTokens": 4096,
+      "contextWindowTokens": 32768,
+      "temperature": 0.1
+    }
+  },
+
+  "tools": {
+    "web": {
+      "search": {
+        "enable": true,
+        "provider": "duckduckgo",
+        "maxResults": 5,
+        "timeout": 15
+      },
+      "fetch": {
+        "enable": true,
+        "useJinaReader": false
+      }
+    },
+    "exec": {
+      "enable": true,
+      "timeout": 60,
+      "sandbox": "",
+      "restrictToWorkspace": false
+    },
+    "file": {
+      "enable": true
+    },
+    "my": {
+      "enable": true,
+      "allowSet": true
+    },
+    "imageGeneration": {
+      "enabled": false
+    },
+    "cliApps": {
+      "enable": false
+    },
+    "restrictToWorkspace": false,
+    "webuiAllowLocalServiceAccess": true,
+    "ssrfWhitelist": [],
+    "mcpServers": {}
+  },
+
+  "channels": {
+    "sendProgress": true,
+    "sendToolHints": true,
+    "showReasoning": true,
+    "extractDocumentText": true,
+    "sendMaxRetries": 3,
+    "websocket": {
+      "enabled": true
+    }
+  },
+
+  "transcription": {
+    "enable": true,
+    "provider": "openai",
+    "model": "whisper-1",
+    "apiKey": "${OPENAI_API_KEY}"
+  },
+
+  "api": {
+    "host": "127.0.0.1",
+    "port": 8900,
+    "timeout": 120.0
+  },
+
+  "gateway": {
+    "host": "127.0.0.1",
+    "port": 18790,
+    "openBrowser": false,
+    "heartbeat": {
+      "enabled": false,
+      "intervalS": 300,
+      "keepRecentMessages": 8
+    }
+  },
+
+  "platform": {
+    "enabled": true,
+    "jwtSecret": "${JWT_AGENT_SHARED_SECRET:hczk-agent-jwt-secret-2026-very-long-and-secure}",
+    "jwtIssuer": "hczk-platform",
+    "jwtLeewaySeconds": 30,
+    "agentName": "客服智能体",
+    "agentVersion": "1.0.0",
+    "agentDescription": "基于 hczkbot 的智能客服助手",
+    "agentType": "customer-service",
+    "skillsRequestTimeout": 30.0,
+    "skillsToolTimeout": 60.0,
+    "documentsDir": ""
+  }
+}

@@ -13,7 +13,7 @@ from hczkbot.hczkbot import Hczkbot, RunResult
 
 def _write_config(tmp_path: Path, overrides: dict | None = None) -> Path:
     data = {
-        "providers": {"openrouter": {"apiKey": "sk-test-key"}},
+        "providers": {"openai": {"apiKey": "sk-test-key"}},
         "agents": {"defaults": {"model": "openai/gpt-4.1"}},
     }
     if overrides:

@@ -78,7 +78,11 @@ def _provider_config(config: Any, provider: str) -> Any:
 
 def _provider_default_api_base(provider: str) -> str | None:
     spec = find_by_name(provider)
-    return spec.default_api_base if spec else None
+    if spec:
+        return spec.default_api_base
+    from hczkbot.audio.transcription_registry import get_transcription_provider
+    ts = get_transcription_provider(provider)
+    return ts.default_api_base if ts else None
 
 
 def _resolve_transcription_api_key(provider: str, provider_cfg: Any) -> str:

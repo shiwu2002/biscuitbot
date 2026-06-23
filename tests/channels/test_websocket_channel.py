@@ -1736,15 +1736,13 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         providers = {provider["name"]: provider for provider in body["providers"]}
         assert providers["openai"]["configured"] is True
         assert providers["openai"]["api_key_hint"] == "secr••••-key"
-        assert providers["openrouter"]["configured"] is False
-        assert providers["openrouter"]["api_key_required"] is True
-        assert providers["skywork"]["label"] == "Skywork"
-        assert providers["skywork"]["default_api_base"] == "https://api.apifree.ai/agent/v1"
-        assert providers["ant_ling"]["label"] == "Ant Ling"
-        assert providers["ant_ling"]["default_api_base"] == "https://api.ant-ling.com/v1"
-        assert providers["atomic_chat"]["configured"] is False
-        assert providers["atomic_chat"]["api_key_required"] is False
-        assert providers["atomic_chat"]["default_api_base"] == "http://localhost:1337/v1"
+        assert providers["anthropic"]["configured"] is False
+        assert providers["anthropic"]["api_key_required"] is True
+        assert providers["deepseek"]["label"] == "DeepSeek"
+        assert providers["deepseek"]["default_api_base"] == "https://api.deepseek.com"
+        assert providers["ollama"]["configured"] is False
+        assert providers["ollama"]["api_key_required"] is False
+        assert providers["ollama"]["default_api_base"] == "http://localhost:11434/v1"
         assert body["agent"]["has_api_key"] is True
         assert body["web_search"]["provider"] == "brave"
         assert body["web_search"]["api_key_hint"] == "brav••••cret"
@@ -1757,16 +1755,16 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert search_providers["volcengine"]["credential"] == "api_key"
         assert search_providers["searxng"]["credential"] == "base_url"
         assert body["image_generation"]["enabled"] is False
-        assert body["image_generation"]["provider"] == "openrouter"
-        assert body["image_generation"]["provider_configured"] is False
+        assert body["image_generation"]["provider"] == "openai"
+        assert body["image_generation"]["provider_configured"] is True
         assert body["image_generation"]["default_aspect_ratio"] == "1:1"
         image_providers = {
             provider["name"]: provider
             for provider in body["image_generation"]["providers"]
         }
-        assert image_providers["openrouter"]["label"] == "OpenRouter"
-        assert image_providers["openrouter"]["configured"] is False
-        assert image_providers["gemini"]["label"] == "Gemini"
+        assert image_providers["openai"]["label"] == "OpenAI"
+        assert image_providers["openai"]["configured"] is True
+        assert image_providers["ollama"]["label"] == "Ollama"
         assert body["runtime"]["config_path"] == str(config_path)
         workspace_path = body["runtime"]["workspace_path"].replace("\\", "/")
         assert workspace_path.endswith("/.hczkbot/workspace")
@@ -1789,22 +1787,22 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
 
         provider_updated = await _http_get(
             "http://127.0.0.1:"
-            f"{port}/api/settings/provider/update?provider=openrouter"
-            "&api_key=sk-or-test&api_base=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1",
+            f"{port}/api/settings/provider/update?provider=deepseek"
+            "&api_key=sk-ds-test&api_base=https%3A%2F%2Fapi.deepseek.com",
             headers={"Authorization": "Bearer tok"},
         )
         assert provider_updated.status_code == 200
         provider_body = provider_updated.json()
         assert provider_body["requires_restart"] is False
         provider_rows = {provider["name"]: provider for provider in provider_body["providers"]}
-        assert provider_rows["openrouter"]["configured"] is True
+        assert provider_rows["deepseek"]["configured"] is True
         assert provider_body["image_generation"]["provider_configured"] is True
         assert "sk-or-test" not in provider_updated.text
 
         local_provider_updated = await _http_get(
             "http://127.0.0.1:"
-            f"{port}/api/settings/provider/update?provider=atomic_chat"
-            "&api_base=http%3A%2F%2Flocalhost%3A1337%2Fv1",
+            f"{port}/api/settings/provider/update?provider=ollama"
+            "&api_base=http%3A%2F%2Flocalhost%3A11434%2Fv1",
             headers={"Authorization": "Bearer tok"},
         )
         assert local_provider_updated.status_code == 200
@@ -1812,13 +1810,13 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         local_provider_rows = {
             provider["name"]: provider for provider in local_provider_body["providers"]
         }
-        assert local_provider_rows["atomic_chat"]["configured"] is True
-        assert "localhost:1337" in local_provider_updated.text
+        assert local_provider_rows["ollama"]["configured"] is True
+        assert "localhost:11434" in local_provider_updated.text
 
         updated = await _http_get(
             "http://127.0.0.1:"
-            f"{port}/api/settings/update?model=atomic_chat/test"
-            "&provider=atomic_chat&timezone=Asia%2FShanghai"
+            f"{port}/api/settings/update?model=ollama/llama3.2"
+            "&provider=ollama&timezone=Asia%2FShanghai"
             "&bot_name=Nano&bot_icon=N&tool_hint_max_length=120",
             headers={"Authorization": "Bearer tok"},
         )
@@ -1914,7 +1912,7 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         image_updated = await _http_get(
             "http://127.0.0.1:"
             f"{port}/api/settings/image-generation/update?enabled=true"
-            "&provider=openrouter&model=openai%2Fgpt-image-1"
+            "&provider=openai&model=openai%2Fgpt-image-1"
             "&default_aspect_ratio=16%3A9&default_image_size=2K"
             "&max_images_per_turn=3",
             headers={"Authorization": "Bearer tok"},
@@ -1931,8 +1929,8 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
 
         image_provider_updated = await _http_get(
             "http://127.0.0.1:"
-            f"{port}/api/settings/provider/update?provider=openrouter"
-            "&api_key=sk-or-next&api_base=https%3A%2F%2Fopenrouter.ai%2Fapi%2Fv1",
+            f"{port}/api/settings/provider/update?provider=deepseek"
+            "&api_key=sk-ds-next&api_base=https%3A%2F%2Fapi.deepseek.com",
             headers={"Authorization": "Bearer tok"},
         )
         assert image_provider_updated.status_code == 200
@@ -1942,7 +1940,7 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
             "image",
             "runtime",
         ]
-        assert "sk-or-next" not in image_provider_updated.text
+        assert "sk-ds-next" not in image_provider_updated.text
 
         bad_web = await _http_get(
             "http://127.0.0.1:"
@@ -1959,8 +1957,8 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert bad_image.status_code == 400
 
         saved = load_config(config_path)
-        assert saved.agents.defaults.model == "atomic_chat/test"
-        assert saved.agents.defaults.provider == "atomic_chat"
+        assert saved.agents.defaults.model == "ollama/llama3.2"
+        assert saved.agents.defaults.provider == "ollama"
         assert saved.agents.defaults.model_preset == "fast-writing"
         assert saved.model_presets["fast-writing"].label == "Codex"
         assert saved.model_presets["fast-writing"].model == "openai/gpt-5.5"
@@ -1969,9 +1967,9 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert saved.agents.defaults.bot_name == "Nano"
         assert saved.agents.defaults.bot_icon == "N"
         assert saved.agents.defaults.tool_hint_max_length == 120
-        assert saved.providers.openrouter.api_key == "sk-or-next"
-        assert saved.providers.openrouter.api_base == "https://openrouter.ai/api/v1"
-        assert saved.providers.atomic_chat.api_base == "http://localhost:1337/v1"
+        assert saved.providers.deepseek.api_key == "sk-ds-next"
+        assert saved.providers.deepseek.api_base == "https://api.deepseek.com"
+        assert saved.providers.ollama.api_base == "http://localhost:11434/v1"
         assert saved.tools.web.search.provider == "searxng"
         assert saved.tools.web.search.api_key == ""
         assert saved.tools.web.search.base_url == "https://search.example.com"
@@ -1980,7 +1978,7 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert saved.tools.web.fetch.use_jina_reader is False
         assert saved.tools.webui_allow_local_service_access is False
         assert saved.tools.image_generation.enabled is True
-        assert saved.tools.image_generation.provider == "openrouter"
+        assert saved.tools.image_generation.provider == "openai"
         assert saved.tools.image_generation.model == "openai/gpt-image-1"
         assert saved.tools.image_generation.default_aspect_ratio == "16:9"
         assert saved.tools.image_generation.default_image_size == "2K"
@@ -2052,22 +2050,6 @@ async def test_bootstrap_exposes_native_surface(bus: MagicMock) -> None:
     finally:
         await channel.stop()
         await server_task
-
-
-def test_settings_payload_normalizes_camel_case_provider(
-    bus: MagicMock,
-    monkeypatch,
-    tmp_path,
-) -> None:
-    config_path = tmp_path / "config.json"
-    config = Config()
-    config.agents.defaults.provider = "minimaxAnthropic"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    body = settings_payload()
-
-    assert body["agent"]["provider"] == "minimax_anthropic"
 
 
 def test_settings_payload_exposes_api_type_only_for_openai(monkeypatch, tmp_path) -> None:

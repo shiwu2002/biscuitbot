@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 class ImageGenerationToolConfig(Base):
     """Image generation tool configuration."""
     enabled: bool = False
-    provider: str = "openrouter"
+    provider: str = "openai"
     model: str = "openai/gpt-5.4-image-2"
     default_aspect_ratio: str = "1:1"
     default_image_size: str = "1K"
@@ -101,8 +101,8 @@ class ImageGenerationTool(Tool):
         self.workspace = Path(workspace).expanduser()
         self.config = config
         self.provider_configs = dict(provider_configs or {})
-        if provider_config is not None and "openrouter" not in self.provider_configs:
-            self.provider_configs["openrouter"] = provider_config
+        if provider_config is not None and config.provider not in self.provider_configs:
+            self.provider_configs[config.provider] = provider_config
 
     @property
     def name(self) -> str:

@@ -309,12 +309,12 @@ def test_stepfun_in_registry() -> None:
 
 
 def test_config_resolves_stepfun() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"stepfun": {"apiKey": "step-test", "apiBase": "https://api.stepfun.com/step_plan/v1/audio/asr/sse"}},
+    })
     config.transcription.provider = "stepfun"
     config.transcription.model = "stepaudio-2.5-asr"
     config.transcription.language = "zh"
-    config.providers.stepfun.api_key = "step-test"
-    config.providers.stepfun.api_base = "https://api.stepfun.com/step_plan/v1/audio/asr/sse"
 
     from hczkbot.audio.transcription import resolve_transcription_config
 

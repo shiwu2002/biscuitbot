@@ -7,17 +7,12 @@ from pathlib import Path
 from typing import Any
 
 import pydantic
-from pydantic import BaseModel
 
 from hczkbot.config.schema import Config, _resolve_tool_config_refs
 
 # Global variable to store current config path (for multi-instance support)
 _current_config_path: Path | None = None
 _schema_refs_ready = False
-
-# 支持的配置文件扩展名（按优先级排序）
-_YAML_SUFFIXES = {".yaml", ".yml"}
-_JSON_SUFFIXES = {".json"}
 
 
 def set_config_path(path: Path) -> None:
@@ -29,20 +24,15 @@ def set_config_path(path: Path) -> None:
 def get_config_path() -> Path:
     """Get the configuration file path.
 
-    优先级：已设置的路径 > ~/.hczkbot/config.yaml > ~/.hczkbot/config.yml > ~/.hczkbot/config.json
+    优先级：已设置的路径 > ~/.hczkbot/config.json
     """
     if _current_config_path:
         return _current_config_path
-    home_hczkbot = Path.home() / ".hczkbot"
-    for name in ("config.yaml", "config.yml", "config.json"):
-        candidate = home_hczkbot / name
-        if candidate.exists():
-            return candidate
-    return home_hczkbot / "config.yaml"
+    return Path.home() / ".hczkbot" / "config.json"
 
 
 def _load_config_file(path: Path) -> dict[str, Any]:
-    """根据文件扩展名加载配置文件（支持 YAML 和 JSON）。
+    """加载 JSON 配置文件。
 
     Args:
         path: 配置文件路径
@@ -57,22 +47,9 @@ def _load_config_file(path: Path) -> dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"Config file not found: {path}")
 
-    suffix = path.suffix.lower()
     try:
         with open(path, encoding="utf-8") as f:
-            if suffix in _YAML_SUFFIXES:
-                import yaml
-
-                data = yaml.safe_load(f)
-            elif suffix in _JSON_SUFFIXES:
-                data = json.load(f)
-            else:
-                # 默认尝试 YAML（兼容无扩展名或未知扩展名）
-                import yaml
-
-                data = yaml.safe_load(f)
-    except yaml.YAMLError as e:
-        raise ValueError(f"Failed to parse YAML config from {path}: {e}") from e
+            data = json.load(f)
     except json.JSONDecodeError as e:
         raise ValueError(f"Failed to parse JSON config from {path}: {e}") from e
 
@@ -85,11 +62,36 @@ def _load_config_file(path: Path) -> dict[str, Any]:
     return data
 
 
+def _migrate_yaml_to_json() -> None:
+    """Auto-migrate legacy YAML config to JSON if no JSON config exists."""
+    home_hczkbot = Path.home() / ".hczkbot"
+    json_path = home_hczkbot / "config.json"
+    if json_path.exists():
+        return
+    for yaml_name in ("config.yaml", "config.yml"):
+        yaml_path = home_hczkbot / yaml_name
+        if yaml_path.exists():
+            try:
+                import yaml as _yaml
+
+                with open(yaml_path, encoding="utf-8") as f:
+                    data = _yaml.safe_load(f)
+                if isinstance(data, dict):
+                    with open(json_path, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.info("Auto-migrated %s -> %s", yaml_path, json_path)
+            except Exception:
+                pass
+            break
+
+
 def load_config(config_path: Path | None = None) -> Config:
     """
     Load configuration from file or create default.
 
-    支持 YAML（.yaml/.yml）和 JSON（.json）格式，根据文件扩展名自动判断。
+    仅支持 JSON（.json）格式。首次加载时自动迁移旧的 YAML 配置。
 
     Args:
         config_path: Optional path to config file. Uses default if not provided.
@@ -102,6 +104,7 @@ def load_config(config_path: Path | None = None) -> Config:
         _resolve_tool_config_refs()
         _schema_refs_ready = True
 
+    _migrate_yaml_to_json()
     path = config_path or get_config_path()
 
     config = Config()
@@ -126,9 +129,7 @@ def _apply_ssrf_whitelist(config: Config) -> None:
 
 def save_config(config: Config, config_path: Path | None = None) -> None:
     """
-    Save configuration to file.
-
-    根据文件扩展名自动选择 YAML 或 JSON 格式保存。
+    Save configuration to file (JSON format).
 
     Args:
         config: Configuration to save.
@@ -139,16 +140,8 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
 
     data = config.model_dump(mode="json", by_alias=True)
 
-    suffix = path.suffix.lower()
     with open(path, "w", encoding="utf-8") as f:
-        if suffix in _YAML_SUFFIXES:
-            import yaml
-
-            yaml.safe_dump(
-                data, f, indent=2, allow_unicode=True, sort_keys=False, default_flow_style=False
-            )
-        else:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 
 _ENV_REF_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -168,7 +161,7 @@ def _resolve_in_place(obj: Any) -> Any:
     if isinstance(obj, str):
         new = _ENV_REF_PATTERN.sub(_env_replace, obj)
         return new if new != obj else obj
-    if isinstance(obj, BaseModel):
+    if isinstance(obj, pydantic.BaseModel):
         updates: dict[str, Any] = {}
         for name in type(obj).model_fields:
             old = getattr(obj, name)
@@ -253,8 +246,6 @@ def _migrate_config(data: dict) -> dict:
         tools["restrictToWorkspace"] = exec_cfg.pop("restrictToWorkspace")
 
     # Move tools.myEnabled / tools.mySet → tools.my.{enable, allowSet}.
-    # The old flat keys shipped in the initial MyTool landing; wrapping them in a
-    # sub-config keeps `web` / `exec` / `my` symmetric and gives room to grow.
     if "myEnabled" in tools or "mySet" in tools:
         my_cfg = tools.setdefault("my", {})
         if "myEnabled" in tools and "enable" not in my_cfg:

@@ -518,13 +518,14 @@ class MCPPromptWrapper(_MCPWrapperBase):
                 ):
                     refreshed_session = True
                     continue
+                err = exc.args[0] if exc.args else exc
                 logger.exception(
                     "MCP prompt '{}' failed: code={} message={}",
                     self._name,
-                    exc.error.code,
-                    exc.error.message,
+                    err.code,
+                    err.message,
                 )
-                return f"(MCP prompt call failed: {exc.error.message} [code {exc.error.code}])"
+                return f"(MCP prompt call failed: {err.message} [code {err.code}])"
             except Exception as exc:
                 if await self._refresh_session_after_termination(
                     exc,
@@ -587,7 +588,10 @@ async def connect_mcp_servers(
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.sse import sse_client
     from mcp.client.stdio import stdio_client
-    from mcp.client.streamable_http import streamable_http_client
+    try:
+        from mcp.client.streamable_http import streamable_http_client
+    except ImportError:
+        streamable_http_client = None
 
     async def connect_single_server(name: str, cfg) -> tuple[str, AsyncExitStack | None]:
         server_stack = AsyncExitStack()
@@ -660,6 +664,14 @@ async def connect_mcp_servers(
                     sse_client(cfg.url, httpx_client_factory=httpx_client_factory)
                 )
             elif transport_type == "streamableHttp":
+                if streamable_http_client is None:
+                    logger.warning(
+                        "MCP server '{}': streamableHttp transport requires mcp>=1.0, skipping",
+                        name,
+                    )
+                    await server_stack.aclose()
+                    return name, None
+
                 if not await _probe_http_url(cfg.url):
                     logger.warning("MCP server '{}': {} unreachable, skipping", name, cfg.url)
                     await server_stack.aclose()

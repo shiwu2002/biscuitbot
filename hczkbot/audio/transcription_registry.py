@@ -33,6 +33,7 @@ class TranscriptionProviderSpec:
     default_model: str
     adapter: str
     aliases: tuple[str, ...] = ()
+    default_api_base: str | None = None
 
     def load_adapter(self) -> type[TranscriptionProviderAdapter]:
         module_name, _, class_name = self.adapter.partition(":")
@@ -79,6 +80,7 @@ TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
         default_model="FunAudioLLM/SenseVoiceSmall",
         adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
         aliases=("silicon",),
+        default_api_base="https://api.siliconflow.cn/v1",
     ),
 )
 

@@ -80,14 +80,14 @@ def test_resolver_uses_legacy_channel_provider_when_top_level_is_unset() -> None
 
 
 def test_resolver_prefers_top_level_transcription_over_legacy_channels() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "gsk-test", "apiBase": "https://groq.example/openai/v1"}},
+    })
     config.channels.transcription_provider = "openai"
     config.channels.transcription_language = "en"
     config.transcription.provider = "groq"
     config.transcription.model = "whisper-large-v3-turbo"
     config.transcription.language = "ko"
-    config.providers.groq.api_key = "gsk-test"
-    config.providers.groq.api_base = "https://groq.example/openai/v1"
 
     resolved = resolve_transcription_config(config)
 
@@ -99,12 +99,12 @@ def test_resolver_prefers_top_level_transcription_over_legacy_channels() -> None
 
 
 def test_resolver_supports_openrouter_transcription_provider() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"openrouter": {"apiKey": "sk-or-test", "apiBase": "https://openrouter.ai/api/v1"}},
+    })
     config.transcription.provider = "openrouter"
     config.transcription.model = "nvidia/parakeet-tdt-0.6b-v3"
     config.transcription.language = "en"
-    config.providers.openrouter.api_key = "sk-or-test"
-    config.providers.openrouter.api_base = "https://openrouter.ai/api/v1"
 
     resolved = resolve_transcription_config(config)
 
@@ -116,12 +116,12 @@ def test_resolver_supports_openrouter_transcription_provider() -> None:
 
 
 def test_resolver_supports_siliconflow_transcription_provider() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"siliconflow": {"apiKey": "sf-test", "apiBase": "https://api.siliconflow.cn/v1"}},
+    })
     config.transcription.provider = "siliconflow"
     config.transcription.model = "TeleAI/TeleSpeechASR"
     config.transcription.language = "zh"
-    config.providers.siliconflow.api_key = "sf-test"
-    config.providers.siliconflow.api_base = "https://api.siliconflow.cn/v1"
 
     resolved = resolve_transcription_config(config)
 
@@ -133,9 +133,10 @@ def test_resolver_supports_siliconflow_transcription_provider() -> None:
 
 
 def test_resolver_defaults_siliconflow_transcription_api_base() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"siliconflow": {"apiKey": "sf-test"}},
+    })
     config.transcription.provider = "siliconflow"
-    config.providers.siliconflow.api_key = "sf-test"
 
     resolved = resolve_transcription_config(config)
 
@@ -158,12 +159,12 @@ def test_resolver_supports_siliconflow_transcription_api_key_env() -> None:
 
 
 def test_resolver_supports_xiaomi_mimo_transcription_provider() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"xiaomi_mimo": {"apiKey": "mimo-test", "apiBase": "https://api.xiaomimimo.com/v1"}},
+    })
     config.transcription.provider = "xiaomi_mimo"
     config.transcription.model = "mimo-v2.5-asr"
     config.transcription.language = "zh"
-    config.providers.xiaomi_mimo.api_key = "mimo-test"
-    config.providers.xiaomi_mimo.api_base = "https://api.xiaomimimo.com/v1"
 
     resolved = resolve_transcription_config(config)
 
@@ -175,10 +176,11 @@ def test_resolver_supports_xiaomi_mimo_transcription_provider() -> None:
 
 
 def test_resolver_accepts_legacy_xiaomi_transcription_alias() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"xiaomi_mimo": {"apiKey": "mimo-test"}},
+    })
     config.channels.transcription_provider = "xiaomi"
     config.channels.transcription_language = "zh"
-    config.providers.xiaomi_mimo.api_key = "mimo-test"
 
     resolved = resolve_transcription_config(config)
 
@@ -202,12 +204,12 @@ def test_transcription_registry_lists_providers_and_aliases() -> None:
 
 
 def test_resolver_supports_assemblyai_provider_config() -> None:
-    config = Config()
+    config = Config.model_validate({
+        "providers": {"assemblyai": {"apiKey": "aai-test", "apiBase": "https://assembly.example/v2"}},
+    })
     config.transcription.provider = "assemblyai"
     config.transcription.model = "universal-3-pro"
     config.transcription.language = "en"
-    config.providers.assemblyai.api_key = "aai-test"
-    config.providers.assemblyai.api_base = "https://assembly.example/v2"
 
     resolved = resolve_transcription_config(config)
 
@@ -327,8 +329,9 @@ async def test_transcribe_audio_file_routes_assemblyai_provider(audio_file: Path
 
 
 def test_resolved_transcription_repr_hides_api_key() -> None:
-    config = Config()
-    config.providers.groq.api_key = "gsk-secret"
+    config = Config.model_validate({
+        "providers": {"groq": {"apiKey": "gsk-secret"}},
+    })
 
     resolved = resolve_transcription_config(config)
 

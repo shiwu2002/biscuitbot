@@ -6,6 +6,7 @@
 .env
 .web
 .orion
+.agent/
 
 # Claude / AI assistant artifacts
 docs/superpowers/

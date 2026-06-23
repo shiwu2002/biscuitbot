@@ -252,10 +252,8 @@ def test_install_recovers_stale_npm_global_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     manager = _manager(tmp_path)
-    _write_cache(manager._cache_path("harness"), {"meta": {"updated": "2026-04-16"}, "clis": []})
-    _write_cache(manager._cache_path("public"), {"meta": {"updated": "2026-04-18"}, "clis": []})
     _write_cache(
-        manager._cache_path("extensions"),
+        manager._cache_path("harness"),
         {
             "meta": {"updated": "2026-05-29"},
             "clis": [

@@ -341,8 +341,6 @@ async def test_openai_compat_stream_forwards_reasoning_deltas_deepseek_style() -
     [
         ("openai", "gpt-4o"),
         ("deepseek", "deepseek-chat"),
-        ("minimax", "MiniMax-M2.7"),
-        ("zhipu", "glm-4.6"),
     ],
 )
 async def test_openai_compat_stream_forwards_tool_call_argument_deltas(
@@ -384,10 +382,7 @@ async def test_openai_compat_stream_forwards_tool_call_argument_deltas(
     assert result.tool_calls[0].name == "write_file"
     assert result.tool_calls[0].arguments == {"path": "notes.md", "content": "line\n"}
     kwargs = mock_chat.await_args.kwargs
-    if provider_name == "zhipu":
-        assert kwargs["extra_body"]["tool_stream"] is True
-    else:
-        assert kwargs.get("extra_body", {}).get("tool_stream") is None
+    assert kwargs.get("extra_body", {}).get("tool_stream") is None
 
 
 @pytest.mark.asyncio
@@ -443,125 +438,7 @@ class _StalledStream:
         raise StopAsyncIteration
 
 
-def test_openrouter_spec_is_gateway() -> None:
-    spec = find_by_name("openrouter")
-    assert spec is not None
-    assert spec.is_gateway is True
-    assert spec.default_api_base == "https://openrouter.ai/api/v1"
 
-
-def test_novita_spec_uses_openai_compatible_gateway() -> None:
-    spec = find_by_name("novita")
-    assert spec is not None
-    assert spec.is_gateway is True
-    assert spec.backend == "openai_compat"
-    assert spec.env_key == "NOVITA_API_KEY"
-    assert spec.default_api_base == "https://api.novita.ai/openai"
-
-
-def test_gemma_routes_to_gemini_provider() -> None:
-    """gemma models (e.g. gemma-3-27b-it) must auto-route to Gemini when GEMINI_API_KEY is set.
-    Users running gemma via the Gemini API endpoint expect automatic provider detection."""
-    spec = find_by_name("gemini")
-    assert spec is not None
-    assert "gemma" in spec.keywords
-
-
-def test_gemini_spec_keeps_openai_compat_base() -> None:
-    spec = find_by_name("gemini")
-    assert spec is not None
-    assert spec.default_api_base == "https://generativelanguage.googleapis.com/v1beta/openai/"
-
-
-async def test_openrouter_sets_default_attribution_headers() -> None:
-    spec = find_by_name("openrouter")
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as mock_client_cls:
-        provider = OpenAICompatProvider(
-            api_key="sk-or-test-key",
-            api_base="https://openrouter.ai/api/v1",
-            default_model="anthropic/claude-sonnet-4-5",
-            spec=spec,
-        )
-        await provider._ensure_client()
-
-    headers = mock_client_cls.call_args.kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://github.com/HKUDS/hczkbot"
-    assert headers["X-OpenRouter-Title"] == "hczkbot"
-    assert headers["X-OpenRouter-Categories"] == "cli-agent,personal-agent"
-    assert "x-session-affinity" in headers
-
-
-async def test_openrouter_user_headers_override_default_attribution() -> None:
-    spec = find_by_name("openrouter")
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as mock_client_cls:
-        provider = OpenAICompatProvider(
-            api_key="sk-or-test-key",
-            api_base="https://openrouter.ai/api/v1",
-            default_model="anthropic/claude-sonnet-4-5",
-            extra_headers={
-                "HTTP-Referer": "https://hczkbot.ai",
-                "X-OpenRouter-Title": "Hczkbot Pro",
-                "X-Custom-App": "enabled",
-            },
-            spec=spec,
-        )
-        await provider._ensure_client()
-
-    headers = mock_client_cls.call_args.kwargs["default_headers"]
-    assert headers["HTTP-Referer"] == "https://hczkbot.ai"
-    assert headers["X-OpenRouter-Title"] == "Hczkbot Pro"
-    assert headers["X-OpenRouter-Categories"] == "cli-agent,personal-agent"
-    assert headers["X-Custom-App"] == "enabled"
-
-
-@pytest.mark.asyncio
-async def test_openrouter_keeps_model_name_intact() -> None:
-    """OpenRouter gateway keeps the full model name (gateway does its own routing)."""
-    mock_create = AsyncMock(return_value=_fake_chat_response())
-    spec = find_by_name("openrouter")
-
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as MockClient:
-        client_instance = MockClient.return_value
-        client_instance.chat.completions.create = mock_create
-
-        provider = OpenAICompatProvider(
-            api_key="sk-or-test-key",
-            api_base="https://openrouter.ai/api/v1",
-            default_model="anthropic/claude-sonnet-4-5",
-            spec=spec,
-        )
-        await provider.chat(
-            messages=[{"role": "user", "content": "hello"}],
-            model="anthropic/claude-sonnet-4-5",
-        )
-
-    call_kwargs = mock_create.call_args.kwargs
-    assert call_kwargs["model"] == "anthropic/claude-sonnet-4-5"
-
-
-@pytest.mark.asyncio
-async def test_aihubmix_strips_model_prefix() -> None:
-    """AiHubMix strips the provider prefix (strip_model_prefix=True)."""
-    mock_create = AsyncMock(return_value=_fake_chat_response())
-    spec = find_by_name("aihubmix")
-
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as MockClient:
-        client_instance = MockClient.return_value
-        client_instance.chat.completions.create = mock_create
-
-        provider = OpenAICompatProvider(
-            api_key="sk-aihub-test-key",
-            api_base="https://aihubmix.com/v1",
-            default_model="claude-sonnet-4-5",
-            spec=spec,
-        )
-        await provider.chat(
-            messages=[{"role": "user", "content": "hello"}],
-            model="anthropic/claude-sonnet-4-5",
-        )
-
-    call_kwargs = mock_create.call_args.kwargs
-    assert call_kwargs["model"] == "claude-sonnet-4-5"
 
 
 @pytest.mark.asyncio
@@ -586,38 +463,6 @@ async def test_standard_provider_passes_model_through() -> None:
 
     call_kwargs = mock_create.call_args.kwargs
     assert call_kwargs["model"] == "deepseek-chat"
-
-
-@pytest.mark.asyncio
-async def test_openai_compat_preserves_extra_content_on_tool_calls() -> None:
-    """Gemini extra_content (thought signatures) must survive parse→serialize round-trip."""
-    mock_create = AsyncMock(return_value=_fake_tool_call_response())
-    spec = find_by_name("gemini")
-
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as MockClient:
-        client_instance = MockClient.return_value
-        client_instance.chat.completions.create = mock_create
-
-        provider = OpenAICompatProvider(
-            api_key="test-key",
-            api_base="https://generativelanguage.googleapis.com/v1beta/openai/",
-            default_model="google/gemini-3.1-pro-preview",
-            spec=spec,
-        )
-        result = await provider.chat(
-            messages=[{"role": "user", "content": "run exec"}],
-            model="google/gemini-3.1-pro-preview",
-        )
-
-    assert len(result.tool_calls) == 1
-    tool_call = result.tool_calls[0]
-    assert tool_call.id == "call_123"
-    assert tool_call.extra_content == {"google": {"thought_signature": "signed-token"}}
-    assert tool_call.function_provider_specific_fields == {"inner": "value"}
-
-    serialized = tool_call.to_openai_tool_call()
-    assert serialized["extra_content"] == {"google": {"thought_signature": "signed-token"}}
-    assert serialized["function"]["provider_specific_fields"] == {"inner": "value"}
 
 
 def test_openai_compat_parse_preserves_malformed_tool_arguments() -> None:
@@ -729,32 +574,6 @@ async def test_direct_openai_gpt4o_stays_on_chat_completions() -> None:
         await provider.chat(
             messages=[{"role": "user", "content": "hello"}],
             model="gpt-4o",
-        )
-
-    mock_chat.assert_awaited_once()
-    mock_responses.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_openrouter_gpt5_stays_on_chat_completions() -> None:
-    mock_chat = AsyncMock(return_value=_fake_chat_response())
-    mock_responses = AsyncMock(return_value=_fake_responses_response())
-    spec = find_by_name("openrouter")
-
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as MockClient:
-        client_instance = MockClient.return_value
-        client_instance.chat.completions.create = mock_chat
-        client_instance.responses.create = mock_responses
-
-        provider = OpenAICompatProvider(
-            api_key="sk-or-test-key",
-            api_base="https://openrouter.ai/api/v1",
-            default_model="openai/gpt-5",
-            spec=spec,
-        )
-        await provider.chat(
-            messages=[{"role": "user", "content": "hello"}],
-            model="openai/gpt-5",
         )
 
     mock_chat.assert_awaited_once()
@@ -1091,33 +910,6 @@ def test_openai_compat_preserves_tool_call_ids_after_consecutive_assistant_messa
     assert sanitized[2]["tool_call_id"] == "call_function_akxp3wqzn7ph_1"
 
 
-def test_mistral_normalizes_tool_call_ids_after_consecutive_assistant_messages() -> None:
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI"):
-        provider = OpenAICompatProvider(spec=find_by_name("mistral"))
-
-    sanitized = provider._sanitize_messages([
-        {"role": "user", "content": "不错"},
-        {"role": "assistant", "content": "对，破 4 万指日可待"},
-        {
-            "role": "assistant",
-            "content": "<think>我再查一下</think>",
-            "tool_calls": [
-                {
-                    "id": "call_function_akxp3wqzn7ph_1",
-                    "type": "function",
-                    "function": {"name": "exec", "arguments": "{}"},
-                }
-            ],
-        },
-        {"role": "tool", "tool_call_id": "call_function_akxp3wqzn7ph_1", "name": "exec", "content": "ok"},
-        {"role": "user", "content": "多少star了呢"},
-    ])
-
-    assert sanitized[1]["role"] == "assistant"
-    assert sanitized[1]["content"] is None
-    assert sanitized[1]["tool_calls"][0]["id"] == "3ec83c30d"
-    assert sanitized[2]["tool_call_id"] == "3ec83c30d"
-
 
 def test_openai_compat_deduplicates_duplicate_tool_call_ids_in_history() -> None:
     with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI"):
@@ -1266,76 +1058,10 @@ def _build_kwargs_for(provider_name: str, model: str, reasoning_effort=None):
     )
 
 
-def test_dashscope_thinking_enabled_with_reasoning_effort() -> None:
-    kw = _build_kwargs_for("dashscope", "qwen3-plus", reasoning_effort="medium")
-    assert kw["extra_body"] == {"enable_thinking": True}
-
-
-def test_dashscope_thinking_disabled_for_minimal() -> None:
-    """'minimal' → wire 'minimum' + thinking off on DashScope."""
-    kw = _build_kwargs_for("dashscope", "qwen3-plus", reasoning_effort="minimal")
-    assert kw["reasoning_effort"] == "minimum"
-    assert kw["extra_body"] == {"enable_thinking": False}
-
-
-def test_dashscope_thinking_disabled_for_minimum_alias() -> None:
-    """Native 'minimum' spelling must also disable thinking, not enable it."""
-    kw = _build_kwargs_for("dashscope", "qwen3-plus", reasoning_effort="minimum")
-    assert kw["reasoning_effort"] == "minimum"
-    assert kw["extra_body"] == {"enable_thinking": False}
-
-
 def test_non_dashscope_minimal_not_retranslated() -> None:
     """DashScope-specific translation must not leak to other providers."""
     kw = _build_kwargs_for("openai", "gpt-5", reasoning_effort="minimal")
     assert kw["reasoning_effort"] == "minimal"
-
-
-def test_dashscope_no_extra_body_when_reasoning_effort_none() -> None:
-    kw = _build_kwargs_for("dashscope", "qwen-turbo", reasoning_effort=None)
-    assert "extra_body" not in kw
-
-
-def test_minimax_reasoning_split_enabled_with_reasoning_effort() -> None:
-    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort="medium")
-    assert kw["extra_body"] == {"reasoning_split": True}
-
-
-def test_minimax_reasoning_split_disabled_for_minimal() -> None:
-    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort="minimal")
-    assert kw["extra_body"] == {"reasoning_split": False}
-
-
-def test_minimax_no_extra_body_when_reasoning_effort_none() -> None:
-    kw = _build_kwargs_for("minimax", "MiniMax-M2.7", reasoning_effort=None)
-    assert "extra_body" not in kw
-
-
-def test_volcengine_thinking_enabled() -> None:
-    kw = _build_kwargs_for("volcengine", "doubao-seed-2-0-pro", reasoning_effort="high")
-    assert kw["extra_body"] == {"thinking": {"type": "enabled"}}
-
-
-def test_volcengine_uses_max_completion_tokens() -> None:
-    kw = _build_kwargs_for("volcengine", "doubao-seed-2-0-pro")
-    assert kw["max_completion_tokens"] == 1024
-    assert "max_tokens" not in kw
-
-
-def test_volcengine_coding_plan_uses_max_completion_tokens() -> None:
-    kw = _build_kwargs_for("volcengine_coding_plan", "doubao-seed-2-0-pro")
-    assert kw["max_completion_tokens"] == 1024
-    assert "max_tokens" not in kw
-
-
-def test_byteplus_thinking_disabled_for_minimal() -> None:
-    kw = _build_kwargs_for("byteplus", "doubao-seed-2-0-pro", reasoning_effort="minimal")
-    assert kw["extra_body"] == {"thinking": {"type": "disabled"}}
-
-
-def test_byteplus_no_extra_body_when_reasoning_effort_none() -> None:
-    kw = _build_kwargs_for("byteplus", "doubao-seed-2-0-pro", reasoning_effort=None)
-    assert "extra_body" not in kw
 
 
 def test_deepseek_thinking_enabled() -> None:
@@ -1519,150 +1245,10 @@ def test_openai_no_thinking_extra_body() -> None:
     assert "extra_body" not in kw
 
 
-def test_kimi_k25_thinking_enabled() -> None:
-    """kimi-k2.5 with reasoning_effort set should opt in to thinking."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort="medium")
-    assert kw.get("extra_body") == {"thinking": {"type": "enabled"}}
-    # Moonshot rejects both 'reasoning_effort' and 'thinking' (#3939)
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k25_thinking_disabled_for_minimal() -> None:
-    """reasoning_effort='minimal' maps to thinking disabled for kimi-k2.5."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort="minimal")
-    assert kw.get("extra_body") == {"thinking": {"type": "disabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k25_no_extra_body_when_reasoning_effort_none() -> None:
-    """Without reasoning_effort the thinking param must not be injected."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort=None)
-    assert "extra_body" not in kw
-
-
-def test_kimi_k25_thinking_enabled_with_openrouter_prefix() -> None:
-    """OpenRouter-style model names like moonshotai/kimi-k2.5 must trigger thinking.
-
-    OR drops upstream-provider `thinking` fields, so the same intent also has
-    to go through OR's `reasoning.effort` shape (#3851 follow-up).
-    """
-    kw = _build_kwargs_for("openrouter", "moonshotai/kimi-k2.5", reasoning_effort="medium")
-    assert kw.get("extra_body") == {
-        "thinking": {"type": "enabled"},
-        "reasoning": {"effort": "medium"},
-    }
-    # Even via OR, reasoning_effort wire kwarg is dropped for kimi models
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k26_thinking_enabled() -> None:
-    """kimi-k2.6 with reasoning_effort set should opt in to thinking."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.6", reasoning_effort="medium")
-    assert kw.get("extra_body") == {"thinking": {"type": "enabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k26_thinking_enabled_with_openrouter_prefix() -> None:
-    """OpenRouter-style names like moonshotai/kimi-k2.6 must trigger thinking
-    via both upstream `thinking` and OR's `reasoning.effort`."""
-    kw = _build_kwargs_for("openrouter", "moonshotai/kimi-k2.6", reasoning_effort="medium")
-    assert kw.get("extra_body") == {
-        "thinking": {"type": "enabled"},
-        "reasoning": {"effort": "medium"},
-    }
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k27_code_thinking_enabled() -> None:
-    """Kimi K2.7 Code supports native thinking controls."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.7-code", reasoning_effort="medium")
-    assert kw.get("extra_body") == {"thinking": {"type": "enabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k27_code_thinking_enabled_with_openrouter_prefix() -> None:
-    """OpenRouter-routed Kimi K2.7 Code should carry both thinking shapes."""
-    kw = _build_kwargs_for("openrouter", "moonshotai/kimi-k2.7-code", reasoning_effort="high")
-    assert kw.get("extra_body") == {
-        "thinking": {"type": "enabled"},
-        "reasoning": {"effort": "high"},
-    }
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k27_code_thinking_none_omits_disabled() -> None:
-    """Kimi K2.7 Code is always-thinking; disabled thinking is invalid upstream."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.7-code", reasoning_effort="none")
-    assert "extra_body" not in kw
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k27_code_thinking_none_with_openrouter_prefix_omits_disabled() -> None:
-    """OpenRouter-routed Kimi K2.7 Code should not request disabled thinking."""
-    kw = _build_kwargs_for("openrouter", "moonshotai/kimi-k2.7-code", reasoning_effort="none")
-    assert "extra_body" not in kw
-    assert "reasoning_effort" not in kw
-
-
-def test_moonshot_kimi_k26_temperature_override() -> None:
-    """Moonshot registry forces temperature 1.0 for kimi-k2.6 (API requirement)."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.6", reasoning_effort=None)
-    assert kw["temperature"] == 1.0
-
-
-def test_moonshot_kimi_k27_code_temperature_override() -> None:
-    """Moonshot registry should force temperature 1.0 for Kimi K2.7 Code."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.7-code", reasoning_effort=None)
-    assert kw["temperature"] == 1.0
-
-
-def test_kimi_k25_thinking_disabled_with_openrouter_prefix() -> None:
-    """OpenRouter names must NOT trigger thinking without reasoning_effort."""
-    kw = _build_kwargs_for("openrouter", "moonshotai/kimi-k2.5", reasoning_effort=None)
-    assert "extra_body" not in kw
-
-
-def test_kimi_k26_code_preview_thinking_enabled() -> None:
-    """k2.6-code-preview also supports thinking; should behave like k2.5."""
-    kw = _build_kwargs_for("moonshot", "k2.6-code-preview", reasoning_effort="high")
-    assert kw.get("extra_body") == {"thinking": {"type": "enabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k2_series_no_thinking_injection() -> None:
-    """kimi-k2 (non-thinking) models must NOT receive extra_body.thinking."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2", reasoning_effort="high")
-    assert "extra_body" not in kw
-
-
-def test_kimi_k2_thinking_series_no_thinking_injection() -> None:
-    """kimi-k2-thinking series models must NOT receive extra_body.thinking."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2-thinking", reasoning_effort="high")
-    assert "extra_body" not in kw
-
-
-# ---------------------------------------------------------------------------
-# reasoning_effort="none" — treated as thinking disabled
-# ---------------------------------------------------------------------------
-
 def test_deepseek_thinking_disabled_for_none_string() -> None:
     """reasoning_effort='none' must send thinking.type=disabled and skip reasoning_effort field."""
     kw = _build_kwargs_for("deepseek", "deepseek-v4-pro", reasoning_effort="none")
     assert kw.get("extra_body") == {"thinking": {"type": "disabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_kimi_k25_thinking_disabled_for_none_string() -> None:
-    """reasoning_effort='none' maps to thinking disabled for kimi-k2.5."""
-    kw = _build_kwargs_for("moonshot", "kimi-k2.5", reasoning_effort="none")
-    assert kw.get("extra_body") == {"thinking": {"type": "disabled"}}
-    assert "reasoning_effort" not in kw
-
-
-def test_dashscope_thinking_disabled_for_none_string() -> None:
-    """reasoning_effort='none' disables thinking and must not emit reasoning_effort on DashScope."""
-    kw = _build_kwargs_for("dashscope", "qwen3.6-plus", reasoning_effort="none")
-    assert kw.get("extra_body") == {"enable_thinking": False}
     assert "reasoning_effort" not in kw
 
 
