@@ -130,13 +130,15 @@ def resolve_transcription_config(config: Any) -> EffectiveTranscriptionConfig:
         spec = get_transcription_provider(provider)
     default_model = spec.default_model if spec else ""
     provider_cfg = _provider_config(config, provider)
+    # Transcription-specific api_base overrides the provider's api_base
+    transcription_api_base = getattr(top, "api_base", None) if top else None
     return EffectiveTranscriptionConfig(
         enabled=bool(getattr(top, "enabled", True)),
         provider=provider,
         model=(getattr(top, "model", None) or default_model).strip(),
         language=getattr(top, "language", None) or getattr(channels, "transcription_language", None),
         api_key=_resolve_transcription_api_key(provider, provider_cfg),
-        api_base=_resolve_transcription_api_base(provider, provider_cfg),
+        api_base=transcription_api_base or _resolve_transcription_api_base(provider, provider_cfg),
         max_duration_sec=int(getattr(top, "max_duration_sec", 120)),
         max_upload_mb=int(getattr(top, "max_upload_mb", 25)),
     )

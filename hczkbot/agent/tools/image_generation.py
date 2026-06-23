@@ -39,6 +39,7 @@ class ImageGenerationToolConfig(Base):
     enabled: bool = False
     provider: str = "openai"
     model: str = "openai/gpt-5.4-image-2"
+    api_base: str | None = None  # Override provider API base for image generation
     default_aspect_ratio: str = "1:1"
     default_image_size: str = "1K"
     max_images_per_turn: int = Field(default=4, ge=1, le=8)
@@ -124,9 +125,11 @@ class ImageGenerationTool(Tool):
         cls = get_image_gen_provider(self.config.provider)
         if cls is None:
             return None
+        # Image-specific api_base overrides the provider's api_base
+        effective_api_base = self.config.api_base or (provider.api_base if provider else None)
         kwargs = {
             "api_key": provider.api_key if provider else None,
-            "api_base": provider.api_base if provider else None,
+            "api_base": effective_api_base,
             "extra_headers": provider.extra_headers if provider else None,
             "extra_body": provider.extra_body if provider else None,
         }

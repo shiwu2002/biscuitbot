@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import re
@@ -1474,11 +1475,247 @@ async def _zhipu_images_from_payload(
 
 
 # ---------------------------------------------------------------------------
+# DashScope (阿里灵积/万相) image generation
+# ---------------------------------------------------------------------------
+
+_DASHSCOPE_ASPECT_RATIO_SIZES = {
+    "1:1": "1024*1024",
+    "16:9": "1696*960",
+    "9:16": "960*1696",
+    "3:4": "1104*1472",
+    "4:3": "1472*1104",
+}
+
+
+def _dashscope_size(
+    aspect_ratio: str | None,
+    image_size: str | None,
+) -> str:
+    """Resolve aspect ratio / image_size to DashScope size string.
+
+    DashScope uses ``WIDTH*HEIGHT`` format (asterisk, not ``x``).
+    """
+    if image_size:
+        size = image_size.strip().lower().replace("x", "*")
+        if "*" in size:
+            return size
+    if aspect_ratio and aspect_ratio in _DASHSCOPE_ASPECT_RATIO_SIZES:
+        return _DASHSCOPE_ASPECT_RATIO_SIZES[aspect_ratio]
+    return "1024*1024"
+
+
+_DASHSCOPE_DEFAULT_API_BASE = "https://dashscope.aliyuncs.com"
+_DASHSCOPE_SUBMIT_PATH_OLD = "/api/v1/services/aigc/text2image/image-synthesis"
+_DASHSCOPE_SUBMIT_PATH_NEW = "/api/v1/services/aigc/image-generation/generation"
+_DASHSCOPE_TASK_PATH = "/api/v1/tasks"
+_DASHSCOPE_POLL_INTERVAL_S = 2.0
+_DASHSCOPE_MAX_POLL_ATTEMPTS = 60
+
+# Models that use the newer messages-based API (wan2.6+)
+_DASHSCOPE_NEW_MODELS = frozenset({
+    "wan2.6-t2i",
+    "wan2.6-image",
+    "wan2.5-t2i-preview",
+})
+
+
+class DashScopeImageGenerationClient(ImageGenerationProvider):
+    """Async client for DashScope (阿里灵积/万相) image generation API.
+
+    Uses DashScope's native asynchronous text-to-image API.
+    Submits a task, then polls until the result is ready.
+
+    Supports two API formats:
+    - **Newer models** (wan2.6-t2i, wan2.6-image, wan2.5-t2i-preview):
+      use ``/api/v1/services/aigc/image-generation/generation`` with
+      ``input.messages`` format.  Result images appear in
+      ``output.choices[].message.content[].image``.
+    - **Older models** (wanx2.1-t2i-turbo, wanx2.1-t2i-plus,
+      wanx2.0-t2i-turbo, wanx-v1, etc.):
+      use ``/api/v1/services/aigc/text2image/image-synthesis`` with
+      ``input.prompt`` format.  Result images appear in
+      ``output.results[].url``.
+    """
+
+    provider_name = "dashscope"
+    missing_key_message = "DashScope API key is not configured. Set providers.dashscope.apiKey."
+    default_timeout = 300.0
+
+    def _default_base_url(self) -> str:
+        return _DASHSCOPE_DEFAULT_API_BASE
+
+    def _resolve_base_url(self, api_base: str | None) -> str:
+        """Override to skip the LLM registry's default_api_base.
+
+        DashScope's image generation API uses a different base path
+        (``/api/v1/...``) than the LLM compatible-mode endpoint
+        (``/compatible-mode/v1``), so we must not fall back to the
+        registry's ``default_api_base``.
+        """
+        if api_base:
+            return api_base.rstrip("/")
+        return self._default_base_url()
+
+    def _is_new_model(self, model: str) -> bool:
+        """Check if the model uses the newer messages-based API."""
+        return model in _DASHSCOPE_NEW_MODELS
+
+    async def generate(
+        self,
+        *,
+        prompt: str,
+        model: str,
+        reference_images: list[str] | None = None,
+        aspect_ratio: str | None = None,
+        image_size: str | None = None,
+    ) -> GeneratedImageResponse:
+        if not self.api_key:
+            raise ImageGenerationError(self.missing_key_message)
+
+        if reference_images:
+            raise ImageGenerationError(
+                "DashScope image generation does not support reference images"
+            )
+
+        size = _dashscope_size(aspect_ratio, image_size)
+        is_new = self._is_new_model(model)
+
+        if is_new:
+            body: dict[str, Any] = {
+                "model": model,
+                "input": {
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [{"text": prompt}],
+                        }
+                    ],
+                },
+                "parameters": {
+                    "n": 1,
+                    "size": size,
+                },
+            }
+            submit_path = _DASHSCOPE_SUBMIT_PATH_NEW
+        else:
+            body = {
+                "model": model,
+                "input": {
+                    "prompt": prompt,
+                },
+                "parameters": {
+                    "n": 1,
+                    "size": size,
+                },
+            }
+            submit_path = _DASHSCOPE_SUBMIT_PATH_OLD
+
+        body.update(self.extra_body)
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "X-DashScope-Async": "enable",
+            **self.extra_headers,
+        }
+
+        submit_url = f"{self.api_base}{submit_path}"
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            # Step 1: Submit the task
+            try:
+                submit_resp = await client.post(submit_url, headers=headers, json=body)
+            except httpx.TimeoutException as exc:
+                raise ImageGenerationError("DashScope image generation submit timed out") from exc
+            except httpx.RequestError as exc:
+                raise ImageGenerationError(f"DashScope image generation submit failed: {exc}") from exc
+
+            try:
+                submit_resp.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                detail = submit_resp.text[:500]
+                raise ImageGenerationError(
+                    f"DashScope image generation submit failed (HTTP {submit_resp.status_code}): {detail}"
+                ) from exc
+
+            submit_data = submit_resp.json()
+            task_id = (submit_data.get("output") or {}).get("task_id")
+            if not task_id:
+                err_msg = (submit_data.get("output") or {}).get("message") or submit_data.get("message") or "no task_id returned"
+                raise ImageGenerationError(f"DashScope image generation submit failed: {err_msg}")
+
+            # Step 2: Poll for the result
+            poll_url = f"{self.api_base}{_DASHSCOPE_TASK_PATH}/{task_id}"
+            poll_headers = {
+                "Authorization": f"Bearer {self.api_key}",
+            }
+
+            for attempt in range(_DASHSCOPE_MAX_POLL_ATTEMPTS):
+                await asyncio.sleep(_DASHSCOPE_POLL_INTERVAL_S)
+
+                try:
+                    poll_resp = await client.get(poll_url, headers=poll_headers)
+                except httpx.RequestError as exc:
+                    logger.warning("DashScope poll error (attempt {}): {}", attempt + 1, exc)
+                    continue
+
+                try:
+                    poll_resp.raise_for_status()
+                except httpx.HTTPStatusError:
+                    logger.warning("DashScope poll HTTP {} (attempt {})", poll_resp.status_code, attempt + 1)
+                    continue
+
+                poll_data = poll_resp.json()
+                output = poll_data.get("output") or {}
+                task_status = output.get("task_status", "")
+
+                if task_status == "SUCCEEDED":
+                    images: list[str] = []
+
+                    # New models: output.choices[].message.content[].image
+                    choices = output.get("choices")
+                    if isinstance(choices, list):
+                        for choice in choices:
+                            content = (choice.get("message") or {}).get("content") or []
+                            for item in content:
+                                url = item.get("image")
+                                if isinstance(url, str) and url:
+                                    images.append(await _download_image_data_url(client, url))
+
+                    # Old models: output.results[].url
+                    results = output.get("results")
+                    if isinstance(results, list):
+                        for result in results:
+                            url = result.get("url")
+                            if isinstance(url, str) and url:
+                                images.append(await _download_image_data_url(client, url))
+
+                    self._require_images(images, poll_data)
+                    return GeneratedImageResponse(images=images, content="", raw=poll_data)
+
+                if task_status in ("FAILED", "UNKNOWN"):
+                    err_msg = output.get("message") or "task failed"
+                    err_code = output.get("code") or ""
+                    raise ImageGenerationError(
+                        f"DashScope image generation failed: {err_code} {err_msg}".strip()
+                    )
+
+                # Still PENDING or RUNNING, continue polling
+                if task_status not in ("PENDING", "RUNNING"):
+                    logger.warning("DashScope unknown task status: {}", task_status)
+
+            raise ImageGenerationError(
+                f"DashScope image generation timed out after {_DASHSCOPE_MAX_POLL_ATTEMPTS} polls"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Provider registration
 # ---------------------------------------------------------------------------
 
 register_image_gen_provider(AIHubMixImageGenerationClient)
 register_image_gen_provider(CustomImageGenerationClient)
+register_image_gen_provider(DashScopeImageGenerationClient)
 register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)
 register_image_gen_provider(MiniMaxImageGenerationClient)

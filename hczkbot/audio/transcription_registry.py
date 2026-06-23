@@ -82,6 +82,13 @@ TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
         aliases=("silicon",),
         default_api_base="https://api.siliconflow.cn/v1",
     ),
+    TranscriptionProviderSpec(
+        name="dashscope",
+        default_model="paraformer-v2",
+        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
+        aliases=("aliyun", "tongyi"),
+        default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    ),
 )
 
 _BY_NAME = {spec.name: spec for spec in TRANSCRIPTION_PROVIDERS}

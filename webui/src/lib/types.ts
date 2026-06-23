@@ -417,6 +417,7 @@ export interface SettingsPayload {
     provider: string;
     provider_configured: boolean;
     model: string;
+    api_base?: string | null;
     default_aspect_ratio: string;
     default_image_size: string;
     max_images_per_turn: number;
@@ -436,6 +437,7 @@ export interface SettingsPayload {
     provider: string;
     provider_configured: boolean;
     model: string;
+    api_base?: string | null;
     language: string | null;
     max_duration_sec: number;
     max_upload_mb: number;
@@ -736,6 +738,7 @@ export interface ImageGenerationSettingsUpdate {
   enabled: boolean;
   provider: string;
   model: string;
+  apiBase?: string | null;
   defaultAspectRatio: string;
   defaultImageSize: string;
   maxImagesPerTurn: number;
@@ -745,6 +748,7 @@ export interface TranscriptionSettingsUpdate {
   enabled: boolean;
   provider: string;
   model: string;
+  apiBase?: string | null;
   language: string;
   maxDurationSec: number;
   maxUploadMb: number;

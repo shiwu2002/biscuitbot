@@ -377,6 +377,7 @@ const DEFAULT_IMAGE_GENERATION_FORM: ImageGenerationSettingsUpdate = {
   enabled: false,
   provider: "openrouter",
   model: "openai/gpt-5.4-image-2",
+  apiBase: null,
   defaultAspectRatio: "1:1",
   defaultImageSize: "1K",
   maxImagesPerTurn: 4,
@@ -386,6 +387,7 @@ const DEFAULT_TRANSCRIPTION_FORM: TranscriptionSettingsUpdate = {
   enabled: true,
   provider: "groq",
   model: "",
+  apiBase: null,
   language: "",
   maxDurationSec: 120,
   maxUploadMb: 25,
@@ -448,6 +450,7 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
     enabled: payload.image_generation.enabled,
     provider: payload.image_generation.provider,
     model: payload.image_generation.model,
+    apiBase: payload.image_generation.api_base ?? null,
     defaultAspectRatio: payload.image_generation.default_aspect_ratio,
     defaultImageSize: payload.image_generation.default_image_size,
     maxImagesPerTurn: payload.image_generation.max_images_per_turn,
@@ -460,6 +463,7 @@ function transcriptionFormFromPayload(payload: SettingsPayload): TranscriptionSe
     enabled: transcription.enabled,
     provider: transcription.provider,
     model: transcription.model,
+    apiBase: transcription.api_base ?? null,
     language: transcription.language ?? "",
     maxDurationSec: transcription.max_duration_sec,
     maxUploadMb: transcription.max_upload_mb,
@@ -816,6 +820,7 @@ export function SettingsView({
       imageGenerationForm.enabled !== settings.image_generation.enabled ||
       imageGenerationForm.provider !== settings.image_generation.provider ||
       imageGenerationForm.model !== settings.image_generation.model ||
+      imageGenerationForm.apiBase !== (settings.image_generation.api_base ?? null) ||
       imageGenerationForm.defaultAspectRatio !== settings.image_generation.default_aspect_ratio ||
       imageGenerationForm.defaultImageSize !== settings.image_generation.default_image_size ||
       imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn
@@ -829,6 +834,7 @@ export function SettingsView({
       transcriptionForm.enabled !== transcription.enabled ||
       transcriptionForm.provider !== transcription.provider ||
       transcriptionForm.model !== transcription.model ||
+      transcriptionForm.apiBase !== (transcription.api_base ?? null) ||
       transcriptionForm.language !== (transcription.language ?? "") ||
       transcriptionForm.maxDurationSec !== transcription.max_duration_sec ||
       transcriptionForm.maxUploadMb !== transcription.max_upload_mb
@@ -2952,10 +2958,16 @@ function ImageGenerationSettings({
               ) : null}
             </div>
           </SettingsRow>
-          <SettingsRow title={tx("settings.rows.imageProviderBase", "Provider base")}>
-            <span className="max-w-[320px] truncate text-right text-[13px] text-muted-foreground">
-              {selectedProvider?.api_base || selectedProvider?.default_api_base || selectedProvider?.name || tx("settings.values.notAvailable", "Not available")}
-            </span>
+          <SettingsRow
+            title={tx("settings.rows.imageApiBase", "API base URL")}
+            description={tx("settings.help.imageApiBase", "Override the provider's API base URL for image generation. Leave empty to use the provider's default.")}
+          >
+            <Input
+              value={form.apiBase ?? ""}
+              onChange={(event) => onChangeForm((prev) => ({ ...prev, apiBase: event.target.value || null }))}
+              placeholder={selectedProvider?.default_api_base || selectedProvider?.api_base || tx("settings.values.notAvailable", "Not available")}
+              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            />
           </SettingsRow>
         </SettingsGroup>
       </section>
@@ -3111,6 +3123,17 @@ function TranscriptionSettings({
               </Button>
             ) : null}
           </div>
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.transcriptionApiBase", "API base URL")}
+          description={tx("settings.help.transcriptionApiBase", "Override the provider's API base URL for voice transcription. Leave empty to use the provider's default.")}
+        >
+          <Input
+            value={form.apiBase ?? ""}
+            onChange={(event) => onChangeForm((prev) => ({ ...prev, apiBase: event.target.value || null }))}
+            placeholder={selectedProvider?.default_api_base || selectedProvider?.api_base || tx("settings.values.notAvailable", "Not available")}
+            className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+          />
         </SettingsRow>
         <SettingsRow
           title={tx("settings.rows.transcriptionModel", "Model")}

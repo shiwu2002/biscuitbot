@@ -124,6 +124,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="OpenAI",
         backend="openai_compat",
         supports_max_completion_tokens=True,
+        strip_model_prefixes=("openai",),
     ),
     # DeepSeek: OpenAI 兼容 API（DeepSeek-V3/R1 等）
     # 通过 apiBase 可指向代理地址
@@ -135,6 +136,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         default_api_base="https://api.deepseek.com",
         thinking_style="thinking_type",
+        strip_model_prefixes=("deepseek",),
     ),
 
     # === 国内提供商 =======================================================
@@ -148,6 +150,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
         thinking_style="enable_thinking",
+        strip_model_prefixes=("dashscope", "qwen"),
     ),
     # Zhipu (智谱): GLM 系列，OpenAI 兼容
     # 提供图片生成（CogView/GLM-Image）能力
@@ -158,6 +161,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Zhipu AI (智谱)",
         backend="openai_compat",
         default_api_base="https://open.bigmodel.cn/api/paas/v4",
+        strip_model_prefixes=("zhipu",),
     ),
     # Moonshot (月之暗面): Kimi 系列，OpenAI 兼容
     ProviderSpec(
@@ -167,6 +171,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         display_name="Moonshot (月之暗面/Kimi)",
         backend="openai_compat",
         default_api_base="https://api.moonshot.ai/v1",
+        strip_model_prefixes=("moonshot",),
     ),
     # Step Fun (阶跃星辰): Step 系列，OpenAI 兼容
     # 同时提供图片生成和语音识别（ASR）能力
@@ -178,6 +183,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         backend="openai_compat",
         default_api_base="https://api.stepfun.com/v1",
         reasoning_as_content=True,
+        strip_model_prefixes=("stepfun",),
     ),
 
     # === 本地部署 ========================================================
