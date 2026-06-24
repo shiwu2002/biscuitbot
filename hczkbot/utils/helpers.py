@@ -352,6 +352,35 @@ def _write_text_atomic(path: Path, content: str) -> None:
             tmp.unlink(missing_ok=True)
 
 
+def atomic_write_text(path: Path, content: str, *, fsync: bool = True) -> None:
+    """Atomically write text to *path* via temp file + rename.
+
+    When *fsync* is True (default), both the file data and the parent
+    directory metadata are fsync'd for crash durability.  On Windows the
+    directory fsync is skipped (NTFS journals metadata synchronously).
+    """
+    import os
+
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(content)
+            if fsync:
+                f.flush()
+                os.fsync(f.fileno())
+        os.replace(tmp, path)
+        if fsync:
+            with suppress(PermissionError):
+                fd = os.open(str(path.parent), os.O_RDONLY)
+                try:
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def maybe_persist_tool_result(
     workspace: Path | None,
     session_key: str | None,

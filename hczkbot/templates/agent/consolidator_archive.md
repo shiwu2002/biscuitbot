@@ -1,5 +1,7 @@
 Extract key facts from this conversation. For each fact, annotate its memory attributes.
 
+{% if session_key %}Session context: `{{ session_key }}`. Use this to disambiguate facts that are specific to a particular channel or chat.{% endif %}
+
 Only SNIP facts deserve a non-[skip] mark:
 - Signal: would the user need to repeat this if forgotten?
 - Novel: not just a restatement of another fact in this same conversation chunk

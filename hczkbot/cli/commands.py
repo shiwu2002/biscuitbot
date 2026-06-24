@@ -1163,28 +1163,42 @@ def _run_gateway(
             prune_dream_sessions = MemoryStore.prune_dream_sessions
 
             store = agent.context.memory
-            resp = None
+            last_resp = None
+            batches_processed = 0
+            from hczkbot.command.builtin import _DREAM_MAX_BATCHES
             try:
-                result = store.build_dream_prompt()
-                if result is None:
-                    logger.info("Dream: nothing to process")
-                    return None
-                prompt, last_cursor = result
-                key = dream_session_key()
-                resp = await agent.process_direct(
-                    prompt,
-                    session_key=key,
-                    ephemeral=True,
-                    tools=store.build_dream_tools(),
-                    on_progress=_silent,
-                )
-                if MemoryStore.dream_run_completed(resp):
+                while batches_processed < _DREAM_MAX_BATCHES:
+                    result = store.build_dream_prompt()
+                    if result is None:
+                        break
+                    prompt, last_cursor = result
+                    key = dream_session_key()
+                    resp = await agent.process_direct(
+                        prompt,
+                        session_key=key,
+                        ephemeral=True,
+                        tools=store.build_dream_tools(),
+                        on_progress=_silent,
+                    )
+                    last_resp = resp
+                    if not MemoryStore.dream_run_completed(resp):
+                        logger.warning(
+                            "Dream cron job did not complete (batch {}); cursor remains at {}",
+                            batches_processed + 1,
+                            store.get_last_dream_cursor(),
+                        )
+                        break
                     store.set_last_dream_cursor(last_cursor)
-                    logger.info("Dream cron job completed, cursor advanced to {}", last_cursor)
+                    batches_processed += 1
+                if batches_processed == 0:
+                    logger.info("Dream: nothing to process")
                 else:
-                    logger.warning(
-                        "Dream cron job did not complete; cursor remains at {}",
+                    remaining = store.count_unprocessed_history()
+                    logger.info(
+                        "Dream cron job completed: {} batch(es), cursor at {}, {} entries pending",
+                        batches_processed,
                         store.get_last_dream_cursor(),
+                        remaining,
                     )
             except Exception:
                 logger.exception("Dream cron job failed")
@@ -1192,13 +1206,13 @@ def _run_gateway(
                 from hczkbot.webui.token_usage import record_response_token_usage
 
                 record_response_token_usage(
-                    resp,
+                    last_resp,
                     source="dream",
                     timezone_name=config.agents.defaults.timezone,
                 )
                 if store.git.is_initialized():
                     msg = build_dream_commit_message(
-                        "dream: periodic memory consolidation", resp,
+                        "dream: periodic memory consolidation", last_resp,
                     )
                     sha = store.git.auto_commit(msg)
                     if sha:

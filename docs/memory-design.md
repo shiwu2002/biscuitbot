@@ -123,7 +123,10 @@ class MemoryStore:
 ### 4.3 原子写入与并发安全
 
 - **cursor 分配 + 追加**：使用 `threading.Lock` 串行化（[memory.py:275](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L275)），防止并发写入产生重复 cursor
-- **整文件重写**：`_write_entries` 使用 temp 文件 + `os.replace` + `fsync` + 目录 `fsync` 保证原子性和持久性（[memory.py:431](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L431)）
+- **compact_history 加锁**：`compact_history` 在 `_append_lock` 内执行读-改-写（[memory.py:387](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L387)），防止并发 `append_history` 的条目被原子重写覆盖丢失
+- **整文件重写**：`_write_entries` 使用 temp 文件 + `os.replace` + `fsync` + 目录 `fsync` 保证原子性和持久性（[memory.py:483](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L483)）
+- **游标文件原子写入**：`.cursor` 和 `.dream_cursor` 均使用 `atomic_write_text`（temp + rename + fsync）写入（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py#L355)），崩溃时不会产生部分写入
+- **history.jsonl 追加 fsync**：`append_history` 在追加后 `f.flush()` + `os.fsync()`，保证数据落盘
 - **Windows 兼容**：目录 fsync 在 Windows 上跳过（NTFS 同步元数据）
 
 ### 4.4 内容清理
@@ -144,9 +147,17 @@ class MemoryStore:
 | `_RAW_ARCHIVE_MAX_CHARS` | 16,000 | LLM 失败时的原始转储上限 |
 | `_ARCHIVE_SUMMARY_MAX_CHARS` | 8,000 | LLM 摘要上限 |
 
-`compact_history()` 在条目数超限时丢弃最旧的条目。
+`compact_history()` 在条目数超限时丢弃最旧的条目，**但不会静默删除**——被驱逐的条目归档到 `history-archive-YYYY-MM.jsonl`（[memory.py:406](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L406)），保留审计可追溯性。
 
-### 4.6 遗留迁移
+### 4.6 `_read_last_entry` 健壮读取
+
+`_read_last_entry`（[memory.py:437](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L437)）用于高效读取 history.jsonl 的最后一条记录（避免全文件扫描来分配下一个 cursor）：
+
+- **循环倍增读取**：从 8KB 开始，若最后一行 JSON 解析失败（截断），倍增读取窗口（16KB→32KB→...）直到成功或读完全文件。单条记录可达 24KB+（8000 字符摘要 × 3 字节 UTF-8），固定 4KB 窗口会截断。
+- **UnicodeDecodeError 处理**：当读取窗口恰好切断多字节 UTF-8 字符（CJK 文本常见），`decode("utf-8")` 抛出异常时也倍增窗口重试，而非直接返回 None。这对中文场景至关重要。
+- **回退策略**：所有方法失败时返回 None，`_next_cursor` 回退到全文件扫描取 `max(cursor)+1`。
+
+### 4.7 遗留迁移
 
 `_maybe_migrate_legacy_history()` 一次性将旧版 `HISTORY.md`（Markdown 格式）迁移到 `history.jsonl`：
 - 解析时间戳前缀 `[YYYY-MM-DD HH:MM]`
@@ -195,11 +206,11 @@ _input_token_budget = context_window_tokens - max_completion_tokens - _SAFETY_BU
 
 ### 5.4 LLM 摘要归档
 
-`archive` 方法（[memory.py:811](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L811)）：
+`archive` 方法（[memory.py:855](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L855)）：
 
 1. 格式化消息为 `[timestamp] ROLE [tools: ...]: content` 形式
 2. 截断到 token 预算内
-3. 调用 LLM，使用 [consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) 模板
+3. 调用 LLM，使用 [consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) 模板，注入 `session_key` 上下文（多会话场景下帮助 LLM 区分不同渠道/聊天的事实）
 4. LLM 输出带属性标签的原子事实列表
 5. 追加到 `history.jsonl`
 6. **失败兜底**：LLM 调用失败时 `raw_archive` 原始转储（最多 16,000 字符）
@@ -260,6 +271,25 @@ Dream 是 hczkbot 记忆系统的核心创新，采用**两阶段**设计将短�
 
 - **定时触发**：由 cron 系统任务自动执行，默认每 2 小时（`DreamConfig.interval_h`）
 - **手动触发**：用户执行 `/dream` 命令（[command/builtin.py:306](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py#L306)）
+
+#### 6.3.1a 多批次循环处理
+
+Dream 每次运行支持**多批次循环**（`_DREAM_MAX_BATCHES = 3`），在一次运行中连续处理多个 20 条批次，加速消化积压历史：
+
+```
+while batches < _DREAM_MAX_BATCHES:
+    result = build_dream_prompt()      # 取下一批 20 条
+    if result is None: break           # 无更多历史
+    resp = process_direct(...)         # LLM 整合
+    if not dream_run_completed: break  # 未完成则停止
+    set_last_dream_cursor(last_cursor) # 推进游标
+    batches += 1
+```
+
+- **token 控制**：最大 3 批次 × 20 条 = 60 条/次，平衡积压消化速度与 token 消耗
+- **安全停止**：任一批次未干净完成则立即停止，游标不推进
+- **进度报告**：运行结束后报告处理批次数和剩余 pending 条目数
+- **常量复用**：`cmd_dream` 和 cron job 共享 `_DREAM_MAX_BATCHES` 常量（[builtin.py:20](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py#L20)）
 
 #### 6.3.2 提示词构建
 
@@ -374,6 +404,21 @@ def dream_run_completed(resp: object | None) -> bool:
 - **统一会话模式**（`unified_session=True`）：返回当前会话条目 + 非内部会话条目（排除 `cron:`、`dream:`、`heartbeat`）
 - 最多 50 条，截断到 8,000 tokens
 
+#### 8.2a 积压历史 Backlog 摘要
+
+当未处理历史超过 `_MAX_RECENT_HISTORY`（50 条）时，`_format_recent_history`（[context.py:184](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py#L184)）不会静默丢弃早期条目，而是将积压区**最接近 recent 窗口的 20 条**（`backlog[-20:]`）截断为 100 字符摘要，以 `[Backlog]` 前缀注入：
+
+```
+- [Backlog: 80 earlier entries not shown in full]
+  - [2026-06-24 10:00] 用户询问了部署流程...
+  - [2026-06-24 10:15] 讨论了数据库迁移方案...
+  ...
+- [2026-06-24 14:00] 最新条目完整内容
+- [2026-06-24 14:05] 另一条完整条目
+```
+
+这确保 Agent 至少知道积压历史的存在和大致内容，避免用户感知到"遗忘"。
+
 ### 8.3 内部会话识别
 
 ```python
@@ -393,11 +438,13 @@ _INTERNAL_HISTORY_SESSION_KEYS = {"heartbeat"}
 
 ```python
 GitStore(workspace, tracked_files=[
-    "SOUL.md", "USER.md", "memory/MEMORY.md", "memory/.dream_cursor",
+    "SOUL.md", "USER.md", "memory/MEMORY.md",
 ])
 ```
 
-注意：`history.jsonl` **不**纳入 Git 版本控制（频繁追加，体积大），但 `.dream_cursor` 被追踪以记录 Dream 处理进度。
+注意：
+- `history.jsonl` **不**纳入 Git 版本控制（频繁追加，体积大）
+- `.dream_cursor` **不**纳入 Git 版本控制——`/dream-restore` 回滚记忆文件内容时不应回滚处理进度游标，否则会导致 Dream 重复处理已整合的历史（因为 `history.jsonl` 本身也不回滚）。`.dream_cursor` 的真实值始终保留在文件中，Git 仅用于记忆内容的版本化。
 
 ### 9.2 自动提交
 
@@ -410,13 +457,15 @@ GitStore(workspace, tracked_files=[
 
 | 命令 | 功能 |
 |------|------|
-| `/dream` | 手动触发 Dream 整合 |
-| `/dream-log` | 显示最近 Dream 变更的 diff（默认 HEAD）|
+| `/dream` | 手动触发 Dream 整合（多批次循环，最多 3 批次）|
+| `/dream-log` | 显示最近 Dream 变更的 diff + 未处理历史 pending 条目数 |
 | `/dream-log <sha>` | 显示指定 commit 的 diff |
 | `/dream-restore` | 列出可恢复的 Dream 快照 |
-| `/dream-restore <sha>` | 恢复到指定快照（创建新 commit 记录回滚）|
+| `/dream-restore <sha>` | 恢复到指定快照（创建新 commit 记录回滚，不回滚 `.dream_cursor`）|
 
-`revert` 操作通过将 tracked files 恢复到目标 commit 的父 commit 状态来实现，然后创建一个新的 revert commit，保证历史可追溯。
+`revert` 操作通过将 tracked files 恢复到目标 commit 的父 commit 状态来实现，然后创建一个新的 revert commit，保证历史可追溯。`.dream_cursor` 不在 tracked files 中，因此回滚不会影响 Dream 处理进度。
+
+`/dream-log` 末尾通过 `count_unprocessed_history()`（[memory.py:530](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L530)）显示当前 pending 条目数，让用户直观感知 Dream 是否积压。
 
 ---
 
@@ -535,21 +584,37 @@ grep(pattern="keyword", path="memory", glob="*.jsonl", output_mode="count")
 - `.dream_cursor`：Dream 处理游标，保证至少一次处理
 - `session.last_consolidated`：会话内整合游标，保证消息不重复归档
 
-### 12.4 渐进式降级
+### 12.4 全链路原子写入
+
+所有记忆文件的写入均使用原子操作（temp + rename + fsync）：
+- `atomic_write_text`（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py#L355)）统一处理 `.cursor`、`.dream_cursor`
+- `_write_entries` 处理 `history.jsonl` 整文件重写
+- `append_history` 追加后 fsync 保证数据落盘
+- `compact_history` 在 `_append_lock` 内执行，消除并发竞态
+
+### 12.5 多批次积压消化
+
+Dream 每次运行循环处理最多 3 批次（60 条），加速消化积压历史，同时通过 `_DREAM_MAX_BATCHES` 上限控制 token 消耗。`/dream-log` 显示 pending 条目数，让用户感知积压状态。
+
+### 12.6 渐进式降级
 
 - LLM 摘要失败 → `raw_archive` 原始转储
 - Dream 未完成 → 游标不推进，下次重试
 - history.jsonl 损坏 → 跳过非法条目，告警一次
+- `_read_last_entry` 失败 → 回退到全文件扫描
+- 积压历史超 50 条 → Backlog 摘要保留而非静默丢弃
+- `compact_history` 驱逐 → 归档到 `history-archive-*.jsonl` 而非删除
 
-### 12.5 最小权限
+### 12.7 最小权限
 
 Dream 工具集严格限制为只读 + 记忆文件编辑，无法执行 shell、网络请求或影响系统状态。
 
-### 12.6 可观测可回滚
+### 12.8 可观测可回滚
 
-- Git 版本控制所有长期记忆变更
-- `/dream-log` 可视化 diff
-- `/dream-restore` 一键回滚
+- Git 版本控制所有长期记忆变更（`.dream_cursor` 故意排除，避免回滚导致重复处理）
+- `/dream-log` 可视化 diff + pending 进度
+- `/dream-restore` 一键回滚（仅回滚记忆内容，不回滚处理进度）
+- `history-archive-*.jsonl` 保留被 compact 的历史条目供审计
 
 ---
 
@@ -558,17 +623,19 @@ Dream 工具集严格限制为只读 + 记忆文件编辑，无法执行 shell�
 | 文件 | 职责 |
 |------|------|
 | [hczkbot/agent/memory.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py) | MemoryStore + Consolidator 核心 |
-| [hczkbot/agent/context.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py) | 上下文构建与记忆注入 |
+| [hczkbot/agent/context.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py) | 上下文构建与记忆注入（含 Backlog 摘要） |
 | [hczkbot/agent/autocompact.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/autocompact.py) | 空闲会话自动压缩 |
 | [hczkbot/agent/loop.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/loop.py) | Agent 主循环，整合触发点 |
+| [hczkbot/utils/helpers.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py) | `atomic_write_text` 原子写入工具 |
 | [hczkbot/utils/gitstore.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/gitstore.py) | Git 版本控制 |
 | [hczkbot/templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/dream.md) | Dream 提示词模板 |
-| [hczkbot/templates/agent/consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) | Consolidator 摘要模板 |
+| [hczkbot/templates/agent/consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) | Consolidator 摘要模板（含 session_key 上下文） |
 | [hczkbot/templates/memory/MEMORY.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/memory/MEMORY.md) | MEMORY.md 模板 |
 | [hczkbot/templates/SOUL.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/SOUL.md) | SOUL.md 模板 |
 | [hczkbot/templates/USER.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/USER.md) | USER.md 模板 |
 | [hczkbot/skills/memory/SKILL.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/skills/memory/SKILL.md) | 记忆系统技能说明 |
-| [hczkbot/command/builtin.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py) | /dream 系列命令 |
+| [hczkbot/command/builtin.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py) | /dream 系列命令 + `_DREAM_MAX_BATCHES` 常量 |
 | [hczkbot/config/schema.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py) | DreamConfig 配置 |
-| [hczkbot/cli/commands.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/cli/commands.py) | Dream cron 任务注册 |
-| [tests/agent/test_memory_store.py](file:///Volumes/data/hczkAgent/nanobot/tests/agent/test_memory_store.py) | MemoryStore 测试 |
+| [hczkbot/cli/commands.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/cli/commands.py) | Dream cron 任务（多批次循环） |
+| [tests/agent/test_memory_store.py](file:///Volumes/data/hczkAgent/nanobot/tests/agent/test_memory_store.py) | MemoryStore 测试（含归档、计数测试） |
+| [tests/command/test_builtin_dream.py](file:///Volumes/data/hczkAgent/nanobot/tests/command/test_builtin_dream.py) | Dream 命令测试（含多批次循环测试） |

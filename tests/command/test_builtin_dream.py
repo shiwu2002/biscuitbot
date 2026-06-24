@@ -12,17 +12,36 @@ from hczkbot.utils.gitstore import CommitInfo
 
 
 class _FakeStore:
-    def __init__(self, git, last_dream_cursor: int = 1, dream_prompt_result=None):
+    def __init__(self, git, last_dream_cursor: int = 1, dream_prompt_result=None,
+                 dream_prompt_results=None, pending_count: int = 0):
         self.git = git
         self._last_dream_cursor = last_dream_cursor
         self._dream_prompt_result = dream_prompt_result
+        # Queue of results for multi-batch testing; each pop returns the next.
+        self._dream_prompt_results = list(dream_prompt_results) if dream_prompt_results else None
+        self._pending_count = pending_count
         self.compact_history_called = False
+        self.cursor_advances = []
 
     def get_last_dream_cursor(self) -> int:
         return self._last_dream_cursor
 
     def build_dream_prompt(self):
+        if self._dream_prompt_results is not None:
+            if self._dream_prompt_results:
+                return self._dream_prompt_results.pop(0)
+            return None
         return self._dream_prompt_result
+
+    def count_unprocessed_history(self) -> int:
+        return self._pending_count
+
+    def set_last_dream_cursor(self, cursor: int) -> None:
+        self._last_dream_cursor = cursor
+        self.cursor_advances.append(cursor)
+
+    def build_dream_tools(self):
+        return None
 
     def compact_history(self) -> None:
         self.compact_history_called = True
@@ -73,16 +92,28 @@ def _make_ctx(raw: str, git: _FakeGit, *, args: str = "", last_dream_cursor: int
     return CommandContext(msg=msg, session=None, key=msg.session_key, raw=raw, args=args, loop=loop)
 
 
-def _make_dream_ctx(tmp_path) -> tuple[CommandContext, _FakeBus]:
+def _make_dream_ctx(tmp_path, *, store=None, dream_prompt_result=None,
+                    dream_prompt_results=None, pending_count: int = 0) -> tuple[CommandContext, _FakeBus]:
     msg = InboundMessage(channel="cli", sender_id="u1", chat_id="direct", content="/dream")
-    store = _FakeStore(_FakeGit(initialized=False), dream_prompt_result=None)
+    if store is None:
+        store = _FakeStore(
+            _FakeGit(initialized=False),
+            dream_prompt_result=dream_prompt_result,
+            dream_prompt_results=dream_prompt_results,
+            pending_count=pending_count,
+        )
     bus = _FakeBus()
     sessions_dir = tmp_path / "sessions"
     sessions_dir.mkdir()
+
+    async def _process_direct(prompt, *, session_key, ephemeral, tools, **kw):
+        return SimpleNamespace(metadata={"_stop_reason": "completed"})
+
     loop = SimpleNamespace(
         bus=bus,
         context=SimpleNamespace(memory=store, timezone="UTC"),
         sessions=SimpleNamespace(sessions_dir=sessions_dir),
+        process_direct=_process_direct,
     )
     ctx = CommandContext(msg=msg, session=None, key=msg.session_key, raw="/dream", args="", loop=loop)
     return ctx, bus
@@ -193,3 +224,89 @@ async def test_dream_restore_success_mentions_files_and_followup() -> None:
     assert "- New safety commit: `eeee9999`" in out.content
     assert "- Restored files: `SOUL.md`, `memory/MEMORY.md`" in out.content
     assert "Use `/dream-log eeee9999` to inspect the restore diff." in out.content
+
+
+# ---------------------------------------------------------------------------
+# Multi-batch Dream loop tests
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_dream_processes_multiple_batches(tmp_path) -> None:
+    """Dream should loop through multiple batches, advancing the cursor each time."""
+    results = [("prompt-1", 10), ("prompt-2", 20), ("prompt-3", 30)]
+    ctx, bus = _make_dream_ctx(tmp_path, dream_prompt_results=results, pending_count=0)
+
+    immediate = await cmd_dream(ctx)
+    # Poll until the background task publishes its result.
+    for _ in range(50):
+        if bus.outbound:
+            break
+        await asyncio.sleep(0.01)
+
+    assert immediate.content == "Dreaming..."
+    assert len(bus.outbound) == 1
+    store = ctx.loop.context.memory
+    # Cursor should have been advanced 3 times.
+    assert store.cursor_advances == [10, 20, 30]
+    assert "3 batch(es)" in bus.outbound[0].content
+
+
+@pytest.mark.asyncio
+async def test_dream_stops_on_incomplete_batch(tmp_path) -> None:
+    """If a batch does not complete, Dream should stop and not advance the cursor."""
+    store = _FakeStore(
+        _FakeGit(initialized=False),
+        dream_prompt_results=[("prompt-1", 10), ("prompt-2", 20)],
+        pending_count=5,
+    )
+    call_count = 0
+
+    async def _process_direct(prompt, *, session_key, ephemeral, tools, **kw):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            return SimpleNamespace(metadata={"_stop_reason": "length"})
+        return SimpleNamespace(metadata={"_stop_reason": "completed"})
+
+    bus = _FakeBus()
+    sessions_dir = tmp_path / "sessions"
+    sessions_dir.mkdir()
+    loop = SimpleNamespace(
+        bus=bus,
+        context=SimpleNamespace(memory=store, timezone="UTC"),
+        sessions=SimpleNamespace(sessions_dir=sessions_dir),
+        process_direct=_process_direct,
+    )
+    msg = InboundMessage(channel="cli", sender_id="u1", chat_id="direct", content="/dream")
+    ctx = CommandContext(msg=msg, session=None, key=msg.session_key, raw="/dream", args="", loop=loop)
+
+    await cmd_dream(ctx)
+    for _ in range(50):
+        if bus.outbound:
+            break
+        await asyncio.sleep(0.01)
+
+    # Only the first batch's cursor should have been advanced.
+    assert store.cursor_advances == [10]
+    assert "did not complete" in bus.outbound[0].content
+    assert "batch 2" in bus.outbound[0].content
+
+
+@pytest.mark.asyncio
+async def test_dream_reports_pending_when_batch_limit_reached(tmp_path) -> None:
+    """When max batches are hit but entries remain, report pending count."""
+    # _DREAM_MAX_BATCHES = 3, so provide exactly 3 batches with pending > 0.
+    results = [("prompt-1", 10), ("prompt-2", 20), ("prompt-3", 30)]
+    ctx, bus = _make_dream_ctx(tmp_path, dream_prompt_results=results, pending_count=7)
+
+    await cmd_dream(ctx)
+    for _ in range(50):
+        if bus.outbound:
+            break
+        await asyncio.sleep(0.01)
+
+    store = ctx.loop.context.memory
+    assert store.cursor_advances == [10, 20, 30]
+    content = bus.outbound[0].content
+    assert "3 batch(es)" in content
+    assert "7 entries still pending" in content

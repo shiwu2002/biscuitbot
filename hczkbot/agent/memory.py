@@ -18,6 +18,7 @@ from loguru import logger
 from hczkbot.session.manager import Session
 from hczkbot.utils.gitstore import GitStore
 from hczkbot.utils.helpers import (
+    atomic_write_text,
     ensure_dir,
     estimate_message_tokens,
     estimate_prompt_tokens_chain,
@@ -65,7 +66,7 @@ class MemoryStore:
         self._oversize_logged = False  # rate-limit oversized-entry warning
         self._append_lock = threading.Lock()  # serialize cursor allocation + append
         self._git = GitStore(workspace, tracked_files=[
-            "SOUL.md", "USER.md", "memory/MEMORY.md", "memory/.dream_cursor",
+            "SOUL.md", "USER.md", "memory/MEMORY.md",
         ])
         self._maybe_migrate_legacy_history()
 
@@ -285,7 +286,9 @@ class MemoryStore:
                 record["session_key"] = session_key
             with open(self.history_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            self._cursor_file.write_text(str(cursor), encoding="utf-8")
+                f.flush()
+                os.fsync(f.fileno())
+            atomic_write_text(self._cursor_file, str(cursor))
         return cursor
 
     @staticmethod
@@ -384,14 +387,35 @@ class MemoryStore:
         ]
 
     def compact_history(self) -> None:
-        """Drop oldest entries if the file exceeds *max_history_entries*."""
+        """Drop oldest entries if the file exceeds *max_history_entries*.
+
+        Acquires ``_append_lock`` so that concurrent ``append_history`` calls
+        cannot be lost by the atomic rewrite.  Evicted entries are archived
+        to a dated backup file (``history-archive-<date>.jsonl``) rather
+        than silently deleted, preserving auditability.
+        """
         if self.max_history_entries <= 0:
             return
-        entries = self._read_entries()
-        if len(entries) <= self.max_history_entries:
+        with self._append_lock:
+            entries = self._read_entries()
+            if len(entries) <= self.max_history_entries:
+                return
+            kept = entries[-self.max_history_entries:]
+            evicted = entries[:-self.max_history_entries]
+            self._archive_evicted_entries(evicted)
+            self._write_entries(kept)
+
+    def _archive_evicted_entries(self, entries: list[dict[str, Any]]) -> None:
+        """Append evicted entries to a dated archive file for auditability."""
+        if not entries:
             return
-        kept = entries[-self.max_history_entries:]
-        self._write_entries(kept)
+        archive_file = self.memory_dir / f"history-archive-{datetime.now():%Y-%m}.jsonl"
+        try:
+            with open(archive_file, "a", encoding="utf-8") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            logger.warning("Failed to archive {} evicted history entries", len(entries))
 
     # -- JSONL helpers -------------------------------------------------------
 
@@ -411,20 +435,48 @@ class MemoryStore:
         return entries
 
     def _read_last_entry(self) -> dict[str, Any] | None:
-        """Read the last entry from the JSONL file efficiently."""
+        """Read the last entry from the JSONL file efficiently.
+
+        Uses exponential backoff on the read window: individual history
+        entries can exceed 8 KB (LLM summaries up to ``_ARCHIVE_SUMMARY_MAX_CHARS``
+        plus JSON overhead), so a fixed 4 KB window would truncate the last
+        line and fail ``json.loads``.  We start at 8 KB and double until the
+        last line parses or the whole file has been read.
+
+        ``UnicodeDecodeError`` (caused by the read window splitting a
+        multi-byte UTF-8 character) is also handled by expanding the window
+        rather than aborting — critical for CJK content where every character
+        is 3 bytes.
+        """
         try:
             with open(self.history_file, "rb") as f:
                 f.seek(0, 2)
                 size = f.tell()
                 if size == 0:
                     return None
-                read_size = min(size, 4096)
-                f.seek(size - read_size)
-                data = f.read().decode("utf-8")
-                lines = [line for line in data.split("\n") if line.strip()]
-                if not lines:
-                    return None
-                return json.loads(lines[-1])
+                read_size = min(size, 8192)
+                while True:
+                    f.seek(size - read_size)
+                    raw = f.read()
+                    try:
+                        data = raw.decode("utf-8")
+                    except UnicodeDecodeError:
+                        # Window split a multi-byte char — expand and retry.
+                        if read_size >= size:
+                            return None
+                        read_size = min(size, read_size * 2)
+                        continue
+                    lines = [line for line in data.split("\n") if line.strip()]
+                    if lines:
+                        try:
+                            return json.loads(lines[-1])
+                        except json.JSONDecodeError:
+                            # Last line is truncated (spans beyond the read
+                            # window).  Expand the window and retry.
+                            pass
+                    if read_size >= size:
+                        return None
+                    read_size = min(size, read_size * 2)
         except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError):
             return None
 
@@ -462,7 +514,7 @@ class MemoryStore:
         return 0
 
     def set_last_dream_cursor(self, cursor: int) -> None:
-        self._dream_cursor_file.write_text(str(cursor), encoding="utf-8")
+        atomic_write_text(self._dream_cursor_file, str(cursor))
 
     def build_dream_prompt(self, *, max_entries: int = 20) -> tuple[str, int] | None:
         """Build the Dream prompt with unprocessed history context.
@@ -487,6 +539,11 @@ class MemoryStore:
         )
         prompt = f"{template}\n\n## Conversation History\n{history_text}"
         return (prompt, batch[-1]["cursor"])
+
+    def count_unprocessed_history(self) -> int:
+        """Return the number of history entries not yet processed by Dream."""
+        last_cursor = self.get_last_dream_cursor()
+        return len(self.read_unprocessed_history(since_cursor=last_cursor))
 
     def build_dream_tools(self):
         """Build the restricted tool registry used by Dream runs."""
@@ -838,6 +895,7 @@ class Consolidator:
                         "content": render_template(
                             "agent/consolidator_archive.md",
                             strip=True,
+                            session_key=session_key,
                         ),
                     },
                     {"role": "user", "content": formatted},

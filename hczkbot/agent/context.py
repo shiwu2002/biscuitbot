@@ -17,6 +17,7 @@ from hczkbot.utils.helpers import (
     current_time_str,
     detect_image_mime,
     load_bundled_template,
+    truncate_text,
     truncate_text_to_tokens,
 )
 from hczkbot.utils.prompt_templates import render_template
@@ -104,10 +105,7 @@ class ContextBuilder:
                 unified_session=unified_session,
             )
             if entries:
-                capped = entries[-self._MAX_RECENT_HISTORY:]
-                history_text = "\n".join(
-                    f"- [{e['timestamp']}] {e['content']}" for e in capped
-                )
+                history_text = self._format_recent_history(entries)
                 history_text = truncate_text_to_tokens(history_text, self._MAX_HISTORY_TOKENS)
                 parts.append("# Recent History\n\n" + history_text)
 
@@ -183,6 +181,39 @@ class ContextBuilder:
         if tpl is not None:
             return content.strip() == tpl.strip()
         return False
+
+    def _format_recent_history(self, entries: list[dict[str, Any]]) -> str:
+        """Format recent history entries, preserving a backlog summary when
+        the unprocessed history exceeds ``_MAX_RECENT_HISTORY``.
+
+        Without this, entries silently dropped by the cap would be invisible
+        to the agent until Dream processes them — the user would perceive
+        this as the agent "forgetting" recent context.  Instead, older
+        entries beyond the cap are condensed into a short ``[Backlog]``
+        prefix so the agent at least knows they exist.
+        """
+        if len(entries) <= self._MAX_RECENT_HISTORY:
+            return "\n".join(
+                f"- [{e['timestamp']}] {e['content']}" for e in entries
+            )
+
+        backlog = entries[:-self._MAX_RECENT_HISTORY]
+        recent = entries[-self._MAX_RECENT_HISTORY:]
+        backlog_count = len(backlog)
+        # Condense backlog: keep the 20 entries closest to the recent window
+        # (most temporally relevant), each truncated to 100 chars.
+        snippets = []
+        for e in backlog[-20:]:
+            snippet = truncate_text(e.get("content", ""), 100)
+            snippets.append(f"  - [{e['timestamp']}] {snippet}")
+        backlog_block = (
+            f"- [Backlog: {backlog_count} earlier entries not shown in full]\n"
+            + "\n".join(snippets)
+        )
+        recent_block = "\n".join(
+            f"- [{e['timestamp']}] {e['content']}" for e in recent
+        )
+        return f"{backlog_block}\n{recent_block}"
 
     def build_messages(
         self,

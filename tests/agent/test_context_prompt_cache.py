@@ -209,7 +209,9 @@ def test_cron_recent_history_can_see_own_history_and_unified_context(tmp_path) -
 
 
 def test_recent_history_capped_at_max(tmp_path) -> None:
-    """Only the most recent _MAX_RECENT_HISTORY entries are injected."""
+    """Only the most recent _MAX_RECENT_HISTORY entries are injected in full;
+    older entries are condensed into a [Backlog] summary rather than silently
+    dropped."""
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
@@ -217,9 +219,12 @@ def test_recent_history_capped_at_max(tmp_path) -> None:
         builder.memory.append_history(f"entry-{i}")
 
     prompt = builder.build_system_prompt()
-    assert "entry-0" not in prompt
-    assert "entry-19" not in prompt
+    # The most recent entry must always be present.
     assert f"entry-{builder._MAX_RECENT_HISTORY + 19}" in prompt
+    # Older entries beyond the cap appear in the backlog summary (truncated),
+    # so entry-0 may appear as a snippet but entry-19 (just outside the cap)
+    # should not appear in full form in the recent section.
+    assert "[Backlog:" in prompt
 
 
 def test_recent_history_truncated_at_max_tokens(tmp_path) -> None:

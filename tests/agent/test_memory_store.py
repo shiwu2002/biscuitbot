@@ -239,6 +239,48 @@ class TestHistoryWithCursor:
         assert len(entries) == 2
         assert entries[0]["cursor"] in {4, 5}
 
+    def test_compact_history_archives_evicted_entries(self, tmp_path):
+        """Evicted entries are archived to history-archive-*.jsonl, not lost."""
+        import glob
+
+        store = MemoryStore(tmp_path, max_history_entries=2)
+        store.append_history("event 1")
+        store.append_history("event 2")
+        store.append_history("event 3")
+        store.append_history("event 4")
+        store.append_history("event 5")
+        store.compact_history()
+
+        archive_files = glob.glob(str(store.memory_dir / "history-archive-*.jsonl"))
+        assert len(archive_files) == 1
+        with open(archive_files[0], encoding="utf-8") as f:
+            lines = [json.loads(line) for line in f if line.strip()]
+        # 3 entries were evicted (events 1-3).
+        assert len(lines) == 3
+        assert lines[0]["content"] == "event 1"
+        assert lines[2]["content"] == "event 3"
+
+    def test_count_unprocessed_history_zero_when_all_processed(self, tmp_path):
+        """count_unprocessed_history returns 0 when dream_cursor matches last entry."""
+        store = MemoryStore(tmp_path)
+        store.append_history("event 1")
+        store.append_history("event 2")
+        last_cursor = store._read_last_entry()["cursor"]
+        store.set_last_dream_cursor(last_cursor)
+        assert store.count_unprocessed_history() == 0
+
+    def test_count_unprocessed_history_returns_pending_count(self, tmp_path):
+        """count_unprocessed_history returns correct pending count."""
+        store = MemoryStore(tmp_path)
+        store.append_history("event 1")  # cursor 1
+        store.append_history("event 2")  # cursor 2
+        store.append_history("event 3")  # cursor 3
+        store.append_history("event 4")  # cursor 4
+        store.append_history("event 5")  # cursor 5
+        store.set_last_dream_cursor(2)
+        # Entries with cursor > 2 are: 3, 4, 5 → 3 pending.
+        assert store.count_unprocessed_history() == 3
+
     def test_write_entries_uses_atomic_write(self, tmp_path):
         """_write_entries uses temp file + os.replace for atomicity."""
         store = MemoryStore(tmp_path)
@@ -339,7 +381,10 @@ class TestDreamCursor:
         store2 = MemoryStore(store.workspace)
         assert store2.get_last_dream_cursor() == 3
 
-    def test_git_restore_rolls_back_dream_cursor(self, tmp_path):
+    def test_git_restore_does_not_roll_back_dream_cursor(self, tmp_path):
+        """Dream cursor is intentionally NOT tracked by Git so that
+        /dream-restore does not cause Dream to re-process already-consolidated
+        history (history.jsonl itself is also not Git-tracked)."""
         store = MemoryStore(tmp_path)
         store.write_memory("before")
         store.set_last_dream_cursor(1)
@@ -356,8 +401,11 @@ class TestDreamCursor:
         restore_sha = store.git.revert(dream_sha)
 
         assert restore_sha is not None
+        # MEMORY.md is tracked and should be reverted.
         assert store.read_memory() == "before"
-        assert store.get_last_dream_cursor() == 1
+        # .dream_cursor is NOT tracked — revert must not roll it back,
+        # otherwise Dream would re-process history that was already consolidated.
+        assert store.get_last_dream_cursor() == 3
 
 
 class TestLegacyHistoryMigration:

@@ -15,6 +15,10 @@ from hczkbot.command.router import CommandContext, CommandRouter
 from hczkbot.utils.helpers import build_status_content
 from hczkbot.utils.restart import set_restart_notice_to_env
 
+# Maximum Dream batches per run (each batch processes up to 20 history entries).
+# Caps token consumption while still draining backlogs faster than one-batch-per-run.
+_DREAM_MAX_BATCHES = 3
+
 
 @dataclass(frozen=True)
 class BuiltinCommandSpec:
@@ -319,34 +323,52 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
 
         store = loop.context.memory
         content = ""
-        resp = None
         t0 = time.monotonic()
+        batches_processed = 0
+        last_resp = None
         try:
-            result = store.build_dream_prompt()
-            if result is None:
+            while batches_processed < _DREAM_MAX_BATCHES:
+                result = store.build_dream_prompt()
+                if result is None:
+                    break
+                prompt, last_cursor = result
+                key = dream_session_key()
+                resp = await loop.process_direct(
+                    prompt,
+                    session_key=key,
+                    ephemeral=True,
+                    tools=store.build_dream_tools(),
+                )
+                last_resp = resp
+                if not MemoryStore.dream_run_completed(resp):
+                    elapsed = time.monotonic() - t0
+                    content = (
+                        f"Dream did not complete after {elapsed:.1f}s "
+                        f"(batch {batches_processed + 1}); "
+                        "memory cursor was not advanced."
+                    )
+                    break
+                store.set_last_dream_cursor(last_cursor)
+                batches_processed += 1
+
+            if batches_processed == 0 and not content:
+                # No history to process at all.
                 await loop.bus.publish_outbound(OutboundMessage(
                     channel=msg.channel, chat_id=msg.chat_id,
                     content=_format_dream_no_input_message(),
                     metadata={"render_as": "text"},
                 ))
                 return
-            prompt, last_cursor = result
-            key = dream_session_key()
-            resp = await loop.process_direct(
-                prompt,
-                session_key=key,
-                ephemeral=True,
-                tools=store.build_dream_tools(),
-            )
-            elapsed = time.monotonic() - t0
-            if MemoryStore.dream_run_completed(resp):
-                store.set_last_dream_cursor(last_cursor)
-                content = f"Dream completed in {elapsed:.1f}s."
-            else:
-                content = (
-                    f"Dream did not complete after {elapsed:.1f}s; "
-                    "memory cursor was not advanced."
-                )
+            if not content:
+                elapsed = time.monotonic() - t0
+                remaining = store.count_unprocessed_history()
+                if remaining > 0:
+                    content = (
+                        f"Dream processed {batches_processed} batch(es) in {elapsed:.1f}s; "
+                        f"{remaining} entries still pending."
+                    )
+                else:
+                    content = f"Dream completed in {elapsed:.1f}s ({batches_processed} batch(es))."
         except Exception as e:
             elapsed = time.monotonic() - t0
             content = f"Dream failed after {elapsed:.1f}s: {e}"
@@ -354,12 +376,12 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
             from hczkbot.webui.token_usage import record_response_token_usage
 
             record_response_token_usage(
-                resp,
+                last_resp,
                 source="dream",
                 timezone_name=getattr(loop.context, "timezone", None),
             )
             if store.git.is_initialized():
-                commit_msg = build_dream_commit_message("dream: manual run", resp)
+                commit_msg = build_dream_commit_message("dream: manual run", last_resp)
                 sha = store.git.auto_commit(commit_msg)
                 if sha:
                     content += f" (commit {sha})"
@@ -507,6 +529,11 @@ async def cmd_dream_log(ctx: CommandContext) -> OutboundMessage:
             content = _format_dream_log_content(commit, diff)
         else:
             content = "Dream memory has no saved versions yet."
+
+    # Append Dream processing progress so users can see if history is backing up.
+    pending = store.count_unprocessed_history()
+    if pending > 0:
+        content += f"\n\n---\n⏳ {pending} history entries pending Dream consolidation."
 
     return OutboundMessage(
         channel=ctx.msg.channel, chat_id=ctx.msg.chat_id,
