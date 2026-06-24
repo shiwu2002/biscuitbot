@@ -599,6 +599,32 @@ def _transcription_provider_rows(config: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _vision_provider_rows(config: Any) -> list[dict[str, Any]]:
+    """List all LLM providers usable as vision credential sources."""
+    rows: list[dict[str, Any]] = []
+    for spec in PROVIDERS:
+        if spec.is_transcription_only:
+            continue
+        provider_config = getattr(config.providers, spec.name, None)
+        if provider_config is None:
+            continue
+        configured = bool(
+            getattr(provider_config, "api_key", None)
+            or spec.is_local
+            or spec.is_oauth
+        )
+        rows.append({
+            "name": spec.name,
+            "label": spec.label,
+            "configured": configured,
+            "auth_type": "oauth" if spec.is_oauth else "api_key",
+            "api_key_hint": _mask_secret_hint(getattr(provider_config, "api_key", None)),
+            "api_base": getattr(provider_config, "api_base", None),
+            "default_api_base": spec.default_api_base if spec.default_api_base else None,
+        })
+    return rows
+
+
 def settings_payload(
     *,
     requires_restart: bool = False,
@@ -708,6 +734,8 @@ def settings_payload(
             "bot_name": defaults.bot_name,
             "bot_icon": defaults.bot_icon,
             "tool_hint_max_length": defaults.tool_hint_max_length,
+            "vision_model": defaults.vision_model,
+            "vision_model_override": defaults.vision_model_override,
         },
         "model_presets": model_presets,
         "providers": providers,
@@ -743,6 +771,31 @@ def settings_payload(
             "max_images_per_turn": image_config.max_images_per_turn,
             "save_dir": image_config.save_dir,
             "providers": image_providers,
+        },
+        "screenshot": {
+            "enabled": config.tools.screenshot.enable,
+            "max_width": config.tools.screenshot.max_width,
+            "max_height": config.tools.screenshot.max_height,
+            "quality": config.tools.screenshot.quality,
+            "vision_model": defaults.vision_model,
+            "vision_model_override": defaults.vision_model_override,
+            "vision_model_configured": bool(
+                defaults.vision_model
+                and (
+                    defaults.vision_model in config.model_presets
+                    or getattr(config.providers, defaults.vision_model, None) is not None
+                )
+            ),
+            "resolved_model": (
+                (defaults.vision_model_override or "").strip()
+                or (
+                    config.model_presets[defaults.vision_model].model
+                    if defaults.vision_model
+                    and defaults.vision_model in config.model_presets
+                    else None
+                )
+            ),
+            "available_providers": _vision_provider_rows(config),
         },
         "transcription": {
             "enabled": transcription.enabled,
@@ -1252,6 +1305,96 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
         )
         if not selected_provider or not selected_provider["configured"]:
             raise WebUISettingsError("image generation provider is not configured")
+
+    if changed:
+        save_config(config)
+    return settings_payload(requires_restart=changed)
+
+
+def update_screenshot_settings(query: QueryParams) -> dict[str, Any]:
+    """Update screenshot tool configuration."""
+    config = load_config()
+    screenshot_config = config.tools.screenshot
+    defaults = config.agents.defaults
+    changed = False
+
+    enabled = _query_first(query, "enabled")
+    if enabled is not None:
+        parsed_enabled = _parse_bool(enabled, "enabled")
+        if screenshot_config.enable != parsed_enabled:
+            screenshot_config.enable = parsed_enabled
+            changed = True
+
+    vision_model = _query_first_alias(query, "vision_model", "visionModel")
+    if vision_model is not None:
+        vision_model = vision_model.strip()
+        if vision_model:
+            is_preset = vision_model in config.model_presets
+            is_provider = getattr(config.providers, vision_model, None) is not None
+            if not is_preset and not is_provider:
+                raise WebUISettingsError(
+                    f"vision model '{vision_model}' is not a known preset or provider"
+                )
+        if defaults.vision_model != (vision_model or None):
+            defaults.vision_model = vision_model or None
+            changed = True
+
+    vision_model_override = _query_first_alias(
+        query, "vision_model_override", "visionModelOverride"
+    )
+    if vision_model_override is not None:
+        override = vision_model_override.strip()
+        if defaults.vision_model_override != (override or None):
+            defaults.vision_model_override = override or None
+            changed = True
+
+    max_width = _query_first_alias(query, "max_width", "maxWidth")
+    if max_width is not None:
+        try:
+            parsed_width = int(max_width)
+        except ValueError:
+            raise WebUISettingsError("max_width must be an integer") from None
+        if parsed_width < 320 or parsed_width > 7680:
+            raise WebUISettingsError("max_width must be between 320 and 7680")
+        if screenshot_config.max_width != parsed_width:
+            screenshot_config.max_width = parsed_width
+            changed = True
+
+    max_height = _query_first_alias(query, "max_height", "maxHeight")
+    if max_height is not None:
+        try:
+            parsed_height = int(max_height)
+        except ValueError:
+            raise WebUISettingsError("max_height must be an integer") from None
+        if parsed_height < 240 or parsed_height > 4320:
+            raise WebUISettingsError("max_height must be between 240 and 4320")
+        if screenshot_config.max_height != parsed_height:
+            screenshot_config.max_height = parsed_height
+            changed = True
+
+    quality = _query_first(query, "quality")
+    if quality is not None:
+        try:
+            parsed_quality = int(quality)
+        except ValueError:
+            raise WebUISettingsError("quality must be an integer") from None
+        if parsed_quality < 10 or parsed_quality > 100:
+            raise WebUISettingsError("quality must be between 10 and 100")
+        if screenshot_config.quality != parsed_quality:
+            screenshot_config.quality = parsed_quality
+            changed = True
+
+    if screenshot_config.enable:
+        if not defaults.vision_model:
+            raise WebUISettingsError(
+                "vision model must be configured to enable screenshot"
+            )
+        is_preset = defaults.vision_model in config.model_presets
+        is_provider = getattr(config.providers, defaults.vision_model, None) is not None
+        if not is_preset and not is_provider:
+            raise WebUISettingsError(
+                f"vision model '{defaults.vision_model}' is not a known preset or provider"
+            )
 
     if changed:
         save_config(config)

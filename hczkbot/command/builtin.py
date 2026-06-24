@@ -9,6 +9,8 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass
 
+from loguru import logger
+
 from hczkbot import __version__
 from hczkbot.bus.events import OutboundMessage
 from hczkbot.command.router import CommandContext, CommandRouter
@@ -18,6 +20,12 @@ from hczkbot.utils.restart import set_restart_notice_to_env
 # Maximum Dream batches per run (each batch processes up to 20 history entries).
 # Caps token consumption while still draining backlogs faster than one-batch-per-run.
 _DREAM_MAX_BATCHES = 3
+
+# Per-batch timeout for Dream LLM calls.  Without this, a hung LLM request
+# (network stall, provider outage, streaming idle-timeout failure) would
+# block the Dream loop indefinitely and — because Dream runs inside the
+# cron callback / command handler — freeze the whole agent.
+_DREAM_BATCH_TIMEOUT_S = float(os.environ.get("HCZKBOT_DREAM_BATCH_TIMEOUT_S", "180"))
 
 
 @dataclass(frozen=True)
@@ -333,12 +341,28 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
                     break
                 prompt, last_cursor = result
                 key = dream_session_key()
-                resp = await loop.process_direct(
-                    prompt,
-                    session_key=key,
-                    ephemeral=True,
-                    tools=store.build_dream_tools(),
-                )
+                try:
+                    resp = await asyncio.wait_for(
+                        loop.process_direct(
+                            prompt,
+                            session_key=key,
+                            ephemeral=True,
+                            tools=store.build_dream_tools(),
+                        ),
+                        timeout=_DREAM_BATCH_TIMEOUT_S,
+                    )
+                except asyncio.TimeoutError:
+                    elapsed = time.monotonic() - t0
+                    logger.warning(
+                        "Dream batch {} timed out after {:.1f}s; aborting remaining batches",
+                        batches_processed + 1,
+                        elapsed,
+                    )
+                    content = (
+                        f"Dream batch {batches_processed + 1} timed out after "
+                        f"{_DREAM_BATCH_TIMEOUT_S:.0f}s; memory cursor was not advanced."
+                    )
+                    break
                 last_resp = resp
                 if not MemoryStore.dream_run_completed(resp):
                     elapsed = time.monotonic() - t0

@@ -1165,7 +1165,7 @@ def _run_gateway(
             store = agent.context.memory
             last_resp = None
             batches_processed = 0
-            from hczkbot.command.builtin import _DREAM_MAX_BATCHES
+            from hczkbot.command.builtin import _DREAM_BATCH_TIMEOUT_S, _DREAM_MAX_BATCHES
             try:
                 while batches_processed < _DREAM_MAX_BATCHES:
                     result = store.build_dream_prompt()
@@ -1173,13 +1173,24 @@ def _run_gateway(
                         break
                     prompt, last_cursor = result
                     key = dream_session_key()
-                    resp = await agent.process_direct(
-                        prompt,
-                        session_key=key,
-                        ephemeral=True,
-                        tools=store.build_dream_tools(),
-                        on_progress=_silent,
-                    )
+                    try:
+                        resp = await asyncio.wait_for(
+                            agent.process_direct(
+                                prompt,
+                                session_key=key,
+                                ephemeral=True,
+                                tools=store.build_dream_tools(),
+                                on_progress=_silent,
+                            ),
+                            timeout=_DREAM_BATCH_TIMEOUT_S,
+                        )
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "Dream cron batch {} timed out after {:.0f}s; aborting remaining batches",
+                            batches_processed + 1,
+                            _DREAM_BATCH_TIMEOUT_S,
+                        )
+                        break
                     last_resp = resp
                     if not MemoryStore.dream_run_completed(resp):
                         logger.warning(

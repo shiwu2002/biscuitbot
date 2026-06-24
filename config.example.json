@@ -25,7 +25,9 @@
         "intervalH": 2,
         "maxBatchSize": 50,
         "maxIterations": 3
-      }
+      },
+      "visionModel": null,
+      "visionModelOverride": null
     }
   },
 

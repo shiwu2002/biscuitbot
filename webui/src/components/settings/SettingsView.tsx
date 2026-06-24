@@ -101,6 +101,7 @@ import {
   updateModelConfiguration,
   updateNetworkSafetySettings,
   updateProviderSettings,
+  updateScreenshotSettings,
   updateSettings,
   updateTranscriptionSettings,
   updateWebSearchSettings,
@@ -127,6 +128,7 @@ import type {
   McpPresetsPayload,
   NetworkSafetySettingsUpdate,
   ProviderModelsPayload,
+  ScreenshotSettingsUpdate,
   SessionAutomationJob,
   SettingsPayload,
   SkillSummary,
@@ -140,6 +142,7 @@ export type SettingsSectionKey =
   | "appearance"
   | "models"
   | "image"
+  | "vision"
   | "voice"
   | "browser"
   | "apps"
@@ -183,7 +186,7 @@ interface ModelConfigurationDraft {
   model: string;
 }
 
-type PendingRestartSection = "runtime" | "browser" | "image";
+type PendingRestartSection = "runtime" | "browser" | "image" | "vision";
 type PendingRestartSections = Record<PendingRestartSection, boolean>;
 type RestartAwarePayload = {
   requires_restart?: boolean;
@@ -263,6 +266,7 @@ const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   runtime: false,
   browser: false,
   image: false,
+  vision: false,
 };
 
 const DEFAULT_CUSTOM_MCP_FORM: CustomMcpForm = {
@@ -382,6 +386,15 @@ const DEFAULT_IMAGE_GENERATION_FORM: ImageGenerationSettingsUpdate = {
   maxImagesPerTurn: 4,
 };
 
+const DEFAULT_SCREENSHOT_FORM: ScreenshotSettingsUpdate = {
+  enabled: false,
+  visionModel: null,
+  visionModelOverride: null,
+  maxWidth: 1920,
+  maxHeight: 1080,
+  quality: 85,
+};
+
 const DEFAULT_TRANSCRIPTION_FORM: TranscriptionSettingsUpdate = {
   enabled: true,
   provider: "dashscope",
@@ -454,6 +467,17 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
   };
 }
 
+function screenshotFormFromPayload(payload: SettingsPayload): ScreenshotSettingsUpdate {
+  return {
+    enabled: payload.screenshot.enabled,
+    visionModel: payload.screenshot.vision_model,
+    visionModelOverride: payload.screenshot.vision_model_override,
+    maxWidth: payload.screenshot.max_width,
+    maxHeight: payload.screenshot.max_height,
+    quality: payload.screenshot.quality,
+  };
+}
+
 function transcriptionFormFromPayload(payload: SettingsPayload): TranscriptionSettingsUpdate {
   const transcription = payload.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
   return {
@@ -484,6 +508,7 @@ function pendingRestartSectionsFromPayload(payload: SettingsPayload): PendingRes
     runtime: sections.includes("runtime"),
     browser: sections.includes("browser"),
     image: sections.includes("image"),
+    vision: sections.includes("vision"),
   };
 }
 
@@ -530,6 +555,7 @@ export function SettingsView({
   const [imageGenerationSaving, setImageGenerationSaving] = useState(false);
   const [transcriptionSaving, setTranscriptionSaving] = useState(false);
   const [networkSafetySaving, setNetworkSafetySaving] = useState(false);
+  const [screenshotSaving, setScreenshotSaving] = useState(false);
   const [hostEngineApplying, setHostEngineApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>(initialSection);
@@ -570,6 +596,9 @@ export function SettingsView({
         ? imageGenerationFormFromPayload(initialSettings)
         : DEFAULT_IMAGE_GENERATION_FORM,
   );
+  const [screenshotForm, setScreenshotForm] = useState<ScreenshotSettingsUpdate>(() =>
+    initialSettings ? screenshotFormFromPayload(initialSettings) : DEFAULT_SCREENSHOT_FORM,
+  );
   const [transcriptionForm, setTranscriptionForm] = useState<TranscriptionSettingsUpdate>(
     () => initialSettings ? transcriptionFormFromPayload(initialSettings) : DEFAULT_TRANSCRIPTION_FORM,
   );
@@ -605,6 +634,7 @@ export function SettingsView({
     setForm(agentDraftFromPayload(payload));
     setWebSearchForm((prev) => webSearchFormFromPayload(payload, prev));
     setImageGenerationForm(imageGenerationFormFromPayload(payload));
+    setScreenshotForm(screenshotFormFromPayload(payload));
     setTranscriptionForm(transcriptionFormFromPayload(payload));
     setNetworkSafetyForm(networkSafetyFormFromPayload(payload));
     if (payload.restart_required_sections) {
@@ -822,6 +852,18 @@ export function SettingsView({
     );
   }, [imageGenerationForm, settings]);
 
+  const screenshotDirty = useMemo(() => {
+    if (!settings) return false;
+    return (
+      screenshotForm.enabled !== settings.screenshot.enabled ||
+      screenshotForm.visionModel !== settings.screenshot.vision_model ||
+      screenshotForm.visionModelOverride !== settings.screenshot.vision_model_override ||
+      screenshotForm.maxWidth !== settings.screenshot.max_width ||
+      screenshotForm.maxHeight !== settings.screenshot.max_height ||
+      screenshotForm.quality !== settings.screenshot.quality
+    );
+  }, [screenshotForm, settings]);
+
   const transcriptionDirty = useMemo(() => {
     if (!settings) return false;
     const transcription = settings.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
@@ -1034,6 +1076,24 @@ export function SettingsView({
       setError((err as Error).message);
     } finally {
       setImageGenerationSaving(false);
+    }
+  };
+
+  const saveScreenshotSettings = async () => {
+    if (!settings || !screenshotDirty || screenshotSaving) return;
+    setScreenshotSaving(true);
+    try {
+      const payload = await updateScreenshotSettings(token, screenshotForm);
+      applyPayload(payload);
+      if (payload.requires_restart) {
+        setPendingRestartSections((prev) => ({ ...prev, vision: true }));
+      }
+      await maybeRestartHostEngine(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setScreenshotSaving(false);
     }
   };
 
@@ -1515,6 +1575,21 @@ export function SettingsView({
             requiresRestartPending={pendingRestartSections.image}
           />
         );
+      case "vision":
+        return (
+          <VisionSettings
+            settings={settings}
+            form={screenshotForm}
+            dirty={screenshotDirty}
+            saving={screenshotSaving}
+            onChangeForm={setScreenshotForm}
+            onSave={saveScreenshotSettings}
+            onOpenModels={() => selectSection("models")}
+            onRestart={restartViaSettingsSurface}
+            isRestarting={isRestarting || hostEngineApplying}
+            requiresRestartPending={pendingRestartSections.vision}
+          />
+        );
       case "voice":
         return (
           <TranscriptionSettings
@@ -1766,6 +1841,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "appearance", icon: Palette, fallback: "Appearance" },
   { key: "models", icon: SlidersHorizontal, fallback: "Models" },
   { key: "image", icon: ImageIcon, fallback: "Image" },
+  { key: "vision", icon: Eye, fallback: "Vision" },
   { key: "voice", icon: Mic, fallback: "Voice" },
   { key: "browser", icon: Globe2, fallback: "Web" },
   { key: "runtime", icon: Server, fallback: "System" },
@@ -1921,6 +1997,23 @@ function OverviewSettings({
       ? tx("settings.values.configured", "Configured")
       : tx("settings.values.notConfigured", "Not configured")
   }`;
+  const visionStatus = settings.screenshot.enabled
+    ? tx("settings.values.enabled", "Enabled")
+    : tx("settings.values.disabled", "Disabled");
+  const visionProviderRow =
+    settings.screenshot.available_providers.find(
+      (provider) => provider.name === settings.screenshot.vision_model,
+    ) ?? null;
+  const visionPreset =
+    settings.model_presets.find((preset) => preset.name === settings.screenshot.vision_model) ?? null;
+  const visionResolvedModel =
+    settings.screenshot.resolved_model
+    ?? (visionPreset?.model ?? settings.screenshot.vision_model ?? null);
+  const visionCaption = `${visionProviderRow?.label ?? settings.screenshot.vision_model ?? tx("settings.vision.selectProvider", "Select provider")} · ${visionResolvedModel ?? "—"} · ${
+    settings.screenshot.vision_model_configured
+      ? tx("settings.values.configured", "Configured")
+      : tx("settings.values.notConfigured", "Not configured")
+  }`;
   const isNativeHost = (settings.surface ?? settings.runtime_surface) === "native";
   const workspaceCaption = shortWorkspacePath(settings.runtime.workspace_path);
   const runtimeTitle = isNativeHost
@@ -1975,6 +2068,14 @@ function OverviewSettings({
             caption={imageCaption}
             showBrandLogos={showBrandLogos}
             onClick={() => onSelectSection("image")}
+          />
+          <OverviewListRow
+            icon={Eye}
+            title={tx("settings.overview.vision", "Vision")}
+            value={visionStatus}
+            caption={visionCaption}
+            showBrandLogos={showBrandLogos}
+            onClick={() => onSelectSection("vision")}
           />
           <OverviewListRow
             icon={Mic}
@@ -3016,6 +3117,177 @@ function ImageGenerationSettings({
             message={
               missingCredential
                 ? tx("settings.image.missingCredential", "Configure this provider before enabling image generation.")
+                : undefined
+            }
+            dirtyMessage={tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")}
+            pendingMessage={tx("settings.status.savedRestartApply", "Saved. Restart when ready.")}
+            onSave={onSave}
+            onRestart={onRestart}
+            isRestarting={isRestarting}
+          />
+        </SettingsGroup>
+      </section>
+    </div>
+  );
+}
+
+function VisionSettings({
+  settings,
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onOpenModels,
+  onRestart,
+  isRestarting,
+  requiresRestartPending,
+}: {
+  settings: SettingsPayload;
+  form: ScreenshotSettingsUpdate;
+  dirty: boolean;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<ScreenshotSettingsUpdate>>;
+  onSave: () => void;
+  onOpenModels: () => void;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+  requiresRestartPending: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const visionModelConfigured = !!(
+    form.visionModel &&
+    settings.screenshot.available_providers.some(
+      (provider) => provider.name === form.visionModel && provider.configured,
+    )
+  );
+  const missingVisionModel = form.enabled && !form.visionModel;
+  const visionProviderOptions = settings.screenshot.available_providers.map(
+    (provider) => ({
+      name: provider.name,
+      label: provider.configured
+        ? provider.label
+        : `${provider.label} (${tx("settings.values.notConfigured", "Not configured")})`,
+    }),
+  );
+  const selectedPreset =
+    settings.model_presets.find((preset) => preset.name === form.visionModel) ?? null;
+  const overrideTrimmed = (form.visionModelOverride ?? "").trim();
+  const resolvedModel = overrideTrimmed || selectedPreset?.model || "";
+
+  return (
+    <div className="space-y-7">
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.vision", "Vision")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.screenshot", "Screenshot")}
+            description={tx("settings.help.screenshot", "Allow the agent to capture screenshots to understand the current screen state.")}
+          >
+            <ToggleButton
+              checked={form.enabled}
+              onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
+              ariaLabel={tx("settings.rows.screenshot", "Screenshot")}
+              label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.visionModelOverride", "Vision model")}
+            description={tx("settings.help.visionModelOverride", "Multimodal model id used to interpret screenshots (e.g. gpt-4o, qwen-vl-max, claude-3-5-sonnet). Leave empty to use the preset's default model.")}
+          >
+            <Input
+              value={form.visionModelOverride ?? ""}
+              onChange={(event) =>
+                onChangeForm((prev) => ({ ...prev, visionModelOverride: event.target.value || null }))
+              }
+              placeholder={selectedPreset?.model ?? tx("settings.vision.overridePlaceholder", "e.g. gpt-4o")}
+              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.visionModel", "Provider credentials")}
+            description={tx("settings.help.visionModel", "Select a provider to supply the API key and endpoint for the vision model above.")}
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <ProviderPicker
+                providers={visionProviderOptions}
+                value={form.visionModel ?? ""}
+                emptyLabel={tx("settings.vision.selectProvider", "Select provider")}
+                onChange={(visionModel) =>
+                  onChangeForm((prev) => ({ ...prev, visionModel }))
+                }
+              />
+              <StatusPill tone={visionModelConfigured ? "success" : "neutral"}>
+                {visionModelConfigured
+                  ? tx("settings.values.configured", "Configured")
+                  : tx("settings.values.notConfigured", "Not configured")}
+              </StatusPill>
+              {!visionModelConfigured ? (
+                <Button size="sm" variant="outline" onClick={onOpenModels} className="rounded-full">
+                  {tx("settings.vision.configureModel", "Configure model")}
+                </Button>
+              ) : null}
+            </div>
+          </SettingsRow>
+          {resolvedModel ? (
+            <ReadOnlyRow
+              title={tx("settings.rows.visionModelId", "Resolved model")}
+              value={resolvedModel}
+              description={overrideTrimmed
+                ? tx("settings.help.visionModelIdOverride", "Multimodal model id that will be sent to the provider.")
+                : tx("settings.help.visionModelId", "Underlying model id of the selected preset.")}
+            />
+          ) : null}
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.visionCapture", "Capture")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.screenshotMaxWidth", "Max width")}
+            description={tx("settings.help.screenshotMaxWidth", "Downscale captured screenshots to this max width (pixels).")}
+          >
+            <NumberInput
+              value={form.maxWidth}
+              min={320}
+              max={7680}
+              onChange={(maxWidth) => onChangeForm((prev) => ({ ...prev, maxWidth }))}
+              suffix="px"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.screenshotMaxHeight", "Max height")}
+            description={tx("settings.help.screenshotMaxHeight", "Downscale captured screenshots to this max height (pixels).")}
+          >
+            <NumberInput
+              value={form.maxHeight}
+              min={240}
+              max={4320}
+              onChange={(maxHeight) => onChangeForm((prev) => ({ ...prev, maxHeight }))}
+              suffix="px"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.screenshotQuality", "JPEG quality")}
+            description={tx("settings.help.screenshotQuality", "Compression quality for the JPEG sent to the vision model (10-100).")}
+          >
+            <NumberInput
+              value={form.quality}
+              min={10}
+              max={100}
+              onChange={(quality) => onChangeForm((prev) => ({ ...prev, quality }))}
+            />
+          </SettingsRow>
+          <RestartSettingsFooter
+            dirty={dirty}
+            saving={saving}
+            pendingRestart={requiresRestartPending}
+            disabled={missingVisionModel}
+            message={
+              missingVisionModel
+                ? tx("settings.vision.missingModel", "Select a vision model before enabling screenshots.")
                 : undefined
             }
             dirtyMessage={tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")}

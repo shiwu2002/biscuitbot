@@ -206,6 +206,47 @@ def build_provider_snapshot(
     )
 
 
+def build_vision_provider(
+    config: Config,
+    *,
+    vision_model: str | None = None,
+) -> LLMProvider | None:
+    """Create a vision LLM provider for screenshot understanding.
+
+    ``vision_model`` can be either:
+    - A **model preset name** (e.g. ``"default"``) — uses the preset's
+      provider credentials and model.
+    - A **provider name** (e.g. ``"openai"``, ``"anthropic"``) — uses that
+      provider's credentials directly.  Requires ``vision_model_override``
+      to specify the actual multimodal model id.
+
+    Returns ``None`` when *vision_model* is not configured, or when a
+    provider name is given but the provider is not configured.
+    """
+    name = vision_model or config.agents.defaults.vision_model
+    if not name:
+        return None
+
+    override = (config.agents.defaults.vision_model_override or "").strip()
+    preset = config.model_presets.get(name)
+    if preset is not None:
+        if override:
+            return _make_provider_core(config, preset=preset, model=override)
+        return _make_provider_core(config, preset=preset)
+
+    # Not a preset — treat as a provider name (e.g. "openai", "anthropic").
+    from hczkbot.config.schema import ModelPresetConfig
+
+    provider_config = getattr(config.providers, name, None)
+    if provider_config is None:
+        return None
+    temp_preset = ModelPresetConfig(
+        model=override or "vision",
+        provider=name,
+    )
+    return _make_provider_core(config, preset=temp_preset, model=override or None)
+
+
 def load_provider_snapshot(
     config_path: Path | None = None,
     *,

@@ -360,6 +360,8 @@ export interface SettingsPayload {
     bot_name: string;
     bot_icon: string;
     tool_hint_max_length: number;
+    vision_model: string | null;
+    vision_model_override: string | null;
   };
   model_presets: Array<{
     name: string;
@@ -422,6 +424,25 @@ export interface SettingsPayload {
     max_images_per_turn: number;
     save_dir: string;
     providers: Array<{
+      name: string;
+      label: string;
+      configured: boolean;
+      auth_type?: "api_key" | "oauth";
+      api_key_hint?: string | null;
+      api_base?: string | null;
+      default_api_base?: string | null;
+    }>;
+  };
+  screenshot: {
+    enabled: boolean;
+    max_width: number;
+    max_height: number;
+    quality: number;
+    vision_model: string | null;
+    vision_model_override: string | null;
+    vision_model_configured: boolean;
+    resolved_model: string | null;
+    available_providers: Array<{
       name: string;
       label: string;
       configured: boolean;
@@ -523,7 +544,7 @@ export interface SettingsPayload {
     exec_path_append_set: boolean;
   };
   requires_restart: boolean;
-  restart_required_sections?: Array<"runtime" | "browser" | "image">;
+  restart_required_sections?: Array<"runtime" | "browser" | "image" | "vision">;
   version?: {
     current: string;
   };
@@ -739,6 +760,15 @@ export interface ImageGenerationSettingsUpdate {
   defaultAspectRatio: string;
   defaultImageSize: string;
   maxImagesPerTurn: number;
+}
+
+export interface ScreenshotSettingsUpdate {
+  enabled: boolean;
+  visionModel: string | null;
+  visionModelOverride: string | null;
+  maxWidth: number;
+  maxHeight: number;
+  quality: number;
 }
 
 export interface TranscriptionSettingsUpdate {

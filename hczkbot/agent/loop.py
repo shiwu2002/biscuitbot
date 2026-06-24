@@ -213,6 +213,7 @@ class AgentLoop:
         preset_snapshot_loader: preset_helpers.PresetSnapshotLoader | None = None,
         runtime_events: RuntimeEventBus | None = None,
         runtime_model_publisher: Callable[[str, str | None], None] | None = None,
+        vision_provider_loader: Callable[[], LLMProvider | None] | None = None,
     ):
         from hczkbot.config.schema import ToolsConfig
 
@@ -258,6 +259,7 @@ class AgentLoop:
             and "openrouter" not in self._image_generation_provider_configs
         ):
             self._image_generation_provider_configs["openrouter"] = image_generation_provider_config
+        self._vision_provider_loader = vision_provider_loader
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
         self.workspace_scopes = WorkspaceScopeResolver(
@@ -366,6 +368,19 @@ class AgentLoop:
             config,
             provider_snapshot_loader,
         )
+        vision_provider_loader = extra.pop("vision_provider_loader", None)
+        if vision_provider_loader is None:
+            from hczkbot.providers.factory import build_vision_provider
+
+            _config_ref = config
+
+            def _default_vision_loader():
+                try:
+                    return build_vision_provider(_config_ref)
+                except Exception:
+                    return None
+
+            vision_provider_loader = _default_vision_loader
         return cls(
             bus=bus,
             provider=provider,
@@ -392,6 +407,7 @@ class AgentLoop:
             model_preset=defaults.model_preset,
             provider_snapshot_loader=provider_snapshot_loader,
             preset_snapshot_loader=preset_snapshot_loader,
+            vision_provider_loader=vision_provider_loader,
             **extra,
         )
 
@@ -491,6 +507,7 @@ class AgentLoop:
             sessions=self.sessions,
             provider_snapshot_loader=self._provider_snapshot_loader,
             image_generation_provider_configs=self._image_generation_provider_configs,
+            vision_provider_loader=self._vision_provider_loader,
             timezone=self.context.timezone or "UTC",
             workspace_sandbox=self.workspace_scopes.sandbox_status,
             runtime_events=self.runtime_events,
@@ -504,6 +521,18 @@ class AgentLoop:
                 MyTool(runtime_state=self, modify_allowed=self.tools_config.my.allow_set)
             )
             registered.append("my")
+
+        # ScreenshotTool needs vision_provider_loader — manual registration
+        if self.tools_config.screenshot.enable:
+            from hczkbot.agent.tools.screenshot import ScreenshotTool
+
+            self.tools.register(
+                ScreenshotTool(
+                    vision_provider_loader=self._vision_provider_loader,
+                    config=self.tools_config.screenshot,
+                )
+            )
+            registered.append("screenshot")
 
         logger.info("Registered {} tools: {}", len(registered), registered)
 

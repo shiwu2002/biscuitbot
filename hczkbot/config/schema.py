@@ -162,6 +162,16 @@ class AgentDefaults(Base):
         serialization_alias="consolidationRatio",
     )  # Consolidation target ratio (0.5 = 50% of budget retained after compression)
     dream: DreamConfig = Field(default_factory=DreamConfig)
+    vision_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("visionModel", "vision_model"),
+        serialization_alias="visionModel",
+    )  # Vision model preset name (e.g. "qwen-vl") for screenshot understanding; None = disabled
+    vision_model_override: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("visionModelOverride", "vision_model_override"),
+        serialization_alias="visionModelOverride",
+    )  # Custom multimodal model name that overrides the preset's model (e.g. "gpt-4o", "qwen-vl-max"); None = use preset's model
 
 
 class AgentsConfig(Base):
@@ -302,6 +312,9 @@ class ToolsConfig(Base):
     my: MyToolConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.self", "MyToolConfig"))
     image_generation: ImageGenerationToolConfig = Field(
         default_factory=lambda: _lazy_default("hczkbot.agent.tools.image_generation", "ImageGenerationToolConfig"),
+    )
+    screenshot: ScreenshotToolConfig = Field(
+        default_factory=lambda: _lazy_default("hczkbot.agent.tools.screenshot", "ScreenshotToolConfig"),
     )
     restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
     webui_allow_local_service_access: bool = Field(
@@ -542,6 +555,7 @@ def _resolve_tool_config_refs() -> None:
     from hczkbot.agent.tools.cli_apps import CliAppsToolConfig
     from hczkbot.agent.tools.filesystem import FileToolsConfig
     from hczkbot.agent.tools.image_generation import ImageGenerationToolConfig
+    from hczkbot.agent.tools.screenshot import ScreenshotToolConfig
     from hczkbot.agent.tools.self import MyToolConfig
     from hczkbot.agent.tools.shell import ExecToolConfig
     from hczkbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
@@ -557,6 +571,7 @@ def _resolve_tool_config_refs() -> None:
     mod.WebFetchConfig = WebFetchConfig  # type: ignore[attr-defined]
     mod.MyToolConfig = MyToolConfig  # type: ignore[attr-defined]
     mod.ImageGenerationToolConfig = ImageGenerationToolConfig  # type: ignore[attr-defined]
+    mod.ScreenshotToolConfig = ScreenshotToolConfig  # type: ignore[attr-defined]
     mod.PlatformConfig = PlatformConfig  # type: ignore[attr-defined]
 
     ToolsConfig.model_rebuild()

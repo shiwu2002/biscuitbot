@@ -11,6 +11,7 @@ import type {
   NetworkSafetySettingsUpdate,
   ProviderModelsPayload,
   ProviderSettingsUpdate,
+  ScreenshotSettingsUpdate,
   SessionDeleteResult,
   SessionAutomationsPayload,
   SettingsPayload,
@@ -650,6 +651,28 @@ export async function updateImageGenerationSettings(
   query.set("max_images_per_turn", String(update.maxImagesPerTurn));
   return request<SettingsPayload>(
     `${base}/api/settings/image-generation/update?${query}`,
+    token,
+  );
+}
+
+export async function updateScreenshotSettings(
+  token: string,
+  update: ScreenshotSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  query.set("enabled", String(update.enabled));
+  if (update.visionModel) {
+    query.set("visionModel", update.visionModel);
+  }
+  if (update.visionModelOverride) {
+    query.set("visionModelOverride", update.visionModelOverride);
+  }
+  query.set("maxWidth", String(update.maxWidth));
+  query.set("maxHeight", String(update.maxHeight));
+  query.set("quality", String(update.quality));
+  return request<SettingsPayload>(
+    `${base}/api/settings/screenshot/update?${query}`,
     token,
   );
 }
