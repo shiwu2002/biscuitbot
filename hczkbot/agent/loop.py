@@ -295,6 +295,14 @@ class AgentLoop:
         self._running = False
         self._mcp_servers = mcp_servers or {}
         self._mcp_stacks: dict[str, AsyncExitStack] = {}
+        # anyio cancel scopes (used by MCP stdio_client) are task-local: they
+        # must be exited in the same task that entered them. _mcp_owner_task
+        # records the task that called _connect_mcp (i.e. run()). When a
+        # _dispatch sub-task triggers a reconnect, it can't close the old stack
+        # directly — instead it moves the stack to _mcp_deferred_stacks, and
+        # the owner task closes them via _close_deferred_mcp_stacks().
+        self._mcp_owner_task: asyncio.Task | None = None
+        self._mcp_deferred_stacks: list[tuple[str, AsyncExitStack]] = []
         self._mcp_connected = False
         self._mcp_connecting = False
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
@@ -898,13 +906,37 @@ class AgentLoop:
     async def run(self) -> None:
         """Run the agent loop, dispatching messages as tasks to stay responsive to /stop."""
         self._running = True
-        await self._connect_mcp()
-        logger.info("Agent loop started")
+        self._mcp_owner_task = asyncio.current_task()
+        try:
+            await self._connect_mcp()
+            logger.info("Agent loop started")
+            await self._run_main_loop()
+        finally:
+            # MCP stdio servers use anyio cancel scopes, which are task-local:
+            # they must be exited in the same task that entered them. Since
+            # _connect_mcp ran inside THIS task, close_mcp must too — otherwise
+            # anyio raises "Attempted to exit cancel scope in a different task
+            # than it was entered in" when the caller (e.g. commands.py) tries
+            # to close the stacks from a different task via gather/finally.
+            #
+            # If this task is being cancelled, uncancel it first so the cleanup
+            # awaits below can run to completion instead of being interrupted
+            # again before the stacks are closed.
+            current = asyncio.current_task()
+            if current is not None and current.cancelling():
+                current.uncancel()
+            with suppress(Exception):
+                await self.close_mcp()
 
+    async def _run_main_loop(self) -> None:
+        """Consume inbound messages and dispatch them as per-session tasks."""
         while self._running:
             try:
                 msg = await asyncio.wait_for(self.bus.consume_inbound(), timeout=1.0)
             except asyncio.TimeoutError:
+                # Close any MCP stacks deferred from _dispatch sub-tasks (e.g.
+                # reconnect-after-timeout). This must run in the owner task.
+                await self._close_deferred_mcp_stacks()
                 self.auto_compact.check_expired(
                     self._schedule_background,
                     active_session_keys=self._pending_queues.keys(),
@@ -1137,11 +1169,26 @@ class AgentLoop:
                 self._runtime_events().clear_turn(session_key)
                 await self._cron_turns.publish_next_deferred(session_key)
 
+    async def _close_deferred_mcp_stacks(self) -> None:
+        """Close MCP stacks deferred from other tasks (e.g. _dispatch sub-tasks).
+
+        Must run in the owner task — the one that called _connect_mcp and
+        entered the anyio cancel scopes. Called periodically from the main
+        loop and during shutdown via close_mcp().
+        """
+        while self._mcp_deferred_stacks:
+            name, stack = self._mcp_deferred_stacks.pop()
+            try:
+                await stack.aclose()
+            except (RuntimeError, BaseExceptionGroup):
+                logger.debug("MCP server '{}' deferred cleanup error", name)
+
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
             self._background_tasks.clear()
+        await self._close_deferred_mcp_stacks()
         for name, stack in self._mcp_stacks.items():
             try:
                 await stack.aclose()

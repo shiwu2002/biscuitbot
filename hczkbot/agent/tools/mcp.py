@@ -69,6 +69,45 @@ def _is_session_terminated(exc: BaseException) -> bool:
     )
 
 
+async def _drain_incoming_messages(session: Any, server_name: str) -> None:
+    """Continuously drain the MCP session's ``incoming_messages`` channel.
+
+    The MCP SDK routes server-side notifications and stdout-parsing exceptions
+    into a capacity-0 anyio channel. If nobody reads it, the SDK's
+    ``_receive_loop`` blocks forever on the next ``send()``, which wedges the
+    whole session: every subsequent ``call_tool`` waits on a response that
+    never arrives. Draining the channel keeps ``_receive_loop`` alive so
+    tool-call responses can still be delivered. Responses themselves travel a
+    separate id-keyed stream, so draining here never steals a result.
+    """
+    stream = getattr(session, "incoming_messages", None)
+    if stream is None:
+        return
+    while True:
+        try:
+            await stream.receive()
+        except Exception:
+            # EndOfStream / ClosedResourceError / any shutdown error → stop.
+            break
+
+
+def _start_incoming_drainer(stack: AsyncExitStack, session: Any, server_name: str) -> None:
+    """Start a background task draining ``session.incoming_messages`` and tie
+    its lifetime to ``stack`` so it is cancelled when the server disconnects."""
+    task = asyncio.create_task(
+        _drain_incoming_messages(session, server_name),
+        name=f"mcp-drain-{server_name}",
+    )
+
+    async def _stop_drain(exc_type: Any, exc_val: Any, exc_tb: Any) -> bool:
+        task.cancel()
+        with suppress(asyncio.CancelledError, Exception):
+            await task
+        return False
+
+    stack.push_async_exit(_stop_drain)
+
+
 async def _probe_http_url(url: str, timeout: float = 3.0) -> bool:
     """Quick TCP probe to check if an HTTP MCP server is reachable.
 
@@ -242,6 +281,36 @@ class _MCPWrapperBase(Tool):
         self._session = refreshed_session
         return True
 
+    async def _reconnect_after_timeout(self, capability_kind: str) -> bool:
+        """Treat a timed-out call as a stale session and reconnect the server.
+
+        A timeout usually means the SDK's receive_loop is wedged — e.g. the MCP
+        server's browser subprocess hung, or a non-JSON stdout line poisoned the
+        protocol stream. Retrying on the same dead session would just time out
+        again, so we tear down and reconnect the server, then retry once on the
+        fresh session. Returns True when a new session was installed.
+        """
+        if self._reconnect is None:
+            return False
+        logger.warning(
+            "MCP {} '{}' timed out; treating session as stale, reconnecting server '{}'",
+            capability_kind,
+            self._name,
+            self._server_name,
+        )
+        refreshed_tool = await self._reconnect(self._server_name, self._name, self)
+        new_session = getattr(refreshed_tool, "_session", None)
+        if new_session is None:
+            logger.warning(
+                "MCP {} '{}' could not refresh session for server '{}'",
+                capability_kind,
+                self._name,
+                self._server_name,
+            )
+            return False
+        self._session = new_session
+        return True
+
 
 class MCPToolWrapper(_MCPWrapperBase):
     """Wraps a single MCP server tool as a hczkbot Tool."""
@@ -281,6 +350,9 @@ class MCPToolWrapper(_MCPWrapperBase):
                     timeout=self._tool_timeout,
                 )
             except asyncio.TimeoutError:
+                if not refreshed_session and await self._reconnect_after_timeout("tool"):
+                    refreshed_session = True
+                    continue
                 logger.warning(
                     "MCP tool '{}' timed out after {}s", self._name, self._tool_timeout
                 )
@@ -384,6 +456,9 @@ class MCPResourceWrapper(_MCPWrapperBase):
                     timeout=self._resource_timeout,
                 )
             except asyncio.TimeoutError:
+                if not refreshed_session and await self._reconnect_after_timeout("resource"):
+                    refreshed_session = True
+                    continue
                 logger.warning(
                     "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
                 )
@@ -500,6 +575,9 @@ class MCPPromptWrapper(_MCPWrapperBase):
                     timeout=self._prompt_timeout,
                 )
             except asyncio.TimeoutError:
+                if not refreshed_session and await self._reconnect_after_timeout("prompt"):
+                    refreshed_session = True
+                    continue
                 logger.warning(
                     "MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout
                 )
@@ -695,6 +773,11 @@ async def connect_mcp_servers(
 
             session = await server_stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
+
+            # Drain server notifications / stdout-parse exceptions so the SDK's
+            # receive_loop never blocks on an unconsumed capacity-0 channel
+            # (which would wedge every subsequent tool call until timeout).
+            _start_incoming_drainer(server_stack, session, name)
 
             tools = await session.list_tools()
             enabled_tools = set(cfg.enabled_tools)
@@ -1127,6 +1210,27 @@ def _unregister_server_tools(state: Any, registry: ToolRegistry, server_name: st
 async def _close_server(state: Any, server_name: str) -> None:
     stack = state._mcp_stacks.pop(server_name, None)
     if stack is None:
+        return
+    # anyio cancel scopes are task-local: the stack must be closed in the
+    # same task that opened it (the run() task, tracked as _mcp_owner_task).
+    # When a _dispatch sub-task triggers a reconnect, it can't close the old
+    # stack directly — defer it so the owner task closes it safely via
+    # _close_deferred_mcp_stacks(). This avoids "Attempted to exit cancel
+    # scope in a different task" and the resulting leaked stdio_client
+    # generator that triggers a noisy GC-finalizer traceback.
+    owner = getattr(state, "_mcp_owner_task", None)
+    deferred = getattr(state, "_mcp_deferred_stacks", None)
+    if (
+        owner is not None
+        and deferred is not None
+        and not owner.done()
+        and asyncio.current_task() is not owner
+    ):
+        deferred.append((server_name, stack))
+        logger.debug(
+            "MCP server '{}' stack deferred to owner task for safe close",
+            server_name,
+        )
         return
     try:
         await stack.aclose()
