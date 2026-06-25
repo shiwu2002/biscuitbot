@@ -413,33 +413,4 @@ def create_app(
     return app
 
 
-def attach_platform_routes(
-    app: web.Application,
-    platform_config,
-    workspace: str = "",
-) -> web.Application:
-    """挂载桓宸智科平台规范路由到现有 aiohttp 应用。
 
-    Args:
-        app: 已创建的 aiohttp Application
-        platform_config: PlatformConfig 实例
-        workspace: 工作区路径（用于文档存储）
-
-    Returns:
-        同一个 app（便于链式调用）
-    """
-    from hczkbot.platform.api import register_platform_routes
-    from hczkbot.platform.auth import PlatformAuth
-
-    app["platform_config"] = platform_config
-    app["platform_auth"] = PlatformAuth(
-        shared_secret=platform_config.resolve_jwt_secret(),
-        issuer=platform_config.jwt_issuer,
-        leeway=platform_config.jwt_leeway_seconds,
-    )
-    app["workspace"] = workspace
-    app["agent_version"] = platform_config.agent_version
-    app["start_time"] = time.time()
-
-    register_platform_routes(app)
-    return app

@@ -143,6 +143,13 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
+    # Restrict permissions on the config file: it contains provider API keys
+    # and channel secrets. Best-effort chmod 0o600 (no-op on Windows).
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
 
 _ENV_REF_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
@@ -256,5 +263,11 @@ def _migrate_config(data: dict) -> dict:
             my_cfg["allowSet"] = tools.pop("mySet")
         else:
             tools.pop("mySet", None)
+
+    # The platform integration module was removed. Silently drop any leftover
+    # `platform` key from legacy configs so existing ~/.hczkbot/config.json files
+    # keep loading instead of failing pydantic's extra-forbidden validation.
+    if "platform" in data:
+        data.pop("platform", None)
 
     return data

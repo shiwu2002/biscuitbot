@@ -21,7 +21,6 @@
   - [3.10 cron — 定时任务](#310-cron--定时任务)
   - [3.11 pairing — DM 发送者审批](#311-pairing--dm-发送者审批)
   - [3.12 security — 安全机制](#312-security--安全机制)
-  - [3.13 platform — 平台集成](#313-platform--平台集成)
   - [3.14 skills — 内置技能](#314-skills--内置技能)
   - [3.15 templates — 模板文件](#315-templates--模板文件)
   - [3.16 utils — 工具模块](#316-utils--工具模块)
@@ -63,7 +62,6 @@
 - **记忆系统**：Dream 两阶段记忆整合（会话级归档 + 周期性长期记忆更新）
 - **WebUI**：基于 React + Vite 的富客户端，支持流式输出、活动追踪、技能管理
 - **OpenAI 兼容 API**：`/v1/chat/completions`、`/v1/models`
-- **平台集成**：桓宸智科 AI 平台 JWT 鉴权与工具发现
 
 ---
 
@@ -407,7 +405,7 @@
 - `_migrate_config()` 迁移旧配置格式
 
 **`schema.py` — Pydantic 配置 Schema**
-- `Config`（根配置）：agents / channels / transcription / providers / api / gateway / tools / platform / model_presets
+- `Config`（根配置）：agents / channels / transcription / providers / api / gateway / tools / model_presets
 - `AgentDefaults`：workspace / model / provider / max_tokens / context_window_tokens / temperature / dream 等
 - `ProvidersConfig`：30+ 内置 provider + 自定义 provider（通过 `extra="allow"`）
 - `ToolsConfig`：web / exec / file / my / image_generation / cli_apps / mcp_servers / ssrf_whitelist
@@ -442,7 +440,6 @@
   - `hczkbot onboard` — 初始化配置和工作区
   - `hczkbot gateway` — 启动网关（含 WebUI、channels、agent）
   - `hczkbot serve` — 启动 OpenAI 兼容 API 服务器
-  - `hczkbot platform` — 启动桓宸智科平台集成服务
   - `hczkbot agent` — 直接与 agent 对话
   - `hczkbot status` — 显示状态
 
@@ -515,28 +512,6 @@
 - 应用层守卫（非 OS 沙箱替代）
 - `resolve_path()` 相对路径解析到 workspace
 - `require_path_within()` 越界抛 `WorkspaceBoundaryError`
-
----
-
-### 3.13 platform — 平台集成
-
-`hczkbot/platform/` — 桓宸智科 AI 平台集成（v4.1.0）
-
-**`api.py` — 平台规范 API 路由**
-- 端点：`GET /api/health`、`POST /api/chat`、`POST /api/chat/stream`（SSE）、`GET /api/agent/info`、`GET /api/chat/history/{id}`、`DELETE /api/chat/sessions/{id}`、`POST /api/documents`
-- 会话隔离 key 格式：`platform:{user_id}:{session_id}`
-
-**`auth.py` — JWT 鉴权**
-- HS256 验证流程：提取 Bearer Token → 验签 → 检查 iss=="hczk-platform" → 检查 exp（30s 偏差）→ 提取 user_id 和 apiKey
-
-**`config.py` — `PlatformConfig`**
-- 字段：enabled、jwt_secret（支持环境变量 `JWT_AGENT_SHARED_SECRET`）、jwt_issuer、jwt_leeway_seconds、agent_name、agent_version
-
-**`skills_client.py` — `PlatformSkillsClient`**
-- 平台工具发现与执行客户端
-
-**`skills_tool.py` — `PlatformSkillTool`**
-- 将平台工具定义包装为 hczkbot `Tool` 子类
 
 ---
 
@@ -876,22 +851,6 @@ gateway:
     enabled: false                         # 心跳机制
     intervalS: 300                         # 检查间隔（秒）
     keepRecentMessages: 8                  # 保留的最近消息数
-
-# ============================================================================
-# 桓宸智科 AI 平台集成配置（hczkbot platform 使用）
-# ============================================================================
-platform:
-  enabled: true
-  jwtSecret: ${JWT_AGENT_SHARED_SECRET}    # JWT 共享密钥（HS256）
-  jwtIssuer: hczk-platform                 # JWT 签发者标识
-  jwtLeewaySeconds: 30                     # JWT 时钟偏差（秒）
-  agentName: "客服智能体"
-  agentVersion: "1.0.0"
-  agentDescription: "基于 hczkbot 的智能客服助手"
-  agentType: "customer-service"
-  skillsRequestTimeout: 30.0               # 工具发现 HTTP 请求超时（秒）
-  skillsToolTimeout: 60.0                  # 单个工具执行超时（秒）
-  documentsDir: ""                         # 知识库文档存储目录
 ```
 
 ### 4.3 环境变量引用
@@ -1075,9 +1034,6 @@ export DASHSCOPE_API_KEY="sk-xxx"
 export OPENROUTER_API_KEY="sk-or-xxx"
 export VOLCENGINE_API_KEY="xxx"
 
-# 平台集成（如使用 hczkbot platform）
-export JWT_AGENT_SHARED_SECRET="your-shared-secret"
-
 # 可选：覆盖默认配置
 export HCZKBOT_MAX_CONCURRENT_REQUESTS=3   # 全局并发请求数
 export HCZKBOT_LLM_TIMEOUT_S=300           # LLM 调用超时（秒）
@@ -1146,16 +1102,6 @@ hczkbot serve -H 0.0.0.0 -p 8900
 
 # 指定工作区
 hczkbot serve -w /path/to/workspace
-```
-
-#### 启动桓宸智科平台集成
-
-```bash
-# 默认配置
-hczkbot platform
-
-# 指定 host 和 port
-hczkbot platform -H 0.0.0.0 -p 8080
 ```
 
 #### 直接与 agent 对话（CLI 模式）
@@ -1326,7 +1272,6 @@ docker compose logs -f hczkbot-gateway
 | `hczkbot gateway` | 启动网关（WebUI + Channels + Agent） |
 | `hczkbot gateway -v` | 启动网关（详细日志） |
 | `hczkbot serve` | 启动 OpenAI 兼容 API 服务器 |
-| `hczkbot platform` | 启动桓宸智科平台集成 |
 | `hczkbot agent` | CLI 模式与 agent 对话 |
 | `hczkbot agent -m "Hello!"` | 单条消息模式 |
 | `hczkbot status` | 查看状态 |
@@ -1349,7 +1294,6 @@ docker compose logs -f hczkbot-gateway
 | `DASHSCOPE_API_KEY` | — | 通义千问 API Key |
 | `OPENROUTER_API_KEY` | — | OpenRouter API Key |
 | `VOLCENGINE_API_KEY` | — | 火山引擎 API Key |
-| `JWT_AGENT_SHARED_SECRET` | — | 平台集成 JWT 共享密钥 |
 | `HCZKBOT_MAX_CONCURRENT_REQUESTS` | 3 | 全局并发请求数 |
 | `HCZKBOT_LLM_TIMEOUT_S` | 300 | LLM 调用超时（秒） |
 | `HCZKBOT_STREAM_IDLE_TIMEOUT_S` | 90 | 流式空闲超时（秒） |

@@ -9,7 +9,7 @@ from typing import Any
 
 from websockets.http11 import Request as WsRequest
 
-from hczkbot.webui.http_utils import bearer_token, parse_query, query_first
+from hczkbot.webui.http_utils import bearer_token
 
 
 @dataclass
@@ -22,9 +22,11 @@ class GatewayTokenStore:
 
     def check_api_token(self, request: WsRequest) -> bool:
         self._purge_expired_api_tokens()
-        token = bearer_token(request.headers) or query_first(
-            parse_query(request.path), "token"
-        )
+        # Only accept tokens from the Authorization header for HTTP routes.
+        # Query-param tokens are reserved for the WebSocket handshake (browsers
+        # cannot set custom WS headers) and must not leak into access logs /
+        # Referer headers on regular API calls.
+        token = bearer_token(request.headers)
         if not token:
             return False
         expiry = self.api_tokens.get(token)

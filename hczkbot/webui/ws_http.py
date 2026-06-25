@@ -290,11 +290,10 @@ class GatewayHTTPHandler:
         if secret:
             if not _issue_route_secret_matches(request.headers, secret):
                 return connection.respond(401, "Unauthorized")
-        else:
-            self._log.warning(
-                "token_issue_path is set but token_issue_secret is empty; "
-                "any client can obtain connection tokens — set token_issue_secret for production."
-            )
+        elif not _is_localhost(connection):
+            # No secret configured and the request is not local: refuse to hand
+            # out connection tokens to remote clients.
+            return _http_error(403, "token issue is localhost-only without a configured secret")
         if not self.tokens.can_issue():
             self._log.error(
                 "too many outstanding issued tokens ({}), rejecting issuance",

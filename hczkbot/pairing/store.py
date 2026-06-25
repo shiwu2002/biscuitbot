@@ -33,6 +33,14 @@ def _store_path() -> Path:
     return get_data_dir() / "pairing.json"
 
 
+def _mask_code(code: str) -> str:
+    """Return a redacted pairing code for logging (e.g. ABCD-****)."""
+    head, sep, _ = code.partition("-")
+    if sep:
+        return f"{head}{sep}****"
+    return "****"
+
+
 def _load() -> dict[str, Any]:
     path = _store_path()
     try:
@@ -92,7 +100,7 @@ def generate_code(
             "expires_at": time.time() + ttl,
         }
         _save(data)
-        logger.info("Generated pairing code {} for {}@{}", code, sender_id, channel)
+        logger.info("Generated pairing code {} for {}@{}", _mask_code(code), sender_id, channel)
         return code
 
 
@@ -113,7 +121,7 @@ def approve_code(code: str) -> tuple[str, str] | None:
         sender_id = info["sender_id"]
         data.setdefault("approved", {}).setdefault(channel, set()).add(sender_id)
         _save(data)
-        logger.info("Approved pairing code {} for {}@{}", code, sender_id, channel)
+        logger.info("Approved pairing code {} for {}@{}", _mask_code(code), sender_id, channel)
         return channel, sender_id
 
 

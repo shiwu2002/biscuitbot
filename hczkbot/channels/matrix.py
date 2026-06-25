@@ -354,6 +354,11 @@ class MatrixChannel(BaseChannel):
         try:
             with open(self.session_path, "w", encoding="utf-8") as f:
                 json.dump(session, f, indent=2)
+            # Restrict permissions: file holds a long-lived Matrix access token.
+            try:
+                self.session_path.chmod(0o600)
+            except OSError:
+                pass
             self.logger.info("Session saved to {}", self.session_path)
         except Exception as e:
             self.logger.warning("Failed to save session: {}", e)

@@ -340,10 +340,6 @@ class Config(BaseSettings):
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
-    platform: "PlatformConfig" = Field(
-        default_factory=lambda: _lazy_default("hczkbot.platform.config", "PlatformConfig"),
-        description="桓宸智科 AI 平台集成配置",
-    )
     model_presets: dict[str, ModelPresetConfig] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("modelPresets", "model_presets"),
@@ -559,7 +555,6 @@ def _resolve_tool_config_refs() -> None:
     from hczkbot.agent.tools.self import MyToolConfig
     from hczkbot.agent.tools.shell import ExecToolConfig
     from hczkbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
-    from hczkbot.platform.config import PlatformConfig
 
     # Re-export into this module's namespace
     mod = sys.modules[__name__]
@@ -572,7 +567,6 @@ def _resolve_tool_config_refs() -> None:
     mod.MyToolConfig = MyToolConfig  # type: ignore[attr-defined]
     mod.ImageGenerationToolConfig = ImageGenerationToolConfig  # type: ignore[attr-defined]
     mod.ScreenshotToolConfig = ScreenshotToolConfig  # type: ignore[attr-defined]
-    mod.PlatformConfig = PlatformConfig  # type: ignore[attr-defined]
 
     ToolsConfig.model_rebuild()
     Config.model_rebuild()

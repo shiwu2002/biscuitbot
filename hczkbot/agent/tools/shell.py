@@ -186,6 +186,14 @@ class ExecTool(Tool):
             r">\s*/dev/sd",                  # write to disk
             r"\b(shutdown|reboot|poweroff)\b",  # system power
             r":\(\)\s*\{.*\};\s*:",          # fork bomb
+            # Block "download-and-execute" patterns commonly used in indirect
+            # prompt injection to turn a benign exec into remote code
+            # execution. Normal dev workflows rarely pipe remote fetches into
+            # an interpreter shell, so these are high-signal deny rules.
+            r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",   # curl … | sh
+            r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\s",  # curl … | sh -
+            r"\bbase64\s+-d\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",            # base64 -d … | sh
+            r"\beval\s+[\"'$]?\(?\s*\$?\(\s*(?:curl|wget|fetch)\b",            # eval "$(curl …)"
             # Block writes to hczkbot internal state files (#2989).
             # history.jsonl / .dream_cursor are managed by append_history();
             # direct writes corrupt the cursor format and crash /dream.

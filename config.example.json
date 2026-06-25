@@ -262,19 +262,5 @@
       "intervalS": 300,
       "keepRecentMessages": 8
     }
-  },
-
-  "platform": {
-    "enabled": true,
-    "jwtSecret": "${JWT_AGENT_SHARED_SECRET:hczk-agent-jwt-secret-2026-very-long-and-secure}",
-    "jwtIssuer": "hczk-platform",
-    "jwtLeewaySeconds": 30,
-    "agentName": "客服智能体",
-    "agentVersion": "1.0.0",
-    "agentDescription": "基于 hczkbot 的智能客服助手",
-    "agentType": "customer-service",
-    "skillsRequestTimeout": 30.0,
-    "skillsToolTimeout": 60.0,
-    "documentsDir": ""
   }
 }

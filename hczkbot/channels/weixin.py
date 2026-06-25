@@ -229,6 +229,11 @@ class WeixinChannel(BaseChannel):
                 "base_url": self.config.base_url,
             }
             state_file.write_text(json.dumps(data, ensure_ascii=False))
+            # Restrict permissions: file holds the WeChat access token.
+            try:
+                state_file.chmod(0o600)
+            except OSError:
+                pass
 
     # ------------------------------------------------------------------
     # HTTP helpers  (matches api.ts buildHeaders / apiFetch)
