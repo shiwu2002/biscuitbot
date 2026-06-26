@@ -76,6 +76,7 @@ class ImageGenerationTool(Tool):
     _capability = (
         "Generate or edit images and persist them as artifacts (returns paths)."
     )
+    _usage_md = "docs/generate_image.md"
 
     config_key = "image_generation"
 

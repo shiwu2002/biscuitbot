@@ -185,6 +185,7 @@ class ReadFileTool(_FsTool):
         "line-range pagination for analysis before edits."
     )
     _always_include = True
+    _usage_md = "docs/read_file.md"
 
     _MAX_CHARS = 128_000
     _DEFAULT_LIMIT = 2000
@@ -424,6 +425,7 @@ class WriteFileTool(_FsTool):
     _scopes = {"core", "subagent", "memory"}
 
     _capability = "Write or overwrite file contents (text files only)."
+    _usage_md = "docs/write_file.md"
 
     @property
     def name(self) -> str:
@@ -753,6 +755,7 @@ class EditFileTool(_FsTool):
     _capability = (
         "Edit a file by exact old_text/new_text replacement with fuzzy fallback."
     )
+    _usage_md = "docs/edit_file.md"
 
     _MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024  # 1 GiB
     _MARKDOWN_EXTS = frozenset({".md", ".mdx", ".markdown"})
@@ -982,6 +985,7 @@ class ListDirTool(_FsTool):
     _scopes = {"core", "subagent"}
 
     _capability = "List directory entries (optionally recursive, skips common junk dirs)."
+    _usage_md = "docs/list_dir.md"
 
     _DEFAULT_MAX = 200
     _IGNORE_DIRS = {

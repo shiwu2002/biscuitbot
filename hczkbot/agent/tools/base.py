@@ -181,14 +181,21 @@ class Tool(ABC):
     _plugin_discoverable: bool = True
     _scopes: set[str] = {"core"}
 
-    # --- Dynamic tool selection metadata ---
+    # --- Progressive discovery metadata ---
 
-    #: Short capability boundary (1 sentence) used for retrieval and compact
-    #: summaries.  Falls back to ``description[:120]`` when empty.
+    #: Short capability boundary (1 sentence) shown in the INDEX.md table.
+    #: Falls back to ``description[:120]`` when empty.
     _capability: str = ""
-    #: When ``True`` the tool is always sent with full schema in dynamic mode
-    #: regardless of the retrieval score.
+    #: When ``True`` the tool's full schema is always sent to the model.
+    #: Other tools require ``discover_tools(name)`` to load their schema.
     _always_include: bool = False
+    #: Path (relative to workspace or absolute) to the usage-doc markdown file.
+    #: The model reads this via ``read_file`` before calling ``discover_tools``.
+    #: Convention: ``docs/<tool_name>.md`` under the tools package.
+    _usage_md: str = ""
+    #: When ``True`` the tool was registered at runtime by the agent via
+    #: ``register_tool`` (not a built-in).  Used for persistence.
+    _custom: bool = False
 
     @classmethod
     def config_cls(cls) -> type[BaseModel] | None:

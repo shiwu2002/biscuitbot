@@ -1,6 +1,22 @@
-"""Tool registry for dynamic tool management."""
+"""Tool registry with progressive discovery.
 
+All tools are registered here, but only those marked ``_always_include``
+have their full JSON schema sent to the model by default.  Every other
+tool is listed in the generated ``INDEX.md`` (name + capability +
+usage-doc path) so the model can discover it, read its usage doc via
+``read_file``, and then call ``discover_tools(name)`` to load the full
+schema on demand.
+
+The registry also supports runtime registration of custom tools created
+by the agent itself (see :meth:`validate_tool_file` and
+:meth:`register_custom_tool`).
+"""
+
+from __future__ import annotations
+
+import importlib.util
 import json
+import os
 import re
 from typing import Any
 
@@ -8,58 +24,45 @@ from hczkbot.agent.tools.base import Tool
 
 
 class ToolRegistry:
-    """
-    Registry for agent tools.
-
-    Allows dynamic registration and execution of tools.
-    """
+    """Registry for agent tools with progressive discovery."""
 
     def __init__(self):
         self._tools: dict[str, Tool] = {}
         self._cached_definitions: list[dict[str, Any]] | None = None
-        self._cached_compact_summary: str | None = None
+        self._cached_index: str | None = None
+        # Custom tools registered at runtime by the agent.
+        # name -> {"file_path": str, "docs_md_path": str}
+        self._custom_tools: dict[str, dict[str, str]] = {}
+
+    # ------------------------------------------------------------------
+    # Registration
+    # ------------------------------------------------------------------
 
     def register(self, tool: Tool) -> None:
-        """Register a tool."""
+        """Register a tool and invalidate caches."""
         self._tools[tool.name] = tool
         self._cached_definitions = None
-        self._cached_compact_summary = None
+        self._cached_index = None
 
     def unregister(self, name: str) -> None:
         """Unregister a tool by name."""
         self._tools.pop(name, None)
+        self._custom_tools.pop(name, None)
         self._cached_definitions = None
-        self._cached_compact_summary = None
+        self._cached_index = None
 
     def get(self, name: str) -> Tool | None:
-        """Get a tool by name."""
         return self._tools.get(name)
 
-    @staticmethod
-    def _lookup_key(name: str) -> str:
-        """Normalize names for suggestions only; never for execution."""
-        return "".join(ch.lower() for ch in name if ch.isalnum())
-
-    def _suggest_name(self, name: str) -> str | None:
-        key = self._lookup_key(str(name or ""))
-        if not key:
-            return None
-        matches = [
-            registered
-            for registered in self._tools
-            if self._lookup_key(registered) == key
-        ]
-        if len(matches) == 1:
-            return matches[0]
-        return None
-
     def has(self, name: str) -> bool:
-        """Check if a tool is registered."""
         return name in self._tools
+
+    # ------------------------------------------------------------------
+    # Schema definitions (sent to the model)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _schema_name(schema: dict[str, Any]) -> str:
-        """Extract a normalized tool name from either OpenAI or flat schemas."""
         fn = schema.get("function")
         if isinstance(fn, dict):
             name = fn.get("name")
@@ -69,15 +72,9 @@ class ToolRegistry:
         return name if isinstance(name, str) else ""
 
     def get_definitions(self) -> list[dict[str, Any]]:
-        """Get tool definitions with stable ordering for cache-friendly prompts.
-
-        Built-in tools are sorted first as a stable prefix, then MCP tools are
-        sorted and appended.  The result is cached until the next
-        register/unregister call.
-        """
+        """Get **all** tool definitions with stable builtins-then-MCP ordering."""
         if self._cached_definitions is not None:
             return self._cached_definitions
-
         definitions = [tool.to_schema() for tool in self._tools.values()]
         builtins: list[dict[str, Any]] = []
         mcp_tools: list[dict[str, Any]] = []
@@ -87,26 +84,105 @@ class ToolRegistry:
                 mcp_tools.append(schema)
             else:
                 builtins.append(schema)
-
         builtins.sort(key=self._schema_name)
         mcp_tools.sort(key=self._schema_name)
         self._cached_definitions = builtins + mcp_tools
         return self._cached_definitions
 
-    # --- Dynamic tool selection helpers ---
+    def get_always_include_definitions(self) -> list[dict[str, Any]]:
+        """Return full schemas only for ``_always_include`` tools.
+
+        This is the default set sent to the model every turn.  All other
+        tools require ``discover_tools(name)`` to load their schema.
+        """
+        all_defs = self.get_definitions()
+        return [d for d in all_defs if self._tool_is_always_include(self._schema_name(d))]
+
+    def _tool_is_always_include(self, name: str) -> bool:
+        tool = self._tools.get(name)
+        return bool(tool and getattr(tool, "_always_include", False))
+
+    # ------------------------------------------------------------------
+    # INDEX.md generation (Layer 1 — injected into system prompt)
+    # ------------------------------------------------------------------
+
+    def generate_index(self, skills_entries: list[dict[str, str]] | None = None) -> str:
+        """Generate the ``INDEX.md`` content from registered tools + skills.
+
+        The index has three sections:
+
+        1. **Always Available** — tools whose full schema is always sent.
+        2. **On-demand Discovery** — tools requiring ``discover_tools``.
+        3. **Skills** — capabilities the model uses by reading ``SKILL.md``.
+
+        Each row: ``| name | capability | usage_md |``.
+
+        Cached until the next register/unregister call.
+        """
+        if self._cached_index is not None and skills_entries is None:
+            return self._cached_index
+
+        always_rows: list[str] = []
+        on_demand_rows: list[str] = []
+        for name in sorted(self._tools):
+            tool = self._tools[name]
+            row = f"| {name} | {tool.capability} | {getattr(tool, '_usage_md', '') or '(missing)'} |"
+            if getattr(tool, "_always_include", False):
+                always_rows.append(row)
+            else:
+                on_demand_rows.append(row)
+
+        parts: list[str] = [
+            "# Tools & Skills Index",
+            "",
+            "> **Progressive discovery**: tools below are listed by name + capability.",
+            "> To use an on-demand tool:",
+            "> 1. ``read_file(usage_md)`` to learn its parameters and best practices",
+            "> 2. ``discover_tools(\"tool_name\")`` to load its full schema",
+            "> 3. Call the tool in your next response",
+            "",
+            "## Always Available (full schema already loaded)",
+            "",
+            "| Name | Capability | Usage Doc |",
+            "|------|-----------|-----------|",
+        ]
+        parts.extend(always_rows or ["| _(none)_ | | |"])
+
+        parts.extend([
+            "",
+            "## On-demand Discovery (call ``discover_tools`` to load schema)",
+            "",
+            "| Name | Capability | Usage Doc |",
+            "|------|-----------|-----------|",
+        ])
+        parts.extend(on_demand_rows or ["| _(none)_ | | |"])
+
+        if skills_entries:
+            parts.extend([
+                "",
+                "## Skills (read SKILL.md to use)",
+                "",
+                "| Name | Capability | Usage Doc |",
+                "|------|-----------|-----------|",
+            ])
+            for s in skills_entries:
+                parts.append(f"| {s['name']} | {s['capability']} | {s['usage_md']} |")
+
+        index = "\n".join(parts)
+        if skills_entries is None:
+            self._cached_index = index
+        return index
+
+    # ------------------------------------------------------------------
+    # Fuzzy search (used by discover_tools meta-tool)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _fuzzy_tokens(text: str) -> set[str]:
-        """Lowercase alphanumeric tokens (length >= 2) used for fuzzy matching."""
         return {tok for tok in re.split(r"[^a-z0-9]+", (text or "").lower()) if len(tok) >= 2}
 
     def fuzzy_search(self, query: str, *, limit: int = 5) -> list[Tool]:
-        """Return tools whose name or capability matches *query*.
-
-        Scoring is a simple token-overlap heuristic — no embeddings required.
-        Used by the ``discover_tools`` meta-tool to surface full schemas on
-        demand.  Exact name matches always rank first.
-        """
+        """Return tools whose name or capability matches *query*."""
         query_tokens = self._fuzzy_tokens(query)
         query_lower = (query or "").strip().lower()
         scored: list[tuple[float, str, Tool]] = []
@@ -120,7 +196,6 @@ class ToolRegistry:
             if query_tokens:
                 overlap = len(query_tokens & tool_tokens)
                 score += overlap * 4.0
-                # Bonus for matching all query tokens
                 if overlap == len(query_tokens):
                     score += 5.0
             if score > 0:
@@ -128,66 +203,170 @@ class ToolRegistry:
         scored.sort(key=lambda item: (-item[0], item[1]))
         return [tool for _, _, tool in scored[:limit]]
 
-    def get_compact_summary(self, selected_names: set[str] | None = None) -> str:
-        """One-line ``name: capability`` summary for every registered tool.
+    # ------------------------------------------------------------------
+    # Custom tool registration (agent self-extension)
+    # ------------------------------------------------------------------
 
-        When *selected_names* is provided, tools already loaded with full
-        schema are still listed but flagged with ``(loaded)``.  Cached until
-        the next register/unregister call.
+    @staticmethod
+    def validate_tool_file(file_path: str, docs_md_path: str) -> tuple[Tool | None, str | None]:
+        """Validate a Python tool file and its usage doc.
+
+        Returns ``(tool_instance, None)`` on success or
+        ``(None, error_message)`` on failure.  The error message explains
+        **why** the tool cannot be installed so the agent can fix it.
         """
-        if self._cached_compact_summary is None:
-            lines: list[str] = []
-            for name in sorted(self._tools):
-                tool = self._tools[name]
-                lines.append(f"- {name}: {tool.capability}")
-            self._cached_compact_summary = "\n".join(lines)
-        base = self._cached_compact_summary
-        if selected_names is None:
-            return base
-        # Annotate which tools are already loaded with full schema
-        out: list[str] = []
-        for line in base.splitlines():
-            prefix = "- "
-            if not line.startswith(prefix):
-                out.append(line)
-                continue
-            name = line[len(prefix):].split(":", 1)[0].strip()
-            if name in selected_names:
-                out.append(f"{line} (loaded)")
-            else:
-                out.append(line)
-        return "\n".join(out)
+        # 1. File existence
+        if not file_path or not os.path.isfile(file_path):
+            return None, (
+                f"工具文件不存在：{file_path}。请先用 write_file 创建工具 Python 文件。"
+                f"工具必须继承 hczkbot.agent.tools.base.Tool 并实现 name/description/parameters/execute。"
+            )
+        if not docs_md_path or not os.path.isfile(docs_md_path):
+            return None, (
+                f"使用说明 md 不存在：{docs_md_path}。"
+                f"每个工具必须有对应的 docs/<name>.md 使用说明文件，"
+                f"说明参数、调用示例和注意事项。"
+            )
 
-    def get_definitions_for_turn(
-        self,
-        query: str = "",
-        *,
-        mode: str = "all",
-        max_tools: int = 10,
-    ) -> list[dict[str, Any]]:
-        """Return tool definitions for a single model turn.
+        # 2. Dynamic import
+        tool_name_from_file = os.path.splitext(os.path.basename(file_path))[0]
+        spec = importlib.util.spec_from_file_location(f"_custom_tool_{tool_name_from_file}", file_path)
+        if spec is None or spec.loader is None:
+            return None, f"无法加载工具模块：{file_path}。请检查文件路径和权限。"
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
+        except Exception as e:
+            return None, (
+                f"工具文件导入失败：{e}。"
+                f"请检查 Python 语法、导入语句（需要 from hczkbot.agent.tools.base import Tool）。"
+            )
 
-        ``mode='all'`` (default) returns every registered tool's full schema —
-        the legacy behavior, identical to :meth:`get_definitions`.
+        # 3. Find exactly one Tool subclass defined in this module
+        tool_classes = [
+            obj for obj in vars(module).values()
+            if isinstance(obj, type)
+            and issubclass(obj, Tool)
+            and obj is not Tool
+            and not obj.__name__.startswith("_")
+            and getattr(obj, "__module__", "") == module.__name__
+        ]
+        if not tool_classes:
+            return None, (
+                "未找到 Tool 子类。工具类必须继承 hczkbot.agent.tools.base.Tool，"
+                "且类名不以 _ 开头。示例：class MyTool(Tool): ..."
+            )
+        if len(tool_classes) > 1:
+            names = [c.__name__ for c in tool_classes]
+            return None, (
+                f"找到多个 Tool 子类：{names}。每个工具文件只能定义一个 Tool 子类。"
+            )
 
-        ``mode='dynamic'`` returns only the tools selected by
-        :class:`~hczkbot.agent.tools.retriever.ToolRetriever` for *query*,
-        plus tools marked ``_always_include = True``.  All other tools are
-        still discoverable via the ``discover_tools`` meta-tool and listed in
-        the compact summary injected into the system prompt.
+        tool_cls = tool_classes[0]
 
-        The returned list preserves the cache-friendly builtins-then-MCP
-        ordering of :meth:`get_definitions` so prompt-prefix caching is not
-        disrupted by tool rotation.
+        # 4. Abstract methods must be implemented
+        if tool_cls.__abstractmethods__:
+            return None, (
+                f"未实现抽象方法：{sorted(tool_cls.__abstractmethods__)}。"
+                f"必须实现 name、description、parameters、execute。"
+            )
+
+        # 5. Instantiate and validate metadata
+        try:
+            instance = tool_cls()
+        except Exception as e:
+            return None, f"工具实例化失败：{e}。请检查 __init__ 是否需要参数。"
+
+        if not instance.name or not isinstance(instance.name, str):
+            return None, "工具 name 属性返回空值。必须返回非空字符串。"
+        if not instance.description or not isinstance(instance.description, str):
+            return None, "工具 description 属性返回空值。必须返回非空字符串。"
+        # _capability must be declared explicitly on the class — the
+        # ``capability`` property falls back to description, so we check the
+        # raw class attribute to enforce the progressive-discovery contract.
+        if not getattr(tool_cls, "_capability", ""):
+            return None, (
+                "_capability 未声明。请在工具类中显式设置 _capability 属性，"
+                "用一句话描述工具能力边界。示例：_capability = 'Search files by regex pattern.'"
+            )
+        if not getattr(tool_cls, "_usage_md", ""):
+            return None, (
+                "_usage_md 未声明。请设置 _usage_md 指向使用说明 md 路径。"
+                "示例：_usage_md = 'docs/my_tool.md'"
+            )
+
+        return instance, None
+
+    def register_custom_tool(self, file_path: str, docs_md_path: str) -> tuple[bool, str]:
+        """Validate and register a custom tool created by the agent.
+
+        Returns ``(True, success_message)`` or ``(False, error_message)``.
+        On success the tool is immediately callable via ``discover_tools``.
         """
-        if mode != "dynamic":
-            return self.get_definitions()
-        from hczkbot.agent.tools.retriever import ToolRetriever
+        tool, error = self.validate_tool_file(file_path, docs_md_path)
+        if error:
+            return False, error
 
-        retriever = ToolRetriever(self, max_tools=max_tools)
-        selected = set(retriever.select(query or ""))
-        all_defs = self.get_definitions()
-        return [d for d in all_defs if self._schema_name(d) in selected]
+        if tool.name in self._tools:
+            existing = self._tools[tool.name]
+            is_custom = getattr(existing, "_custom", False)
+            kind = "自定义工具" if is_custom else "内置工具"
+            return False, (
+                f"工具名 '{tool.name}' 已被{kind}占用。"
+                f"请更换工具名，或先用 unregister_tool('{tool.name}') 卸载旧工具。"
+            )
+
+        # Mark as custom and register
+        object.__setattr__(tool, "_custom", True)
+        self.register(tool)
+        self._custom_tools[tool.name] = {
+            "file_path": os.path.abspath(file_path),
+            "docs_md_path": os.path.abspath(docs_md_path),
+        }
+        return True, (
+            f"工具 '{tool.name}' 注册成功。"
+            f"模型现在可以通过 discover_tools('{tool.name}') 加载其 schema 并调用。"
+        )
+
+    def unregister_custom_tool(self, name: str) -> tuple[bool, str]:
+        """Remove a custom tool registered at runtime."""
+        if name not in self._custom_tools:
+            if name in self._tools:
+                return False, (
+                    f"工具 '{name}' 是内置工具，无法卸载。"
+                    f"只能卸载由 register_tool 注册的自定义工具。"
+                )
+            return False, f"工具 '{name}' 未注册。"
+        self.unregister(name)
+        return True, f"工具 '{name}' 已卸载。"
+
+    def custom_tools_manifest(self) -> list[dict[str, str]]:
+        """Return the list of custom tools for persistence."""
+        return [
+            {"name": name, **info}
+            for name, info in self._custom_tools.items()
+        ]
+
+    def load_custom_tools_from_manifest(self, manifest: list[dict[str, str]]) -> list[str]:
+        """Re-register custom tools from a persisted manifest.
+
+        Returns a list of error messages for tools that failed to load
+        (e.g. file deleted).  Successfully loaded tools are registered
+        silently.
+        """
+        errors: list[str] = []
+        for entry in manifest:
+            name = entry.get("name", "")
+            file_path = entry.get("file_path", "")
+            docs_md_path = entry.get("docs_md_path", "")
+            ok, msg = self.register_custom_tool(file_path, docs_md_path)
+            if not ok:
+                errors.append(f"{name}: {msg}")
+        return errors
+
+    # ------------------------------------------------------------------
+    # Execution
+    # ------------------------------------------------------------------
 
     def prepare_call(
         self,
@@ -200,7 +379,9 @@ class ToolRegistry:
             suggestion = self._suggest_name(str(name))
             hint = f" Did you mean '{suggestion}'? Tool names must match exactly." if suggestion else ""
             return None, params, (
-                f"Error: Tool '{name}' not found.{hint} Available: {', '.join(self.tool_names)}"
+                f"Error: Tool '{name}' not found.{hint} "
+                f"Call discover_tools('{name}') to load its schema first, "
+                f"or check the Tools & Skills Index in the system prompt."
             )
 
         params = self._coerce_params(tool, params)
@@ -219,25 +400,38 @@ class ToolRegistry:
             )
         return tool, cast_params, None
 
+    @staticmethod
+    def _lookup_key(name: str) -> str:
+        return "".join(ch.lower() for ch in name if ch.isalnum())
+
+    def _suggest_name(self, name: str) -> str | None:
+        key = self._lookup_key(str(name or ""))
+        if not key:
+            return None
+        matches = [
+            registered
+            for registered in self._tools
+            if self._lookup_key(registered) == key
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
     @classmethod
     def _coerce_argument_value(cls, value: Any) -> Any:
         if value is None:
             return {}
         if not isinstance(value, str):
             return value
-
         stripped = value.strip()
         if not stripped:
             return {}
-
         if not stripped.startswith(("{", "[")):
             return value
-
         try:
             parsed = json.loads(stripped)
         except Exception:
             return value
-
         return parsed
 
     @classmethod
@@ -260,7 +454,6 @@ class ToolRegistry:
         tool, params, error = self.prepare_call(name, params)
         if error:
             return error + hint
-
         try:
             assert tool is not None  # guarded by prepare_call()
             result = await tool.execute(**params)
@@ -272,7 +465,6 @@ class ToolRegistry:
 
     @property
     def tool_names(self) -> list[str]:
-        """Get list of registered tool names."""
         return list(self._tools.keys())
 
     def __len__(self) -> int:

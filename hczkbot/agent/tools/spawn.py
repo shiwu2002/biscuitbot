@@ -36,6 +36,7 @@ class SpawnTool(Tool, ContextAware):
     _capability = (
         "Launch a background subagent for long-running or parallel tasks."
     )
+    _usage_md = "docs/spawn.md"
 
     def __init__(self, manager: "SubagentManager"):
         self._manager = manager

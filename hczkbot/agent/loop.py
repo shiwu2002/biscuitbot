@@ -561,7 +561,82 @@ class AgentLoop:
             discover_tool.bind_registry(self.tools)
             registered.append("discover_tools")
 
+        # Register the register_tool / unregister_tool meta-tools so the
+        # agent can install custom tools at runtime.  These are always
+        # available (always_include=True) and need the registry bound.
+        from hczkbot.agent.tools.register_tool import (
+            RegisterToolTool,
+            UnregisterToolTool,
+        )
+
+        register_tool = RegisterToolTool()
+        register_tool.bind_registry(self.tools)
+        self.tools.register(register_tool)
+        registered.append("register_tool")
+
+        unregister_tool = UnregisterToolTool()
+        unregister_tool.bind_registry(self.tools)
+        self.tools.register(unregister_tool)
+        registered.append("unregister_tool")
+
+        # Re-load any custom tools persisted from a previous run.
+        self._load_custom_tools_manifest()
+
         logger.info("Registered {} tools: {}", len(registered), registered)
+
+    def _build_tool_index(self) -> str:
+        """Generate the Tools & Skills Index for the system prompt.
+
+        Merges registered tools with the skills loader so the model sees
+        a single unified discovery table.
+        """
+        skills_entries: list[dict[str, str]] | None = None
+        try:
+            skills_entries = [
+                {
+                    "name": s.name,
+                    "capability": s.description,
+                    "usage_md": str(s.path),
+                }
+                for s in self.skills.list_skills()
+            ]
+        except Exception:
+            pass
+        return self.tools.generate_index(skills_entries)
+
+    def _load_custom_tools_manifest(self) -> None:
+        """Re-register custom tools from ``workspace/.agent_tools/manifest.json``."""
+        try:
+            manifest_path = self.workspace / ".agent_tools" / "manifest.json"
+            if not manifest_path.is_file():
+                return
+            import json as _json
+
+            data = _json.loads(manifest_path.read_text(encoding="utf-8"))
+            tools_list = data.get("tools", []) if isinstance(data, dict) else []
+            errors = self.tools.load_custom_tools_from_manifest(tools_list)
+            for err in errors:
+                logger.warning("custom tool load failed: {}", err)
+        except Exception as e:
+            logger.warning("Failed to load custom tools manifest: {}", e)
+
+    def _save_custom_tools_manifest(self) -> None:
+        """Persist the current custom-tool registry for the next run."""
+        try:
+            manifest = self.tools.custom_tools_manifest()
+            if not manifest:
+                return
+            manifest_dir = self.workspace / ".agent_tools"
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            manifest_path = manifest_dir / "manifest.json"
+            import json as _json
+
+            manifest_path.write_text(
+                _json.dumps({"tools": manifest}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning("Failed to save custom tools manifest: {}", e)
 
     async def _connect_mcp(self) -> None:
         """Connect configured MCP servers."""
@@ -670,16 +745,9 @@ class AgentLoop:
     ) -> list[dict[str, Any]]:
         """Build the initial message list for the LLM turn."""
         scope = self.workspace_scopes.for_message(msg, session.metadata)
-        # In dynamic mode inject a compact one-line-per-tool summary so the
-        # model knows which capabilities exist even when their full schema
-        # isn't loaded yet.  Selected tools are flagged (loaded).
-        tool_compact_summary: str | None = None
-        if self.tools_config.tool_selection_mode == "dynamic":
-            from hczkbot.agent.tools.retriever import ToolRetriever
-
-            retriever = ToolRetriever(self.tools, max_tools=self.tools_config.dynamic_tool_max)
-            selected = set(retriever.select(msg.content or ""))
-            tool_compact_summary = self.tools.get_compact_summary(selected)
+        # Always inject the Tools & Skills Index so the model can discover
+        # on-demand tools by name + capability + usage_doc path.
+        tool_index = self._build_tool_index()
         return self.context.build_messages(
             history=history,
             current_message=image_generation_prompt(msg.content, msg.metadata),
@@ -695,7 +763,7 @@ class AgentLoop:
             include_memory_recent_history=include_memory_recent_history,
             session_key=session.key,
             unified_session=self._unified_session,
-            tool_compact_summary=tool_compact_summary,
+            tool_index=tool_index,
         )
 
     async def _dispatch_command_inline(
@@ -910,8 +978,6 @@ class AgentLoop:
                     session_metadata=session_metadata,
                     message_metadata=metadata,
                 ),
-                tool_selection_mode=self.tools_config.tool_selection_mode,
-                dynamic_tool_max=self.tools_config.dynamic_tool_max,
             ))
         finally:
             reset_workspace_scope(workspace_token)
@@ -1309,15 +1375,9 @@ class AgentLoop:
         current_role = "assistant" if is_subagent else "user"
         workspace_scope = self.workspace_scopes.for_message(msg, session.metadata)
 
-        # In dynamic mode inject the compact tool summary (same set as
+        # Always inject the Tools & Skills Index (same content as
         # _build_initial_messages — keeps system prompt stable across turns).
-        tool_compact_summary: str | None = None
-        if self.tools_config.tool_selection_mode == "dynamic":
-            from hczkbot.agent.tools.retriever import ToolRetriever
-
-            retriever = ToolRetriever(self.tools, max_tools=self.tools_config.dynamic_tool_max)
-            selected = set(retriever.select(msg.content or ""))
-            tool_compact_summary = self.tools.get_compact_summary(selected)
+        tool_index = self._build_tool_index()
         messages = self.context.build_messages(
             history=history,
             current_message="" if is_subagent else msg.content,
@@ -1333,7 +1393,7 @@ class AgentLoop:
             skip_runtime_lines=is_subagent,
             session_key=key,
             unified_session=self._unified_session,
-            tool_compact_summary=tool_compact_summary,
+            tool_index=tool_index,
         )
         t_wall = time.time()
         final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(

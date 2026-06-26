@@ -114,6 +114,7 @@ class LongTaskTool(Tool, _GoalToolsMixin):
     _capability = (
         "Begin or replace a long-running sustained objective tracked on the session."
     )
+    _usage_md = "docs/long_task.md"
 
     def __init__(
         self,
@@ -200,6 +201,7 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
     _capability = (
         "Mark the active sustained goal as finished after verifying required work."
     )
+    _usage_md = "docs/complete_goal.md"
 
     def __init__(
         self,

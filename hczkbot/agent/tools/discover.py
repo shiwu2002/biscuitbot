@@ -1,18 +1,13 @@
 """Meta-tool: on-demand discovery of full tool schemas.
 
-This module implements Layer 3 of the dynamic-tool-selection design.  When
-``tool_selection_mode == "dynamic"`` only a subset of tools is sent with
-full JSON schema.  The compact summary in the system prompt lists every
-tool's name + capability, but the model cannot call a tool whose schema it
-has not yet seen.
+Implements Layer 2 of the progressive-discovery architecture.  The model
+sees the ``INDEX.md`` table in the system prompt (name + capability +
+usage_doc).  To actually call an on-demand tool it must first load the
+tool's full JSON schema via ``discover_tools(name)``.
 
-``DiscoverToolsTool`` bridges that gap: the model calls
-``discover_tools("screenshot")`` and the tool returns the full schema for
-matching tools.  The model can then call the discovered tool in its next
-response.
-
-The tool is registered only in dynamic mode and is always included in the
-selection so the model can reach for it on any turn.
+``discover_tools`` also returns the ``usage_md`` path for each matched
+tool, encouraging the model to read the detailed doc first when it needs
+parameter examples or caveats.
 """
 
 from __future__ import annotations
@@ -32,8 +27,8 @@ if TYPE_CHECKING:
         "query": {
             "type": "string",
             "description": (
-                "Tool name or capability keyword.  Examples: 'screenshot', "
-                "'search files', 'generate image'.  Matched against tool "
+                "Tool name or capability keyword. Examples: 'screenshot', "
+                "'search files', 'generate image'. Matched against tool "
                 "names and capability summaries."
             ),
             "minLength": 1,
@@ -52,28 +47,18 @@ if TYPE_CHECKING:
 class DiscoverToolsTool(Tool):
     """Meta-tool: let the model request full schemas on demand."""
 
-    _capability: str = (
+    _capability = (
         "Request full tool definitions by name or keyword when a needed "
         "tool is not in your current tool set."
     )
-    _always_include: bool = True
-    _scopes: set[str] = {"core"}
+    _always_include = True
+    _usage_md = "docs/discover_tools.md"
+    _scopes = {"core"}
 
     def __init__(self) -> None:
         self._registry: "ToolRegistry | None" = None
 
-    @classmethod
-    def enabled(cls, ctx: Any) -> bool:
-        """Only registered in dynamic tool-selection mode."""
-        return getattr(ctx.config, "tool_selection_mode", "all") == "dynamic"
-
     def bind_registry(self, registry: "ToolRegistry") -> None:
-        """Inject the tool registry so the meta-tool can search it.
-
-        Must be called once after registration.  We avoid passing the
-        registry through ``ToolContext`` to keep the context dataclass
-        free of tool-internal bookkeeping.
-        """
         self._registry = registry
 
     @property
@@ -102,18 +87,28 @@ class DiscoverToolsTool(Tool):
                     "error": "no matching tools found",
                     "query": query,
                     "hint": (
-                        "Try a broader keyword or check the Available Tools "
-                        "list in the system prompt for the exact name."
+                        "Try a broader keyword or check the Tools & Skills "
+                        "Index in the system prompt for the exact name."
                     ),
                 },
                 ensure_ascii=False,
             )
-        # Strip the wrapper so the model sees a flat, schema-friendly list.
+        # Return full schema + usage_md hint so the model knows where to
+        # find detailed examples and caveats.
+        tools_payload = []
+        for t in matches:
+            schema = t.to_schema()
+            usage_md = getattr(t, "_usage_md", "") or ""
+            if usage_md:
+                schema["_usage_md"] = usage_md
+            tools_payload.append(schema)
         payload = {
-            "tools": [t.to_schema() for t in matches],
+            "tools": tools_payload,
             "note": (
                 "These tools are now available. Call them in your next "
-                "response using the exact name and parameters shown."
+                "response using the exact name and parameters shown. "
+                "For detailed usage examples, read the _usage_md file "
+                "with read_file."
             ),
         }
         return json.dumps(payload, ensure_ascii=False)

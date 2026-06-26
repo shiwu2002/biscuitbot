@@ -176,6 +176,7 @@ class ExecTool(Tool):
         "timeout, sandbox, and deny-list guards."
     )
     _always_include = True
+    _usage_md = "docs/exec.md"
 
     config_key = "exec"
 

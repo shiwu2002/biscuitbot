@@ -406,6 +406,7 @@ class WriteStdinTool(Tool):
     _capability = (
         "Send stdin to a running exec session and poll its output incrementally."
     )
+    _usage_md = "docs/write_stdin.md"
 
     _scopes = {"core", "subagent"}
     config_key = "exec"
@@ -550,6 +551,7 @@ class ListExecSessionsTool(Tool):
     """List active exec sessions."""
 
     _capability = "List currently running exec sessions with their IDs and status."
+    _usage_md = "docs/list_exec_sessions.md"
 
     _scopes = {"core", "subagent"}
     config_key = "exec"

@@ -53,6 +53,7 @@ class MessageTool(Tool, ContextAware):
         "(reminders, cross-channel delivery)."
     )
     _always_include = True
+    _usage_md = "docs/message.md"
 
     def __init__(
         self,

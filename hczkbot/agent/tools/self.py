@@ -47,6 +47,7 @@ class MyTool(Tool, ContextAware):
     _capability = (
         "Inspect and update the agent's runtime configuration and active goals."
     )
+    _usage_md = "docs/my.md"
 
     _plugin_discoverable = False  # Requires AgentLoop reference; registered manually
     config_key = "my"

@@ -57,6 +57,7 @@ class CronTool(Tool, ContextAware):
     _capability = (
         "Schedule reminders and recurring cron-driven tasks (add/list/remove)."
     )
+    _usage_md = "docs/cron.md"
 
     def __init__(self, cron_service: CronService, default_timezone: str = "UTC"):
         self._cron = cron_service

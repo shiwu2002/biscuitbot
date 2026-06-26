@@ -334,32 +334,6 @@ class ToolsConfig(Base):
     )  # allow WebUI Full Access shell checks against localhost services; legacy allowLocalPreviewAccess still reads
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
-    tool_selection_mode: str = Field(
-        default="all",
-        validation_alias=AliasChoices("toolSelectionMode", "tool_selection_mode"),
-        description=(
-            "How tool definitions are sent to the model. "
-            "'all' (default) sends every tool's full schema — backward compatible. "
-            "'dynamic' sends a small selection with full schema plus a compact "
-            "summary of every tool; the model can call discover_tools to load more."
-        ),
-    )
-    dynamic_tool_max: int = Field(
-        default=10,
-        validation_alias=AliasChoices("dynamicToolMax", "dynamic_tool_max"),
-        description="Maximum number of tools sent with full schema in dynamic mode.",
-        ge=3,
-        le=50,
-    )
-
-    @field_validator("tool_selection_mode", mode="before")
-    @classmethod
-    def _normalize_tool_selection_mode(cls, value: Any) -> Any:
-        if isinstance(value, str):
-            v = value.strip().lower()
-            if v in ("all", "dynamic"):
-                return v
-        return "all"
 
     @field_validator("guard_level", mode="before")
     @classmethod

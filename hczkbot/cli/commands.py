@@ -1194,6 +1194,43 @@ def _run_gateway(
                 logger.info("Heartbeat: silenced by post-run evaluation")
             return response
 
+        # Docs consistency check: detect stale docs/<name>.md vs tool code,
+        # then spawn a subagent to regenerate mismatched files.
+        if job.name == "docs_consistency_check":
+            from hczkbot.agent.tools.docs_consistency import (
+                build_repair_task,
+                check_docs_consistency,
+            )
+
+            try:
+                mismatches = check_docs_consistency(agent.tools, agent.workspace)
+            except Exception:
+                logger.exception("Docs consistency check failed")
+                return None
+
+            if not mismatches:
+                logger.info("Docs consistency check: all docs match code")
+                return None
+
+            logger.warning(
+                "Docs consistency check: {} mismatch(es) found: {}",
+                len(mismatches),
+                ", ".join(m.tool_name for m in mismatches),
+            )
+            task = build_repair_task(mismatches)
+            try:
+                await agent.subagents.spawn(
+                    task,
+                    label="docs-repair",
+                    origin_channel="cli",
+                    origin_chat_id="direct",
+                    session_key="docs-repair",
+                )
+            except Exception:
+                logger.exception("Docs repair subagent spawn failed")
+                return None
+            return f"spawned docs-repair subagent for {len(mismatches)} mismatch(es)"
+
         if is_bound_cron_job(job):
             return await run_bound_cron_job(job, agent=agent, cron=cron)
 
@@ -1326,6 +1363,20 @@ def _run_gateway(
             ),
             payload=CronPayload(kind="system_event"),
         ))
+
+    # Register Docs Consistency Check system job (idempotent on restart)
+    # Runs nightly to detect stale docs/<name>.md vs tool code, then spawns
+    # a subagent to regenerate mismatched files.
+    cron.register_system_job(CronJob(
+        id="docs_consistency_check",
+        name="docs_consistency_check",
+        schedule=CronSchedule(
+            kind="cron",
+            expr="0 23 * * *",  # 每天 23:00
+            tz=config.agents.defaults.timezone,
+        ),
+        payload=CronPayload(kind="system_event"),
+    ))
 
     async def _open_browser_when_ready() -> None:
         """Wait for the gateway to bind, then point the user's browser at the webui."""

@@ -51,18 +51,6 @@ def _registry_with_tools() -> ToolRegistry:
     return reg
 
 
-# --- enabled() gating ---
-
-class _Ctx:
-    def __init__(self, mode: str):
-        self.config = type("Cfg", (), {"tool_selection_mode": mode})()
-
-
-def test_discover_tools_enabled_only_in_dynamic_mode():
-    assert DiscoverToolsTool.enabled(_Ctx("dynamic")) is True
-    assert DiscoverToolsTool.enabled(_Ctx("all")) is False
-
-
 # --- bind_registry contract ---
 
 @pytest.mark.asyncio
@@ -157,35 +145,29 @@ def test_registry_fuzzy_search_returns_empty_for_no_match():
     assert matches == []
 
 
-# --- get_compact_summary ---
+# --- generate_index (replaces get_compact_summary) ---
 
-def test_compact_summary_lists_every_tool():
+def test_generate_index_lists_every_tool():
     reg = _registry_with_tools()
-    summary = reg.get_compact_summary()
-    assert "- screenshot:" in summary
-    assert "- grep:" in summary
-    assert "- exec:" in summary
+    index = reg.generate_index()
+    assert "screenshot" in index
+    assert "grep" in index
+    assert "exec" in index
+    assert "## Always Available" in index or "## On-demand" in index
 
 
-def test_compact_summary_marks_loaded_tools():
+def test_generate_index_includes_skills_section():
     reg = _registry_with_tools()
-    summary = reg.get_compact_summary(selected_names={"exec", "grep"})
-    # Loaded tools get the (loaded) tag
-    exec_line = next(line for line in summary.splitlines() if line.startswith("- exec:"))
-    grep_line = next(line for line in summary.splitlines() if line.startswith("- grep:"))
-    screenshot_line = next(line for line in summary.splitlines() if line.startswith("- screenshot:"))
-    assert "(loaded)" in exec_line
-    assert "(loaded)" in grep_line
-    assert "(loaded)" not in screenshot_line
+    skills = [{"name": "cron", "capability": "Schedule tasks", "usage_md": "skills/cron/SKILL.md"}]
+    index = reg.generate_index(skills_entries=skills)
+    assert "## Skills" in index
+    assert "cron" in index
 
 
-def test_compact_summary_cached_until_registry_changes():
+def test_generate_index_cache_invalidated_on_register():
     reg = _registry_with_tools()
-    first = reg.get_compact_summary()
-    second = reg.get_compact_summary()
-    assert first is second or first == second  # Same content; cache hit
-    # Register a new tool — cache should be invalidated
+    first = reg.generate_index()
     reg.register(_make_tool("new_tool", "newcomer", capability="newcomer"))
-    third = reg.get_compact_summary()
-    assert "- new_tool:" in third
-    assert "- new_tool:" not in first
+    second = reg.generate_index()
+    assert "new_tool" in second
+    assert "new_tool" not in first

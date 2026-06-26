@@ -126,6 +126,7 @@ class FindFilesTool(_SearchTool):
     _capability = (
         "Find files by path fragment, glob, or file type; returns workspace-relative paths."
     )
+    _usage_md = "docs/find_files.md"
 
     @property
     def name(self) -> str:
@@ -287,6 +288,7 @@ class GrepTool(_SearchTool):
     _capability = (
         "Search file contents by regex pattern; returns matching paths or lines with context."
     )
+    _usage_md = "docs/grep.md"
 
     _MAX_RESULT_CHARS = 128_000
     _MAX_FILE_BYTES = 2_000_000

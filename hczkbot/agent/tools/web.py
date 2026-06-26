@@ -240,6 +240,7 @@ class WebSearchTool(Tool):
         "Search the web for current information; returns titles, URLs, and snippets."
     )
     _always_include = True
+    _usage_md = "docs/web_search.md"
 
     config_key = "web"
 
@@ -813,6 +814,7 @@ class WebFetchTool(Tool):
     _capability = (
         "Fetch a URL and extract readable content as markdown/text for analysis."
     )
+    _usage_md = "docs/web_fetch.md"
 
     config_key = "web"
 

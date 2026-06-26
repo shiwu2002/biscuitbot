@@ -42,7 +42,7 @@ class _Tools:
     def get_definitions(self) -> list:
         return []
 
-    def get_definitions_for_turn(self, query: str = "", *, mode: str = "all", max_tools: int = 10) -> list:
+    def get_always_include_definitions(self) -> list:
         return self.get_definitions()
 
     def prepare_call(self, name: str, arguments: dict):

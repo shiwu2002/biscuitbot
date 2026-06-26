@@ -89,7 +89,7 @@ class ContextBuilder:
         include_memory_recent_history: bool = True,
         session_key: str | None = None,
         unified_session: bool = False,
-        tool_compact_summary: str | None = None,
+        tool_index: str | None = None,
     ) -> str:
         """Build the system prompt from identity, bootstrap files, memory, and skills."""
         root = workspace or self.workspace
@@ -101,14 +101,8 @@ class ContextBuilder:
 
         parts.append(render_template("agent/tool_contract.md"))
 
-        if tool_compact_summary:
-            parts.append(
-                "# Available Tools (compact summary)\n\n"
-                + tool_compact_summary
-                + "\n\nTools already loaded with full schema are marked (loaded). "
-                "Call `discover_tools` to request the full schema for any other "
-                "tool listed above before invoking it."
-            )
+        if tool_index:
+            parts.append(tool_index)
 
         memory = self.memory.get_memory_context()
         if memory and not self._is_template_content(self.memory.read_memory(), "memory/MEMORY.md"):
@@ -262,7 +256,7 @@ class ContextBuilder:
         include_memory_recent_history: bool = True,
         session_key: str | None = None,
         unified_session: bool = False,
-        tool_compact_summary: str | None = None,
+        tool_index: str | None = None,
     ) -> list[dict[str, Any]]:
         """Build the complete message list for an LLM call."""
         root = workspace or self.workspace
@@ -301,7 +295,7 @@ class ContextBuilder:
                     include_memory_recent_history=include_memory_recent_history,
                     session_key=session_key,
                     unified_session=unified_session,
-                    tool_compact_summary=tool_compact_summary,
+                    tool_index=tool_index,
                 ),
             },
             *history,

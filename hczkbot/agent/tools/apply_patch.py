@@ -131,6 +131,7 @@ class ApplyPatchTool(_FsTool):
     _capability = (
         "Apply multi-file code edits with replace/add actions in a single call."
     )
+    _usage_md = "docs/apply_patch.md"
 
     @property
     def name(self) -> str:

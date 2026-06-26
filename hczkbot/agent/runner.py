@@ -133,9 +133,6 @@ class AgentRunSpec:
     goal_active_predicate: Callable[[], bool] | None = None
     goal_continue_message: GoalContinueMessage | None = None
     finalize_on_max_iterations: bool = True
-    # Dynamic tool selection (set by AgentLoop when building the spec)
-    tool_selection_mode: str = "all"
-    dynamic_tool_max: int = 10
 
 
 @dataclass(slots=True)
@@ -762,11 +759,7 @@ class AgentRunner:
         kwargs = self._build_request_kwargs(
             spec,
             messages,
-            tools=spec.tools.get_definitions_for_turn(
-                _latest_user_query(messages),
-                mode=spec.tool_selection_mode,
-                max_tools=spec.dynamic_tool_max,
-            ),
+            tools=spec.tools.get_always_include_definitions(),
         )
         wants_streaming = hook.wants_streaming()
         wants_progress_streaming = (
@@ -991,11 +984,7 @@ class AgentRunner:
         response: LLMResponse,
     ) -> dict[str, int]:
         try:
-            tools = spec.tools.get_definitions_for_turn(
-                _latest_user_query(messages),
-                mode=spec.tool_selection_mode,
-                max_tools=spec.dynamic_tool_max,
-            )
+            tools = spec.tools.get_always_include_definitions()
         except Exception:
             tools = None
         prompt_tokens, _ = estimate_prompt_tokens_chain(self.provider, spec.model, messages, tools)
@@ -1518,11 +1507,7 @@ class AgentRunner:
         if budget <= 0:
             return messages
 
-        turn_tools = spec.tools.get_definitions_for_turn(
-            _latest_user_query(messages),
-            mode=spec.tool_selection_mode,
-            max_tools=spec.dynamic_tool_max,
-        )
+        turn_tools = spec.tools.get_always_include_definitions()
         estimate, _ = estimate_prompt_tokens_chain(
             self.provider,
             spec.model,
