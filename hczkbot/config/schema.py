@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from pydantic import AliasChoices, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 from hczkbot.config_base import Base
@@ -317,6 +317,12 @@ class ToolsConfig(Base):
         default_factory=lambda: _lazy_default("hczkbot.agent.tools.screenshot", "ScreenshotToolConfig"),
     )
     restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
+    guard_level: str = Field(
+        default="standard",
+        validation_alias=AliasChoices("guardLevel", "guard_level"),
+        description="Prompt-injection / shell-interception guard level: standard|minimal|off. "
+        "standard=full deny-list + banners; minimal=catastrophic shell blocks only; off=no injection/shell interception.",
+    )  # configurable guard level; structural bounds (SSRF, workspace) stay on at all levels
     webui_allow_local_service_access: bool = Field(
         default=True,
         validation_alias=AliasChoices(
@@ -328,6 +334,42 @@ class ToolsConfig(Base):
     )  # allow WebUI Full Access shell checks against localhost services; legacy allowLocalPreviewAccess still reads
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
+    tool_selection_mode: str = Field(
+        default="all",
+        validation_alias=AliasChoices("toolSelectionMode", "tool_selection_mode"),
+        description=(
+            "How tool definitions are sent to the model. "
+            "'all' (default) sends every tool's full schema — backward compatible. "
+            "'dynamic' sends a small selection with full schema plus a compact "
+            "summary of every tool; the model can call discover_tools to load more."
+        ),
+    )
+    dynamic_tool_max: int = Field(
+        default=10,
+        validation_alias=AliasChoices("dynamicToolMax", "dynamic_tool_max"),
+        description="Maximum number of tools sent with full schema in dynamic mode.",
+        ge=3,
+        le=50,
+    )
+
+    @field_validator("tool_selection_mode", mode="before")
+    @classmethod
+    def _normalize_tool_selection_mode(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("all", "dynamic"):
+                return v
+        return "all"
+
+    @field_validator("guard_level", mode="before")
+    @classmethod
+    def _normalize_guard_level(cls, value: Any) -> Any:
+        """Lowercase and validate guard_level; fall back to 'standard' on unknown values."""
+        from hczkbot.security.guard_level import normalize_guard_level
+
+        if isinstance(value, str):
+            return normalize_guard_level(value)
+        return value
 
 
 class Config(BaseSettings):

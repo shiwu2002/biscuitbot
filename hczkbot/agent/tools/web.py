@@ -22,6 +22,7 @@ from hczkbot.agent.tools.schema import (
     tool_parameters_schema,
 )
 from hczkbot.config_base import Base
+from hczkbot.security.guard_level import GuardPolicy
 from hczkbot.utils.helpers import build_image_content_blocks
 
 # Shared constants
@@ -235,6 +236,10 @@ class WebSearchTool(Tool):
         "Some providers support timeRange, authLevel, and queryRewrite. "
         "Use web_fetch to read a specific page in full."
     )
+    _capability = (
+        "Search the web for current information; returns titles, URLs, and snippets."
+    )
+    _always_include = True
 
     config_key = "web"
 
@@ -805,6 +810,9 @@ class WebFetchTool(Tool):
         "Output is capped at maxChars (default 50 000). "
         "Works for most web pages and docs; may fail on login-walled or JS-heavy sites."
     )
+    _capability = (
+        "Fetch a URL and extract readable content as markdown/text for analysis."
+    )
 
     config_key = "web"
 
@@ -822,13 +830,16 @@ class WebFetchTool(Tool):
             config=ctx.config.web.fetch,
             proxy=ctx.config.web.proxy,
             user_agent=ctx.config.web.user_agent,
+            guard_level=ctx.config.guard_level,
         )
 
-    def __init__(self, config: WebFetchConfig | None = None, proxy: str | None = None, user_agent: str | None = None, max_chars: int = 50000):
+    def __init__(self, config: WebFetchConfig | None = None, proxy: str | None = None, user_agent: str | None = None, max_chars: int = 50000, guard_level: str = "standard"):
         self.config = config if config is not None else WebFetchConfig()
         self.proxy = proxy
         self.user_agent = user_agent or _DEFAULT_USER_AGENT
         self.max_chars = max_chars
+        self.guard_level = guard_level
+        self._untrusted_banner = GuardPolicy(guard_level).untrusted_banner
 
     @property
     def read_only(self) -> bool:
@@ -905,12 +916,13 @@ class WebFetchTool(Tool):
             truncated = len(text) > max_chars
             if truncated:
                 text = text[:max_chars]
-            text = f"{_UNTRUSTED_BANNER}\n\n{text}"
+            if self._untrusted_banner:
+                text = f"{_UNTRUSTED_BANNER}\n\n{text}"
 
             return json.dumps({
                 "url": url, "finalUrl": data.get("url", url), "status": r.status_code,
                 "extractor": "jina", "truncated": truncated, "length": len(text),
-                "untrusted": True, "text": text,
+                "untrusted": self._untrusted_banner, "text": text,
             }, ensure_ascii=False)
         except Exception as e:
             logger.debug("Jina Reader failed for {}, falling back to readability: {}", url, e)
@@ -953,12 +965,13 @@ class WebFetchTool(Tool):
             truncated = len(text) > max_chars
             if truncated:
                 text = text[:max_chars]
-            text = f"{_UNTRUSTED_BANNER}\n\n{text}"
+            if self._untrusted_banner:
+                text = f"{_UNTRUSTED_BANNER}\n\n{text}"
 
             return json.dumps({
                 "url": url, "finalUrl": str(r.url), "status": r.status_code,
                 "extractor": extractor, "truncated": truncated, "length": len(text),
-                "untrusted": True, "text": text,
+                "untrusted": self._untrusted_banner, "text": text,
             }, ensure_ascii=False)
         except httpx.ProxyError as e:
             logger.exception("WebFetch proxy error for {}", url)

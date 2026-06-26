@@ -533,6 +533,7 @@ export interface SettingsPayload {
       summary: string;
     };
     ssrf_whitelist_count: number;
+    guard_level: string;
     webui_allow_local_service_access: boolean;
     allow_local_preview_access?: boolean;
     webui_default_access_mode: WebuiDefaultAccessMode;
@@ -748,9 +749,12 @@ export interface WebSearchSettingsUpdate {
   useJinaReader?: boolean;
 }
 
+export type GuardLevel = "standard" | "minimal" | "off";
+
 export interface NetworkSafetySettingsUpdate {
   webuiAllowLocalServiceAccess: boolean;
   webuiDefaultAccessMode: WebuiDefaultAccessMode;
+  guardLevel: GuardLevel;
 }
 
 export interface ImageGenerationSettingsUpdate {

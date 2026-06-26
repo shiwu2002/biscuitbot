@@ -369,6 +369,7 @@ class SubagentManager:
             time_ctx=time_ctx,
             workspace=str(root),
             skills_summary=skills_summary or "",
+            guard_level=self.tools_config.guard_level,
         )
 
     async def cancel_by_session(self, session_key: str) -> int:

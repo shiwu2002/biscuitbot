@@ -35,6 +35,7 @@ from hczkbot.agent.tools.schema import (
 )
 from hczkbot.config.paths import get_media_dir
 from hczkbot.config_base import Base
+from hczkbot.security.guard_level import GuardPolicy
 from hczkbot.security.workspace_access import current_scope_allows_loopback, current_tool_workspace
 from hczkbot.security.workspace_policy import is_path_within
 
@@ -49,6 +50,44 @@ _WORKSPACE_BOUNDARY_NOTE = (
     "resource, tell them you cannot reach it under the current "
     "restrict_to_workspace policy and ask how to proceed."
 )
+
+# Hardcoded shell deny-list, split by severity for guard_level gating.
+# Catastrophic commands are blocked at guard_level standard + minimal.
+# Friction patterns (download-and-execute, internal-state-file writes) are
+# blocked only at standard; they cause real friction for legitimate workflows
+# (rustup/homebrew install scripts) so power users can drop them via minimal/off.
+_CATASTROPHIC_DENY_PATTERNS: list[str] = [
+    r"\brm\s+-[rf]{1,2}\b",          # rm -r, rm -rf, rm -fr
+    r"\bdel\s+/[fq]\b",              # del /f, del /q
+    r"\brmdir\s+/s\b",               # rmdir /s
+    r"(?:^|[;&|]\s*)format(?!=)\b",   # format (as standalone command only)
+    r"\b(mkfs|diskpart)\b",          # disk operations
+    r"\bdd\s+if=",                   # dd
+    r">\s*/dev/sd",                  # write to disk
+    r"\b(shutdown|reboot|poweroff)\b",  # system power
+    r":\(\)\s*\{.*\};\s*:",          # fork bomb
+]
+
+# Friction-level patterns: high-signal for indirect prompt injection but
+# commonly tripped by legitimate dev workflows. Gated to standard only.
+_FRICTION_DENY_PATTERNS: list[str] = [
+    # Block "download-and-execute" patterns commonly used in indirect
+    # prompt injection to turn a benign exec into remote code
+    # execution. Normal dev workflows rarely pipe remote fetches into
+    # an interpreter shell, so these are high-signal deny rules.
+    r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",   # curl … | sh
+    r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\s",  # curl … | sh -
+    r"\bbase64\s+-d\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",            # base64 -d … | sh
+    r"\beval\s+[\"'$]?\(?\s*\$?\(\s*(?:curl|wget|fetch)\b",            # eval "$(curl …)"
+    # Block writes to hczkbot internal state files (#2989).
+    # history.jsonl / .dream_cursor are managed by append_history();
+    # direct writes corrupt the cursor format and crash /dream.
+    r">>?\s*\S*(?:history\.jsonl|\.dream_cursor)",            # > / >> redirect
+    r"\btee\b[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",     # tee / tee -a
+    r"\b(?:cp|mv)\b(?:\s+[^\s|;&<>]+)+\s+\S*(?:history\.jsonl|\.dream_cursor)",  # cp/mv target
+    r"\bdd\b[^|;&<>]*\bof=\S*(?:history\.jsonl|\.dream_cursor)",  # dd of=
+    r"\bsed\s+-i[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",  # sed -i
+]
 
 
 class ExecToolConfig(Base):
@@ -132,6 +171,12 @@ class ExecTool(Tool):
     """Tool to execute shell commands."""
     _scopes = {"core", "subagent"}
 
+    _capability = (
+        "Execute shell commands (build, test, git, package managers) with "
+        "timeout, sandbox, and deny-list guards."
+    )
+    _always_include = True
+
     config_key = "exec"
 
     @classmethod
@@ -156,6 +201,7 @@ class ExecTool(Tool):
             allowed_env_keys=cfg.allowed_env_keys,
             allow_patterns=cfg.allow_patterns,
             deny_patterns=cfg.deny_patterns,
+            guard_level=ctx.config.guard_level,
         )
 
     def __init__(
@@ -171,38 +217,27 @@ class ExecTool(Tool):
         path_prepend: str = "",
         path_append: str = "",
         allowed_env_keys: list[str] | None = None,
+        guard_level: str = "standard",
         session_manager: Any | None = None,
     ):
         self.timeout = timeout
         self.working_dir = working_dir
         self.sandbox = sandbox
-        self.deny_patterns = (deny_patterns or []) + [
-            r"\brm\s+-[rf]{1,2}\b",          # rm -r, rm -rf, rm -fr
-            r"\bdel\s+/[fq]\b",              # del /f, del /q
-            r"\brmdir\s+/s\b",               # rmdir /s
-            r"(?:^|[;&|]\s*)format(?!=)\b",   # format (as standalone command only)
-            r"\b(mkfs|diskpart)\b",          # disk operations
-            r"\bdd\s+if=",                   # dd
-            r">\s*/dev/sd",                  # write to disk
-            r"\b(shutdown|reboot|poweroff)\b",  # system power
-            r":\(\)\s*\{.*\};\s*:",          # fork bomb
-            # Block "download-and-execute" patterns commonly used in indirect
-            # prompt injection to turn a benign exec into remote code
-            # execution. Normal dev workflows rarely pipe remote fetches into
-            # an interpreter shell, so these are high-signal deny rules.
-            r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",   # curl … | sh
-            r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\s",  # curl … | sh -
-            r"\bbase64\s+-d\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",            # base64 -d … | sh
-            r"\beval\s+[\"'$]?\(?\s*\$?\(\s*(?:curl|wget|fetch)\b",            # eval "$(curl …)"
-            # Block writes to hczkbot internal state files (#2989).
-            # history.jsonl / .dream_cursor are managed by append_history();
-            # direct writes corrupt the cursor format and crash /dream.
-            r">>?\s*\S*(?:history\.jsonl|\.dream_cursor)",            # > / >> redirect
-            r"\btee\b[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",     # tee / tee -a
-            r"\b(?:cp|mv)\b(?:\s+[^\s|;&<>]+)+\s+\S*(?:history\.jsonl|\.dream_cursor)",  # cp/mv target
-            r"\bdd\b[^|;&<>]*\bof=\S*(?:history\.jsonl|\.dream_cursor)",  # dd of=
-            r"\bsed\s+-i[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",  # sed -i
-        ]
+        self.guard_level = guard_level
+        # Build the hardcoded deny-list based on guard_level. User-supplied
+        # deny_patterns always apply (they're the user's own rules). The
+        # application's hardcoded patterns are gated by GuardPolicy:
+        #   standard → catastrophic + friction
+        #   minimal  → catastrophic only
+        #   off      → none
+        # SSRF and workspace-boundary checks in _guard_command run regardless.
+        policy = GuardPolicy(guard_level)
+        hardcoded: list[str] = []
+        if policy.catastrophic_shell_blocks:
+            hardcoded.extend(_CATASTROPHIC_DENY_PATTERNS)
+        if policy.shell_denylist:
+            hardcoded.extend(_FRICTION_DENY_PATTERNS)
+        self.deny_patterns = (deny_patterns or []) + hardcoded
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
         if allow_local_preview_access is not None:

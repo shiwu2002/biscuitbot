@@ -831,6 +831,7 @@ def settings_payload(
             "webui_default_access_mode": read_webui_default_access_mode(),
             "private_service_protection_enabled": True,
             "ssrf_whitelist_count": len(config.tools.ssrf_whitelist),
+            "guard_level": config.tools.guard_level,
             "mcp_server_count": len(config.tools.mcp_servers),
             "exec_enabled": exec_config.enable,
             "exec_sandbox": exec_config.sandbox or None,
@@ -1100,8 +1101,9 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
         or _query_first_alias(query, "allow_local_preview_access", "allowLocalPreviewAccess")
     )
     raw_default_access_mode = _query_first_alias(query, "webui_default_access_mode", "webuiDefaultAccessMode")
-    if raw_allow is None and raw_default_access_mode is None:
-        raise WebUISettingsError("webui_allow_local_service_access or webui_default_access_mode is required")
+    raw_guard_level = _query_first_alias(query, "guard_level", "guardLevel")
+    if raw_allow is None and raw_default_access_mode is None and raw_guard_level is None:
+        raise WebUISettingsError("webui_allow_local_service_access, webui_default_access_mode, or guard_level is required")
 
     config = load_config()
     changed = False
@@ -1109,6 +1111,13 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
         webui_allow_local_service_access = _parse_bool(raw_allow, "webui_allow_local_service_access")
         if config.tools.webui_allow_local_service_access != webui_allow_local_service_access:
             config.tools.webui_allow_local_service_access = webui_allow_local_service_access
+            changed = True
+
+    if raw_guard_level is not None:
+        from hczkbot.security.guard_level import normalize_guard_level
+        guard_level = normalize_guard_level(raw_guard_level)
+        if config.tools.guard_level != guard_level:
+            config.tools.guard_level = guard_level
             changed = True
 
     if changed:

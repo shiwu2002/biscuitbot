@@ -94,6 +94,9 @@ async def test_runner_streams_live_write_file_activity_from_tool_argument_deltas
         def get_definitions(self):
             return [{"type": "function", "function": {"name": "write_file"}}]
 
+        def get_definitions_for_turn(self, query="", *, mode="all", max_tools=10):
+            return self.get_definitions()
+
         def get(self, name):
             return None
 
@@ -168,6 +171,9 @@ async def test_runner_streams_live_edit_file_activity_from_tool_argument_deltas(
     class Tools:
         def get_definitions(self):
             return [{"type": "function", "function": {"name": "edit_file"}}]
+
+        def get_definitions_for_turn(self, query="", *, mode="all", max_tools=10):
+            return self.get_definitions()
 
         def get(self, name):
             return None

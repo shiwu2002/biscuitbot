@@ -51,6 +51,10 @@ class ScreenshotTool(Tool):
     with your question, and returns the model's description.
     """
 
+    _capability = (
+        "Capture a screenshot and analyze it with the configured vision model."
+    )
+
     config_key = "screenshot"
     _plugin_discoverable = False  # Requires vision_provider_loader; registered manually
 

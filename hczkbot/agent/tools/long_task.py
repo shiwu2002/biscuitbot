@@ -111,6 +111,10 @@ class _GoalToolsMixin(ContextAware):
 class LongTaskTool(Tool, _GoalToolsMixin):
     """Begin or replace focus on a long-running objective stored on the session."""
 
+    _capability = (
+        "Begin or replace a long-running sustained objective tracked on the session."
+    )
+
     def __init__(
         self,
         sessions: Any,
@@ -192,6 +196,10 @@ class LongTaskTool(Tool, _GoalToolsMixin):
 )
 class CompleteGoalTool(Tool, _GoalToolsMixin):
     """Mark the active sustained goal finished after all required work is verified."""
+
+    _capability = (
+        "Mark the active sustained goal as finished after verifying required work."
+    )
 
     def __init__(
         self,

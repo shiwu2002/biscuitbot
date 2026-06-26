@@ -631,6 +631,7 @@ export async function updateNetworkSafetySettings(
   const query = new URLSearchParams();
   query.set("webui_allow_local_service_access", String(update.webuiAllowLocalServiceAccess));
   query.set("webui_default_access_mode", update.webuiDefaultAccessMode);
+  query.set("guard_level", update.guardLevel);
   return request<SettingsPayload>(
     `${base}/api/settings/network-safety/update?${query}`,
     token,

@@ -180,6 +180,12 @@ class ReadFileTool(_FsTool):
     """Read file contents with optional line-based pagination."""
     _scopes = {"core", "subagent", "memory"}
 
+    _capability = (
+        "Read text, image, or document files (PDF/DOCX/XLSX/PPTX) with "
+        "line-range pagination for analysis before edits."
+    )
+    _always_include = True
+
     _MAX_CHARS = 128_000
     _DEFAULT_LIMIT = 2000
     _MAX_PDF_PAGES = 20
@@ -416,6 +422,8 @@ class ReadFileTool(_FsTool):
 class WriteFileTool(_FsTool):
     """Write content to a file."""
     _scopes = {"core", "subagent", "memory"}
+
+    _capability = "Write or overwrite file contents (text files only)."
 
     @property
     def name(self) -> str:
@@ -742,6 +750,10 @@ class EditFileTool(_FsTool):
     """Edit a file by replacing text with fallback matching."""
     _scopes = {"core", "subagent", "memory"}
 
+    _capability = (
+        "Edit a file by exact old_text/new_text replacement with fuzzy fallback."
+    )
+
     _MAX_EDIT_FILE_SIZE = 1024 * 1024 * 1024  # 1 GiB
     _MARKDOWN_EXTS = frozenset({".md", ".mdx", ".markdown"})
 
@@ -968,6 +980,8 @@ class EditFileTool(_FsTool):
 class ListDirTool(_FsTool):
     """List directory contents with optional recursion."""
     _scopes = {"core", "subagent"}
+
+    _capability = "List directory entries (optionally recursive, skips common junk dirs)."
 
     _DEFAULT_MAX = 200
     _IGNORE_DIRS = {

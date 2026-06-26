@@ -350,3 +350,87 @@ async def test_web_fetch_does_not_request_private_redirect_target(monkeypatch):
     assert "error" in data
     assert "redirect blocked" in data["error"].lower()
     assert requested == ["https://attacker.example/start"]
+
+
+# ---------------------------------------------------------------------------
+# guard_level-gated untrusted banner
+# ---------------------------------------------------------------------------
+
+def test_web_fetch_banner_enabled_at_standard():
+    """At guard_level=standard, _untrusted_banner is True."""
+    tool = WebFetchTool(guard_level="standard")
+    assert tool._untrusted_banner is True
+
+
+def test_web_fetch_banner_disabled_at_minimal():
+    """At guard_level=minimal, _untrusted_banner is False."""
+    tool = WebFetchTool(guard_level="minimal")
+    assert tool._untrusted_banner is False
+
+
+def test_web_fetch_banner_disabled_at_off():
+    """At guard_level=off, _untrusted_banner is False."""
+    tool = WebFetchTool(guard_level="off")
+    assert tool._untrusted_banner is False
+
+
+def test_web_fetch_banner_defaults_to_standard():
+    """Without explicit guard_level, banner defaults to True (standard)."""
+    tool = WebFetchTool()
+    assert tool._untrusted_banner is True
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_standard_result_contains_banner():
+    """At standard, fetch result includes the untrusted banner in text."""
+    tool = WebFetchTool(guard_level="standard", config=WebFetchConfig(use_jina_reader=False))
+
+    fake_html = "<html><head><title>T</title></head><body><p>Hi</p></body></html>"
+
+    class FakeResponse:
+        status_code = 200
+        url = "https://example.com/page"
+        text = fake_html
+        headers = {"content-type": "text/html"}
+        is_redirect = False
+        def raise_for_status(self): pass
+        def json(self): return {}
+
+    async def _fake_get(self, url, **kwargs):
+        return FakeResponse()
+
+    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+         patch("httpx.AsyncClient.get", _fake_get):
+        result = await tool.execute(url="https://example.com/page")
+
+    data = json.loads(result)
+    assert data["untrusted"] is True
+    assert "[External content" in data["text"]
+
+
+@pytest.mark.asyncio
+async def test_web_fetch_off_result_omits_banner():
+    """At off, fetch result does NOT include the untrusted banner."""
+    tool = WebFetchTool(guard_level="off", config=WebFetchConfig(use_jina_reader=False))
+
+    fake_html = "<html><head><title>T</title></head><body><p>Hi</p></body></html>"
+
+    class FakeResponse:
+        status_code = 200
+        url = "https://example.com/page"
+        text = fake_html
+        headers = {"content-type": "text/html"}
+        is_redirect = False
+        def raise_for_status(self): pass
+        def json(self): return {}
+
+    async def _fake_get(self, url, **kwargs):
+        return FakeResponse()
+
+    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+         patch("httpx.AsyncClient.get", _fake_get):
+        result = await tool.execute(url="https://example.com/page")
+
+    data = json.loads(result)
+    assert data["untrusted"] is False
+    assert "[External content" not in data["text"]

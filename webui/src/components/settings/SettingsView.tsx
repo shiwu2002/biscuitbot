@@ -123,6 +123,7 @@ import type {
   AutomationUpdatePayload,
   CliAppInfo,
   CliAppsPayload,
+  GuardLevel,
   ImageGenerationSettingsUpdate,
   McpPresetInfo,
   McpPresetsPayload,
@@ -418,6 +419,7 @@ const DEFAULT_TRANSCRIPTION_SETTINGS: NonNullable<SettingsPayload["transcription
 const DEFAULT_NETWORK_SAFETY_FORM: NetworkSafetySettingsUpdate = {
   webuiAllowLocalServiceAccess: true,
   webuiDefaultAccessMode: "default",
+  guardLevel: "standard",
 };
 
 function agentDraftFromPayload(payload: SettingsPayload): AgentSettingsDraft {
@@ -491,6 +493,9 @@ function transcriptionFormFromPayload(payload: SettingsPayload): TranscriptionSe
 }
 
 function networkSafetyFormFromPayload(payload: SettingsPayload): NetworkSafetySettingsUpdate {
+  const rawGuardLevel = payload.advanced.guard_level ?? "standard";
+  const guardLevel: GuardLevel =
+    rawGuardLevel === "minimal" || rawGuardLevel === "off" ? rawGuardLevel : "standard";
   return {
     webuiAllowLocalServiceAccess:
       payload.advanced.webui_allow_local_service_access ??
@@ -499,6 +504,7 @@ function networkSafetyFormFromPayload(payload: SettingsPayload): NetworkSafetySe
     webuiDefaultAccessMode: visibleWebuiDefaultAccessMode(
       payload.advanced.webui_default_access_mode,
     ),
+    guardLevel,
   };
 }
 
@@ -882,9 +888,11 @@ export function SettingsView({
     const currentLocalServiceAccess =
       settings.advanced.webui_allow_local_service_access ?? settings.advanced.allow_local_preview_access ?? true;
     const currentDefaultAccess = visibleWebuiDefaultAccessMode(settings.advanced.webui_default_access_mode);
+    const currentGuardLevel = settings.advanced.guard_level ?? "standard";
     return (
       networkSafetyForm.webuiAllowLocalServiceAccess !== currentLocalServiceAccess ||
-      networkSafetyForm.webuiDefaultAccessMode !== currentDefaultAccess
+      networkSafetyForm.webuiDefaultAccessMode !== currentDefaultAccess ||
+      networkSafetyForm.guardLevel !== currentGuardLevel
     );
   }, [networkSafetyForm, settings]);
 
@@ -6430,6 +6438,28 @@ function AdvancedSettings({
                 onChangeForm((prev) => ({
                   ...prev,
                   webuiDefaultAccessMode: webuiDefaultAccessMode as WebuiDefaultAccessMode,
+                }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.guardLevel", "Prompt Guard Level")}
+            description={tx(
+              "settings.help.guardLevel",
+              "Control prompt-injection and shell-interception intensity. SSRF and workspace boundary always stay on.",
+            )}
+          >
+            <SegmentedControl
+              value={form.guardLevel}
+              options={[
+                { value: "standard", label: tx("settings.values.guardStandard", "Standard") },
+                { value: "minimal", label: tx("settings.values.guardMinimal", "Minimal") },
+                { value: "off", label: tx("settings.values.guardOff", "Off") },
+              ]}
+              onChange={(guardLevel) =>
+                onChangeForm((prev) => ({
+                  ...prev,
+                  guardLevel: guardLevel as GuardLevel,
                 }))
               }
             />

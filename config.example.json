@@ -224,6 +224,9 @@
       "enable": false
     },
     "restrictToWorkspace": false,
+    "guardLevel": "standard",
+    "toolSelectionMode": "all",
+    "dynamicToolMax": 10,
     "webuiAllowLocalServiceAccess": true,
     "ssrfWhitelist": [],
     "mcpServers": {}

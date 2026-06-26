@@ -44,6 +44,10 @@ def _is_subagent_status(value: Any) -> bool:
 class MyTool(Tool, ContextAware):
     """Check and set the agent loop's runtime configuration."""
 
+    _capability = (
+        "Inspect and update the agent's runtime configuration and active goals."
+    )
+
     _plugin_discoverable = False  # Requires AgentLoop reference; registered manually
     config_key = "my"
 

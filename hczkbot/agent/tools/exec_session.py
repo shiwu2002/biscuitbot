@@ -403,6 +403,10 @@ def format_session_poll(session_id: str, poll: _SessionPoll) -> str:
 class WriteStdinTool(Tool):
     """Write to or poll a running exec session."""
 
+    _capability = (
+        "Send stdin to a running exec session and poll its output incrementally."
+    )
+
     _scopes = {"core", "subagent"}
     config_key = "exec"
 
@@ -544,6 +548,8 @@ class WriteStdinTool(Tool):
 @tool_parameters(tool_parameters_schema())
 class ListExecSessionsTool(Tool):
     """List active exec sessions."""
+
+    _capability = "List currently running exec sessions with their IDs and status."
 
     _scopes = {"core", "subagent"}
     config_key = "exec"

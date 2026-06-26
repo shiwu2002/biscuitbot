@@ -152,6 +152,15 @@ class Tool(ABC):
         ...
 
     @property
+    def capability(self) -> str:
+        """One-sentence capability boundary for retrieval and compact summary.
+
+        Subclasses may set ``_capability``; otherwise the first 120 chars of
+        :attr:`description` are used as a sensible default.
+        """
+        return self._capability or self.description[:120]
+
+    @property
     def read_only(self) -> bool:
         """Whether this tool is side-effect free and safe to parallelize."""
         return False
@@ -171,6 +180,15 @@ class Tool(ABC):
     config_key: str = ""
     _plugin_discoverable: bool = True
     _scopes: set[str] = {"core"}
+
+    # --- Dynamic tool selection metadata ---
+
+    #: Short capability boundary (1 sentence) used for retrieval and compact
+    #: summaries.  Falls back to ``description[:120]`` when empty.
+    _capability: str = ""
+    #: When ``True`` the tool is always sent with full schema in dynamic mode
+    #: regardless of the retrieval score.
+    _always_include: bool = False
 
     @classmethod
     def config_cls(cls) -> type[BaseModel] | None:

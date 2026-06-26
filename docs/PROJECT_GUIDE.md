@@ -110,6 +110,7 @@
 - **`_run_agent_loop`**：构建 `AgentProgressHook`、注入回调（checkpoint、drain pending）、调用 `AgentRunner.run`
 - **子组件装配**：`ContextBuilder`、`SessionManager`、`ToolRegistry`、`AgentRunner`、`SubagentManager`、`Consolidator`、`AutoCompact`、`CronTurnCoordinator`
 - 支持 MCP 服务器懒连接、模型预设热切换、运行时事件总线（`RuntimeEventBus`）
+- **MCP 生命周期托管**：`run()` 用 `try/finally` 包裹 `_connect_mcp()` 与 `_run_main_loop()`（原 `while` 循环被提取为独立方法）；finally 中若 `Task.cancelling()` 先 `uncancel()`，再 `await close_mcp()`，确保 MCP 的 anyio cancel scope 在 enter 它们的同一个 task 中被 exit。`_mcp_owner_task` 记录属主 task，`_mcp_deferred_stacks` 收集由 `_dispatch` 子 task 延迟归还的栈，由属主 task 在主循环 `TimeoutError` 分支与 `close_mcp()` 中通过 `_close_deferred_mcp_stacks()` 安全关闭（避免 `RuntimeError: Attempted to exit cancel scope in a different task`）
 
 #### 3.1.2 `runner.py` — AgentRunner LLM 调用循环
 
@@ -232,7 +233,7 @@
 | `shell.py` | exec | Shell 命令执行，含沙箱（bwrap）、超时、allow/deny 模式 |
 | `web.py` | web_search / web_fetch | Web 搜索（duckduckgo/bocha/volcengine）与网页抓取（可选 Jina Reader） |
 | `search.py` | find_files / grep | 文件发现与 grep，按语言映射 glob 模式 |
-| `mcp.py` | mcp_* | MCP 客户端，连接 MCP 服务器并把其工具包装为原生工具 |
+| `mcp.py` | mcp_* | MCP 客户端，连接 MCP 服务器并把其工具包装为原生工具；含 incoming_messages drainer、超时触发重连、跨 task 延迟关闭（deferred close）与延迟重连（deferred reconnect，把新栈的 cancel scope 创建也归到 owner task） |
 | `cron.py` | cron | 调度提醒与周期任务，支持 add/list/remove |
 | `long_task.py` | long_task / complete_goal | Codex 风格 sustained goal，多轮持续目标追踪 |
 | `spawn.py` | spawn | 创建后台子代理 |
@@ -402,10 +403,11 @@
 - 优先级：已设置路径 > config.yaml > config.yml > config.json
 - 全局 `_current_config_path` 支持多实例
 - `resolve_config_env_vars()` 解析 `${VAR}` 环境变量引用
-- `_migrate_config()` 迁移旧配置格式
+- `_migrate_config()` 迁移旧配置格式，并静默移除已删除模块的遗留字段（如 `platform` 平台集成配置），保证旧配置在 schema 变更后仍能加载
+- `save_config()` 写入后 best-effort `chmod 0o600`（Windows 为 no-op），保护配置文件中的 API key 与 channel secret
 
 **`schema.py` — Pydantic 配置 Schema**
-- `Config`（根配置）：agents / channels / transcription / providers / api / gateway / tools / model_presets
+- `Config`（根配置）：agents / channels / transcription / providers / api / gateway / tools / model_presets（`platform` 字段已随桓宸智科平台集成模块整体移除）
 - `AgentDefaults`：workspace / model / provider / max_tokens / context_window_tokens / temperature / dream 等
 - `ProvidersConfig`：30+ 内置 provider + 自定义 provider（通过 `extra="allow"`）
 - `ToolsConfig`：web / exec / file / my / image_generation / cli_apps / mcp_servers / ssrf_whitelist
@@ -512,6 +514,34 @@
 - 应用层守卫（非 OS 沙箱替代）
 - `resolve_path()` 相对路径解析到 workspace
 - `require_path_within()` 越界抛 `WorkspaceBoundaryError`
+
+**`guard_level.py` — 可配置提示词防护等级**
+- `GuardPolicy` frozen dataclass，集中等级→特性映射的单一真相源
+- 3 级命名枚举（`config.tools.guard_level`，camelCase `guardLevel`）：
+
+| 机制 | standard | minimal | off |
+|------|:---:|:---:|:---:|
+| Shell 灾难命令（rm -rf、mkfs、dd、fork bomb、shutdown） | ✅ | ✅ | ❌ |
+| Shell 下载执行阻断（curl\|sh、base64\|sh、eval curl） | ✅ | ❌ | ❌ |
+| Shell 内部状态文件保护（写 history.jsonl/.dream_cursor） | ✅ | ❌ | ❌ |
+| web_fetch 不可信横幅 `[External content — …]` | ✅ | ❌ | ❌ |
+| system-prompt 不可信声明片段（untrusted_content.md） | ✅ | ✅ | ❌ |
+| SSRF 网络隔离 | ✅ | ✅ | ✅ |
+| 工作区路径边界 | ✅ | ✅ | ✅ |
+
+- `off` 级关闭所有注入防护 + Shell 硬编码 deny-list（含灾难命令），保留 SSRF + 工作区边界作为结构性安全底线
+- 用户配置的 `allow_patterns`/`deny_patterns` 在所有等级都生效（用户自己的规则）
+
+**Shell deny-list 分层**（`agent/tools/shell.py`）
+- `_CATASTROPHIC_DENY_PATTERNS`：灾难命令（rm -rf、mkfs、dd if=、fork bomb、shutdown），standard + minimal 拦截
+- `_FRICTION_DENY_PATTERNS`："download-and-execute" deny 规则（`curl/wget/fetch … | sh`、`base64 -d … | sh`、`eval "$(curl …)"`）+ 内部状态文件保护，仅 standard 拦截
+- `ExecTool.__init__` 按 `GuardPolicy(guard_level)` 组装 `deny_patterns`；`_guard_command` 中 SSRF 和工作区越界检查始终运行
+
+**凭据与令牌保护**
+- **配置文件权限**：`config/loader.py` 的 `save_config` 写入后 best-effort `chmod 0o600`（Windows 为 no-op），防止 API key / secret 被同机其他用户读取
+- **HTTP token 仅限 Authorization 头**：`gateway_tokens.check_api_token` 对 HTTP 路由只接受 `Authorization: Bearer`，不再接受会泄漏进 access log / Referer 的 `?token=` 查询参数（查询参数 token 仅保留给 WebSocket 握手）
+- **无 secret 时 token 签发 localhost-only**：`ws_http.py` 在未配置 `token_issue_secret` 时仅允许 localhost 签发 token，远程请求返回 403（替代原先仅 warning）
+- **配对码日志脱敏**：`pairing/store.py` 的 `_mask_code` 把配对码在日志中脱敏为 `ABCD-****`
 
 ---
 
@@ -782,6 +812,7 @@ tools:
   cliApps:
     enable: false
   restrictToWorkspace: false               # 是否限制文件操作在工作区内
+  guardLevel: standard                     # 提示词防护等级: standard|minimal|off
   webuiAllowLocalServiceAccess: true       # WebUI 是否允许访问本地服务
   ssrfWhitelist: []                        # SSRF 白名单（CIDR 格式）
   mcpServers: {}                           # MCP 服务器配置

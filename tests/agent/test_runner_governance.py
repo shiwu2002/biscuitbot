@@ -113,6 +113,7 @@ def test_snip_history_reserves_budget_for_tool_definitions(monkeypatch):
     provider = MagicMock()
     tools = MagicMock()
     tools.get_definitions.return_value = [{"type": "function", "function": {"name": "large_tool"}}]
+    tools.get_definitions_for_turn.return_value = tools.get_definitions.return_value
     runner = AgentRunner(provider)
     messages = [
         {"role": "system", "content": "system"},
@@ -136,7 +137,7 @@ def test_snip_history_reserves_budget_for_tool_definitions(monkeypatch):
         if estimate_messages == messages:
             return 1000, None
         assert estimate_messages == [{"role": "system", "content": "system"}]
-        assert estimate_tools == tools.get_definitions.return_value
+        assert estimate_tools == tools.get_definitions_for_turn.return_value
         return 350, None
 
     monkeypatch.setattr("hczkbot.agent.runner.estimate_prompt_tokens_chain", _estimate)

@@ -270,7 +270,12 @@ class AgentLoop:
         self._last_usage: dict[str, int] = {}
         self._extra_hooks: list[AgentHook] = hooks or []
 
-        self.context = ContextBuilder(workspace, timezone=timezone, disabled_skills=disabled_skills)
+        self.context = ContextBuilder(
+            workspace,
+            timezone=timezone,
+            disabled_skills=disabled_skills,
+            guard_level=_tc.guard_level if _tc else "standard",
+        )
         self.sessions = session_manager or SessionManager(workspace)
         self.tools = ToolRegistry()
         # One file-read/write tracker per logical session. The tool registry is
@@ -303,6 +308,13 @@ class AgentLoop:
         # the owner task closes them via _close_deferred_mcp_stacks().
         self._mcp_owner_task: asyncio.Task | None = None
         self._mcp_deferred_stacks: list[tuple[str, AsyncExitStack]] = []
+        # Reconnect requests deferred from _dispatch sub-tasks. Each entry is
+        # (server_name, tool_name, stale_tool, future). The sub-task enqueues
+        # and awaits the future; the owner task drains the queue from
+        # _run_main_loop's idle branch via _process_mcp_reconnects() and runs
+        # _refresh_terminated_server itself, so the NEW stack's cancel scopes
+        # are entered in the owner task (matching where they'll be closed).
+        self._mcp_reconnect_requests: list[tuple[str, str, Any, asyncio.Future]] = []
         self._mcp_connected = False
         self._mcp_connecting = False
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
@@ -542,6 +554,13 @@ class AgentLoop:
             )
             registered.append("screenshot")
 
+        # DiscoverToolsTool is auto-registered in dynamic mode; bind the
+        # registry so the meta-tool can search all registered tools.
+        discover_tool = self.tools.get("discover_tools")
+        if discover_tool is not None:
+            discover_tool.bind_registry(self.tools)
+            registered.append("discover_tools")
+
         logger.info("Registered {} tools: {}", len(registered), registered)
 
     async def _connect_mcp(self) -> None:
@@ -651,6 +670,16 @@ class AgentLoop:
     ) -> list[dict[str, Any]]:
         """Build the initial message list for the LLM turn."""
         scope = self.workspace_scopes.for_message(msg, session.metadata)
+        # In dynamic mode inject a compact one-line-per-tool summary so the
+        # model knows which capabilities exist even when their full schema
+        # isn't loaded yet.  Selected tools are flagged (loaded).
+        tool_compact_summary: str | None = None
+        if self.tools_config.tool_selection_mode == "dynamic":
+            from hczkbot.agent.tools.retriever import ToolRetriever
+
+            retriever = ToolRetriever(self.tools, max_tools=self.tools_config.dynamic_tool_max)
+            selected = set(retriever.select(msg.content or ""))
+            tool_compact_summary = self.tools.get_compact_summary(selected)
         return self.context.build_messages(
             history=history,
             current_message=image_generation_prompt(msg.content, msg.metadata),
@@ -666,6 +695,7 @@ class AgentLoop:
             include_memory_recent_history=include_memory_recent_history,
             session_key=session.key,
             unified_session=self._unified_session,
+            tool_compact_summary=tool_compact_summary,
         )
 
     async def _dispatch_command_inline(
@@ -880,6 +910,8 @@ class AgentLoop:
                     session_metadata=session_metadata,
                     message_metadata=metadata,
                 ),
+                tool_selection_mode=self.tools_config.tool_selection_mode,
+                dynamic_tool_max=self.tools_config.dynamic_tool_max,
             ))
         finally:
             reset_workspace_scope(workspace_token)
@@ -937,6 +969,12 @@ class AgentLoop:
                 # Close any MCP stacks deferred from _dispatch sub-tasks (e.g.
                 # reconnect-after-timeout). This must run in the owner task.
                 await self._close_deferred_mcp_stacks()
+                # Run reconnect requests deferred from _dispatch sub-tasks.
+                # _refresh_terminated_server enters anyio cancel scopes via
+                # connect_mcp_servers, so it must run in this (owner) task to
+                # keep them task-affined — otherwise close_mcp() can't exit
+                # them and anyio raises a cross-task cancel-scope error.
+                await self._process_mcp_reconnects()
                 self.auto_compact.check_expired(
                     self._schedule_background,
                     active_session_keys=self._pending_queues.keys(),
@@ -1183,11 +1221,29 @@ class AgentLoop:
             except (RuntimeError, BaseExceptionGroup):
                 logger.debug("MCP server '{}' deferred cleanup error", name)
 
+    async def _process_mcp_reconnects(self) -> None:
+        """Run MCP reconnect requests deferred from _dispatch sub-tasks.
+
+        Must run in the owner task: ``_refresh_terminated_server`` calls
+        ``connect_mcp_servers``, which enters anyio cancel scopes via
+        ``stdio_client``. Those scopes are task-local and must be exited in
+        the same task, so the reconnect has to happen here (the owner) rather
+        than in the sub-task that detected the stale session. See
+        ``mcp._attach_reconnect_handlers`` for the deferral handshake.
+        """
+        await agent_context.process_pending_reconnects(self, self.tools)
+
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""
         if self._background_tasks:
             await asyncio.gather(*self._background_tasks, return_exceptions=True)
             self._background_tasks.clear()
+        # Cancel any pending reconnect futures so sub-tasks blocked on them
+        # don't hang during shutdown. They'll raise CancelledError and unwind.
+        for _server, _tool, _stale, future in self._mcp_reconnect_requests:
+            if not future.done():
+                future.cancel()
+        self._mcp_reconnect_requests.clear()
         await self._close_deferred_mcp_stacks()
         for name, stack in self._mcp_stacks.items():
             try:
@@ -1253,6 +1309,15 @@ class AgentLoop:
         current_role = "assistant" if is_subagent else "user"
         workspace_scope = self.workspace_scopes.for_message(msg, session.metadata)
 
+        # In dynamic mode inject the compact tool summary (same set as
+        # _build_initial_messages — keeps system prompt stable across turns).
+        tool_compact_summary: str | None = None
+        if self.tools_config.tool_selection_mode == "dynamic":
+            from hczkbot.agent.tools.retriever import ToolRetriever
+
+            retriever = ToolRetriever(self.tools, max_tools=self.tools_config.dynamic_tool_max)
+            selected = set(retriever.select(msg.content or ""))
+            tool_compact_summary = self.tools.get_compact_summary(selected)
         messages = self.context.build_messages(
             history=history,
             current_message="" if is_subagent else msg.content,
@@ -1268,6 +1333,7 @@ class AgentLoop:
             skip_runtime_lines=is_subagent,
             session_key=key,
             unified_session=self._unified_session,
+            tool_compact_summary=tool_compact_summary,
         )
         t_wall = time.time()
         final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(

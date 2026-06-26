@@ -128,6 +128,10 @@ class ApplyPatchTool(_FsTool):
     """Apply file edits by providing structured edit instructions."""
     _scopes = {"core", "subagent"}
 
+    _capability = (
+        "Apply multi-file code edits with replace/add actions in a single call."
+    )
+
     @property
     def name(self) -> str:
         return "apply_patch"

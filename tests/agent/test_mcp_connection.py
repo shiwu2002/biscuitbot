@@ -397,3 +397,122 @@ async def test_concurrent_mcp_reconnect_reuses_fresh_session(
     assert outputs == ["fresh:alpha", "fresh:beta"]
     assert connect_count == 2
     assert closed == ["remote"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_reconnect_deferred_to_owner_task_when_called_from_subtask(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A reconnect triggered from a sub-task must run in the owner task.
+
+    connect_mcp_servers enters anyio cancel scopes (via stdio_client) that are
+    task-local. If the reconnect ran in the _dispatch sub-task, the new stack's
+    scopes would be affined to that sub-task, and close_mcp() in the owner task
+    couldn't exit them — raising "Attempted to exit cancel scope in a different
+    task". The reconnect closure defers to the owner via a Future; this test
+    verifies the deferral handshake and that connect_mcp_servers ends up
+    running in the owner task.
+    """
+    loop = _make_loop(tmp_path, mcp_servers={"remote": object()})
+    connect_count = 0
+    connect_callers: list[Any] = []  # asyncio.Task objects that ran connect_mcp_servers
+
+    class _FakeSession:
+        def __init__(self, index: int) -> None:
+            self.index = index
+
+        async def call_tool(self, _name: str, arguments: dict[str, Any]) -> Any:
+            assert arguments == {"symbol": "AAPL"}
+            if self.index == 1:
+                raise McpError(ErrorData(code=-32000, message="Session terminated"))
+            return SimpleNamespace(
+                content=[mcp_types.TextContent(type="text", text="recovered")]
+            )
+
+    async def _fake_connect(servers, registry):
+        nonlocal connect_count
+        connect_callers.append(asyncio.current_task())
+        stacks = {}
+        for name in servers:
+            connect_count += 1
+            tool_def = SimpleNamespace(
+                name="quote",
+                description="quote tool",
+                inputSchema={"type": "object", "properties": {}},
+            )
+            registry.register(MCPToolWrapper(_FakeSession(connect_count), name, tool_def))
+            stack = AsyncExitStack()
+            await stack.__aenter__()
+            stacks[name] = stack
+        return stacks
+
+    monkeypatch.setattr("hczkbot.agent.tools.mcp.connect_mcp_servers", _fake_connect)
+
+    # Initial connect runs in the test (owner) task.
+    await loop._connect_mcp()
+    owner_task = asyncio.current_task()
+    loop._mcp_owner_task = owner_task
+
+    old_tool = loop.tools.get("mcp_remote_quote")
+    assert isinstance(old_tool, MCPToolWrapper)
+
+    # Run the tool in a SUB-task (simulating _dispatch). It hits
+    # "Session terminated", triggers reconnect, and — because the current task
+    # is not the owner — defers via a Future and blocks until the owner drains.
+    async def _run_in_subtask():
+        return await old_tool.execute(symbol="AAPL")
+
+    subtask = asyncio.create_task(_run_in_subtask(), name="dispatch-sub")
+
+    # As the owner, wait for the deferred request to land, then drain it.
+    # _process_mcp_reconnects runs _refresh_terminated_server in THIS task.
+    for _ in range(500):  # ~5s ceiling
+        if loop._mcp_reconnect_requests:
+            break
+        await asyncio.sleep(0.01)
+    assert loop._mcp_reconnect_requests, "reconnect request was not deferred to the owner"
+    await loop._process_mcp_reconnects()
+
+    output = await subtask
+
+    assert output == "recovered"
+    assert connect_count == 2
+    # The reconnect's connect_mcp_servers ran in the OWNER task, not the sub-task.
+    assert connect_callers[1] is owner_task
+    assert connect_callers[1] is not subtask
+    # No leftover deferred requests.
+    assert loop._mcp_reconnect_requests == []
+    await loop.close_mcp()
+
+
+@pytest.mark.asyncio
+async def test_close_mcp_cancels_pending_reconnect_futures(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """close_mcp() must cancel pending reconnect futures so blocked sub-tasks unwind."""
+    loop = _make_loop(tmp_path, mcp_servers={"remote": object()})
+
+    async def _fake_connect(servers, registry):
+        stacks = {}
+        for name in servers:
+            tool_def = SimpleNamespace(
+                name="quote",
+                description="quote tool",
+                inputSchema={"type": "object", "properties": {}},
+            )
+            registry.register(MCPToolWrapper(MagicMock(), name, tool_def))
+            stack = AsyncExitStack()
+            await stack.__aenter__()
+            stacks[name] = stack
+        return stacks
+
+    monkeypatch.setattr("hczkbot.agent.tools.mcp.connect_mcp_servers", _fake_connect)
+    await loop._connect_mcp()
+
+    # Enqueue a fake pending reconnect request with a Future, as a sub-task would.
+    future: asyncio.Future = asyncio.get_running_loop().create_future()
+    loop._mcp_reconnect_requests.append(("remote", "mcp_remote_quote", None, future))
+
+    await loop.close_mcp()
+
+    assert future.cancelled()
+    assert loop._mcp_reconnect_requests == []

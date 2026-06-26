@@ -1131,6 +1131,40 @@ def _attach_reconnect_handlers(
     server_names: Mapping[str, Any] | set[str] | list[str] | tuple[str, ...],
 ) -> None:
     async def reconnect(server_name: str, tool_name: str, stale_tool: Tool) -> Tool | None:
+        # anyio cancel scopes (entered by connect_mcp_servers via stdio_client)
+        # are task-local: they must be entered AND exited in the same task.
+        # This closure runs inside a _dispatch sub-task (tool execute), but the
+        # MCP stacks are owned by the run() task (_mcp_owner_task). Calling
+        # _refresh_terminated_server here would affiliate the NEW stack's
+        # cancel scopes to this sub-task; when the sub-task ends, the owner
+        # task's close_mcp() can't exit them and anyio raises
+        # "Attempted to exit cancel scope in a different task", leaking the
+        # stdio_client generator into a noisy GC-finalizer traceback.
+        #
+        # When we're not the owner (and the owner is still alive), defer the
+        # whole reconnect to the owner task via a Future. The owner drains the
+        # queue from its main-loop idle branch (process_pending_reconnects) and
+        # runs _refresh_terminated_server itself, keeping cancel scopes affined
+        # to the owner. The sub-task blocks on the Future (≤1s + connect time)
+        # which is acceptable for an already-stale session.
+        owner = getattr(state, "_mcp_owner_task", None)
+        current = asyncio.current_task()
+        requests = getattr(state, "_mcp_reconnect_requests", None)
+        if (
+            owner is not None
+            and current is not None
+            and current is not owner
+            and not owner.done()
+            and requests is not None
+        ):
+            future: asyncio.Future = asyncio.get_running_loop().create_future()
+            requests.append((server_name, tool_name, stale_tool, future))
+            logger.debug(
+                "MCP server '{}' reconnect deferred to owner task (from sub-task {})",
+                server_name,
+                current.get_name(),
+            )
+            return await future
         return await _refresh_terminated_server(
             state,
             registry,
@@ -1185,6 +1219,52 @@ async def _refresh_terminated_server(
             logger.warning("MCP server '{}' reconnect failed after session termination", server_name)
             return None
         return registry.get(tool_name)
+
+
+async def process_pending_reconnects(state: Any, registry: ToolRegistry) -> None:
+    """Run reconnect requests deferred by _dispatch sub-tasks in the owner task.
+
+    ``_attach_reconnect_handlers``' reconnect closure detects when it is running
+    in a sub-task (not the MCP owner task) and, instead of calling
+    ``_refresh_terminated_server`` directly (which would enter anyio cancel
+    scopes in the wrong task), enqueues the request onto
+    ``state._mcp_reconnect_requests`` with a ``Future`` and blocks on it.
+
+    This function drains that queue and runs ``_refresh_terminated_server``
+    **in the owner task**, so the new stack's cancel scopes are entered in the
+    same task that will later close them. Must be called from the owner task
+    (AgentLoop._run_main_loop idle branch).
+    """
+    requests = getattr(state, "_mcp_reconnect_requests", None)
+    if not requests:
+        return
+    # Drain a snapshot; requests arriving during processing wait for the next
+    # idle tick (at most ~1s later, since the main loop polls on a 1s timeout).
+    pending = list(requests)
+    requests.clear()
+    for server_name, tool_name, stale_tool, future in pending:
+        if future.done():
+            # The sub-task that requested this was cancelled/timed out; skip.
+            continue
+        try:
+            tool = await _refresh_terminated_server(
+                state, registry, server_name, tool_name, stale_tool
+            )
+            if not future.done():
+                future.set_result(tool)
+        except BaseException as exc:
+            # Don't crash the owner task over a single failed reconnect.
+            # Resolve the future so the waiting sub-task can proceed; if the
+            # future was cancelled in the meantime, suppress to avoid leaking
+            # an unretrieved exception.
+            if not future.done():
+                future.set_exception(exc)
+            else:
+                logger.debug(
+                    "MCP server '{}' reconnect failed after future resolved: {}",
+                    server_name,
+                    exc,
+                )
 
 
 def _server_signature(cfg: Any) -> Any:

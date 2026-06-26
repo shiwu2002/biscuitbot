@@ -42,6 +42,9 @@ class _Tools:
     def get_definitions(self) -> list:
         return []
 
+    def get_definitions_for_turn(self, query: str = "", *, mode: str = "all", max_tools: int = 10) -> list:
+        return self.get_definitions()
+
     def prepare_call(self, name: str, arguments: dict):
         return (self.tool, arguments, None) if name == "cron" else (None, arguments, None)
 

@@ -48,6 +48,12 @@ from hczkbot.config.paths import get_workspace_path
 class MessageTool(Tool, ContextAware):
     """Tool to send messages to users on chat channels."""
 
+    _capability = (
+        "Proactively send messages or file attachments to users/channels "
+        "(reminders, cross-channel delivery)."
+    )
+    _always_include = True
+
     def __init__(
         self,
         send_callback: Callable[[OutboundMessage], Awaitable[None]] | None = None,

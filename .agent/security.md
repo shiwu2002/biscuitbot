@@ -25,3 +25,11 @@ HTTP/SSE MCP transports are part of this boundary: validate configured MCP URLs 
 `tools/sandbox.py` provides optional command wrapping. The only backend currently shipped is `bwrap` (bubblewrap), intended for containerized deployments. On Windows and bare-metal Linux without `bwrap`, commands run in the native shell with workspace restriction as the only guard.
 
 **Rule**: If adding a new sandbox backend, implement `_wrap_<name>(command, workspace, cwd) -> str` and register it in `_BACKENDS`.
+
+## Guard Level (configurable prompt-injection / shell-interception)
+
+`security/guard_level.py` defines `GuardPolicy`, a frozen dataclass mapping `config.tools.guard_level` (standard|minimal|off) to feature booleans. The hardcoded shell deny-list in `agent/tools/shell.py` is split into `_CATASTROPHIC_DENY_PATTERNS` (rm -rf, mkfs, dd, fork bomb, shutdown — blocked at standard + minimal) and `_FRICTION_DENY_PATTERNS` (download-and-execute, internal-state-file writes — blocked at standard only). At `off`, no hardcoded deny-list applies. The web_fetch untrusted banner and the system-prompt untrusted-content snippet are similarly gated.
+
+Structural access controls (SSRF, workspace boundary, env-var allowlist, subagent isolation, runtime-context tagging) are intentionally **not** gated by `guard_level` — they protect against threats unrelated to prompt injection and disabling them would cause catastrophic damage.
+
+**Rule**: When adding a new prompt-injection defence, gate it through `GuardPolicy` and add a property. When adding a structural access control (network/filesystem boundary), keep it always-on — do not gate it behind `guard_level`.

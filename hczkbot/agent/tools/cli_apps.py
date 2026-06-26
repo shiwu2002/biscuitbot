@@ -49,6 +49,10 @@ class CliAppsToolConfig(Base):
 class CliAppsTool(Tool):
     """Run an installed CLI-Anything or public CLI app through a controlled argv subprocess."""
 
+    _capability = (
+        "Run installed CLI apps (e.g. youtube-dl, pandoc) via controlled argv subprocess."
+    )
+
     config_key = "cli_apps"
     _scopes = {"core", "subagent"}
 

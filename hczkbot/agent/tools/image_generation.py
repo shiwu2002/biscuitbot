@@ -73,6 +73,10 @@ class ImageGenerationToolConfig(Base):
 class ImageGenerationTool(Tool):
     """Generate persistent image artifacts through the configured image provider."""
 
+    _capability = (
+        "Generate or edit images and persist them as artifacts (returns paths)."
+    )
+
     config_key = "image_generation"
 
     @classmethod
