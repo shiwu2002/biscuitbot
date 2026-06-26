@@ -543,6 +543,8 @@ export interface SettingsPayload {
     exec_sandbox?: string | null;
     exec_path_prepend_set: boolean;
     exec_path_append_set: boolean;
+    cold_storage_days: number;
+    duplicate_similarity_threshold: number;
   };
   requires_restart: boolean;
   restart_required_sections?: Array<"runtime" | "browser" | "image" | "vision">;
@@ -755,6 +757,8 @@ export interface NetworkSafetySettingsUpdate {
   webuiAllowLocalServiceAccess: boolean;
   webuiDefaultAccessMode: WebuiDefaultAccessMode;
   guardLevel: GuardLevel;
+  coldStorageDays: number;
+  duplicateSimilarityThreshold: number;
 }
 
 export interface ImageGenerationSettingsUpdate {

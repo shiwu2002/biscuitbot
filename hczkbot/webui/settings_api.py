@@ -832,6 +832,8 @@ def settings_payload(
             "private_service_protection_enabled": True,
             "ssrf_whitelist_count": len(config.tools.ssrf_whitelist),
             "guard_level": config.tools.guard_level,
+            "cold_storage_days": config.tools.cold_storage_days,
+            "duplicate_similarity_threshold": config.tools.duplicate_similarity_threshold,
             "mcp_server_count": len(config.tools.mcp_servers),
             "exec_enabled": exec_config.enable,
             "exec_sandbox": exec_config.sandbox or None,
@@ -1102,8 +1104,19 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
     )
     raw_default_access_mode = _query_first_alias(query, "webui_default_access_mode", "webuiDefaultAccessMode")
     raw_guard_level = _query_first_alias(query, "guard_level", "guardLevel")
-    if raw_allow is None and raw_default_access_mode is None and raw_guard_level is None:
-        raise WebUISettingsError("webui_allow_local_service_access, webui_default_access_mode, or guard_level is required")
+    raw_cold_storage_days = _query_first_alias(query, "cold_storage_days", "coldStorageDays")
+    raw_dup_threshold = _query_first_alias(query, "duplicate_similarity_threshold", "duplicateSimilarityThreshold")
+    if (
+        raw_allow is None
+        and raw_default_access_mode is None
+        and raw_guard_level is None
+        and raw_cold_storage_days is None
+        and raw_dup_threshold is None
+    ):
+        raise WebUISettingsError(
+            "webui_allow_local_service_access, webui_default_access_mode, guard_level, "
+            "cold_storage_days, or duplicate_similarity_threshold is required"
+        )
 
     config = load_config()
     changed = False
@@ -1118,6 +1131,28 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
         guard_level = normalize_guard_level(raw_guard_level)
         if config.tools.guard_level != guard_level:
             config.tools.guard_level = guard_level
+            changed = True
+
+    if raw_cold_storage_days is not None:
+        try:
+            cold_storage_days = int(raw_cold_storage_days)
+        except (TypeError, ValueError):
+            raise WebUISettingsError("cold_storage_days must be an integer")
+        if not (0 <= cold_storage_days <= 365):
+            raise WebUISettingsError("cold_storage_days must be between 0 and 365")
+        if config.tools.cold_storage_days != cold_storage_days:
+            config.tools.cold_storage_days = cold_storage_days
+            changed = True
+
+    if raw_dup_threshold is not None:
+        try:
+            dup_threshold = float(raw_dup_threshold)
+        except (TypeError, ValueError):
+            raise WebUISettingsError("duplicate_similarity_threshold must be a number")
+        if not (0.0 <= dup_threshold <= 1.0):
+            raise WebUISettingsError("duplicate_similarity_threshold must be between 0.0 and 1.0")
+        if config.tools.duplicate_similarity_threshold != dup_threshold:
+            config.tools.duplicate_similarity_threshold = dup_threshold
             changed = True
 
     if changed:

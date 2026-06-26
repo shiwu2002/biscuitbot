@@ -61,6 +61,17 @@ Messages flow through an async `MessageBus` (`hczkbot/bus/queue.py`) that decoup
 - Security boundaries: [`.agent/security.md`](.agent/security.md)
 - Common gotchas: [`.agent/gotchas.md`](.agent/gotchas.md)
 
+## Detailed Documentation
+
+| Document | Content |
+|----------|---------|
+| [PROJECT_GUIDE.md](PROJECT_GUIDE.md) | Project overview, quick start, command reference |
+| [architecture.md](architecture.md) | AgentLoop state machine, AgentRunner, context building, MCP |
+| [tools-system.md](tools-system.md) | Progressive discovery, cold storage, duplicate detection, nightly maintenance |
+| [memory-design.md](memory-design.md) | Dream two-phase consolidation, Consolidator, AutoCompact |
+| [providers-channels.md](providers-channels.md) | LLM providers, channel integrations |
+| [security-webui-config.md](security-webui-config.md) | SSRF, guard levels, config system, WebUI |
+
 ## Contribution Flow
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for contribution flow and PR guidelines.

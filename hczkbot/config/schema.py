@@ -334,6 +334,16 @@ class ToolsConfig(Base):
     )  # allow WebUI Full Access shell checks against localhost services; legacy allowLocalPreviewAccess still reads
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
     ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
+    cold_storage_days: int = Field(
+        default=14,
+        validation_alias=AliasChoices("coldStorageDays", "cold_storage_days"),
+        description="工具/技能多少天未被调用即转入冷门仓库（不发送 schema）。0=禁用冷门轮转。",
+    )
+    duplicate_similarity_threshold: float = Field(
+        default=0.6,
+        validation_alias=AliasChoices("duplicateSimilarityThreshold", "duplicate_similarity_threshold"),
+        description="重复检测的 token 重叠率阈值（0.0-1.0）。夜间维护任务据此报告潜在重复。",
+    )
 
     @field_validator("guard_level", mode="before")
     @classmethod

@@ -18,9 +18,12 @@ import importlib.util
 import json
 import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hczkbot.agent.tools.base import Tool
+
+if TYPE_CHECKING:
+    from hczkbot.agent.tools.usage_stats import UsageStats
 
 
 class ToolRegistry:
@@ -33,6 +36,13 @@ class ToolRegistry:
         # Custom tools registered at runtime by the agent.
         # name -> {"file_path": str, "docs_md_path": str}
         self._custom_tools: dict[str, dict[str, str]] = {}
+        # Usage statistics for cold-storage rotation (set by AgentLoop).
+        self._usage_stats: UsageStats | None = None
+
+    def set_usage_stats(self, stats: UsageStats) -> None:
+        """Attach a usage-stats tracker for cold-storage rotation."""
+        self._usage_stats = stats
+        self._cached_index = None
 
     # ------------------------------------------------------------------
     # Registration
@@ -109,52 +119,48 @@ class ToolRegistry:
     def generate_index(self, skills_entries: list[dict[str, str]] | None = None) -> str:
         """Generate the ``INDEX.md`` content from registered tools + skills.
 
-        The index has three sections:
+        Always-include tools are **omitted** from the index because their
+        full schema is already sent via the ``tools`` parameter — listing
+        them here would be redundant.
 
-        1. **Always Available** — tools whose full schema is always sent.
-        2. **On-demand Discovery** — tools requiring ``discover_tools``.
-        3. **Skills** — capabilities the model uses by reading ``SKILL.md``.
+        Cold tools (rotated to cold storage by the nightly maintenance job)
+        are also excluded; the model can search them via ``cold_storage``.
+
+        Sections:
+        1. **On-demand Discovery** — tools requiring ``discover_tools``.
+        2. **Skills** — capabilities the model uses by reading ``SKILL.md``.
 
         Each row: ``| name | capability | usage_md |``.
 
-        Cached until the next register/unregister call.
+        Cached until the next register/unregister/set_usage_stats call.
         """
         if self._cached_index is not None and skills_entries is None:
             return self._cached_index
 
-        always_rows: list[str] = []
         on_demand_rows: list[str] = []
         for name in sorted(self._tools):
             tool = self._tools[name]
-            row = f"| {name} | {tool.capability} | {getattr(tool, '_usage_md', '') or '(missing)'} |"
+            # Skip always-include tools (schema already sent via tools parameter)
             if getattr(tool, "_always_include", False):
-                always_rows.append(row)
-            else:
-                on_demand_rows.append(row)
+                continue
+            # Skip cold tools (rotated to cold storage)
+            if self._usage_stats is not None and self._usage_stats.is_cold(name):
+                continue
+            row = f"| {name} | {tool.capability} | {getattr(tool, '_usage_md', '') or '(missing)'} |"
+            on_demand_rows.append(row)
 
         parts: list[str] = [
             "# Tools & Skills Index",
             "",
-            "> **Progressive discovery**: tools below are listed by name + capability.",
-            "> To use an on-demand tool:",
-            "> 1. ``read_file(usage_md)`` to learn its parameters and best practices",
-            "> 2. ``discover_tools(\"tool_name\")`` to load its full schema",
-            "> 3. Call the tool in your next response",
-            "",
-            "## Always Available (full schema already loaded)",
-            "",
-            "| Name | Capability | Usage Doc |",
-            "|------|-----------|-----------|",
-        ]
-        parts.extend(always_rows or ["| _(none)_ | | |"])
-
-        parts.extend([
+            "> 已加载工具的完整 schema 已在 tools 参数中发送，如需了解参数细节请 read_file(对应 docs/<name>.md)。",
+            "> 按需工具使用流程：1. ``read_file(usage_md)`` 学习参数  2. ``discover_tools(\"name\")`` 加载 schema  3. 调用工具",
+            "> 如果当前工具和技能不满足需求，请调用 ``cold_storage`` 搜索冷门仓库中是否有合适的工具。",
             "",
             "## On-demand Discovery (call ``discover_tools`` to load schema)",
             "",
             "| Name | Capability | Usage Doc |",
             "|------|-----------|-----------|",
-        ])
+        ]
         parts.extend(on_demand_rows or ["| _(none)_ | | |"])
 
         if skills_entries:
@@ -457,6 +463,9 @@ class ToolRegistry:
         try:
             assert tool is not None  # guarded by prepare_call()
             result = await tool.execute(**params)
+            # Record usage for cold-storage rotation (auto-recovers cold tools).
+            if self._usage_stats is not None:
+                self._usage_stats.record_call(name)
             if isinstance(result, str) and result.startswith("Error"):
                 return result + hint
             return result

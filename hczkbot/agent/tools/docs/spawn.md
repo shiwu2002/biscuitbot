@@ -1,6 +1,6 @@
 # spawn
 
-启动子代理执行独立任务。
+启动后台子代理执行独立任务 (Launch a background subagent for long-running or parallel tasks)。
 
 ## 何时使用
 
@@ -10,18 +10,19 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| prompt | string | 是 | - | 给子代理的任务描述 |
-| skill | string | 否 | - | 指定加载的技能名称 |
+| task | string | 是 | - | 给子代理的任务描述 |
+| label | string | 否 | - | 任务的简短标签（用于显示） |
+| temperature | number | 否 | 提供商配置值 | 采样温度（0.0=确定性，越高越有创造性，范围 0.0-2.0） |
 
 ## 调用示例
 
 ```
-spawn(prompt="分析 /src 目录代码风格并给出建议", skill="code-review")
+spawn(task="分析 /src 目录代码风格并给出建议", label="code-review")
 ```
 
 ## 注意事项
 
-- prompt 应描述清晰、目标明确，避免歧义
+- task 应描述清晰、目标明确，避免歧义
 - 子代理运行在独立上下文，无法访问父级变量
-- skill 指定后会加载对应技能增强子代理能力
 - 子代理结果会汇总返回给父代理
+- 并发数达到上限时会拒绝创建，需等待已有子代理完成

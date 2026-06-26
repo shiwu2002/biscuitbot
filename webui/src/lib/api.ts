@@ -632,6 +632,8 @@ export async function updateNetworkSafetySettings(
   query.set("webui_allow_local_service_access", String(update.webuiAllowLocalServiceAccess));
   query.set("webui_default_access_mode", update.webuiDefaultAccessMode);
   query.set("guard_level", update.guardLevel);
+  if (update.coldStorageDays !== undefined) query.set("cold_storage_days", String(update.coldStorageDays));
+  if (update.duplicateSimilarityThreshold !== undefined) query.set("duplicate_similarity_threshold", String(update.duplicateSimilarityThreshold));
   return request<SettingsPayload>(
     `${base}/api/settings/network-safety/update?${query}`,
     token,

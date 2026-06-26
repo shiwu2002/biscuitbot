@@ -1194,9 +1194,11 @@ def _run_gateway(
                 logger.info("Heartbeat: silenced by post-run evaluation")
             return response
 
-        # Docs consistency check: detect stale docs/<name>.md vs tool code,
-        # then spawn a subagent to regenerate mismatched files.
-        if job.name == "docs_consistency_check":
+        # Nightly maintenance: docs consistency + duplicate detection + cold rotation
+        if job.name == "nightly_maintenance":
+            summary_parts: list[str] = []
+
+            # 1. Docs consistency check → spawn docs-repair subagent on mismatch
             from hczkbot.agent.tools.docs_consistency import (
                 build_repair_task,
                 check_docs_consistency,
@@ -1204,32 +1206,67 @@ def _run_gateway(
 
             try:
                 mismatches = check_docs_consistency(agent.tools, agent.workspace)
+                if mismatches:
+                    logger.warning(
+                        "Nightly maintenance: {} doc mismatch(es): {}",
+                        len(mismatches),
+                        ", ".join(m.tool_name for m in mismatches),
+                    )
+                    task = build_repair_task(mismatches)
+                    await agent.subagents.spawn(
+                        task,
+                        label="docs-repair",
+                        origin_channel="cli",
+                        origin_chat_id="direct",
+                        session_key="docs-repair",
+                    )
+                    summary_parts.append(f"docs-repair: {len(mismatches)} mismatch(es)")
+                else:
+                    logger.info("Nightly maintenance: all docs match code")
             except Exception:
                 logger.exception("Docs consistency check failed")
-                return None
 
-            if not mismatches:
-                logger.info("Docs consistency check: all docs match code")
-                return None
-
-            logger.warning(
-                "Docs consistency check: {} mismatch(es) found: {}",
-                len(mismatches),
-                ", ".join(m.tool_name for m in mismatches),
-            )
-            task = build_repair_task(mismatches)
+            # 2. Duplicate detection (report only, no auto-merge)
             try:
-                await agent.subagents.spawn(
-                    task,
-                    label="docs-repair",
-                    origin_channel="cli",
-                    origin_chat_id="direct",
-                    session_key="docs-repair",
+                from hczkbot.agent.tools.duplicate_check import (
+                    build_duplicate_report,
+                    check_duplicates,
                 )
+
+                threshold = agent.tools_config.duplicate_similarity_threshold
+                duplicates = check_duplicates(agent.tools, threshold=threshold)
+                if duplicates:
+                    report = build_duplicate_report(duplicates)
+                    logger.warning(
+                        "Nightly maintenance: {} duplicate pair(s) found\n{}",
+                        len(duplicates),
+                        report,
+                    )
+                    summary_parts.append(f"duplicates: {len(duplicates)} pair(s)")
+                else:
+                    logger.info("Nightly maintenance: no duplicates found")
             except Exception:
-                logger.exception("Docs repair subagent spawn failed")
-                return None
-            return f"spawned docs-repair subagent for {len(mismatches)} mismatch(es)"
+                logger.exception("Duplicate check failed")
+
+            # 3. Cold storage rotation
+            try:
+                threshold_days = agent.tools_config.cold_storage_days
+                stats = getattr(agent, "_usage_stats", None)
+                if threshold_days > 0 and stats is not None:
+                    newly_cold = stats.rotate_cold(agent.tools, threshold_days)
+                    if newly_cold:
+                        logger.warning(
+                            "Nightly maintenance: {} tool(s) rotated to cold storage: {}",
+                            len(newly_cold),
+                            ", ".join(newly_cold),
+                        )
+                        summary_parts.append(f"cold-rotated: {len(newly_cold)} tool(s)")
+                    else:
+                        logger.info("Nightly maintenance: no tools rotated to cold storage")
+            except Exception:
+                logger.exception("Cold storage rotation failed")
+
+            return "; ".join(summary_parts) if summary_parts else None
 
         if is_bound_cron_job(job):
             return await run_bound_cron_job(job, agent=agent, cron=cron)
@@ -1364,12 +1401,11 @@ def _run_gateway(
             payload=CronPayload(kind="system_event"),
         ))
 
-    # Register Docs Consistency Check system job (idempotent on restart)
-    # Runs nightly to detect stale docs/<name>.md vs tool code, then spawns
-    # a subagent to regenerate mismatched files.
+    # Register Nightly Maintenance system job (idempotent on restart)
+    # Runs nightly: docs consistency check + duplicate detection + cold rotation
     cron.register_system_job(CronJob(
-        id="docs_consistency_check",
-        name="docs_consistency_check",
+        id="nightly_maintenance",
+        name="nightly_maintenance",
         schedule=CronSchedule(
             kind="cron",
             expr="0 23 * * *",  # 每天 23:00

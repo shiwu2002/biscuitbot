@@ -579,6 +579,22 @@ class AgentLoop:
         self.tools.register(unregister_tool)
         registered.append("unregister_tool")
 
+        # Initialize usage stats for cold-storage rotation.  Persists to
+        # workspace/.agent_tools/ so cold tools survive restarts.
+        from hczkbot.agent.tools.usage_stats import UsageStats
+
+        stats_dir = self.workspace / ".agent_tools"
+        self._usage_stats = UsageStats(base_dir=stats_dir)
+        self.tools.set_usage_stats(self._usage_stats)
+
+        # ColdStorageTool lets the agent search tools rotated to cold storage.
+        from hczkbot.agent.tools.cold_storage import ColdStorageTool
+
+        cold_storage = ColdStorageTool()
+        cold_storage.bind_usage_stats(self._usage_stats)
+        self.tools.register(cold_storage)
+        registered.append("cold_storage")
+
         # Re-load any custom tools persisted from a previous run.
         self._load_custom_tools_manifest()
 

@@ -420,6 +420,8 @@ const DEFAULT_NETWORK_SAFETY_FORM: NetworkSafetySettingsUpdate = {
   webuiAllowLocalServiceAccess: true,
   webuiDefaultAccessMode: "default",
   guardLevel: "standard",
+  coldStorageDays: 14,
+  duplicateSimilarityThreshold: 0.6,
 };
 
 function agentDraftFromPayload(payload: SettingsPayload): AgentSettingsDraft {
@@ -505,6 +507,8 @@ function networkSafetyFormFromPayload(payload: SettingsPayload): NetworkSafetySe
       payload.advanced.webui_default_access_mode,
     ),
     guardLevel,
+    coldStorageDays: payload.advanced.cold_storage_days ?? 14,
+    duplicateSimilarityThreshold: payload.advanced.duplicate_similarity_threshold ?? 0.6,
   };
 }
 
@@ -889,10 +893,15 @@ export function SettingsView({
       settings.advanced.webui_allow_local_service_access ?? settings.advanced.allow_local_preview_access ?? true;
     const currentDefaultAccess = visibleWebuiDefaultAccessMode(settings.advanced.webui_default_access_mode);
     const currentGuardLevel = settings.advanced.guard_level ?? "standard";
+    const currentColdStorageDays = settings.advanced.cold_storage_days ?? 14;
+    const currentDuplicateSimilarityThreshold =
+      settings.advanced.duplicate_similarity_threshold ?? 0.6;
     return (
       networkSafetyForm.webuiAllowLocalServiceAccess !== currentLocalServiceAccess ||
       networkSafetyForm.webuiDefaultAccessMode !== currentDefaultAccess ||
-      networkSafetyForm.guardLevel !== currentGuardLevel
+      networkSafetyForm.guardLevel !== currentGuardLevel ||
+      networkSafetyForm.coldStorageDays !== currentColdStorageDays ||
+      networkSafetyForm.duplicateSimilarityThreshold !== currentDuplicateSimilarityThreshold
     );
   }, [networkSafetyForm, settings]);
 
@@ -6460,6 +6469,51 @@ function AdvancedSettings({
                 onChangeForm((prev) => ({
                   ...prev,
                   guardLevel: guardLevel as GuardLevel,
+                }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.coldStorageDays", "冷门仓库阈值")}
+            description={tx(
+              "settings.help.coldStorageDays",
+              "工具多少天未调用后转入冷门仓库（0=禁用）",
+            )}
+          >
+            <SegmentedControl
+              value={String(form.coldStorageDays)}
+              options={[
+                { value: "0", label: tx("settings.values.coldStorageOff", "禁用") },
+                { value: "7", label: tx("settings.values.coldStorage7", "7天") },
+                { value: "14", label: tx("settings.values.coldStorage14", "14天") },
+                { value: "30", label: tx("settings.values.coldStorage30", "30天") },
+              ]}
+              onChange={(value) =>
+                onChangeForm((prev) => ({
+                  ...prev,
+                  coldStorageDays: Number(value),
+                }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.duplicateSimilarityThreshold", "重复检测灵敏度")}
+            description={tx(
+              "settings.help.duplicateSimilarityThreshold",
+              "工具/技能功能相似度超过此阈值时报告为潜在重复",
+            )}
+          >
+            <SegmentedControl
+              value={String(form.duplicateSimilarityThreshold)}
+              options={[
+                { value: "0.4", label: tx("settings.values.duplicateLow", "低") },
+                { value: "0.6", label: tx("settings.values.duplicateMedium", "中") },
+                { value: "0.8", label: tx("settings.values.duplicateHigh", "高") },
+              ]}
+              onChange={(value) =>
+                onChangeForm((prev) => ({
+                  ...prev,
+                  duplicateSimilarityThreshold: Number(value),
                 }))
               }
             />
