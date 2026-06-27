@@ -2,7 +2,7 @@
 name = "hczkbot"
 version = "0.1.1"
 description = "A lightweight personal AI assistant framework"
-readme = { file = "docs/项目功能说明.md", content-type = "text/markdown" }
+readme = { file = "docs/PROJECT_GUIDE.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
@@ -157,7 +157,7 @@ include = [
     "hczkbot/web/dist/",
     "bridge/",
     "hatch_build.py",
-    "项目功能说明.md",
+    "README.md",
     "LICENSE",
     "pyproject.toml",
 ]
