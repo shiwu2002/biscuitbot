@@ -77,7 +77,12 @@ from hczkbot.webui.sidebar_state import (
     read_webui_sidebar_state,
     write_webui_sidebar_state,
 )
-from hczkbot.webui.skills_api import webui_skill_detail_payload, webui_skills_payload
+from hczkbot.webui.skills_api import (
+    SkillDeletionError,
+    delete_workspace_skill,
+    webui_skill_detail_payload,
+    webui_skills_payload,
+)
 from hczkbot.webui.thread_disk import delete_webui_thread
 from hczkbot.webui.transcript import build_webui_thread_response
 from hczkbot.webui.workspaces import WebUIWorkspaceController
@@ -665,6 +670,9 @@ class GatewayHTTPHandler:
             return self._handle_workspaces(connection, request)
         if got == "/api/webui/skills":
             return self._handle_webui_skills(request)
+        m = re.match(r"^/api/webui/skills/([^/]+)/delete$", got)
+        if m:
+            return self._handle_webui_skill_delete(request, m.group(1))
         m = re.match(r"^/api/webui/skills/([^/]+)$", got)
         if m:
             return self._handle_webui_skill_detail(request, m.group(1))
@@ -714,6 +722,21 @@ class GatewayHTTPHandler:
         if payload is None:
             return _http_error(404, "skill not found")
         return _http_json_response(payload)
+
+    def _handle_webui_skill_delete(self, request: WsRequest, raw_name: str) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if request.method != "POST":
+            return _http_error(405, "Method Not Allowed")
+        name = unquote(raw_name)
+        try:
+            result = delete_workspace_skill(self.skills_workspace_path, name)
+        except SkillDeletionError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to delete skill '{}'", name)
+            return _http_error(500, "failed to delete skill")
+        return _http_json_response(result)
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

@@ -262,6 +262,18 @@ export async function fetchSkillDetail(
   );
 }
 
+export async function deleteSkill(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<{ deleted: boolean; name: string }> {
+  return request<{ deleted: boolean; name: string }>(
+    `${base}/api/webui/skills/${encodeURIComponent(name)}/delete`,
+    token,
+    { method: "POST" },
+  );
+}
+
 export async function deleteSession(
   token: string,
   key: string,

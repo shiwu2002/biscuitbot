@@ -1,18 +1,54 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
-import { Brain, Check, CircleAlert, KeyRound, Loader2, Terminal } from "lucide-react";
+import { Brain, Check, CircleAlert, KeyRound, Loader2, Terminal, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { fetchSkillDetail } from "@/lib/api";
+import { deleteSkill, fetchSkillDetail } from "@/lib/api";
 import type { SkillDetail, SkillSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 
-export function SkillsCatalogSettings({ skills }: { skills: SkillSummary[] }) {
+export function SkillsCatalogSettings({
+  skills,
+  onDeleted,
+}: {
+  skills: SkillSummary[];
+  onDeleted?: () => void;
+}) {
   const { t } = useTranslation();
+  const { token } = useClient();
   const availableCount = skills.filter((skill) => skill.available).length;
   const [selectedSkill, setSelectedSkill] = useState<SkillSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SkillSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteSkill(token, deleteTarget.name);
+      setDeleteTarget(null);
+      onDeleted?.();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setDeleteError(message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   return (
     <div className="space-y-7">
@@ -47,6 +83,7 @@ export function SkillsCatalogSettings({ skills }: { skills: SkillSummary[] }) {
                 key={`${skill.source}:${skill.name}`}
                 skill={skill}
                 onSelect={setSelectedSkill}
+                onDelete={setDeleteTarget}
               />
             ))}
           </div>
@@ -56,6 +93,20 @@ export function SkillsCatalogSettings({ skills }: { skills: SkillSummary[] }) {
           </div>
         )}
       </section>
+
+      <SkillDeleteDialog
+        skill={deleteTarget}
+        open={deleteTarget !== null}
+        deleting={deleting}
+        error={deleteError}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+      />
 
       <SkillDetailSheet
         skill={selectedSkill}
@@ -71,9 +122,11 @@ export function SkillsCatalogSettings({ skills }: { skills: SkillSummary[] }) {
 function SkillCatalogRow({
   skill,
   onSelect,
+  onDelete,
 }: {
   skill: SkillSummary;
   onSelect: (skill: SkillSummary) => void;
+  onDelete: (skill: SkillSummary) => void;
 }) {
   const { t } = useTranslation();
   const sourceLabel = skillSourceLabel(skill.source, t);
@@ -81,58 +134,82 @@ function SkillCatalogRow({
   const statusLabel = skill.available
     ? t("settings.skills.statusAvailable", { defaultValue: "Available" })
     : t("settings.skills.statusUnavailable", { defaultValue: "Unavailable" });
+  const canDelete = skill.source === "workspace";
 
   return (
-    <button
-      type="button"
-      aria-label={t("settings.skills.openDetails", {
-        name: skill.name,
-        defaultValue: "Open details for {{name}}",
-      })}
-      onClick={() => onSelect(skill)}
+    <div
       className={cn(
         "group flex min-w-0 items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-colors",
-        "hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "hover:bg-muted/45",
         !skill.available && "opacity-65",
       )}
     >
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-muted-foreground">
-        <Brain className="h-5 w-5" strokeWidth={1.8} aria-hidden />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <h3 className="truncate text-[15px] font-semibold leading-5 text-foreground">
-            {skill.name}
-          </h3>
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground">
-            {sourceLabel}
-          </span>
+      <button
+        type="button"
+        aria-label={t("settings.skills.openDetails", {
+          name: skill.name,
+          defaultValue: "Open details for {{name}}",
+        })}
+        onClick={() => onSelect(skill)}
+        className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[16px]"
+      >
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-muted-foreground">
+          <Brain className="h-5 w-5" strokeWidth={1.8} aria-hidden />
         </div>
-        <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
-          {skill.description}
-        </p>
-        {!skill.available && skill.unavailable_reason ? (
-          <p className="mt-1 truncate text-[12px] leading-4 text-muted-foreground/80">
-            {t("settings.skills.unavailableReason", {
-              reason: skill.unavailable_reason,
-              defaultValue: "Missing: {{reason}}",
-            })}
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h3 className="truncate text-[15px] font-semibold leading-5 text-foreground">
+              {skill.name}
+            </h3>
+            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground">
+              {sourceLabel}
+            </span>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
+            {skill.description}
           </p>
+          {!skill.available && skill.unavailable_reason ? (
+            <p className="mt-1 truncate text-[12px] leading-4 text-muted-foreground/80">
+              {t("settings.skills.unavailableReason", {
+                reason: skill.unavailable_reason,
+                defaultValue: "Missing: {{reason}}",
+              })}
+            </p>
+          ) : null}
+        </div>
+      </button>
+      <div className="flex shrink-0 items-center gap-2">
+        <span
+          title={!skill.available && skill.unavailable_reason ? skill.unavailable_reason : undefined}
+          className={cn(
+            "hidden items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium sm:inline-flex",
+            skill.available
+              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+              : "bg-muted text-muted-foreground",
+          )}
+        >
+          <StatusIcon className="h-3.5 w-3.5" aria-hidden />
+          {statusLabel}
+        </span>
+        {canDelete ? (
+          <button
+            type="button"
+            aria-label={t("settings.skills.delete", {
+              name: skill.name,
+              defaultValue: "Delete skill {{name}}",
+            })}
+            title={t("settings.skills.deleteTitle", { defaultValue: "Delete skill" })}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(skill);
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+          </button>
         ) : null}
       </div>
-      <span
-        title={!skill.available && skill.unavailable_reason ? skill.unavailable_reason : undefined}
-        className={cn(
-          "hidden shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-medium sm:inline-flex",
-          skill.available
-            ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-            : "bg-muted text-muted-foreground",
-        )}
-      >
-        <StatusIcon className="h-3.5 w-3.5" aria-hidden />
-        {statusLabel}
-      </span>
-    </button>
+    </div>
   );
 }
 
@@ -414,4 +491,78 @@ function skillSourceLabel(source: string, t: TFunction): string {
     return t("settings.skills.sourceBuiltin", { defaultValue: "Built-in" });
   }
   return source;
+}
+
+function SkillDeleteDialog({
+  skill,
+  open,
+  deleting,
+  error,
+  onOpenChange,
+  onConfirm,
+}: {
+  skill: SkillSummary | null;
+  open: boolean;
+  deleting: boolean;
+  error: string | null;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {t("settings.skills.deleteTitle", { defaultValue: "Delete skill" })}
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2 text-[13px] leading-5 text-muted-foreground">
+              <p>
+                {t("settings.skills.deleteConfirm", {
+                  name: skill?.name ?? "",
+                  defaultValue:
+                    "Are you sure you want to delete the skill \"{{name}}\"? This action cannot be undone.",
+                })}
+              </p>
+              {skill ? (
+                <p className="text-[12px] text-muted-foreground/80">
+                  {t("settings.skills.deleteDescription", {
+                    defaultValue: "The skill directory will be removed from the workspace.",
+                  })}
+                </p>
+              ) : null}
+              {error ? (
+                <p className="rounded-[10px] bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+                  {error}
+                </p>
+              ) : null}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>
+            {t("settings.skills.deleteCancel", { defaultValue: "Cancel" })}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={deleting}
+            onClick={(e) => {
+              e.preventDefault();
+              onConfirm();
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {deleting ? (
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                {t("settings.skills.deleting", { defaultValue: "Deleting..." })}
+              </span>
+            ) : (
+              t("settings.skills.deleteConfirmButton", { defaultValue: "Delete" })
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }

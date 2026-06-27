@@ -579,7 +579,7 @@ function Shell({
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(() => new Set());
   const [updatedChatIds, setUpdatedChatIds] = useState<Set<string>>(readSessionUpdateChatIds);
   const [workspaces, setWorkspaces] = useState<WorkspacesPayload | null>(null);
-  const skills = useSkills(token);
+  const { skills, reload: reloadSkills } = useSkills(token);
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsPayload | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [draftWorkspaceScope, setDraftWorkspaceScope] =
@@ -1613,6 +1613,7 @@ function Shell({
                   onModelNameChange={onModelNameChange}
                   onSettingsChange={setSettingsSnapshot}
                   skills={skills}
+                  onSkillsDeleted={reloadSkills}
                   onWorkspaceSettingsChange={refreshWorkspaces}
                   onSectionChange={onSettingsSectionChange}
                   onLogout={onLogout}

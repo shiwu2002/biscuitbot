@@ -291,6 +291,7 @@ interface SettingsViewProps {
   onModelNameChange: (modelName: string | null) => void;
   onSettingsChange?: (payload: SettingsPayload) => void;
   skills?: SkillSummary[];
+  onSkillsDeleted?: () => void;
   onWorkspaceSettingsChange?: () => void | Promise<void>;
   onSectionChange?: (section: SettingsSectionKey) => void;
   onLogout?: () => void;
@@ -532,6 +533,7 @@ export function SettingsView({
   onModelNameChange,
   onSettingsChange,
   skills = [],
+  onSkillsDeleted,
   onWorkspaceSettingsChange,
   onSectionChange,
   onLogout,
@@ -1716,7 +1718,7 @@ export function SettingsView({
           />
         );
       case "skills":
-        return <SkillsCatalogSettings skills={skills} />;
+        return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
       case "runtime":
         return (
           <RuntimeSettings
