@@ -7,26 +7,38 @@ always: false
 
 # Douyin（抖音）发布技能
 
-通过 Safari + AppleScript JavaScript 注入，在已登录的 Safari 会话中自动化发布图文内容。
+在已登录的浏览器会话中自动化发布抖音图文内容。根据操作系统选择对应方案：
 
-## 前置条件
+- **macOS**：Safari + AppleScript + mkcert 本地 HTTPS（绕过 Safari 混合内容限制）
+- **Windows**：Playwright MCP + Edge/Chrome（直接 `page.evaluate()` 注入 JS，无需本地 HTTPS 服务器）
+
+## 前置条件（按平台）
+
+### macOS 通用前置
 
 - macOS Safari 已登录抖音创作者中心 (creator.douyin.com)
 - Safari 开发菜单 → "允许 AppleScript 执行 JavaScript" 已开启
 - mkcert 已安装且 CA 证书受信（用于本地 HTTPS 文件服务）
 
+### Windows 通用前置
+
+- Microsoft Edge 或 Google Chrome 已登录抖音创作者中心 (creator.douyin.com)
+- 已配置 Playwright MCP server（启动命令：`npx @playwright/mcp --browser chromium`）
+- Playwright 通过 MCP 暴露的浏览器实例可被 agent 直接调用（`page.evaluate` / `setInputFiles` 等）
+
 ## 整体流程
 
 1. 导航到创作者中心上传页面（图文 tab）
-2. 通过本地 HTTPS 服务器注入图片 base64 数据
-3. 用 JavaScript DataTransfer API 绕过原生文件对话框上传图片
-4. 填写标题、描述、话题标签
-5. 滚动到底部，点击「发布」按钮
-6. **等待并检查发布结果，避免重复发布**
+2. 上传图片
+   - macOS：通过本地 HTTPS 服务器注入图片 base64 数据，再用 DataTransfer API 绕过原生文件对话框
+   - Windows：用 Playwright `setInputFiles()` 直接上传，或用 `page.evaluate()` 执行相同的 DataTransfer 逻辑
+3. 填写标题、描述、话题标签
+4. 滚动到底部，点击「发布」按钮
+5. **等待并检查发布结果，避免重复发布**
 
-## 关键步骤详解
+## 平台分支：macOS（Safari + AppleScript + mkcert）
 
-### 1. 本地 HTTPS 图片服务
+### macOS-1. 本地 HTTPS 图片服务
 
 Mac mini 无显示器环境没有辅助功能权限，无法控制原生文件对话框。解决方案：用 mkcert 生成受信证书，启动本地 HTTPS 服务器。
 
@@ -34,14 +46,15 @@ Mac mini 无显示器环境没有辅助功能权限，无法控制原生文件�
 # 确保 mkcert CA 受信
 mkcert -install
 
-# 生成 localhost 证书
-mkcert -key-file /tmp/localhost-key.pem -cert-file /tmp/localhost.pem localhost 127.0.0.1 ::1
+# 生成 localhost 证书（写入系统临时目录，避免硬编码 /tmp/）
+mkcert -key-file "$TMPDIR/localhost-key.pem" -cert-file "$TMPDIR/localhost.pem" localhost 127.0.0.1 ::1
 ```
 
 Python HTTPS 服务器（带 CORS 头）：
 ```python
 import http.server, ssl, os
-os.chdir('/Users/hehaifeng/Desktop')
+# 跨平台占位符：使用 $HOME/Desktop 作为服务器根目录
+os.chdir(os.path.expanduser('~/Desktop'))
 
 class MyHandler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
@@ -50,30 +63,33 @@ class MyHandler(http.server.SimpleHTTPRequestHandler):
 
 httpd = http.server.HTTPServer(('127.0.0.1', 8766), MyHandler)
 ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-ctx.load_cert_chain('/tmp/localhost.pem', '/tmp/localhost-key.pem')
+# 证书路径同样从环境变量取，避免硬编码 /tmp/
+ctx.load_cert_chain(os.path.join(os.environ.get('TMPDIR', '/tmp'), 'localhost.pem'),
+                    os.path.join(os.environ.get('TMPDIR', '/tmp'), 'localhost-key.pem'))
 httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
 httpd.serve_forever()
 ```
 
-### 2. 图片 Base64 JS 文件
+### macOS-2. 图片 Base64 JS 文件
 
 将图片转为 base64 嵌入 JS 文件：
 
 ```python
-import base64
-img_path = "/path/to/image.png"
+import base64, os
+# 跨平台占位符：~/Desktop/ 在 macOS 上展开为 /Users/<user>/Desktop/
+img_path = os.path.expanduser('~/Desktop/image.png')
 with open(img_path, "rb") as f:
     img_data = f.read()
 b64 = base64.b64encode(img_data).decode("ascii")
 
 js_code = f'window.__IMG_B64 = "{b64}"; window.__IMG_READY = true;'
-with open("/path/to/__img_data.js", "w") as f:
+with open(os.path.expanduser('~/Desktop/__img_data.js'), "w") as f:
     f.write(js_code)
 ```
 
-文件放在 HTTPS 服务器的根目录下（如 Desktop）。
+文件放在 HTTPS 服务器的根目录下（如 `~/Desktop/`）。
 
-### 3. 注入 + 上传（绕过文件对话框）
+### macOS-3. 注入 + 上传（绕过文件对话框）
 
 三种 JavaScript 注入方式的对比：
 
@@ -106,9 +122,87 @@ s.onload = function() {
 document.head.appendChild(s);
 ```
 
-### 4. 填写标题和描述
+### macOS-4. 填写标题和描述
 
-**标题：**
+见下方「平台无关：DOM 操作」一节，JavaScript 完全相同。
+
+### macOS-5. 点击发布
+
+见下方「平台无关：点击发布」一节。
+
+### macOS-6. AppleScript 侧等待检查
+
+```bash
+osascript -e '
+tell application "Safari"
+    set currentURL to URL of current tab of front window
+end tell
+'
+
+# 如果 URL 包含 /manage → 发布已受理
+# 如果 URL 仍为 /upload → 检查页面 DOM 中的错误提示
+```
+
+## 平台分支：Windows（Playwright MCP + Edge/Chrome）
+
+### Windows-1. 直接上传图片（无需 mkcert / HTTPS 服务器）
+
+Playwright 直接驱动浏览器，不受 Safari 混合内容限制，可走以下任一方式：
+
+**方式 A：`setInputFiles()` 直接上传（推荐，单张/多张图片）**
+
+```
+# 通过 Playwright MCP 调用（伪代码，具体看 MCP 工具签名）
+playwright.set_input_files(
+    selector='input[type=file]',
+    paths=['%USERPROFILE%\\Desktop\\image.png']  # 跨平台占位符：Windows 桌面
+)
+```
+
+**方式 B：`page.evaluate()` + DataTransfer（与 macOS 共用 JS 逻辑）**
+
+如果 MCP 未暴露 `setInputFiles`，或需要从内存 base64 上传，可直接在页面上下文里执行与 macOS 相同的 DataTransfer 代码。base64 字符串没有 AppleScript 的长度限制，可以直接作为参数传入：
+
+```javascript
+// 直接通过 page.evaluate 注入，不需要 <script src> 加载
+(async () => {
+    const b64 = arguments[0];  // 由 Playwright 注入，无长度限制
+    const dataUrl = "data:image/png;base64," + b64;
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], "image.png", {type: "image/png"});
+    const fi = document.querySelector("input[type=file]");
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fi.files = dt.files;
+    fi.dispatchEvent(new Event("change", {bubbles: true}));
+})(/* base64 字符串在此传入 */);
+```
+
+> Windows 方案不需要 mkcert、不需要本地 HTTPS 服务器、不需要 `__img_data.js` 文件。Playwright 直接在页面上下文执行 JS，绕过所有混合内容限制。
+
+### Windows-2. 填写标题和描述
+
+通过 `page.evaluate()` 执行下方「平台无关：DOM 操作」中的同一份 JavaScript。
+
+### Windows-3. 点击发布
+
+通过 `page.evaluate()` 执行下方「平台无关：点击发布」中的同一份 JavaScript。
+
+### Windows-4. Playwright 侧等待检查
+
+```
+# 通过 Playwright MCP 检查 URL 与 DOM
+url = playwright.evaluate("window.location.href")
+# 如果 url 包含 /manage → 发布已受理
+# 如果 url 仍为 /upload → 再 evaluate 一次检查错误提示
+```
+
+## 平台无关：DOM 操作
+
+以下 JavaScript 在两个平台上完全一致，区别只在于执行通道（macOS 用 AppleScript `do JavaScript`，Windows 用 Playwright `page.evaluate()`）。
+
+### 标题
+
 ```javascript
 var titleInput = document.querySelector('input[placeholder*="标题"]');
 var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set;
@@ -116,7 +210,8 @@ ns.call(titleInput, "作品标题");
 titleInput.dispatchEvent(new Event("input", {bubbles: true}));
 ```
 
-**描述（contenteditable 富文本编辑器）：**
+### 描述（contenteditable 富文本编辑器）
+
 ```javascript
 var editor = document.querySelector('[contenteditable="true"].zone-container');
 editor.focus();
@@ -124,7 +219,7 @@ editor.textContent = "作品描述文字...\n\n#话题标签";
 editor.dispatchEvent(new Event("input", {bubbles: true}));
 ```
 
-### 5. 点击发布
+### 点击发布
 
 ```javascript
 // 「发布」按钮在页面底部，需要先滚动
@@ -141,7 +236,7 @@ for (var btn of all) {
 }
 ```
 
-## ⚠️ 关键陷阱：避免重复发布
+## ⚠️ 关键陷阱：避免重复发布（平台无关）
 
 ### 问题
 
@@ -168,7 +263,7 @@ for (var btn of all) {
                 └─ 文件仍在上传区 → 重新点击发布
 ```
 
-### 实现代码
+### 实现代码（平台无关）
 
 ```javascript
 // 点击发布后，等待并检查结果
@@ -192,29 +287,31 @@ setTimeout(function() {
 }, 3000);
 ```
 
-### AppleScript 侧等待检查
-
-```bash
-osascript -e '
-tell application "Safari"
-    set currentURL to URL of current tab of front window
-end tell
-'
-
-# 如果 URL 包含 /manage → 发布已受理
-# 如果 URL 仍为 /upload → 检查页面 DOM 中的错误提示
-```
+> macOS 通过 AppleScript `do JavaScript` 执行上述代码并读取 `window.__PUBLISH_RESULT`；Windows 通过 Playwright `page.evaluate()` 执行并读取返回值。
 
 ## 已知限制
+
+### macOS 限制
 
 1. **无辅助功能权限** → 无法控制原生 macOS 对话框（文件选择器、系统弹窗等）
 2. **需 Safari 保持登录** → Cookie 过期后需要重新手动登录
 3. **图片通过 base64 注入** → 超大图片可能有性能问题（已在 ~1.3MB PNG 上验证可行）
 4. **页面 DOM 可能变化** → 选择器需要根据抖音更新调整
 
-## 适用文件位置
+### Windows 限制
 
-- 图片文件：通常在 `/Users/hehaifeng/Desktop/` 或 `media/feishu/`
-- HTTPS 服务端口：`8766`
-- JS 数据文件：`/Users/hehaifeng/Desktop/__img_data.js`
-- mkcert 证书：`/tmp/localhost.pem` 和 `/tmp/localhost-key.pem`
+1. **需 Edge/Chrome 保持登录** → Cookie 过期后需要重新手动登录
+2. **依赖 Playwright MCP server** → MCP server 进程必须正常运行，否则无法驱动浏览器
+3. **浏览器实例由 MCP 托管** → 不能直接复用用户当前已打开的浏览器窗口，需在 MCP 启动的实例中登录（或使用已持久化的 user data dir）
+4. **`setInputFiles()` 需要本地文件路径** → 路径必须是 Playwright 进程可访问的本地文件（如 `%USERPROFILE%\\Desktop\\image.png`），不能直接传内存中的 base64
+5. **页面 DOM 可能变化** → 选择器需要根据抖音更新调整
+
+## 适用文件位置（跨平台）
+
+| 项目 | macOS | Windows |
+|------|-------|---------|
+| 图片文件 | `~/Desktop/` 或 `media/feishu/` | `%USERPROFILE%\\Desktop\\` 或 `media\\feishu\\` |
+| HTTPS 服务端口 | `8766`（仅 macOS 需要） | 不适用 |
+| JS 数据文件 | `~/Desktop/__img_data.js`（仅 macOS 需要） | 不适用 |
+| mkcert 证书 | `$TMPDIR/localhost.pem` 和 `$TMPDIR/localhost-key.pem`（仅 macOS 需要） | 不适用 |
+| Playwright 上传路径 | 不适用 | `%USERPROFILE%\\Desktop\\image.png` |

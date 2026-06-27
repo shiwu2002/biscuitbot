@@ -616,7 +616,7 @@ class ExecTool(Tool):
                 if val is not None:
                     env[key] = val
             return env
-        home = os.environ.get("HOME", "/tmp")
+        home = os.environ.get("HOME") or os.path.expanduser("~")
         env = {
             "HOME": home,
             "LANG": os.environ.get("LANG", "C.UTF-8"),

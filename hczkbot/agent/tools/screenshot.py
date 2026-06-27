@@ -217,7 +217,7 @@ class ScreenshotTool(Tool):
                     '$bmp = New-Object System.Drawing.Bitmap($_.Bounds.Width, $_.Bounds.Height);'
                     '$g = [System.Drawing.Graphics]::FromImage($bmp);'
                     '$g.CopyFromScreen($_.Bounds.Location, [System.Drawing.Point]::Empty, $_.Bounds.Size);'
-                    f'$bmp.Save("{tmp_path}");'
+                    f"$bmp.Save('{tmp_path}');"
                     '$g.Dispose(); $bmp.Dispose()'
                     '}'
                 )

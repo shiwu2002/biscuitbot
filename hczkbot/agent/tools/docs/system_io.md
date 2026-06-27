@@ -63,7 +63,7 @@ system_io(action="serial_read", port="/dev/ttyUSB0", baudrate=115200, bytes_to_r
 | 能力 | macOS | Linux | Windows |
 |------|-------|-------|---------|
 | 剪贴板 | `pbpaste` / `pbcopy`（内置） | `xclip` 或 `xsel` | `powershell Get-Clipboard` / `Set-Clipboard` |
-| 键盘模拟 | 优先 `pynput`，回退 `osascript` | 优先 `pynput`，回退 `xdotool` | 需要 `pynput` |
+| 键盘模拟 | 优先 `pynput`，回退 `osascript` | 优先 `pynput`，回退 `xdotool` | 优先 `pynput`，回退 `SendKeys` |
 | 鼠标模拟 | 需要 `pynput` | 优先 `pynput`，回退 `xdotool` | 需要 `pynput` |
 | USB 列表 | `system_profiler`（内置） | `lsusb` | `Get-PnpDevice` |
 | 串口列表 | `pyserial` 或扫描 `/dev/tty.*` | `pyserial` 或扫描 `/dev/ttyUSB*` | `pyserial` 或扫描 `COM*` |

@@ -1472,6 +1472,26 @@ def _run_gateway(
 
 
 # ============================================================================
+# Desktop Command
+# ============================================================================
+
+
+@app.command()
+def desktop(
+    port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    width: int = typer.Option(1200, "--width", help="Window width"),
+    height: int = typer.Option(800, "--height", help="Window height"),
+):
+    """Launch hczkbot as a native desktop application."""
+    from hczkbot.desktop.app import run_desktop
+
+    cfg = _load_runtime_config(config, workspace)
+    run_desktop(cfg, port=port, width=width, height=height)
+
+
+# ============================================================================
 # Agent Commands
 # ============================================================================
 

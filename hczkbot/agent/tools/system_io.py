@@ -324,6 +324,8 @@ class SystemIoTool(Tool):
             return await self._key_tap_xdotool(keys)
         if _IS_MACOS and backend == "osascript":
             return await self._key_tap_osascript(keys)
+        if _IS_WINDOWS and backend == "sendkeys":
+            return await self._key_tap_sendkeys(keys)
         return self._missing_tool(
             "pynput",
             "Keyboard simulation on this platform requires pynput.",
@@ -355,6 +357,8 @@ class SystemIoTool(Tool):
             if rc != 0:
                 return f"Error: osascript keystroke failed: {err.decode(errors='replace').strip()}"
             return f"Typed {len(text)} chars."
+        if _IS_WINDOWS and backend == "sendkeys":
+            return await self._key_type_sendkeys(text)
         return self._missing_tool(
             "pynput",
             "Keyboard simulation on this platform requires pynput.",
@@ -371,6 +375,8 @@ class SystemIoTool(Tool):
             return "xdotool"
         if _IS_MACOS and self._which("osascript"):
             return "osascript"
+        if _IS_WINDOWS and self._which("powershell"):
+            return "sendkeys"
         return "none"
 
     async def _key_tap_pynput(self, keys: str) -> str:
@@ -447,6 +453,94 @@ class SystemIoTool(Tool):
         if rc != 0:
             return f"Error: osascript key_tap failed: {err.decode(errors='replace').strip()}"
         return f"Tapped keys: {keys}"
+
+    # SendKeys 特殊键名映射（Windows PowerShell fallback）
+    _SENDKEYS_SPECIAL = {
+        "enter": "{ENTER}", "return": "{ENTER}",
+        "tab": "{TAB}", "esc": "{ESC}", "escape": "{ESC}",
+        "backspace": "{BACKSPACE}", "bs": "{BACKSPACE}",
+        "delete": "{DELETE}", "del": "{DELETE}",
+        "up": "{UP}", "down": "{DOWN}", "left": "{LEFT}", "right": "{RIGHT}",
+        "home": "{HOME}", "end": "{END}",
+        "pageup": "{PGUP}", "pagedown": "{PGDN}",
+        "space": " ",
+        "f1": "{F1}", "f2": "{F2}", "f3": "{F3}", "f4": "{F4}",
+        "f5": "{F5}", "f6": "{F6}", "f7": "{F7}", "f8": "{F8}",
+        "f9": "{F9}", "f10": "{F10}", "f11": "{F11}", "f12": "{F12}",
+    }
+
+    _SENDKEYS_MOD_MAP = {
+        "ctrl": "^", "control": "^",
+        "alt": "%", "option": "%",
+        "shift": "+",
+        "cmd": "^", "command": "^",  # Windows 上 cmd 映射为 Ctrl
+    }
+
+    async def _key_tap_sendkeys(self, keys: str) -> str:
+        """Windows PowerShell SendKeys fallback for key_tap."""
+        chord = [k.strip() for k in keys.split("+") if k.strip()]
+        if not chord:
+            return "Error: keys parsed to empty chord."
+        # 构建 SendKeys 字符串
+        parts: list[str] = []
+        for token in chord[:-1]:
+            mod = self._SENDKEYS_MOD_MAP.get(token.lower())
+            if mod is None:
+                return f"Error: unknown modifier key: {token!r}"
+            parts.append(mod)
+        final = chord[-1].lower()
+        special = self._SENDKEYS_SPECIAL.get(final)
+        if special is not None:
+            parts.append(special)
+        elif len(chord[-1]) == 1 and chord[-1].isprintable():
+            # 单个可打印字符：需转义 SendKeys 特殊字符 {}[]()+^%~{}
+            ch = chord[-1]
+            if ch in "{}[]()+^%~":
+                parts.append("{" + ch + "}")
+            else:
+                parts.append(ch)
+        else:
+            return (
+                f"Error: sendkeys key_tap does not support key: {chord[-1]!r}. "
+                "Install pynput for full key support."
+            )
+        send_str = "".join(parts)
+        # 转义 PowerShell 字符串中的特殊字符
+        send_str_ps = send_str.replace("'", "''")
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            f"[System.Windows.Forms.SendKeys]::SendWait('{send_str_ps}');"
+        )
+        rc, out, err = await self._run(
+            ["powershell", "-NoProfile", "-Command", ps_script], timeout=5.0,
+        )
+        if rc != 0:
+            return f"Error: SendKeys key_tap failed: {err.decode(errors='replace').strip()}"
+        return f"Tapped keys: {keys}"
+
+    async def _key_type_sendkeys(self, text: str) -> str:
+        """Windows PowerShell SendKeys fallback for key_type."""
+        # 转义 SendKeys 特殊字符
+        special = set("{}[]()+^%~")
+        escaped = []
+        for ch in text:
+            if ch in special:
+                escaped.append("{" + ch + "}")
+            else:
+                escaped.append(ch)
+        send_str = "".join(escaped)
+        # 转义 PowerShell 字符串中的单引号
+        send_str_ps = send_str.replace("'", "''")
+        ps_script = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            f"[System.Windows.Forms.SendKeys]::SendWait('{send_str_ps}');"
+        )
+        rc, out, err = await self._run(
+            ["powershell", "-NoProfile", "-Command", ps_script], timeout=30.0,
+        )
+        if rc != 0:
+            return f"Error: SendKeys key_type failed: {err.decode(errors='replace').strip()}"
+        return f"Typed {len(text)} chars."
 
     @staticmethod
     def _pynput_mod(name: str) -> Any:
