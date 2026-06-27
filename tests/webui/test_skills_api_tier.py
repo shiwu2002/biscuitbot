@@ -107,6 +107,12 @@ class TestBuiltinSkillsTier:
         skill = next(s for s in payload["skills"] if s["name"] == "weather")
         assert skill["tier"] == "user"
 
+    def test_douyin_is_user_tier(self, tmp_path: Path) -> None:
+        payload = self._payload(tmp_path)
+        skill = next((s for s in payload["skills"] if s["name"] == "douyin"), None)
+        assert skill is not None, "douyin skill not discovered"
+        assert skill["tier"] == "user"
+
     def test_all_builtin_skills_have_valid_tier(self, tmp_path: Path) -> None:
         payload = self._payload(tmp_path)
         valid = {"system", "agent", "user"}
