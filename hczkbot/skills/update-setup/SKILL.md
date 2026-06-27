@@ -1,6 +1,7 @@
 ---
 name: update-setup
-description: One-time setup wizard for the hczkbot upgrade skill. Triggers: setup update, configure update, 切设置更新, 初始化更新.
+tier: system
+description: "One-time setup wizard for the hczkbot upgrade skill. Triggers: setup update, configure update, 切设置更新, 初始化更新."
 ---
 
 # Update Setup

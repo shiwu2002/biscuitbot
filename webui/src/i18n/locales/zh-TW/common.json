@@ -77,6 +77,7 @@
       "voice": "語音",
       "browser": "網頁",
       "runtime": "系統",
+      "systemIo": "系統 IO",
       "advanced": "安全",
       "cliApps": "CLI 應用",
       "mcp": "MCP",
@@ -106,7 +107,9 @@
       "apps": "應用",
       "nativeHost": "原生宿主",
       "hostSafety": "App 安全",
-      "voiceInput": "語音辨識"
+      "voiceInput": "語音辨識",
+      "systemIo": "系統 IO",
+      "systemIoActions": "操作"
     },
     "rows": {
       "theme": "主題",
@@ -144,6 +147,8 @@
       "screenshotMaxWidth": "最大寬度",
       "screenshotMaxHeight": "最大高度",
       "screenshotQuality": "JPEG 品質",
+      "systemIo": "系統 IO",
+      "systemIoAllowActions": "允許的操作",
       "botName": "Bot 名稱",
       "botIcon": "Bot 圖示",
       "timezone": "時區",
@@ -195,6 +200,8 @@
       "screenshotMaxWidth": "將擷取的截圖縮放至此最大寬度（像素）。",
       "screenshotMaxHeight": "將擷取的截圖縮放至此最大高度（像素）。",
       "screenshotQuality": "傳送給視覺模型的 JPEG 壓縮品質（10-100）。",
+      "systemIo": "允許智能體模擬鍵盤/滑鼠輸入、讀寫剪貼簿、列出 USB 裝置以及讀寫串列埠。",
+      "systemIoAllowActions": "未選擇任何操作時允許全部操作。關閉特定操作以限制為子集（建議限制寫操作）。",
       "botName": "顯示在 hczkbot 使用顯示名稱的位置。",
       "botIcon": "顯示在 Bot 名稱旁的短 emoji 或文字。",
       "timezone": "用於排程和需要時間感知的回覆。",
@@ -240,7 +247,9 @@
       "configured": "已配置",
       "notConfigured": "未配置",
       "pending": "等待中",
-      "restartingEngine": "正在重啟"
+      "restartingEngine": "正在重啟",
+      "systemIoAllActions": "全部允許",
+      "systemIoRestricted": "已限制"
     },
     "status": {
       "loading": "正在載入設定...",
@@ -320,7 +329,8 @@
       "imageGeneration": "圖片生成",
       "vision": "視覺理解",
       "voiceInput": "語音辨識",
-      "workspace": "工作區"
+      "workspace": "工作區",
+      "systemIo": "系統 IO"
     },
     "usage": {
       "title": "Token 活動",
@@ -639,6 +649,10 @@
       "empty": "暫無可用技能。",
       "sourceWorkspace": "自訂",
       "sourceBuiltin": "內建",
+      "tier": "等級",
+      "tierSystem": "系統級",
+      "tierAgent": "智能體級",
+      "tierUser": "使用者級",
       "statusAvailable": "可用",
       "statusUnavailable": "不可用",
       "unavailableReason": "缺少：{{reason}}",

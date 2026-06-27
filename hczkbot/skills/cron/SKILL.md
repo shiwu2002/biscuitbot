@@ -1,5 +1,6 @@
 ---
 name: cron
+tier: agent
 description: Schedule reminders and recurring tasks.
 ---
 

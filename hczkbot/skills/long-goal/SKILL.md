@@ -1,5 +1,6 @@
 ---
 name: long-goal
+tier: agent
 description: Sustained objectives via long_task / complete_goal — idempotent goal wording, project-style modular work, early web/doc research, Runtime Context metadata.
 ---
 

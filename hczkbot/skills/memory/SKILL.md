@@ -1,5 +1,6 @@
 ---
 name: memory
+tier: agent
 description: Two-layer memory system with Dream-managed knowledge files.
 always: true
 ---

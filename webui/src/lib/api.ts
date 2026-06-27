@@ -13,6 +13,7 @@ import type {
   ProviderSettingsUpdate,
   ScreenshotSettingsUpdate,
   SessionDeleteResult,
+  SystemIoSettingsUpdate,
   SessionAutomationsPayload,
   SettingsPayload,
   SettingsUpdate,
@@ -270,7 +271,6 @@ export async function deleteSkill(
   return request<{ deleted: boolean; name: string }>(
     `${base}/api/webui/skills/${encodeURIComponent(name)}/delete`,
     token,
-    { method: "POST" },
   );
 }
 
@@ -688,6 +688,20 @@ export async function updateScreenshotSettings(
   query.set("quality", String(update.quality));
   return request<SettingsPayload>(
     `${base}/api/settings/screenshot/update?${query}`,
+    token,
+  );
+}
+
+export async function updateSystemIoSettings(
+  token: string,
+  update: SystemIoSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  query.set("enabled", String(update.enabled));
+  query.set("allowActions", update.allowActions.join(","));
+  return request<SettingsPayload>(
+    `${base}/api/settings/system-io/update?${query}`,
     token,
   );
 }

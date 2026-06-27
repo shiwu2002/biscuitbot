@@ -79,6 +79,7 @@
       "cliApps": "CLI 应用",
       "mcp": "MCP",
       "runtime": "系统",
+      "systemIo": "系统 IO",
       "advanced": "安全",
       "apps": "应用",
       "automations": "自动任务",
@@ -106,7 +107,9 @@
       "apps": "应用",
       "nativeHost": "原生宿主",
       "hostSafety": "应用安全",
-      "voiceInput": "语音识别"
+      "voiceInput": "语音识别",
+      "systemIo": "系统 IO",
+      "systemIoActions": "操作"
     },
     "models": {
       "selectModel": "选择模型",
@@ -165,6 +168,8 @@
       "screenshotMaxWidth": "最大宽度",
       "screenshotMaxHeight": "最大高度",
       "screenshotQuality": "JPEG 质量",
+      "systemIo": "系统 IO",
+      "systemIoAllowActions": "允许的操作",
       "botName": "Bot 名称",
       "botIcon": "Bot 图标",
       "timezone": "时区",
@@ -218,6 +223,8 @@
       "screenshotMaxWidth": "将截取的截图缩放到此最大宽度（像素）。",
       "screenshotMaxHeight": "将截取的截图缩放到此最大高度（像素）。",
       "screenshotQuality": "发送给视觉模型的 JPEG 压缩质量（10-100）。",
+      "systemIo": "允许智能体模拟键盘/鼠标输入、读写剪贴板、列出 USB 设备以及读写串口。",
+      "systemIoAllowActions": "未选择任何操作时允许全部操作。关闭特定操作以限制为子集（建议限制写操作）。",
       "botName": "显示在 hczkbot 使用展示名称的地方。",
       "botIcon": "显示在 Bot 名称旁的短 emoji 或文字。",
       "timezone": "用于日程和需要时间感知的回复。",
@@ -355,7 +362,9 @@
       "configured": "已配置",
       "notConfigured": "未配置",
       "pending": "等待中",
-      "restartingEngine": "正在重启"
+      "restartingEngine": "正在重启",
+      "systemIoAllActions": "全部允许",
+      "systemIoRestricted": "已限制"
     },
     "status": {
       "loading": "正在加载设置...",
@@ -435,7 +444,8 @@
       "imageGeneration": "图片生成",
       "vision": "视觉理解",
       "voiceInput": "语音识别",
-      "workspace": "工作区"
+      "workspace": "工作区",
+      "systemIo": "系统 IO"
     },
     "usage": {
       "title": "Token 活动",
@@ -639,6 +649,10 @@
       "empty": "暂无可用技能。",
       "sourceWorkspace": "自定义",
       "sourceBuiltin": "内置",
+      "tier": "等级",
+      "tierSystem": "系统级",
+      "tierAgent": "智能体级",
+      "tierUser": "用户级",
       "statusAvailable": "可用",
       "statusUnavailable": "不可用",
       "unavailableReason": "缺少：{{reason}}",

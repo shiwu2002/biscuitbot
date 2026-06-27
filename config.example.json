@@ -223,6 +223,10 @@
     "cliApps": {
       "enable": false
     },
+    "systemIo": {
+      "enable": false,
+      "allowActions": []
+    },
     "restrictToWorkspace": false,
     "guardLevel": "standard",
     "toolSelectionMode": "all",

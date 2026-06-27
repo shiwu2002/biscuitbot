@@ -14,8 +14,10 @@ if TYPE_CHECKING:
     from hczkbot.agent.tools.cli_apps import CliAppsToolConfig
     from hczkbot.agent.tools.filesystem import FileToolsConfig
     from hczkbot.agent.tools.image_generation import ImageGenerationToolConfig
+    from hczkbot.agent.tools.screenshot import ScreenshotToolConfig
     from hczkbot.agent.tools.self import MyToolConfig
     from hczkbot.agent.tools.shell import ExecToolConfig
+    from hczkbot.agent.tools.system_io import SystemIoToolConfig
     from hczkbot.agent.tools.web import WebToolsConfig
 
 
@@ -316,6 +318,9 @@ class ToolsConfig(Base):
     screenshot: ScreenshotToolConfig = Field(
         default_factory=lambda: _lazy_default("hczkbot.agent.tools.screenshot", "ScreenshotToolConfig"),
     )
+    system_io: SystemIoToolConfig = Field(
+        default_factory=lambda: _lazy_default("hczkbot.agent.tools.system_io", "SystemIoToolConfig"),
+    )
     restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
     guard_level: str = Field(
         default="standard",
@@ -580,6 +585,7 @@ def _resolve_tool_config_refs() -> None:
     from hczkbot.agent.tools.screenshot import ScreenshotToolConfig
     from hczkbot.agent.tools.self import MyToolConfig
     from hczkbot.agent.tools.shell import ExecToolConfig
+    from hczkbot.agent.tools.system_io import SystemIoToolConfig
     from hczkbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
 
     # Re-export into this module's namespace
@@ -593,6 +599,7 @@ def _resolve_tool_config_refs() -> None:
     mod.MyToolConfig = MyToolConfig  # type: ignore[attr-defined]
     mod.ImageGenerationToolConfig = ImageGenerationToolConfig  # type: ignore[attr-defined]
     mod.ScreenshotToolConfig = ScreenshotToolConfig  # type: ignore[attr-defined]
+    mod.SystemIoToolConfig = SystemIoToolConfig  # type: ignore[attr-defined]
 
     ToolsConfig.model_rebuild()
     Config.model_rebuild()

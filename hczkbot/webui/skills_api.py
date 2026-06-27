@@ -59,9 +59,25 @@ def _skill_payload(loader: SkillsLoader, entry: dict[str, str]) -> dict[str, Any
         "name": name,
         "description": _description(metadata, name),
         "source": entry.get("source", "unknown"),
+        "tier": _tier(metadata),
         "available": available,
         "unavailable_reason": unavailable_reason,
     }
+
+
+# Recognised skill tiers. ``system`` operates on the host OS/installation,
+# ``agent`` governs the agent's own state/memory/scheduling, ``user`` covers
+# user-domain skills. Missing/invalid values fall back to ``user``.
+_VALID_TIERS = {"system", "agent", "user"}
+
+
+def _tier(metadata: dict[str, Any] | None) -> str:
+    if metadata is None:
+        return "user"
+    value = metadata.get("tier")
+    if isinstance(value, str) and value.strip().lower() in _VALID_TIERS:
+        return value.strip().lower()
+    return "user"
 
 
 def _description(metadata: dict[str, Any] | None, fallback: str) -> str:

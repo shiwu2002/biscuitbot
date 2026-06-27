@@ -164,6 +164,14 @@ function SkillCatalogRow({
             <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground">
               {sourceLabel}
             </span>
+            <span
+              className={cn(
+                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+                tierBadgeClass(skill.tier),
+              )}
+            >
+              {skillTierLabel(skill.tier, t)}
+            </span>
           </div>
           <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
             {skill.description}
@@ -280,6 +288,14 @@ function SkillDetailSheet({
               </SheetDescription>
               <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-muted-foreground">
                 <Pill>{sourceLabel}</Pill>
+                <span
+                  className={cn(
+                    "inline-flex max-w-full items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
+                    tierBadgeClass(activeSkill.tier),
+                  )}
+                >
+                  {skillTierLabel(activeSkill.tier, t)}
+                </span>
                 <Pill tone={activeSkill.available ? "success" : "muted"}>{statusLabel}</Pill>
               </div>
             </div>
@@ -300,10 +316,14 @@ function SkillDetailSheet({
                 <p className="text-[14px] leading-6 text-muted-foreground">{activeSkill.description}</p>
               </DetailSection>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <MetaItem
                   label={t("settings.skills.source", { defaultValue: "Source" })}
                   value={sourceLabel}
+                />
+                <MetaItem
+                  label={t("settings.skills.tier", { defaultValue: "Tier" })}
+                  value={skillTierLabel(activeSkill.tier, t)}
                 />
                 <MetaItem
                   label={t("settings.skills.status", { defaultValue: "Status" })}
@@ -491,6 +511,29 @@ function skillSourceLabel(source: string, t: TFunction): string {
     return t("settings.skills.sourceBuiltin", { defaultValue: "Built-in" });
   }
   return source;
+}
+
+function skillTierLabel(tier: string, t: TFunction): string {
+  if (tier === "system") {
+    return t("settings.skills.tierSystem", { defaultValue: "System" });
+  }
+  if (tier === "agent") {
+    return t("settings.skills.tierAgent", { defaultValue: "Agent" });
+  }
+  if (tier === "user") {
+    return t("settings.skills.tierUser", { defaultValue: "User" });
+  }
+  return tier;
+}
+
+function tierBadgeClass(tier: string): string {
+  if (tier === "system") {
+    return "bg-amber-500/12 text-amber-700 dark:text-amber-300";
+  }
+  if (tier === "agent") {
+    return "bg-blue-500/12 text-blue-700 dark:text-blue-300";
+  }
+  return "bg-muted text-muted-foreground";
 }
 
 function SkillDeleteDialog({

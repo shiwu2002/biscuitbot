@@ -726,8 +726,6 @@ class GatewayHTTPHandler:
     def _handle_webui_skill_delete(self, request: WsRequest, raw_name: str) -> Response:
         if not self.check_api_token(request):
             return _http_error(401, "Unauthorized")
-        if request.method != "POST":
-            return _http_error(405, "Method Not Allowed")
         name = unquote(raw_name)
         try:
             result = delete_workspace_skill(self.skills_workspace_path, name)

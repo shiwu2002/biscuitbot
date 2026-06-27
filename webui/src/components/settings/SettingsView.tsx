@@ -103,6 +103,7 @@ import {
   updateProviderSettings,
   updateScreenshotSettings,
   updateSettings,
+  updateSystemIoSettings,
   updateTranscriptionSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
@@ -132,6 +133,7 @@ import type {
   ScreenshotSettingsUpdate,
   SessionAutomationJob,
   SettingsPayload,
+  SystemIoSettingsUpdate,
   SkillSummary,
   TranscriptionSettingsUpdate,
   WebSearchSettingsUpdate,
@@ -150,6 +152,7 @@ export type SettingsSectionKey =
   | "automations"
   | "skills"
   | "runtime"
+  | "systemIo"
   | "advanced";
 
 type LocalDensity = "comfortable" | "compact";
@@ -187,7 +190,7 @@ interface ModelConfigurationDraft {
   model: string;
 }
 
-type PendingRestartSection = "runtime" | "browser" | "image" | "vision";
+type PendingRestartSection = "runtime" | "browser" | "image" | "vision" | "systemIo";
 type PendingRestartSections = Record<PendingRestartSection, boolean>;
 type RestartAwarePayload = {
   requires_restart?: boolean;
@@ -268,6 +271,7 @@ const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   browser: false,
   image: false,
   vision: false,
+  systemIo: false,
 };
 
 const DEFAULT_CUSTOM_MCP_FORM: CustomMcpForm = {
@@ -397,6 +401,11 @@ const DEFAULT_SCREENSHOT_FORM: ScreenshotSettingsUpdate = {
   quality: 85,
 };
 
+const DEFAULT_SYSTEM_IO_FORM: SystemIoSettingsUpdate = {
+  enabled: false,
+  allowActions: [],
+};
+
 const DEFAULT_TRANSCRIPTION_FORM: TranscriptionSettingsUpdate = {
   enabled: true,
   provider: "dashscope",
@@ -483,6 +492,13 @@ function screenshotFormFromPayload(payload: SettingsPayload): ScreenshotSettings
   };
 }
 
+function systemIoFormFromPayload(payload: SettingsPayload): SystemIoSettingsUpdate {
+  return {
+    enabled: payload.system_io.enabled,
+    allowActions: [...payload.system_io.allow_actions],
+  };
+}
+
 function transcriptionFormFromPayload(payload: SettingsPayload): TranscriptionSettingsUpdate {
   const transcription = payload.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
   return {
@@ -520,6 +536,7 @@ function pendingRestartSectionsFromPayload(payload: SettingsPayload): PendingRes
     browser: sections.includes("browser"),
     image: sections.includes("image"),
     vision: sections.includes("vision"),
+    systemIo: sections.includes("systemIo"),
   };
 }
 
@@ -568,6 +585,7 @@ export function SettingsView({
   const [transcriptionSaving, setTranscriptionSaving] = useState(false);
   const [networkSafetySaving, setNetworkSafetySaving] = useState(false);
   const [screenshotSaving, setScreenshotSaving] = useState(false);
+  const [systemIoSaving, setSystemIoSaving] = useState(false);
   const [hostEngineApplying, setHostEngineApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SettingsSectionKey>(initialSection);
@@ -611,6 +629,9 @@ export function SettingsView({
   const [screenshotForm, setScreenshotForm] = useState<ScreenshotSettingsUpdate>(() =>
     initialSettings ? screenshotFormFromPayload(initialSettings) : DEFAULT_SCREENSHOT_FORM,
   );
+  const [systemIoForm, setSystemIoForm] = useState<SystemIoSettingsUpdate>(() =>
+    initialSettings ? systemIoFormFromPayload(initialSettings) : DEFAULT_SYSTEM_IO_FORM,
+  );
   const [transcriptionForm, setTranscriptionForm] = useState<TranscriptionSettingsUpdate>(
     () => initialSettings ? transcriptionFormFromPayload(initialSettings) : DEFAULT_TRANSCRIPTION_FORM,
   );
@@ -647,6 +668,7 @@ export function SettingsView({
     setWebSearchForm((prev) => webSearchFormFromPayload(payload, prev));
     setImageGenerationForm(imageGenerationFormFromPayload(payload));
     setScreenshotForm(screenshotFormFromPayload(payload));
+    setSystemIoForm(systemIoFormFromPayload(payload));
     setTranscriptionForm(transcriptionFormFromPayload(payload));
     setNetworkSafetyForm(networkSafetyFormFromPayload(payload));
     if (payload.restart_required_sections) {
@@ -875,6 +897,15 @@ export function SettingsView({
       screenshotForm.quality !== settings.screenshot.quality
     );
   }, [screenshotForm, settings]);
+
+  const systemIoDirty = useMemo(() => {
+    if (!settings) return false;
+    const current = [...settings.system_io.allow_actions].sort().join(",");
+    const form = [...systemIoForm.allowActions].sort().join(",");
+    return (
+      systemIoForm.enabled !== settings.system_io.enabled || current !== form
+    );
+  }, [systemIoForm, settings]);
 
   const transcriptionDirty = useMemo(() => {
     if (!settings) return false;
@@ -1113,6 +1144,24 @@ export function SettingsView({
       setError((err as Error).message);
     } finally {
       setScreenshotSaving(false);
+    }
+  };
+
+  const saveSystemIoSettings = async () => {
+    if (!settings || !systemIoDirty || systemIoSaving) return;
+    setSystemIoSaving(true);
+    try {
+      const payload = await updateSystemIoSettings(token, systemIoForm);
+      applyPayload(payload);
+      if (payload.requires_restart) {
+        setPendingRestartSections((prev) => ({ ...prev, systemIo: true }));
+      }
+      await maybeRestartHostEngine(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSystemIoSaving(false);
     }
   };
 
@@ -1609,6 +1658,20 @@ export function SettingsView({
             requiresRestartPending={pendingRestartSections.vision}
           />
         );
+      case "systemIo":
+        return (
+          <SystemIoSettings
+            settings={settings}
+            form={systemIoForm}
+            dirty={systemIoDirty}
+            saving={systemIoSaving}
+            onChangeForm={setSystemIoForm}
+            onSave={saveSystemIoSettings}
+            onRestart={restartViaSettingsSurface}
+            isRestarting={isRestarting || hostEngineApplying}
+            requiresRestartPending={pendingRestartSections.systemIo}
+          />
+        );
       case "voice":
         return (
           <TranscriptionSettings
@@ -1864,6 +1927,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "voice", icon: Mic, fallback: "Voice" },
   { key: "browser", icon: Globe2, fallback: "Web" },
   { key: "runtime", icon: Server, fallback: "System" },
+  { key: "systemIo", icon: Cpu, fallback: "System IO" },
   { key: "advanced", icon: ShieldCheck, fallback: "Security" },
 ];
 
@@ -2033,6 +2097,14 @@ function OverviewSettings({
       ? tx("settings.values.configured", "Configured")
       : tx("settings.values.notConfigured", "Not configured")
   }`;
+  const systemIoStatus = settings.system_io.enabled
+    ? tx("settings.values.enabled", "Enabled")
+    : tx("settings.values.disabled", "Disabled");
+  const systemIoCaption = settings.system_io.enabled
+    ? settings.system_io.allow_actions.length === 0
+      ? tx("settings.values.systemIoAllActions", "All permitted")
+      : `${settings.system_io.allow_actions.length} / ${settings.system_io.available_actions.length} ${tx("settings.values.systemIoRestricted", "Restricted").toLowerCase()}`
+    : tx("settings.values.disabled", "Disabled");
   const isNativeHost = (settings.surface ?? settings.runtime_surface) === "native";
   const workspaceCaption = shortWorkspacePath(settings.runtime.workspace_path);
   const runtimeTitle = isNativeHost
@@ -2124,6 +2196,13 @@ function OverviewSettings({
             value={tx("settings.values.defaultWorkspace", "Default workspace")}
             caption={workspaceCaption}
             onClick={() => onSelectSection("runtime")}
+          />
+          <OverviewListRow
+            icon={Cpu}
+            title={tx("settings.overview.systemIo", "System IO")}
+            value={systemIoStatus}
+            caption={systemIoCaption}
+            onClick={() => onSelectSection("systemIo")}
           />
         </SettingsGroup>
       </section>
@@ -3309,6 +3388,118 @@ function VisionSettings({
                 ? tx("settings.vision.missingModel", "Select a vision model before enabling screenshots.")
                 : undefined
             }
+            dirtyMessage={tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")}
+            pendingMessage={tx("settings.status.savedRestartApply", "Saved. Restart when ready.")}
+            onSave={onSave}
+            onRestart={onRestart}
+            isRestarting={isRestarting}
+          />
+        </SettingsGroup>
+      </section>
+    </div>
+  );
+}
+
+function SystemIoSettings({
+  settings,
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onRestart,
+  isRestarting,
+  requiresRestartPending,
+}: {
+  settings: SettingsPayload;
+  form: SystemIoSettingsUpdate;
+  dirty: boolean;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<SystemIoSettingsUpdate>>;
+  onSave: () => void;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+  requiresRestartPending: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const actions = settings.system_io.available_actions;
+  const readActions = actions.filter((a) => !a.write);
+  const writeActions = actions.filter((a) => a.write);
+  const allPermitted = form.allowActions.length === 0;
+
+  const isActionAllowed = (name: string) =>
+    allPermitted || form.allowActions.includes(name);
+
+  const toggleAction = (name: string) => {
+    onChangeForm((prev) => {
+      if (prev.allowActions.length === 0) {
+        // Transitioning from "all permitted" to restricted: start with all
+        // actions, then remove the clicked one so other toggles stay on.
+        return {
+          ...prev,
+          allowActions: actions.filter((a) => a.name !== name).map((a) => a.name),
+        };
+      }
+      const has = prev.allowActions.includes(name);
+      return {
+        ...prev,
+        allowActions: has
+          ? prev.allowActions.filter((a) => a !== name)
+          : [...prev.allowActions, name],
+      };
+    });
+  };
+
+  const renderActionRow = (action: { name: string; label: string; write: boolean }) => (
+    <SettingsRow key={action.name} title={action.label} description={action.name}>
+      <ToggleButton
+        checked={isActionAllowed(action.name)}
+        onChange={() => toggleAction(action.name)}
+        ariaLabel={action.label}
+        label={isActionAllowed(action.name) ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+      />
+    </SettingsRow>
+  );
+
+  return (
+    <div className="space-y-7">
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.systemIo", "System IO")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.systemIo", "System IO")}
+            description={tx("settings.help.systemIo", "Allow the agent to simulate keyboard/mouse input, read/write the clipboard, list USB devices, and read/write serial ports on the host OS.")}
+          >
+            <ToggleButton
+              checked={form.enabled}
+              onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
+              ariaLabel={tx("settings.rows.systemIo", "System IO")}
+              label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.systemIoActions", "Actions")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.systemIoAllowActions", "Permitted actions")}
+            description={tx("settings.help.systemIoAllowActions", "When no actions are selected, all actions are permitted. Toggle specific actions off to restrict to a subset (recommended for write actions).")}
+          >
+            <StatusPill tone={allPermitted ? "warning" : "neutral"}>
+              {allPermitted
+                ? tx("settings.values.systemIoAllActions", "All permitted")
+                : tx("settings.values.systemIoRestricted", "Restricted")}
+            </StatusPill>
+          </SettingsRow>
+          {readActions.map(renderActionRow)}
+          {writeActions.map(renderActionRow)}
+          <RestartSettingsFooter
+            dirty={dirty}
+            saving={saving}
+            pendingRestart={requiresRestartPending}
             dirtyMessage={tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")}
             pendingMessage={tx("settings.status.savedRestartApply", "Saved. Restart when ready.")}
             onSave={onSave}

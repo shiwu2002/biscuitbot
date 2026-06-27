@@ -161,6 +161,7 @@ export interface SkillSummary {
   name: string;
   description: string;
   source: "workspace" | "builtin" | string;
+  tier: "system" | "agent" | "user" | string;
   available: boolean;
   unavailable_reason?: string;
 }
@@ -452,6 +453,15 @@ export interface SettingsPayload {
       default_api_base?: string | null;
     }>;
   };
+  system_io: {
+    enabled: boolean;
+    allow_actions: string[];
+    available_actions: Array<{
+      name: string;
+      label: string;
+      write: boolean;
+    }>;
+  };
   transcription?: {
     enabled: boolean;
     provider: string;
@@ -547,7 +557,7 @@ export interface SettingsPayload {
     duplicate_similarity_threshold: number;
   };
   requires_restart: boolean;
-  restart_required_sections?: Array<"runtime" | "browser" | "image" | "vision">;
+  restart_required_sections?: Array<"runtime" | "browser" | "image" | "vision" | "systemIo">;
   version?: {
     current: string;
   };
@@ -777,6 +787,11 @@ export interface ScreenshotSettingsUpdate {
   maxWidth: number;
   maxHeight: number;
   quality: number;
+}
+
+export interface SystemIoSettingsUpdate {
+  enabled: boolean;
+  allowActions: string[];
 }
 
 export interface TranscriptionSettingsUpdate {

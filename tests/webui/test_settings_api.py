@@ -17,6 +17,7 @@ from hczkbot.webui.settings_api import (
     update_model_configuration,
     update_network_safety_settings,
     update_provider_settings,
+    update_system_io_settings,
     update_transcription_settings,
 )
 
@@ -591,6 +592,88 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
     assert payload["status"] == "available"
     assert payload["catalog_kind"] == "custom"
     assert payload["models"][0]["id"] == "custom-gpt"
+
+
+def test_settings_payload_includes_system_io_fields(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    config.tools.system_io.enable = True
+    config.tools.system_io.allow_actions = ["clipboard_read", "usb_list"]
+    save_config(config, config_path)
+    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+
+    payload = settings_payload()
+    assert payload["system_io"]["enabled"] is True
+    assert payload["system_io"]["allow_actions"] == ["clipboard_read", "usb_list"]
+    action_names = {a["name"] for a in payload["system_io"]["available_actions"]}
+    assert "clipboard_read" in action_names
+    assert "serial_write" in action_names
+    assert len(action_names) == 11
+
+
+def test_update_system_io_settings_toggles_enable(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    save_config(config, config_path)
+    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+
+    payload = update_system_io_settings({"enabled": ["true"]})
+    saved = load_config(config_path)
+    assert saved.tools.system_io.enable is True
+    assert payload["system_io"]["enabled"] is True
+    assert payload["requires_restart"] is True
+
+
+def test_update_system_io_settings_writes_allow_actions(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    config.tools.system_io.enable = True
+    save_config(config, config_path)
+    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+
+    payload = update_system_io_settings(
+        {"allowActions": ["clipboard_read,usb_list,serial_list"]}
+    )
+    saved = load_config(config_path)
+    assert saved.tools.system_io.allow_actions == ["clipboard_read", "usb_list", "serial_list"]
+    assert payload["system_io"]["allow_actions"] == ["clipboard_read", "usb_list", "serial_list"]
+
+
+def test_update_system_io_settings_clears_allow_actions(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    config.tools.system_io.allow_actions = ["clipboard_read"]
+    save_config(config, config_path)
+    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+
+    update_system_io_settings({"allowActions": [""]})
+    saved = load_config(config_path)
+    assert saved.tools.system_io.allow_actions == []
+
+
+def test_update_system_io_settings_rejects_unknown_action(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    save_config(config, config_path)
+    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+
+    with pytest.raises(WebUISettingsError, match="unknown system_io action"):
+        update_system_io_settings({"allowActions": ["clipboard_read,format_c_drive"]})
 
 
 

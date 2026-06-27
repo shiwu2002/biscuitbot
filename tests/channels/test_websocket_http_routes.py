@@ -382,6 +382,7 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
             "source": "workspace",
             "available": True,
             "unavailable_reason": "",
+            "tier": "user",
         }
         unavailable = next(skill for skill in body["skills"] if skill["name"] == "zz-unavailable-skill")
         assert unavailable["available"] is False

@@ -67,6 +67,7 @@ _BROWSER_RESTART_BEHAVIOR_BY_SECTION = {
     "browser": "engineRestart",
     "image": "engineRestart",
     "apps": "engineRestart",
+    "systemIo": "engineRestart",
     "advanced": "appRestart",
 }
 
@@ -76,7 +77,25 @@ _NATIVE_RESTART_BEHAVIOR_BY_SECTION = {
     "browser": "engineRestart",
     "image": "engineRestart",
     "apps": "engineRestart",
+    "systemIo": "engineRestart",
 }
+
+# System IO tool actions exposed in the settings payload. ``write`` flags
+# actions that mutate host state so the UI can group/sort them.
+_SYSTEM_IO_ACTIONS: list[dict[str, Any]] = [
+    {"name": "clipboard_read", "label": "Read clipboard", "write": False},
+    {"name": "clipboard_write", "label": "Write clipboard", "write": True},
+    {"name": "key_tap", "label": "Key tap (chord)", "write": True},
+    {"name": "key_type", "label": "Key type (text)", "write": True},
+    {"name": "mouse_move", "label": "Mouse move", "write": True},
+    {"name": "mouse_click", "label": "Mouse click", "write": True},
+    {"name": "mouse_scroll", "label": "Mouse scroll", "write": True},
+    {"name": "usb_list", "label": "List USB devices", "write": False},
+    {"name": "serial_list", "label": "List serial ports", "write": False},
+    {"name": "serial_write", "label": "Serial write", "write": True},
+    {"name": "serial_read", "label": "Serial read", "write": True},
+]
+_SYSTEM_IO_VALID_ACTIONS = {item["name"] for item in _SYSTEM_IO_ACTIONS}
 
 _WEB_SEARCH_PROVIDER_OPTIONS: tuple[dict[str, str], ...] = (
     {"name": "duckduckgo", "label": "DuckDuckGo", "credential": "none"},
@@ -797,6 +816,11 @@ def settings_payload(
             ),
             "available_providers": _vision_provider_rows(config),
         },
+        "system_io": {
+            "enabled": config.tools.system_io.enable,
+            "allow_actions": list(config.tools.system_io.allow_actions),
+            "available_actions": _SYSTEM_IO_ACTIONS,
+        },
         "transcription": {
             "enabled": transcription.enabled,
             "provider": transcription.provider,
@@ -1513,3 +1537,31 @@ def update_transcription_settings(query: QueryParams) -> dict[str, Any]:
     if changed:
         save_config(config)
     return settings_payload()
+
+
+def update_system_io_settings(query: QueryParams) -> dict[str, Any]:
+    """Update system-level IO tool configuration (enable + action allowlist)."""
+    config = load_config()
+    system_io_config = config.tools.system_io
+    changed = False
+
+    enabled = _query_first(query, "enabled")
+    if enabled is not None:
+        parsed_enabled = _parse_bool(enabled, "enabled")
+        if system_io_config.enable != parsed_enabled:
+            system_io_config.enable = parsed_enabled
+            changed = True
+
+    allow_actions_raw = _query_first_alias(query, "allow_actions", "allowActions")
+    if allow_actions_raw is not None:
+        actions = [a.strip() for a in allow_actions_raw.split(",") if a.strip()]
+        for action in actions:
+            if action not in _SYSTEM_IO_VALID_ACTIONS:
+                raise WebUISettingsError(f"unknown system_io action '{action}'")
+        if sorted(system_io_config.allow_actions) != sorted(actions):
+            system_io_config.allow_actions = actions
+            changed = True
+
+    if changed:
+        save_config(config)
+    return settings_payload(requires_restart=changed)
