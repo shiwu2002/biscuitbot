@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pytest
 
 from hczkbot.agent.tools.base import Tool, tool_parameters
 from hczkbot.agent.tools.docs_consistency import (

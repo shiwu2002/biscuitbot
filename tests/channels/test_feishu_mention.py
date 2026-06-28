@@ -2,7 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
 
 from hczkbot.channels.feishu import FeishuChannel
 

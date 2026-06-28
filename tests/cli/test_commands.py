@@ -16,7 +16,6 @@ from hczkbot.cron.session_turns import CRON_DEFER_UNTIL_IDLE_META, CRON_TRIGGER_
 from hczkbot.cron.types import CronJob, CronPayload
 from hczkbot.cron.webui_metadata import cron_proactive_delivery_metadata
 from hczkbot.providers.factory import ProviderSnapshot, make_provider
-from hczkbot.providers.registry import find_by_name
 from hczkbot.webui.metadata import (
     WEBUI_MESSAGE_SOURCE_METADATA_KEY,
     WEBUI_TURN_METADATA_KEY,

@@ -6,7 +6,6 @@ import os
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 from hczkbot.config.schema import AgentDefaults
 from hczkbot.providers.base import LLMResponse, ToolCallRequest

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import base64
 from io import BytesIO
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -198,7 +196,6 @@ class TestScreenshotToolExecute:
 
         async def _fake_capture():
             import tempfile
-            import os
 
             nonlocal captured_path
             tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)

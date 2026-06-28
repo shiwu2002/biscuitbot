@@ -1,4 +1,3 @@
-import asyncio
 from contextlib import nullcontext
 from io import StringIO
 from unittest.mock import AsyncMock, MagicMock, call, patch
@@ -48,7 +47,7 @@ def test_init_prompt_session_creates_session():
     commands._PROMPT_SESSION = None
     
     with patch("hczkbot.cli.commands.PromptSession") as MockSession, \
-         patch("hczkbot.cli.commands.FileHistory") as MockHistory, \
+         patch("hczkbot.cli.commands.FileHistory"), \
          patch("pathlib.Path.home") as mock_home:
         
         mock_home.return_value = MagicMock()

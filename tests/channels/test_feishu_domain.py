@@ -1,7 +1,6 @@
 """Tests for Feishu/Lark domain configuration."""
 from unittest.mock import MagicMock
 
-import pytest
 
 from hczkbot.bus.queue import MessageBus
 from hczkbot.channels.feishu import FeishuChannel, FeishuConfig

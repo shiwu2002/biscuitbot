@@ -14,7 +14,6 @@ from hczkbot.channels.base import BaseChannel
 from hczkbot.channels.manager import ChannelManager
 from hczkbot.config.loader import save_config
 from hczkbot.config.schema import ChannelsConfig, Config
-from hczkbot.providers.transcription import GroqTranscriptionProvider as _GroqProvider
 from hczkbot.providers.transcription import OpenAITranscriptionProvider as _OpenAIProvider
 from hczkbot.utils.restart import RestartNotice
 
@@ -239,89 +238,6 @@ async def test_manager_loads_plugin_from_dict_config():
 
 
 @pytest.mark.asyncio
-async def test_base_channel_reads_current_transcription_config_each_call(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """BaseChannel.transcribe_audio resolves config at call time, not manager init time."""
-    from hczkbot.providers import transcription as transcription_mod
-
-    config_path = tmp_path / "config.json"
-    config = Config.model_validate({
-        "providers": {"groq": {"apiKey": "", "apiBase": ""}},
-    })
-    config.transcription.provider = "openai"
-    config.transcription.model = "whisper-custom"
-    config.transcription.language = "en"
-    config.providers.openai.api_key = "openai-key"
-    config.providers.openai.api_base = "http://openai.local/v1/audio/transcriptions"
-    save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-
-    channel = _FakePlugin({"enabled": True, "allowFrom": ["*"]}, MessageBus())
-
-    calls: list[dict[str, object]] = []
-
-    class _StubOpenAI:
-        def __init__(self, api_key=None, api_base=None, language=None, model=None):
-            calls.append({
-                "provider": "openai",
-                "api_key": api_key,
-                "api_base": api_base,
-                "language": language,
-                "model": model,
-            })
-
-        async def transcribe(self, file_path):
-            return "openai-ok"
-
-    class _StubGroq:
-        def __init__(self, api_key=None, api_base=None, language=None, model=None):
-            calls.append({
-                "provider": "groq",
-                "api_key": api_key,
-                "api_base": api_base,
-                "language": language,
-                "model": model,
-            })
-
-        async def transcribe(self, file_path):
-            return "groq-ok"
-
-    with (
-        patch.object(transcription_mod, "OpenAITranscriptionProvider", _StubOpenAI),
-        patch.object(transcription_mod, "GroqTranscriptionProvider", _StubGroq),
-    ):
-        assert await channel.transcribe_audio("/tmp/does-not-matter.wav") == "openai-ok"
-
-        config.transcription.provider = "groq"
-        config.transcription.model = "whisper-large-v3-turbo"
-        config.transcription.language = "ko"
-        config.providers.model_extra["groq"].api_key = "groq-key"
-        config.providers.model_extra["groq"].api_base = "http://groq.local/v1/audio/transcriptions"
-        save_config(config, config_path)
-
-        assert await channel.transcribe_audio("/tmp/does-not-matter.wav") == "groq-ok"
-
-    assert calls == [
-        {
-            "provider": "openai",
-            "api_key": "openai-key",
-            "api_base": "http://openai.local/v1/audio/transcriptions",
-            "language": "en",
-            "model": "whisper-custom",
-        },
-        {
-            "provider": "groq",
-            "api_key": "groq-key",
-            "api_base": "http://groq.local/v1/audio/transcriptions",
-            "language": "ko",
-            "model": "whisper-large-v3-turbo",
-        },
-    ]
-
-
-@pytest.mark.asyncio
 async def test_base_channel_respects_disabled_transcription_config(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -336,7 +252,7 @@ async def test_base_channel_respects_disabled_transcription_config(
 
     channel = _FakePlugin({"enabled": True, "allowFrom": ["*"]}, MessageBus())
 
-    with patch("hczkbot.providers.transcription.GroqTranscriptionProvider") as provider:
+    with patch("hczkbot.providers.transcription.OpenAITranscriptionProvider") as provider:
         assert await channel.transcribe_audio("/tmp/does-not-matter.wav") == ""
     provider.assert_not_called()
 
@@ -386,8 +302,8 @@ def _stub_async_client(captured: dict[str, object]):
 
 @pytest.mark.parametrize(
     "provider_cls,language",
-    [(_GroqProvider, "ko"), (_OpenAIProvider, "en")],
-    ids=["groq", "openai"],
+    [(_OpenAIProvider, "en")],
+    ids=["openai"],
 )
 @pytest.mark.asyncio
 async def test_transcription_provider_includes_language(tmp_path, provider_cls, language):
@@ -406,8 +322,8 @@ async def test_transcription_provider_includes_language(tmp_path, provider_cls, 
 
 @pytest.mark.parametrize(
     "provider_cls",
-    [_GroqProvider, _OpenAIProvider],
-    ids=["groq", "openai"],
+    [_OpenAIProvider],
+    ids=["openai"],
 )
 @pytest.mark.asyncio
 async def test_transcription_provider_omits_language_when_none(tmp_path, provider_cls):

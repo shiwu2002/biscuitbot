@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
+from hczkbot.providers.base import LLMResponse
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
@@ -525,18 +525,6 @@ def test_governance_repairs_orphans_after_snip():
     """After _snip_history clips an assistant+tool_calls, the second
     _drop_orphan_tool_results pass must clean up the resulting orphans."""
     from hczkbot.agent.runner import AgentRunner
-
-    messages = [
-        {"role": "system", "content": "system"},
-        {"role": "user", "content": "old msg"},
-        {"role": "assistant", "content": None,
-         "tool_calls": [{"id": "tc_old", "type": "function",
-                         "function": {"name": "search", "arguments": "{}"}}]},
-        {"role": "tool", "tool_call_id": "tc_old", "name": "search",
-         "content": "old result"},
-        {"role": "assistant", "content": "old answer"},
-        {"role": "user", "content": "new msg"},
-    ]
 
     # Simulate snipping that keeps only the tail: drop the assistant with
     # tool_calls but keep its tool result (orphan).
