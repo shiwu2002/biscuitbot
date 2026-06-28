@@ -441,7 +441,7 @@ class TestConfigurePydanticModelDrafts:
             if token == "first":
                 return choices[0]
             if token == "done":
-                return "[Done]"
+                return "[完成]"
             if token == "back":
                 return _BACK_PRESSED
             return token
@@ -501,9 +501,9 @@ class TestRunOnboardExitBehavior:
 
         responses = iter(
             [
-                "[A] Agent Settings",
+                "[A] Agent 设置",
                 KeyboardInterrupt(),
-                "[X] Exit Without Saving",
+                "[X] 不保存退出",
             ]
         )
 
@@ -873,9 +873,9 @@ class TestMainMenuUpdate:
         initial_config = Config()
 
         responses = iter([
-            "[H] Channel Common",
+            "[H] Channel 通用设置",
             KeyboardInterrupt(),
-            "[S] Save and Exit",
+            "[S] 保存并退出",
         ])
 
         class FakePrompt:
@@ -908,9 +908,9 @@ class TestMainMenuUpdate:
         initial_config = Config()
 
         responses = iter([
-            "[I] API Server",
+            "[I] API 服务器",
             KeyboardInterrupt(),
-            "[S] Save and Exit",
+            "[S] 保存并退出",
         ])
 
         class FakePrompt:
@@ -944,8 +944,8 @@ class TestMainMenuUpdate:
         pause_called = {"n": 0}
 
         responses = iter([
-            "[V] View Configuration Summary",
-            "[S] Save and Exit",
+            "[V] 查看配置汇总",
+            "[S] 保存并退出",
         ])
 
         class FakePrompt:
@@ -1052,7 +1052,7 @@ class TestConfigurePydanticModelEmptyString:
                     if "Api Key" in c:
                         return c
                 return choices[0]
-            return "[Done]"
+            return "[完成]"
 
         monkeypatch.setattr(onboard_wizard, "_select_with_back", fake_select)
         monkeypatch.setattr(onboard_wizard, "_show_config_panel", lambda *a, **kw: None)
@@ -1083,7 +1083,7 @@ class TestConfigurePydanticModelEmptyString:
                     if "Api Key" in c:
                         return c
                 return choices[0]
-            return "[Done]"
+            return "[完成]"
 
         monkeypatch.setattr(onboard_wizard, "_select_with_back", fake_select)
         monkeypatch.setattr(onboard_wizard, "_show_config_panel", lambda *a, **kw: None)
@@ -1120,9 +1120,9 @@ class TestModelPresetWizard:
         _MODEL_PRESET_CACHE.clear()
 
         responses = iter([
-            "[+] Add new preset",
+            "[+] 添加新预设",
             "my-preset",
-            "<- Back",
+            "<- 返回",
         ])
 
         class FakePrompt:
@@ -1173,9 +1173,9 @@ class TestModelPresetWizard:
 
         responses = iter([
             "old (x)",
-            "Delete",
+            "删除",
             True,
-            "<- Back",
+            "<- 返回",
         ])
 
         class FakePrompt:
@@ -1225,14 +1225,14 @@ class TestModelPresetWizard:
         _MODEL_PRESET_CACHE.clear()
 
     def test_model_preset_field_handler_clear(self, monkeypatch):
-        """_handle_model_preset_field should clear preset when (clear/unset) chosen."""
+        """_handle_model_preset_field should clear preset when (清除/不设置) chosen."""
         from hczkbot.cli.onboard import _MODEL_PRESET_CACHE, _handle_model_preset_field
         from hczkbot.config.schema import AgentDefaults
 
         _MODEL_PRESET_CACHE.clear()
         _MODEL_PRESET_CACHE.add("fast")
 
-        monkeypatch.setattr(onboard_wizard, "_select_with_back", lambda *a, **kw: "(clear/unset)")
+        monkeypatch.setattr(onboard_wizard, "_select_with_back", lambda *a, **kw: "(清除/不设置)")
 
         defaults = AgentDefaults(model_preset="fast")
         _handle_model_preset_field(defaults, "model_preset", "Model Preset", "fast")
@@ -1252,8 +1252,8 @@ class TestModelPresetWizard:
         initial_config = Config()
 
         responses = iter([
-            "[M] Model Presets",
-            "[S] Save and Exit",
+            "[M] 模型预设",
+            "[S] 保存并退出",
         ])
 
         class FakePrompt:
@@ -1294,7 +1294,7 @@ class TestModelPresetWizard:
         _MODEL_PRESET_CACHE.update({"fast", "default"})
 
         select_responses = iter(["fast"])
-        questionary_responses = iter(["[+] Add preset", "[Done]"])
+        questionary_responses = iter(["[+] 添加预设", "[完成]"])
 
         class FakePrompt:
             def __init__(self, response):
