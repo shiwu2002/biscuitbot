@@ -463,7 +463,7 @@ def _run_quick_setup(config, config_path: Path) -> None:
     import sys
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         console.print(f"\n  [dim]非交互式环境，请手动编辑配置: {config_path}[/dim]")
-        console.print(f"  [dim]或附加 --wizard 在真实终端中运行[/dim]")
+        console.print("  [dim]或附加 --wizard 在真实终端中运行[/dim]")
         return
 
     from hczkbot.providers.registry import PROVIDERS
@@ -504,7 +504,6 @@ def _run_quick_setup(config, config_path: Path) -> None:
     spec = next(s for s in PROVIDERS if s.name == provider_name)
 
     # --- Step 2: Enter API Key ---
-    key_hint = ""
     key_urls = {
         "deepseek": "https://platform.deepseek.com/api_keys",
         "openai": "https://platform.openai.com/api-keys",
@@ -611,8 +610,8 @@ def _run_quick_setup(config, config_path: Path) -> None:
     console.print(f"  Config:   [cyan]{config_path}[/cyan]")
     console.print()
     console.print("  You can now run:")
-    console.print(f"    [green]hczkbot agent -m \"Hello!\"[/green]")
-    console.print(f"    [green]hczkbot gateway[/green]")
+    console.print("    [green]hczkbot agent -m \"Hello!\"[/green]")
+    console.print("    [green]hczkbot gateway[/green]")
     console.print()
     console.print("  For more options (channels, presets, tools), run:")
     console.print("    [dim]hczkbot onboard --wizard[/dim]")
@@ -712,7 +711,7 @@ def onboard(
         console.print("\nNext steps:")
         console.print(f"  1. Chat:     [cyan]{agent_cmd}[/cyan]")
         console.print(f"  2. Gateway:  [cyan]{gateway_cmd}[/cyan]")
-        console.print(f"  3. Advanced: [cyan]hczkbot onboard --wizard[/cyan]")
+        console.print("  3. Advanced: [cyan]hczkbot onboard --wizard[/cyan]")
     elif wizard:
         console.print("\nNext steps:")
         console.print(f"  1. Chat: [cyan]{agent_cmd}[/cyan]")
