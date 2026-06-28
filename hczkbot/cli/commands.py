@@ -458,6 +458,14 @@ def _run_quick_setup(config, config_path: Path) -> None:
         console.print(f"\n  Or manually edit: [cyan]{config_path}[/cyan]")
         return
 
+    # 非交互式环境（如 pytest CliRunner、CI、管道输入）下跳过交互式引导
+    # questionary/prompt_toolkit 在无真实 console 时会抛 NoConsoleScreenBufferError
+    import sys
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        console.print(f"\n  [dim]非交互式环境，请手动编辑配置: {config_path}[/dim]")
+        console.print(f"  [dim]或附加 --wizard 在真实终端中运行[/dim]")
+        return
+
     from hczkbot.providers.registry import PROVIDERS
     from hczkbot.config.loader import save_config
     from rich.align import Align

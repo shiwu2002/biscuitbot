@@ -597,13 +597,21 @@ class MCPPromptWrapper(_MCPWrapperBase):
                     refreshed_session = True
                     continue
                 err = exc.args[0] if exc.args else exc
+                # McpError 可能将 ErrorData.message 作为字符串传入 args[0]，
+                # 也可能直接传 ErrorData 对象，需兼容两种情况
+                if isinstance(err, str):
+                    err_code = "unknown"
+                    err_message = err
+                else:
+                    err_code = getattr(err, "code", "unknown")
+                    err_message = getattr(err, "message", str(err))
                 logger.exception(
                     "MCP prompt '{}' failed: code={} message={}",
                     self._name,
-                    err.code,
-                    err.message,
+                    err_code,
+                    err_message,
                 )
-                return f"(MCP prompt call failed: {err.message} [code {err.code}])"
+                return f"(MCP prompt call failed: {err_message} [code {err_code}])"
             except Exception as exc:
                 if await self._refresh_session_after_termination(
                     exc,

@@ -1,4 +1,5 @@
 import json
+import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -128,7 +129,12 @@ async def test_exec_tool_uses_scope_project_as_default_cwd(tmp_path: Path) -> No
     )
     token = bind_workspace_scope(scope)
     try:
-        result = await tool.execute(command="printf ok > scoped-marker.txt")
+        if sys.platform == "win32":
+            # Windows：ExecTool 对含换行的命令走 PowerShell，用 [IO.File]::WriteAllText 精确写入
+            cmd = "[IO.File]::WriteAllText('scoped-marker.txt','ok')\n"
+        else:
+            cmd = "printf ok > scoped-marker.txt"
+        result = await tool.execute(command=cmd)
     finally:
         reset_workspace_scope(token)
 
@@ -150,7 +156,12 @@ async def test_exec_full_scope_allows_explicit_cwd_outside_project(tmp_path: Pat
     )
     token = bind_workspace_scope(scope)
     try:
-        result = await tool.execute(command="printf ok > outside-marker.txt", working_dir=str(outside))
+        if sys.platform == "win32":
+            # Windows：ExecTool 对含换行的命令走 PowerShell，用 [IO.File]::WriteAllText 精确写入
+            cmd = "[IO.File]::WriteAllText('outside-marker.txt','ok')\n"
+        else:
+            cmd = "printf ok > outside-marker.txt"
+        result = await tool.execute(command=cmd, working_dir=str(outside))
     finally:
         reset_workspace_scope(token)
 

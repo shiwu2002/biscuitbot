@@ -50,6 +50,12 @@ TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
         adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
     ),
     TranscriptionProviderSpec(
+        name="groq",
+        default_model="whisper-large-v3-turbo",
+        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
+        default_api_base="https://api.groq.com/openai/v1",
+    ),
+    TranscriptionProviderSpec(
         name="dashscope",
         default_model="paraformer-v2",
         adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
