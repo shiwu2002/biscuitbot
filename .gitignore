@@ -8,6 +8,10 @@
 .orion
 .agent/
 
+# Trae IDE development context (local only, not shared)
+# Keep .trae/rules/ tracked for team-shared project rules
+.trae/documents/
+
 # Claude / AI assistant artifacts
 docs/superpowers/
 docs/plans/
