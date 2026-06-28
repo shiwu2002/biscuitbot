@@ -245,7 +245,7 @@ class SystemIoTool(Tool):
     def _missing_tool(name: str, hint: str) -> str:
         return (
             f"Error: required dependency '{name}' is not available. {hint} "
-            "Install it via: pip install 'hczkbot[system-io]'"
+            "Install it via: pip install pynput pyserial"
         )
 
     # ------------------------------------------------------------------

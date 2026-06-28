@@ -14,7 +14,6 @@ from hczkbot.agent.tools.schema import (
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.security.workspace_access import current_tool_workspace
 from hczkbot.config.paths import get_media_dir
 from hczkbot.config_base import Base
 from hczkbot.providers.image_generation import (
@@ -23,6 +22,7 @@ from hczkbot.providers.image_generation import (
     extract_domain,
     get_image_gen_provider,
 )
+from hczkbot.security.workspace_access import current_tool_workspace
 from hczkbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
 from hczkbot.utils.artifacts import (
     ArtifactError,
@@ -38,8 +38,8 @@ if TYPE_CHECKING:
 class ImageGenerationToolConfig(Base):
     """Image generation tool configuration."""
     enabled: bool = False
-    provider: str = "dashscope"
-    model: str = "wanx2.1-t2i-turbo"
+    provider: str = "openai"
+    model: str = "dall-e-3"
     default_aspect_ratio: str = "1:1"
     default_image_size: str = "1K"
     max_images_per_turn: int = Field(default=4, ge=1, le=8)

@@ -217,8 +217,8 @@
     },
     "imageGeneration": {
       "enabled": false,
-      "provider": "dashscope",
-      "model": "wanx-v1"
+      "provider": "openai",
+      "model": "dall-e-3"
     },
     "cliApps": {
       "enable": false

@@ -155,6 +155,7 @@ class TestSystemIoToolDispatch:
         tool = SystemIoTool(config=SystemIoToolConfig(
             enable=True, allow_actions=["clipboard_read"],
         ))
+        monkeypatch.setattr(tool, "_which", lambda name: f"/usr/bin/{name}")
         monkeypatch.setattr(tool, "_run", _fake_run(0, b"clip-content", b""))
         result = await tool.execute(action="clipboard_read")
         assert "clip-content" in result
@@ -163,6 +164,7 @@ class TestSystemIoToolDispatch:
     async def test_empty_allowlist_allows_all(self, monkeypatch):
         # Empty allowlist = all actions permitted (when enabled).
         tool = SystemIoTool(config=SystemIoToolConfig(enable=True))
+        monkeypatch.setattr(tool, "_which", lambda name: f"/usr/bin/{name}")
         monkeypatch.setattr(tool, "_run", _fake_run(0, b"clip-content", b""))
         result = await tool.execute(action="clipboard_read")
         assert "clip-content" in result
@@ -219,18 +221,21 @@ class TestSystemIoToolParamValidation:
 class TestSystemIoToolHappyPaths:
     async def test_clipboard_read_returns_stdout(self, monkeypatch):
         tool = SystemIoTool()
+        monkeypatch.setattr(tool, "_which", lambda name: f"/usr/bin/{name}")
         monkeypatch.setattr(tool, "_run", _fake_run(0, b"hello-clip", b""))
         result = await tool.execute(action="clipboard_read")
         assert result == "hello-clip"
 
     async def test_clipboard_read_reports_nonzero_exit(self, monkeypatch):
         tool = SystemIoTool()
+        monkeypatch.setattr(tool, "_which", lambda name: f"/usr/bin/{name}")
         monkeypatch.setattr(tool, "_run", _fake_run(1, b"", b"no clipboard"))
         result = await tool.execute(action="clipboard_read")
         assert _err(result)
 
     async def test_clipboard_write_passes_text_as_stdin(self, monkeypatch):
         tool = SystemIoTool()
+        monkeypatch.setattr(tool, "_which", lambda name: f"/usr/bin/{name}")
         captured: dict[str, Any] = {}
 
         async def fake_run(args, *, input_bytes=None, timeout=5.0):
