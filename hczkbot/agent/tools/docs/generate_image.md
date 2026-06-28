@@ -1,28 +1,37 @@
-# generate_image
+ # generate_image
 
-根据文本描述生成图片。
+根据文本描述生成或编辑图片。
 
 ## 何时使用
 
-需要创建插图、生成设计稿或制作可视化素材时使用。基于文本提示生成图片，适合创意设计和内容创作。
+需要创建插图、生成设计稿、制作可视化素材或基于已有图片进行编辑时使用。基于文本提示生成图片，支持指定比例、尺寸和参考图。
 
 ## 参数
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| prompt | string | 是 | - | 图片描述文本 |
-| size | string | 否 | 1024x1024 | 图片尺寸（如 512x512） |
-| reference_images | array | 否 | - | 参考图片路径列表 |
+| prompt | string | 是 | - | 详细的图片生成或编辑提示词，包含风格、主题、构图、颜色等 |
+| image_size | string | 否 | - | 输出尺寸提示（支持 1K, 2K, 4K 或 1024x1024 等规格，取决于提供商） |
+| aspect_ratio | string | 否 | - | 输出宽高比（如 1:1, 16:9, 9:16, 4:3） |
+| count | integer | 否 | - | 本轮生成图片数量（1-8） |
+| reference_images | array | 否 | - | 参考图片的本地路径列表（用于风格引导或编辑参考） |
 
 ## 调用示例
 
 ```
-generate_image(prompt="一只在月光下的猫", size="1024x1024")
+generate_image(prompt="一只在月光下的猫, 水墨风格", aspect_ratio="1:1")
+
+# 基于已有图片编辑
+generate_image(prompt="添加星空背景", reference_images=["/path/to/image.png"])
+
+# 生成多张
+generate_image(prompt="极简风格 logo，蓝色渐变", count=3)
 ```
 
 ## 注意事项
 
 - prompt 描述越详细，生成效果越好
-- size 需符合模型支持的尺寸规格
+- image_size 需符合模型支持的尺寸规格
 - reference_images 用于风格引导，需为有效图片路径
 - 生成耗时较长，请耐心等待
+- 生成结果会持久化为 artifact 文件

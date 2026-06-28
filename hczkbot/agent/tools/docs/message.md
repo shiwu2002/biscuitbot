@@ -1,29 +1,31 @@
-# message
+ # message
 
-向用户或指定频道发送消息。
+主动发送消息或文件给用户/频道。
 
 ## 何时使用
 
-需要向用户汇报进度、推送通知或与外部渠道通信时使用。支持文本和多媒体内容，适合任务反馈和结果通知。
+需要跨频道投递、发送提醒或主动向用户推送文件时使用。也可以发送附带了内联按钮的消息。不要在普通聊天回复中使用此工具。
 
 ## 参数
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| content | string | 是 | - | 消息文本内容 |
-| channel | string | 否 | 默认频道 | 发送目标频道 |
-| chat_id | string | 否 | - | 目标会话 ID |
-| media | array | 否 | - | 附件媒体列表 |
+| content | string | 是 | - | 消息内容 |
+| channel | string | 否 | - | 目标频道（跨频道投递时使用，普通回复不要填） |
+| chat_id | string | 否 | - | 目标聊天/用户 ID（跨频道投递时使用，普通回复不要填） |
+| media | array | 否 | - | 要附加的本地文件路径列表 |
+| buttons | array | 否 | - | 内联键盘按钮，格式为二维数组，每个子数组为一行，每项为按钮标签字符串 |
 
 ## 调用示例
 
 ```
-message(content="任务已完成", channel="general")
+message(content="构建完成！", media=["/tmp/report.pdf"])
+message(content="选择操作：", buttons=[["确认", "取消"], ["更多选项"]])
 ```
 
 ## 注意事项
 
-- content 不宜过长，复杂内容建议分多条发送
-- channel 与 chat_id 二选一即可，避免冲突
-- media 中的文件需为有效路径或 URL
-- 发送失败会返回错误，请检查频道权限
+- 不要在聊天对话中用于普通回复（直接回复即可）
+- media 使用文件路径，不能用 read_file 发送文件
+- channel 和 chat_id 仅用于跨频道投递
+- buttons 格式：[[row1_btn1, row1_btn2], [row2_btn1]]

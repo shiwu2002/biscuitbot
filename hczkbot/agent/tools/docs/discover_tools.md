@@ -1,27 +1,28 @@
-# discover_tools
+ # discover_tools
 
-按需加载工具 schema 的元工具 (Request full tool definitions by name or keyword)。
+按名称或功能关键词搜索可用的工具定义。
 
 ## 何时使用
 
-需要动态发现可用工具、获取工具详细定义或按需加载工具集时使用。作为元工具用于扩展可用工具范围。
+当前上下文中缺少需要的工具时，使用此工具按需发现并加载工具的完整 schema。加载后即可在下一个响应中调用。
 
 ## 参数
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| query | string | 是 | - | 工具查询关键词或描述 |
-| limit | integer | 否 | - | 返回结果数量上限 |
+| query | string | 是 | - | 工具名称或功能关键词（长度 1-200 字符） |
+| limit | integer | 否 | 5 | 最大返回工具数（1-10） |
 
 ## 调用示例
 
 ```
-discover_tools(query="文件操作", limit=10)
+discover_tools(query="screenshot")
+discover_tools(query="search files", limit=3)
+discover_tools(query="generate image")
 ```
 
 ## 注意事项
 
-- query 应描述所需工具的功能意图
-- 返回的工具 schema 可用于后续调用
-- limit 控制返回数量，避免结果过多
-- 作为元工具，本身不执行具体操作
+- query 会匹配工具名称和能力描述
+- 返回的工具可直接在当前对话中调用
+- limit 最大为 10（默认 5）

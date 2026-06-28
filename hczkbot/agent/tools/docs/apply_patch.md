@@ -1,4 +1,4 @@
-# apply_patch
+ # apply_patch
 
 对多个文件批量执行编辑操作。
 
@@ -10,21 +10,31 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| edits | array | 是 | - | 编辑操作数组，每项含 path/old_text/new_text |
-| dry_run | boolean | 否 | false | 是否仅预览不实际执行 |
+| edits | array | 是 | - | 编辑操作数组（1-20 项），每项包含 path/action/old_text/new_text |
+| dry_run | boolean | 否 | false | 是否仅验证和预览，不实际写入文件 |
+
+edits 数组中每项的结构：
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| path | string | 是 | - | 要编辑的文件相对路径 |
+| action | string | 是 | - | 操作类型：replace（替换）或 add（添加） |
+| old_text | string | 否 | - | 要替换的原文（replace 时必填） |
+| new_text | string | 否 | - | 替换或添加的内容（replace/add 时必填） |
 
 ## 调用示例
 
 ```
 apply_patch(edits=[
-  {"path": "/tmp/a.py", "old_text": "v1", "new_text": "v2"},
-  {"path": "/tmp/b.py", "old_text": "v1", "new_text": "v2"}
-], dry_run=false)
+  {"path": "src/a.py", "action": "replace", "old_text": "v1", "new_text": "v2"},
+  {"path": "src/b.py", "action": "add", "new_text": "print('hello')\n"}
+], dry_run=true)
 ```
 
 ## 注意事项
 
-- 任一编辑失败会回滚整个事务，保证原子性
-- dry_run 为 true 时仅返回预览结果不修改文件
-- edits 数组中每项的 old_text 必须在对应文件中唯一
+- 任一编辑失败会回滚整个事务，保证原子性（由 provider 实现）
+- dry_run=true 时仅返回验证结果和预览，不修改文件
+- 路径相对于工作区根目录
+- edits 数组最少 1 项，最多 20 项
 - 建议先 dry_run 预览确认再正式执行

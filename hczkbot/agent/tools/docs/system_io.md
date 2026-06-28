@@ -31,7 +31,7 @@
 | keys | string | 否 | - | key_tap 的按键序列，用 `+` 连接组合键，如 `cmd+c`、`ctrl+shift+esc`、`enter`、`f5` |
 | x | integer | 否 | - | mouse_move / mouse_click 的屏幕 X 坐标 |
 | y | integer | 否 | - | mouse_move / mouse_click 的屏幕 Y 坐标 |
-| button | string | 否 | left | mouse_click 的按键：left / right / middle |
+| button | string | 否 | - | mouse_click 的按键：left / right / middle |
 | scroll_dx | integer | 否 | - | mouse_scroll 的水平滚动量 |
 | scroll_dy | integer | 否 | - | mouse_scroll 的垂直滚动量（正=向下） |
 | port | string | 否 | - | serial_write / serial_read 的串口设备名，如 `/dev/ttyUSB0` 或 `COM3` |

@@ -1,33 +1,36 @@
 # find_files
 
-根据条件查找文件。
+按路径片段、glob 或文件类型查找文件。
 
 ## 何时使用
 
-需要按名称、类型或路径查找文件时使用。支持 glob 模式匹配和多种过滤条件，适合在大型项目中快速定位文件。
+需要在工作区中定位文件但不确定路径时使用。支持按名称片段、通配符或类型过滤，适合代码导航和文件发现。
 
 ## 参数
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| path | string | 否 | 当前目录 | 搜索的根目录 |
-| query | string | 否 | - | 文件名查询关键字 |
-| glob | string | 否 | - | glob 匹配模式（如 *.py） |
-| type | string | 否 | - | 文件类型过滤（f/d） |
-| include_dirs | boolean | 否 | false | 是否包含目录结果 |
-| sort | string | 否 | name | 排序方式（name/size/time） |
-| head_limit | integer | 否 | - | 返回结果数量上限 |
-| offset | integer | 否 | 0 | 跳过前 N 条结果 |
+| path | string | 否 | . | 搜索根目录路径 |
+| query | string | 否 | - | 不区分大小写的路径片段搜索，多个词用空格分隔需全部匹配 |
+| glob | string | 否 | - | 文件名 glob 匹配（如 *.py, **/test_*.py） |
+| type | string | 否 | - | 文件扩展名过滤（如 'py', 'ts', 'md', 'json'） |
+| include_dirs | boolean | 否 | false | 是否同时返回匹配的目录 |
+| sort | string | 否 | path | 排序方式（path=按路径, modified=按修改时间） |
+| head_limit | integer | 否 | 200 | 返回结果上限（0 表示不限制，最大 1000） |
+| offset | integer | 否 | - | 跳过前 N 个结果（配合 head_limit 分页，最大 100000） |
 
 ## 调用示例
 
 ```
-find_files(path="/home/user", glob="*.log", sort="time", head_limit=10)
+find_files(path="/src")
+find_files(path="/src", glob="*.py")
+find_files(path="/src", query="config", type="toml")
+find_files(path="/src", sort="modified", head_limit=10)
 ```
 
 ## 注意事项
 
-- glob 与 query 可组合使用，也可单独使用
-- 大目录搜索可能耗时，建议限定 path 范围
-- offset 与 head_limit 配合可实现分页
-- 路径必须为绝对路径
+- 返回路径均为相对于工作区的根路径
+- 默认跳过隐藏文件和常见依赖/构建目录
+- sort="modified" 适合查找最近修改的文件
+- 结果过多时建议用 head_limit 控制
