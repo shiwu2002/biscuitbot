@@ -166,7 +166,7 @@ async def test_generate_image_tool_allows_ollama_without_api_key(
 
     fake = FakeImageClient.instances[0]
     assert fake.kwargs["api_key"] is None
-    assert fake.kwargs["api_base"] == "http://localhost:11434/v1"
+    assert fake.kwargs["api_base"] == "http://localhost:11434"
     assert fake.calls[0]["aspect_ratio"] == "1:1"
     assert fake.calls[0]["image_size"] == "1K"
 

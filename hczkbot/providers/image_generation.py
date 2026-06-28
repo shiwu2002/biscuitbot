@@ -1259,9 +1259,38 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
 
 
 # ---------------------------------------------------------------------------
+# AIHubMix image generation (OpenAI-compatible gateway)
+# ---------------------------------------------------------------------------
+
+
+class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
+    """AIHubMix image generation via its OpenAI-compatible Images API."""
+
+    provider_name = "aihubmix"
+    missing_key_message = (
+        "AIHubMix API key is not configured. Set providers.aihubmix.apiKey."
+    )
+
+    def _default_base_url(self) -> str:
+        return "https://aihubmix.com/v1"
+
+    def _base_path(self) -> str:
+        return "/v1"
+
+    @staticmethod
+    def _strip_model_prefix(model: str) -> str:
+        """Remove known provider prefixes (openai/, aihubmix/)."""
+        for prefix in ("openai/", "aihubmix/"):
+            if model.startswith(prefix):
+                return model.split("/", 1)[1]
+        return model
+
+
+# ---------------------------------------------------------------------------
 # Provider registration
 # ---------------------------------------------------------------------------
 
+register_image_gen_provider(AIHubMixImageGenerationClient)
 register_image_gen_provider(DashScopeImageGenerationClient)
 register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)
