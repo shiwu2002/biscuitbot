@@ -31,6 +31,6 @@ find_files(path="/src", sort="modified", head_limit=10)
 ## 注意事项
 
 - 返回路径均为相对于工作区的根路径
-- 默认跳过隐藏文件和常见依赖/构建目录
+- 默认跳过常见依赖/构建目录和特定隐藏目录（如 .git, .venv, node_modules, __pycache__）
 - sort="modified" 适合查找最近修改的文件
 - 结果过多时建议用 head_limit 控制

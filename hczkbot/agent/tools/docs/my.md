@@ -10,15 +10,15 @@
 
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| action | string | 是 | - | 操作类型（check/set） |
+| action | string | 是 | - | 操作类型（check/set，也接受别名 inspect/modify） |
 | key | string | 否 | - | 配置项的点路径（如 'max_iterations', 'workspace', 'provider_retry_mode'），不填 key 时显示全部配置 |
 | value | - | 否 | - | 新值（仅 set 时），类型需匹配目标 |
 
 ## 约束
 
 - 可修改项：max_iterations（1–100，整数）、context_window_tokens（4096–1M）、model（字符串，非空）
-- 不可修改：bus, provider, tools, credentials 等敏感内部属性
-- 保护：只读属性（如 subagents, exec_config）可查看但不可修改
+- 不可修改：bus, provider, tools 等敏感内部属性（含 credential 相关字段）
+- 保护：只读属性（如 subagents, exec_config, web_config, workspace_sandbox）可查看但不可修改
 
 ## 调用示例
 

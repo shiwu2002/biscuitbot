@@ -13,7 +13,7 @@
 | content | string | 是 | - | 消息内容 |
 | channel | string | 否 | - | 目标频道（跨频道投递时使用，普通回复不要填） |
 | chat_id | string | 否 | - | 目标聊天/用户 ID（跨频道投递时使用，普通回复不要填） |
-| media | array | 否 | - | 要附加的本地文件路径列表 |
+| media | array | 否 | - | 要附加的文件路径列表（本地路径或 http/https URL）。可传入 generate_image 返回的 artifact 路径 |
 | buttons | array | 否 | - | 内联键盘按钮，格式为二维数组，每个子数组为一行，每项为按钮标签字符串 |
 
 ## 调用示例
@@ -26,6 +26,6 @@ message(content="选择操作：", buttons=[["确认", "取消"], ["更多选项
 ## 注意事项
 
 - 不要在聊天对话中用于普通回复（直接回复即可）
-- media 使用文件路径，不能用 read_file 发送文件
+- media 使用文件路径或 http(s) URL，可传入 generate_image 的 artifact 路径
 - channel 和 chat_id 仅用于跨频道投递
 - buttons 格式：[[row1_btn1, row1_btn2], [row2_btn1]]

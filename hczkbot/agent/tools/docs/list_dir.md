@@ -12,7 +12,7 @@
 |------|------|------|--------|------|
 | path | string | 是 | - | 要列出的目录路径 |
 | recursive | boolean | 否 | false | 是否递归列出子目录 |
-| max_entries | integer | 否 | 200 | 最大返回条目数（0 表示无限制） |
+| max_entries | integer | 否 | 200 | 最大返回条目数（最小 1） |
 
 ## 调用示例
 

@@ -35,7 +35,7 @@ read_file(path="/tmp/file.txt", force=true)
 
 ## 注意事项
 
-- 输出格式为 LINE_NUM|CONTENT
+- 输出格式为 LINE_NUM| CONTENT（行号后竖线加空格）
 - 超过 ~128K 字符的内容会被截断
 - 读取前建议用 find_files 或 list_dir 确认路径
 - 修改文件前需先读取当前内容，确保替换基于最新版本

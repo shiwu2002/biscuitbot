@@ -14,11 +14,11 @@
 | cmd | string | 否 | - | command 的兼容别名 |
 | working_dir | string | 否 | - | 命令的工作目录 |
 | workdir | string | 否 | - | working_dir 的兼容别名 |
-| timeout | integer | 否 | 60 | 超时秒数（最大 600） |
+| timeout | integer | 否 | 60 | 超时秒数（1-600） |
 | shell | string | 否 | - | 指定 shell（如 sh/bash/zsh），Unix 下支持 |
 | login | boolean | 否 | true | bash/zsh 是否使用登录 shell 语义 |
 | yield_time_ms | integer | 否 | - | 在返回前等待的毫秒数。设置后，仍在运行的命令会返回 session_id，可通过 write_stdin 继续交互 |
-| max_output_chars | integer | 否 | 10000 | 返回的最大输出字符数（上限 50000）。仅在 yield_time_ms 设置时有效 |
+| max_output_chars | integer | 否 | 10000 | 返回的最大输出字符数（1000-50000）。one-shot 和交互模式均生效 |
 | max_output_tokens | integer | 否 | - | max_output_chars 的兼容别名 |
 
 ## 调用示例

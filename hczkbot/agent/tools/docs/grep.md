@@ -21,6 +21,8 @@
 | context_after | integer | 否 | - | 匹配行后展示的上下文行数（0-20） |
 | head_limit | integer | 否 | 250 | 最多返回的结果数（0-1000，0=不限制）。content 模式限制匹配行块数，其他模式限制文件条目数 |
 | offset | integer | 否 | - | 跳过前 N 个结果（配合 head_limit 分页） |
+| max_matches | integer | 否 | - | head_limit 的兼容别名（content 模式，1-1000） |
+| max_results | integer | 否 | - | head_limit 的兼容别名（files_with_matches/count 模式，1-1000） |
 
 ## 调用示例
 
