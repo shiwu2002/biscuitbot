@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -9,7 +10,9 @@ import httpx
 import pytest
 
 from hczkbot.audio.transcription import (
+    EffectiveTranscriptionConfig,
     resolve_transcription_config,
+    transcribe_audio_file,
 )
 from hczkbot.audio.transcription_registry import (
     get_transcription_provider,
