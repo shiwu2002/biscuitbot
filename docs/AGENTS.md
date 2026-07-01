@@ -74,7 +74,7 @@ Messages flow through an async `MessageBus` (`hczkbot/bus/queue.py`) that decoup
 
 ## Contribution Flow
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for contribution flow and PR guidelines.
+Follow the code style and testing guidelines below. Ensure `ruff check` and `pytest` pass before submitting PRs.
 
 ## Code Style
 

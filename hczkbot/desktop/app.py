@@ -75,7 +75,7 @@ def run_desktop(
             )
         except SystemExit:
             pass  # typer.Exit
-        except BaseException as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             gateway_errors.append(exc)
 
     gateway_thread = threading.Thread(

@@ -813,6 +813,7 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        logger.debug("Failed to read config for memoryWindow migration check", exc_info=True)
         return
     if "memoryWindow" in raw.get("agents", {}).get("defaults", {}):
         console.print(

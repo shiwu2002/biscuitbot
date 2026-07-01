@@ -1,0 +1,19 @@
+{
+  "include": ["hczkbot"],
+  "exclude": ["**/__pycache__", "**/.venv", "tests", "webui"],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": "none",
+  "reportGeneralTypeIssues": "warning",
+  "reportPropertyTypeMismatch": "none",
+  "reportFunctionMemberAccess": "warning",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "reportMissingParameterType": "none",
+  "reportCallInDefaultInitializer": "warning",
+  "reportUnnecessaryTypeIgnoreComment": "warning",
+  "pythonVersion": "3.11",
+  "pythonPlatform": "All"
+}

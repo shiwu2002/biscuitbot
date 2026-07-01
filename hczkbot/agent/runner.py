@@ -1150,7 +1150,7 @@ class AgentRunner:
                 result = await spec.tools.execute(tool_call.name, params)
         except asyncio.CancelledError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             if file_edit_trackers and progress_callback is not None:
                 await invoke_file_edit_progress(
                     progress_callback,

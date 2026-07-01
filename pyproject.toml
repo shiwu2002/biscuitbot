@@ -1,6 +1,6 @@
 [project]
 name = "hczkbot"
-version = "0.1.1"
+version = "0.2.1"
 description = "A lightweight personal AI assistant framework"
 readme = { file = "docs/PROJECT_GUIDE.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
@@ -106,6 +106,7 @@ dev = [
     "aiohttp>=3.9.0,<4.0.0",
     "pytest-cov>=6.0.0,<7.0.0",
     "ruff>=0.1.0",
+    "pyright>=1.1.0",
     "pymupdf>=1.25.0",
 ]
 

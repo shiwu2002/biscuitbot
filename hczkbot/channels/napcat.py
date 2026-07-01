@@ -154,13 +154,13 @@ class NapcatChannel(BaseChannel):
             try:
                 await self._ws.close()
             except Exception:
-                pass
+                logger.debug("napcat: ws.close() failed during stop", exc_info=True)
             self._ws = None
         if self._http is not None:
             try:
                 await self._http.close()
             except Exception:
-                pass
+                logger.debug("napcat: http.close() failed during stop", exc_info=True)
             self._http = None
         self._fail_pending(RuntimeError("napcat: stopped"))
         tasks = list(self._background_tasks)

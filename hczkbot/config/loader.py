@@ -79,11 +79,11 @@ def _migrate_yaml_to_json() -> None:
                 if isinstance(data, dict):
                     with open(json_path, "w", encoding="utf-8") as f:
                         json.dump(data, f, indent=2, ensure_ascii=False)
-                    import logging
-                    logger = logging.getLogger(__name__)
-                    logger.info("Auto-migrated %s -> %s", yaml_path, json_path)
+                    from loguru import logger
+                    logger.info("Auto-migrated {} -> {}", yaml_path, json_path)
             except Exception:
-                pass
+                from loguru import logger
+                logger.warning("Failed to auto-migrate YAML config {} -> {}", yaml_path, json_path, exc_info=True)
             break
 
 

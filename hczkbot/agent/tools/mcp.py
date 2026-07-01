@@ -979,7 +979,7 @@ async def connect_missing_servers(state: Any, registry: ToolRegistry) -> None:
     except asyncio.CancelledError:
         logger.warning("MCP connection cancelled (will retry next message)")
         state._mcp_connected = bool(state._mcp_stacks)
-    except BaseException as e:
+    except Exception as e:
         logger.warning("Failed to connect MCP servers (will retry next message): {}", e)
         state._mcp_connected = bool(state._mcp_stacks)
     finally:
@@ -1260,7 +1260,7 @@ async def process_pending_reconnects(state: Any, registry: ToolRegistry) -> None
             )
             if not future.done():
                 future.set_result(tool)
-        except BaseException as exc:
+        except Exception as exc:
             # Don't crash the owner task over a single failed reconnect.
             # Resolve the future so the waiting sub-task can proceed; if the
             # future was cancelled in the meantime, suppress to avoid leaking

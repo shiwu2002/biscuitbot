@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from loguru import logger
+
 TRACKED_FILE_EDIT_TOOLS = frozenset({"write_file", "edit_file", "apply_patch"})
 _MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
 _LIVE_EMIT_INTERVAL_S = 0.18
@@ -67,6 +69,7 @@ def resolve_file_edit_path(
             if resolved:
                 return Path(resolved)
         except Exception:
+            logger.debug("file_edit_events: tool path resolver failed for {}", raw_path, exc_info=True)
             return None
     if workspace is None:
         return Path(raw_path).expanduser().resolve()
@@ -78,7 +81,7 @@ def display_file_edit_path(path: Path, workspace: Path | None) -> str:
         try:
             return path.resolve().relative_to(workspace.resolve()).as_posix()
         except Exception:
-            pass
+            logger.debug("file_edit_events: relative path conversion failed", exc_info=True)
     return path.as_posix()
 
 
@@ -250,6 +253,7 @@ def _resolve_raw_file_edit_path(
             if resolved:
                 return Path(resolved)
         except Exception:
+            logger.debug("file_edit_events: tool path resolver failed for {}", raw_path, exc_info=True)
             return None
     if workspace is None:
         return Path(raw_path).expanduser().resolve()

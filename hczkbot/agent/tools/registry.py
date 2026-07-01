@@ -33,6 +33,7 @@ class ToolRegistry:
         self._tools: dict[str, Tool] = {}
         self._cached_definitions: list[dict[str, Any]] | None = None
         self._cached_index: str | None = None
+        self._cached_skills_entries: list[dict[str, str]] | None = None
         # Custom tools registered at runtime by the agent.
         # name -> {"file_path": str, "docs_md_path": str}
         self._custom_tools: dict[str, dict[str, str]] = {}
@@ -43,6 +44,7 @@ class ToolRegistry:
         """Attach a usage-stats tracker for cold-storage rotation."""
         self._usage_stats = stats
         self._cached_index = None
+        self._cached_skills_entries = None
 
     # ------------------------------------------------------------------
     # Registration
@@ -53,6 +55,7 @@ class ToolRegistry:
         self._tools[tool.name] = tool
         self._cached_definitions = None
         self._cached_index = None
+        self._cached_skills_entries = None
 
     def unregister(self, name: str) -> None:
         """Unregister a tool by name."""
@@ -60,6 +63,7 @@ class ToolRegistry:
         self._custom_tools.pop(name, None)
         self._cached_definitions = None
         self._cached_index = None
+        self._cached_skills_entries = None
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
@@ -132,9 +136,10 @@ class ToolRegistry:
 
         Each row: ``| name | capability | usage_md |``.
 
-        Cached until the next register/unregister/set_usage_stats call.
+        Cached until the next register/unregister/set_usage_stats call,
+        or until skills_entries changes.
         """
-        if self._cached_index is not None and skills_entries is None:
+        if self._cached_index is not None and self._cached_skills_entries == skills_entries:
             return self._cached_index
 
         on_demand_rows: list[str] = []
@@ -175,8 +180,8 @@ class ToolRegistry:
                 parts.append(f"| {s['name']} | {s['capability']} | {s['usage_md']} |")
 
         index = "\n".join(parts)
-        if skills_entries is None:
-            self._cached_index = index
+        self._cached_index = index
+        self._cached_skills_entries = skills_entries
         return index
 
     # ------------------------------------------------------------------
@@ -465,7 +470,11 @@ class ToolRegistry:
             result = await tool.execute(**params)
             # Record usage for cold-storage rotation (auto-recovers cold tools).
             if self._usage_stats is not None:
+                was_cold = self._usage_stats.is_cold(name)
                 self._usage_stats.record_call(name)
+                if was_cold:
+                    self._cached_index = None
+                    self._cached_skills_entries = None
             if isinstance(result, str) and result.startswith("Error"):
                 return result + hint
             return result

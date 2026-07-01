@@ -503,7 +503,7 @@ class SignalChannel(BaseChannel):
                     except asyncio.CancelledError:
                         pass
                     except Exception:
-                        pass
+                        self.logger.debug("signal: SSE task await failed during stop", exc_info=True)
                     self._sse_task = None
                 if self._http:
                     await self._http.aclose()

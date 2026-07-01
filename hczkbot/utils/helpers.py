@@ -521,6 +521,7 @@ def estimate_prompt_tokens(
         per_message_overhead = len(messages) * 4
         return len(enc.encode("\n".join(parts))) + per_message_overhead
     except Exception:
+        logger.debug("tiktoken encoding failed, returning 0 tokens", exc_info=True)
         return 0
 
 
@@ -559,6 +560,7 @@ def estimate_message_tokens(message: dict[str, Any]) -> int:
         enc = tiktoken.get_encoding("cl100k_base")
         return max(4, len(enc.encode(payload)) + 4)
     except Exception:
+        logger.debug("tiktoken get_encoding failed, using fallback", exc_info=True)
         return max(4, len(payload) // 4 + 4)
 
 
@@ -644,6 +646,7 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     try:
         tpl = pkg_files("hczkbot") / "templates"
     except Exception:
+        logger.debug("Failed to locate bundled templates directory", exc_info=True)
         return []
     if not tpl.is_dir():
         return []

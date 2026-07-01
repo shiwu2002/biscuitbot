@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from loguru import logger
+
 
 def session_extra(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return persisted session kwargs for CLI app attachments."""
@@ -50,6 +52,7 @@ def _cli_app_runtime_lines(
 
         mentions = CliAppManager(workspace=workspace).mentioned_installed_apps(text)
     except Exception:
+        logger.debug("cli utils: CliAppManager.mentioned_installed_apps failed", exc_info=True)
         return []
     return [
         "CLI App Mention: "

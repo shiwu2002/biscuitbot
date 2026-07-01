@@ -174,6 +174,7 @@ class GitStore:
                     sha = commit.parents[0] if commit.parents else None
             return None
         except Exception:
+            logger.debug("gitstore: failed to read commit history", exc_info=True)
             return None
 
     def _is_inside_git_repo(self) -> bool:

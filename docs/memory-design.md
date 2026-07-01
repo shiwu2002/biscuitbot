@@ -481,9 +481,6 @@ GitStore(workspace, tracked_files=[
 | `interval_h` | `2` | 触发间隔（小时） |
 | `cron` | `null` | 遗留 cron 表达式覆盖（优先于 interval_h） |
 | `model_override` | `null` | Dream 专用模型覆盖（未实现） |
-| `max_batch_size` | `20` | 已废弃 |
-| `max_iterations` | `15` | 已废弃 |
-| `annotate_line_ages` | `true` | 已废弃 |
 
 ### 10.2 相关 AgentDefaults 配置
 

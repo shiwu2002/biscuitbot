@@ -398,6 +398,7 @@ class AgentLoop:
                 try:
                     return build_vision_provider(_config_ref)
                 except Exception:
+                    logger.debug("Vision provider build failed, vision disabled", exc_info=True)
                     return None
 
             vision_provider_loader = _default_vision_loader
@@ -610,14 +611,14 @@ class AgentLoop:
         try:
             skills_entries = [
                 {
-                    "name": s.name,
-                    "capability": s.description,
-                    "usage_md": str(s.path),
+                    "name": s["name"],
+                    "capability": self.skills._get_skill_description(s["name"]),
+                    "usage_md": s["path"],
                 }
                 for s in self.skills.list_skills()
             ]
         except Exception:
-            pass
+            logger.debug("Failed to list skills for tool index", exc_info=True)
         return self.tools.generate_index(skills_entries)
 
     def _load_custom_tools_manifest(self) -> None:

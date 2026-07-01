@@ -13,6 +13,8 @@ import re
 import uuid
 from pathlib import Path
 
+from loguru import logger
+
 from hczkbot.utils.helpers import safe_filename
 
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
@@ -61,6 +63,7 @@ def save_base64_data_url(
     try:
         raw = base64.b64decode(b64_payload)
     except Exception:
+        logger.debug("base64 decode failed for data URL", exc_info=True)
         return None
     limit = DEFAULT_MAX_BYTES if max_bytes is None else max_bytes
     if len(raw) > limit:

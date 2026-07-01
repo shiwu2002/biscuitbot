@@ -265,7 +265,7 @@ def _http_error_detail(response: httpx.Response) -> str:
             if err:
                 return str(err)
     except Exception:
-        pass
+        logger.debug("Failed to extract HTTP error detail", exc_info=True)
     return response.text[:500] or "<empty response body>"
 
 

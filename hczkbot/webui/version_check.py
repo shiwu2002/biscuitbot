@@ -5,15 +5,13 @@ Checks PyPI for newer versions when explicitly requested (no background polling)
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
 import httpx
+from loguru import logger
 
 from hczkbot import __version__
-
-logger = logging.getLogger(__name__)
 
 _PYPI_URL = "https://pypi.org/pypi/hczkbot-ai/json"
 _CACHE_TTL_S = 300  # 5 minutes cache to avoid hammering PyPI
