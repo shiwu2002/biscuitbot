@@ -718,13 +718,15 @@ class WebSearchTool(Tool):
 
     async def _search_duckduckgo(self, query: str, n: int) -> str:
         try:
-            # Note: duckduckgo_search is synchronous and does its own requests
-            # We run it in a thread to avoid blocking the loop
+            # ddgs (9.x) is a metasearch library supporting multiple backends.
+            # The default "auto" backend includes startpage.com which is blocked
+            # in some regions (e.g. mainland China). We use the "bing" backend
+            # which is directly accessible in those regions and requires no API key.
             from ddgs import DDGS
 
-            ddgs = DDGS(timeout=10)
+            ddgs = DDGS(proxy=self.proxy, timeout=10)
             raw = await asyncio.wait_for(
-                asyncio.to_thread(ddgs.text, query, max_results=n),
+                asyncio.to_thread(ddgs.text, query, max_results=n, backend="bing"),
                 timeout=self.config.timeout,
             )
             if not raw:
@@ -735,8 +737,8 @@ class WebSearchTool(Tool):
             ]
             return _format_results(query, items, n)
         except Exception as e:
-            logger.warning("DuckDuckGo search failed: {}", e)
-            return f"Error: DuckDuckGo search failed ({e})"
+            logger.warning("DuckDuckGo/Bing search failed: {}", e, exc_info=True)
+            return f"Error: DuckDuckGo/Bing search failed ({type(e).__name__}: {e})"
 
     async def _search_bocha(self, query: str, n: int, freshness: str = "noLimit") -> str:
         api_key = self.config.api_key or os.environ.get("BOCHA_API_KEY", "")

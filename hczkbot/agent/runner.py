@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import os
+import time
 from contextlib import suppress
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -133,6 +134,9 @@ class AgentRunSpec:
     goal_active_predicate: Callable[[], bool] | None = None
     goal_continue_message: GoalContinueMessage | None = None
     finalize_on_max_iterations: bool = True
+    turn_id: str = ""
+    runtime_publisher: Any | None = None
+    inbound_msg: Any | None = None
 
 
 @dataclass(slots=True)
@@ -154,6 +158,68 @@ class AgentRunner:
 
     def __init__(self, provider: LLMProvider):
         self.provider = provider
+
+    @staticmethod
+    def _publish_tool_trace(
+        spec: AgentRunSpec,
+        tool_call: ToolCallRequest,
+        status: str,
+        *,
+        duration_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        """发布工具调用追踪事件到 RuntimeEventBus（非阻塞）。"""
+        publisher = spec.runtime_publisher
+        if publisher is None or not spec.turn_id:
+            return
+        args_summary: str = ""
+        try:
+            if tool_call.arguments:
+                args_summary = str(tool_call.arguments)
+                if len(args_summary) > 200:
+                    args_summary = args_summary[:200] + "..."
+        except Exception:
+            args_summary = ""
+        publisher.publish_trace(
+            msg=spec.inbound_msg,
+            session_key=spec.session_key or "default",
+            turn_id=spec.turn_id,
+            phase="tool_call",
+            step=tool_call.name,
+            status=status,
+            duration_ms=duration_ms,
+            detail={
+                "call_id": tool_call.id,
+                "arguments": args_summary,
+                **(detail or {}),
+            },
+        )
+
+    @staticmethod
+    def _publish_llm_trace(
+        spec: AgentRunSpec,
+        status: str,
+        *,
+        duration_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
+        """发布 LLM 调用追踪事件到 RuntimeEventBus（非阻塞）。"""
+        publisher = spec.runtime_publisher
+        if publisher is None or not spec.turn_id:
+            return
+        publisher.publish_trace(
+            msg=spec.inbound_msg,
+            session_key=spec.session_key or "default",
+            turn_id=spec.turn_id,
+            phase="llm_call",
+            step=spec.model,
+            status=status,
+            duration_ms=duration_ms,
+            detail={
+                "model": spec.model,
+                **(detail or {}),
+            },
+        )
 
     @staticmethod
     def _merge_message_content(left: Any, right: Any) -> str | list[dict[str, Any]]:
@@ -418,7 +484,10 @@ class AgentRunner:
                 session_key=spec.session_key,
             )
             await hook.before_iteration(context)
+            llm_t0 = time.perf_counter()
+            self._publish_llm_trace(spec, "started", detail={"iteration": iteration})
             response = await self._request_model(spec, messages_for_model, hook, context)
+            llm_duration_ms = (time.perf_counter() - llm_t0) * 1000
             context.response = response
             context.tool_calls = list(response.tool_calls)
 
@@ -431,6 +500,16 @@ class AgentRunner:
             raw_usage = self._usage_or_estimate(spec, messages_for_model, response)
             context.usage = dict(raw_usage)
             self._accumulate_usage(usage, raw_usage)
+            self._publish_llm_trace(
+                spec, "completed",
+                duration_ms=llm_duration_ms,
+                detail={
+                    "iteration": iteration,
+                    "prompt_tokens": raw_usage.get("prompt_tokens", 0),
+                    "completion_tokens": raw_usage.get("completion_tokens", 0),
+                    "has_tool_calls": response.has_tool_calls,
+                },
+            )
             if reasoning_text and not context.streamed_reasoning:
                 await hook.emit_reasoning(reasoning_text)
                 await hook.emit_reasoning_end()
@@ -1080,6 +1159,8 @@ class AgentRunner:
         workspace_violation_counts: dict[str, int],
     ) -> tuple[Any, dict[str, str], BaseException | None]:
         hint = "\n\n[Analyze the error above and try a different approach.]"
+        self._publish_tool_trace(spec, tool_call, "started")
+        tool_t0 = time.perf_counter()
         lookup_error = repeated_external_lookup_error(
             tool_call.name,
             tool_call.arguments,
@@ -1091,6 +1172,11 @@ class AgentRunner:
                 "status": "error",
                 "detail": "repeated external lookup blocked",
             }
+            self._publish_tool_trace(
+                spec, tool_call, "failed",
+                duration_ms=(time.perf_counter() - tool_t0) * 1000,
+                detail={"error": "repeated external lookup blocked"},
+            )
             if spec.fail_on_tool_error:
                 return lookup_error + hint, event, RuntimeError(lookup_error)
             return lookup_error + hint, event, None
@@ -1164,6 +1250,11 @@ class AgentRunner:
                 "status": "error",
                 "detail": str(exc),
             }
+            self._publish_tool_trace(
+                spec, tool_call, "failed",
+                duration_ms=(time.perf_counter() - tool_t0) * 1000,
+                detail={"error": f"{type(exc).__name__}: {exc}"},
+            )
             payload = f"Error: {type(exc).__name__}: {exc}"
             handled = self._classify_violation(
                 raw_text=str(exc),
@@ -1193,6 +1284,11 @@ class AgentRunner:
                 "status": "error",
                 "detail": result.replace("\n", " ").strip()[:120],
             }
+            self._publish_tool_trace(
+                spec, tool_call, "failed",
+                duration_ms=(time.perf_counter() - tool_t0) * 1000,
+                detail={"error": result.replace("\n", " ").strip()[:200]},
+            )
             handled = self._classify_violation(
                 raw_text=result,
                 soft_payload=result + hint,
@@ -1221,6 +1317,11 @@ class AgentRunner:
             detail = "(empty)"
         elif len(detail) > 120:
             detail = detail[:120] + "..."
+        self._publish_tool_trace(
+            spec, tool_call, "completed",
+            duration_ms=(time.perf_counter() - tool_t0) * 1000,
+            detail={"detail": detail},
+        )
         return result, {"name": tool_call.name, "status": "ok", "detail": detail}, None
 
     # SSRF is a hard security block at the tool boundary, but the agent turn

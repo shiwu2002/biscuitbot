@@ -24,6 +24,7 @@ import type {
   UITurnPhase,
   WorkspaceScopePayload,
 } from "@/lib/types";
+import type { TraceEntry } from "@/components/thread/TraceLogPanel";
 
 interface StreamBuffer {
   /** ID of the assistant message currently receiving deltas (cleared on ``stream_end``). */
@@ -438,6 +439,10 @@ export function useHczkbotStream(
   runStartedAt: number | null;
   /** Latest sustained goal for this ``chatId`` (``goal_state`` WS events). */
   goalState: GoalStateWsPayload | undefined;
+  /** 全链路追踪日志条目（来自 ``agent_trace`` WS 事件）。 */
+  traces: TraceEntry[];
+  /** 清空当前已收集的追踪日志条目。 */
+  clearTraces: () => void;
   send: (content: string, images?: SendImage[], options?: SendOptions) => void;
   transcribeAudio: (dataUrl: string, options?: { durationMs?: number }) => Promise<string>;
   stop: () => void;
@@ -457,6 +462,7 @@ export function useHczkbotStream(
   /** Unix epoch seconds when the current user turn started; cleared on ``idle``. */
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [goalState, setGoalState] = useState<GoalStateWsPayload | undefined>(undefined);
+  const [traces, setTraces] = useState<TraceEntry[]>([]);
   const [streamError, setStreamError] = useState<StreamError | null>(null);
   const buffer = useRef<StreamBuffer | null>(null);
   const activeAssistantRef = useRef<ActiveAssistantCursor | null>(null);
@@ -481,6 +487,8 @@ export function useHczkbotStream(
   }, [client]);
 
   const dismissStreamError = useCallback(() => setStreamError(null), []);
+
+  const clearTraces = useCallback(() => setTraces([]), []);
 
   const clearPendingStreamWork = useCallback(() => {
     if (streamFrameRef.current !== null) {
@@ -696,6 +704,7 @@ export function useHczkbotStream(
     setStreamError(null);
     setRunStartedAt(chatId ? client.getRunStartedAt(chatId) : null);
     setGoalState(chatId ? client.getGoalState(chatId) : undefined);
+    setTraces([]);
     buffer.current = null;
     activeAssistantRef.current = null;
     closedAssistantStreamIdsRef.current.clear();
@@ -784,6 +793,24 @@ export function useHczkbotStream(
 
       if (ev.event === "goal_state") {
         setGoalState(ev.goal_state);
+        return;
+      }
+
+      if (ev.event === "agent_trace") {
+        setTraces((prev) => {
+          const entry: TraceEntry = {
+            turn_id: ev.turn_id,
+            phase: ev.phase,
+            step: ev.step,
+            status: ev.status,
+            duration_ms: ev.duration_ms,
+            detail: ev.detail,
+            timestamp: Date.now(),
+          };
+          // 防止条目无限增长：保留最近 1000 条
+          const next = [...prev, entry];
+          return next.length > 1000 ? next.slice(next.length - 1000) : next;
+        });
         return;
       }
 
@@ -1096,6 +1123,8 @@ export function useHczkbotStream(
     isStreaming,
     runStartedAt,
     goalState,
+    traces,
+    clearTraces,
     send,
     transcribeAudio,
     stop,

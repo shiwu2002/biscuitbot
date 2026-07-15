@@ -62,7 +62,7 @@ def _resolve_source_file(tool: "Tool") -> str:
     module = getattr(tool.__class__, "__module__", "")
     if module and module.startswith("hczkbot."):
         parts = module.split(".")
-        return str(Path(_TOOLS_DIR.parent.parent.parent, *parts[1:])) + ".py"
+        return str(Path(_TOOLS_DIR.parent.parent.parent, *parts)) + ".py"
     return ""
 
 
@@ -104,6 +104,8 @@ def _extract_md_params(content: str) -> set[str] | None:
         return None
 
     params: set[str] = set()
+    seen_separator = False
+    in_table = False
     for line in lines[start:]:
         stripped = line.strip()
         # Stop at the next section header
@@ -111,19 +113,28 @@ def _extract_md_params(content: str) -> set[str] | None:
             break
         # Parse table rows: | param_name | type | ... |
         if not stripped.startswith("|"):
+            # Non-table line after we've started collecting data rows
+            # stops the main parameter table (avoids nested sub-tables).
+            if in_table:
+                break
             continue
         cells = [c.strip() for c in stripped.split("|")]
         # cells[0] is empty (before first |), cells[1] is first column
         if len(cells) < 2:
             continue
         first_col = cells[1].strip("`").strip("**").strip()
-        # Skip separator rows and header rows
-        if not first_col or first_col.startswith("---") or first_col.startswith(":-"):
+        if not first_col:
             continue
-        lower = first_col.lower()
-        if lower in ("参数", "parameter", "parameters", "name", "名称", "参数名"):
+        # Separator row (e.g., |------|------|)
+        if first_col.startswith("---") or first_col.startswith(":-"):
+            seen_separator = True
             continue
+        # Rows before the separator are header rows — skip them
+        if not seen_separator:
+            continue
+        # Data row after the separator
         params.add(first_col)
+        in_table = True
     return params if params else None
 
 
@@ -137,6 +148,11 @@ _STOPWORDS = frozenset({
     "all", "any", "new", "old", "use", "using", "used", "tool", "file",
     "returns", "return", "when", "will", "they", "them", "their",
 })
+
+
+def _contains_cjk(text: str) -> bool:
+    """Return True if *text* contains CJK (Chinese/Japanese/Korean) characters."""
+    return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
 def _capability_keywords(capability: str) -> list[str]:
@@ -185,9 +201,21 @@ def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
         keywords = _capability_keywords(capability)
         content_lower = content.lower()
         matched = [kw for kw in keywords if kw in content_lower]
-        # Require at least one keyword to appear in the doc body
+        # Require at least one keyword to appear in the doc body.
+        # Skip the check for Chinese docs: English capability keywords
+        # naturally won't match Chinese text.  We only look at the body
+        # *before* the parameter table — that's where the capability
+        # description belongs.
         if keywords and not matched:
-            issues.append(f"capability 描述未在 md 中体现：{capability}")
+            body_only = content
+            # Find first occurrence of a Chinese parameter-section header
+            for hdr in _SECTION_HEADERS:
+                hdr_match = re.search(rf"^## {re.escape(hdr)}", content, re.MULTILINE)
+                if hdr_match:
+                    body_only = content[:hdr_match.start()]
+                    break
+            if not _contains_cjk(body_only):
+                issues.append(f"capability 描述未在 md 中体现：{capability}")
 
     return issues
 

@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { Activity } from "lucide-react";
 
 import { FilePreviewPanel } from "@/components/FilePreviewPanel";
+import { Button } from "@/components/ui/button";
 import { PromptNavigator } from "@/components/thread/PromptNavigator";
 import { SessionInfoPopover } from "@/components/thread/SessionInfoPopover";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
+import { TraceLogPanel } from "@/components/thread/TraceLogPanel";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport, type ThreadViewportHandle } from "@/components/thread/ThreadViewport";
 import { useHczkbotStream, type SendImage, type SendOptions } from "@/hooks/useHczkbotStream";
@@ -287,6 +290,7 @@ export function ThreadShell({
   const [filePreviewPath, setFilePreviewPath] = useState<string | null>(null);
   const [filePreviewClosing, setFilePreviewClosing] = useState(false);
   const [filePreviewWidth, setFilePreviewWidth] = useState(FILE_PREVIEW_DEFAULT_WIDTH);
+  const [tracePanelOpen, setTracePanelOpen] = useState(false);
   const shellRef = useRef<HTMLElement | null>(null);
   const filePreviewWidthRef = useRef(FILE_PREVIEW_DEFAULT_WIDTH);
   const filePreviewCloseTimerRef = useRef<number | null>(null);
@@ -313,6 +317,8 @@ export function ThreadShell({
     isStreaming,
     runStartedAt,
     goalState,
+    traces,
+    clearTraces,
     send,
     transcribeAudio,
     stop,
@@ -755,6 +761,18 @@ export function ThreadShell({
             minimal={!session && !loading}
             promptNavigatorAction={promptNavigatorAction}
             sessionInfoAction={sessionInfoAction}
+            traceAction={
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("thread.header.traceLog", { defaultValue: "全链路追踪" })}
+                title={t("thread.header.traceLog", { defaultValue: "全链路追踪" })}
+                onClick={() => setTracePanelOpen(true)}
+                className="host-no-drag h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
+              >
+                <Activity className="h-4 w-4" />
+              </Button>
+            }
           />
         ) : null}
         <ThreadViewport
@@ -788,6 +806,12 @@ export function ThreadShell({
           onClose={handleCloseFilePreview}
         />
       ) : null}
+      <TraceLogPanel
+        open={tracePanelOpen}
+        onOpenChange={setTracePanelOpen}
+        traces={traces}
+        onClear={clearTraces}
+      />
     </section>
   );
 }

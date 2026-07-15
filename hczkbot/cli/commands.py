@@ -1010,6 +1010,10 @@ def _run_gateway(
         schedule_background=lambda coro: agent._schedule_background(coro),
     ).subscribe(runtime_events)
 
+    # CLI 端口全链路追踪日志：彩色树形输出到 stderr
+    from hczkbot.bus.trace_logger import install_trace_logger
+    install_trace_logger(runtime_events)
+
     from hczkbot.bus.events import OutboundMessage
     from hczkbot.session.keys import session_key_for_channel
 

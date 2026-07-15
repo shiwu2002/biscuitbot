@@ -717,8 +717,11 @@ class TestToolEventProgress:
         await asyncio.wait_for(title_started.wait(), timeout=0.5)
         release_title.set()
         session_updated = None
-        for _ in range(10):
+        for _ in range(30):
             candidate = await asyncio.wait_for(bus.consume_outbound(), timeout=0.5)
+            if (candidate.metadata or {}).get("_agent_trace"):
+                # 全链路追踪事件是诊断流，跳过它们继续寻找 _session_updated
+                continue
             if (candidate.metadata or {}).get("_session_updated"):
                 session_updated = candidate
                 break

@@ -834,18 +834,19 @@ class AgentLoop:
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
         on_stream: Callable[[str], Awaitable[None]] | None = None,
-        on_stream_end: Callable[..., Awaitable[None]] | None = None,
-        on_retry_wait: Callable[[str], Awaitable[None]] | None = None,
-        *,
+        on_stream_end: Callable[[bool], Awaitable[None]] | None = None,
+        on_retry_wait: Callable[[float], Awaitable[None]] | None = None,
         session: Session | None = None,
-        channel: str = "cli",
-        chat_id: str = "direct",
+        channel: str = "",
+        chat_id: str = "",
         message_id: str | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict | None = None,
         session_key: str | None = None,
         pending_queue: asyncio.Queue | None = None,
         ephemeral: bool = False,
         tools: ToolRegistry | None = None,
+        turn_id: str = "",
+        inbound_msg: InboundMessage | None = None,
     ) -> tuple[str | None, list[str], list[dict], str, bool]:
         """Run the agent iteration loop.
 
@@ -995,6 +996,9 @@ class AgentLoop:
                     session_metadata=session_metadata,
                     message_metadata=metadata,
                 ),
+                turn_id=turn_id,
+                runtime_publisher=self._runtime_events(),
+                inbound_msg=inbound_msg,
             ))
         finally:
             reset_workspace_scope(workspace_token)
@@ -1413,12 +1417,15 @@ class AgentLoop:
             tool_index=tool_index,
         )
         t_wall = time.time()
+        system_turn_id = f"{key}:{time.time_ns()}"
         final_content, _, all_msgs, stop_reason, _ = await self._run_agent_loop(
             messages, session=session, channel=channel, chat_id=chat_id,
             message_id=msg.metadata.get("message_id"),
             metadata=msg.metadata,
             session_key=key,
             pending_queue=pending_queue,
+            turn_id=system_turn_id,
+            inbound_msg=msg,
         )
         wall_done = time.time()
         latency_ms = max(0, int((wall_done - t_wall) * 1000))
@@ -1512,6 +1519,16 @@ class AgentLoop:
                         error="exception",
                     )
                 )
+                self._runtime_events().publish_trace(
+                    msg=ctx.msg,
+                    session_key=ctx.session_key,
+                    turn_id=ctx.turn_id,
+                    phase="turn_state",
+                    step=ctx.state.name,
+                    status="failed",
+                    duration_ms=duration,
+                    detail={"error": "exception"},
+                )
                 raise
 
             duration = (time.perf_counter() - t0) * 1000
@@ -1529,6 +1546,16 @@ class AgentLoop:
                 ctx.state.name,
                 duration,
                 event,
+            )
+            self._runtime_events().publish_trace(
+                msg=ctx.msg,
+                session_key=ctx.session_key,
+                turn_id=ctx.turn_id,
+                phase="turn_state",
+                step=ctx.state.name,
+                status="completed",
+                duration_ms=duration,
+                detail={"event": event},
             )
 
             next_state = self._TRANSITIONS.get((ctx.state, event))
@@ -1715,6 +1742,8 @@ class AgentLoop:
             pending_queue=ctx.pending_queue,
             ephemeral=ctx.ephemeral,
             tools=ctx.tools,
+            turn_id=ctx.turn_id,
+            inbound_msg=ctx.msg,
         )
         final_content, tools_used, all_msgs, stop_reason, had_injections = result
         ctx.final_content = final_content

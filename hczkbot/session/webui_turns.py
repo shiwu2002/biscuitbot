@@ -14,6 +14,7 @@ from hczkbot.bus import progress as bus_progress
 from hczkbot.bus.events import InboundMessage, OutboundMessage
 from hczkbot.bus.queue import MessageBus
 from hczkbot.bus.runtime_events import (
+    AgentTraceEvent,
     GoalStateChanged,
     RuntimeEventBus,
     RuntimeEventContext,
@@ -261,6 +262,10 @@ class WebuiTurnCoordinator:
                 self._handle_runtime_model_changed,
                 RuntimeModelChanged,
             ),
+            runtime_events.subscribe(
+                self._handle_agent_trace,
+                AgentTraceEvent,
+            ),
         ]
 
         def _unsubscribe() -> None:
@@ -339,6 +344,27 @@ class WebuiTurnCoordinator:
                     "_runtime_model_updated": True,
                     "model": event.model,
                     "model_preset": event.model_preset,
+                },
+            )
+        )
+
+    async def _handle_agent_trace(self, event: AgentTraceEvent) -> None:
+        """推送全链路追踪事件到 WebSocket 前端。"""
+        if not self._is_websocket_event(event.context):
+            return
+        await self.bus.publish_outbound(
+            OutboundMessage(
+                channel=event.context.channel,
+                chat_id=event.context.chat_id,
+                content="",
+                metadata={
+                    "_agent_trace": True,
+                    "turn_id": event.turn_id,
+                    "phase": event.phase,
+                    "step": event.step,
+                    "status": event.status,
+                    "duration_ms": event.duration_ms,
+                    "detail": event.detail,
                 },
             )
         )

@@ -856,6 +856,25 @@ class WebSocketChannel(BaseChannel):
 
         # Snapshot the subscriber set so ConnectionClosed cleanups mid-iteration are safe.
         conns = list(self._subs.get(msg.chat_id, ()))
+
+        # 全链路追踪事件：直接推送给前端，不写入 transcript
+        if msg.metadata.get("_agent_trace"):
+            if conns:
+                payload = {
+                    "event": "agent_trace",
+                    "chat_id": msg.chat_id,
+                    "turn_id": msg.metadata.get("turn_id", ""),
+                    "phase": msg.metadata.get("phase", ""),
+                    "step": msg.metadata.get("step", ""),
+                    "status": msg.metadata.get("status", ""),
+                    "duration_ms": msg.metadata.get("duration_ms"),
+                    "detail": msg.metadata.get("detail", {}),
+                }
+                raw = json.dumps(payload, ensure_ascii=False)
+                for connection in conns:
+                    await self._safe_send_to(connection, raw, label=" trace")
+            return
+
         if not conns:
             if (
                 msg.metadata.get("_progress")

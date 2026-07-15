@@ -912,6 +912,16 @@ export type InboundEvent =
       detail?: string;
       provider?: string;
     }
+  | {
+      event: "agent_trace";
+      chat_id: string;
+      turn_id: string;
+      phase: "turn_state" | "tool_call" | "llm_call" | "error" | string;
+      step: string;
+      status: "started" | "completed" | "failed" | string;
+      duration_ms?: number | null;
+      detail?: Record<string, unknown>;
+    }
   | { event: "error"; chat_id?: string; detail?: string; reason?: string };
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.

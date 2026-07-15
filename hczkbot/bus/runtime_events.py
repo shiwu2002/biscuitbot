@@ -70,12 +70,35 @@ class RuntimeModelChanged:
     model_preset: str | None
 
 
+@dataclass(frozen=True)
+class AgentTraceEvent:
+    """全链路追踪事件：状态转换、工具调用、LLM 调用、错误。
+
+    phase 取值：
+    - "turn_state": AgentLoop 状态机步骤（RESTORE/COMPACT/COMMAND/BUILD/RUN/SAVE/RESPOND）
+    - "tool_call": 工具调用（prepare/execute/classify）
+    - "llm_call": LLM 调用（request/response）
+    - "error": 错误或违规
+
+    status 取值："started" | "completed" | "failed"
+    """
+
+    context: RuntimeEventContext
+    turn_id: str
+    phase: str
+    step: str
+    status: str
+    duration_ms: float | None = None
+    detail: dict[str, Any] = field(default_factory=dict)
+
+
 RuntimeEvent = (
     SessionTurnStarted
     | TurnRunStatusChanged
     | TurnCompleted
     | GoalStateChanged
     | RuntimeModelChanged
+    | AgentTraceEvent
 )
 RuntimeEventType = (
     type[SessionTurnStarted]
@@ -83,6 +106,7 @@ RuntimeEventType = (
     | type[TurnCompleted]
     | type[GoalStateChanged]
     | type[RuntimeModelChanged]
+    | type[AgentTraceEvent]
 )
 RuntimeEventHandler = Callable[[Any], Awaitable[None] | None]
 _HandlerEntry = tuple[RuntimeEventType | None, RuntimeEventHandler]
@@ -232,6 +256,51 @@ class RuntimeEventPublisher:
     def runtime_model_changed(self, model: str, model_preset: str | None) -> None:
         self.bus.publish_nowait(
             RuntimeModelChanged(model=model, model_preset=model_preset)
+        )
+
+    def publish_trace(
+        self,
+        *,
+        msg: InboundMessage | None,
+        session_key: str,
+        turn_id: str,
+        phase: str,
+        step: str,
+        status: str,
+        duration_ms: float | None = None,
+        detail: dict[str, Any] | None = None,
+        channel: str | None = None,
+        chat_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """发布全链路追踪事件（非阻塞）。
+
+        msg 非空时从 msg 提取 channel/chat_id/metadata；
+        msg 为 None 时使用显式传入的 channel/chat_id/metadata。
+        """
+        if msg is not None:
+            ctx_channel = msg.channel
+            ctx_chat_id = msg.chat_id
+            ctx_metadata = msg.metadata
+        else:
+            ctx_channel = channel or "cli"
+            ctx_chat_id = chat_id or "direct"
+            ctx_metadata = metadata
+        self.bus.publish_nowait(
+            AgentTraceEvent(
+                context=self._context(
+                    channel=ctx_channel,
+                    chat_id=ctx_chat_id,
+                    session_key=session_key,
+                    metadata=ctx_metadata,
+                ),
+                turn_id=turn_id,
+                phase=phase,
+                step=step,
+                status=status,
+                duration_ms=duration_ms,
+                detail=dict(detail or {}),
+            )
         )
 
 

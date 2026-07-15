@@ -245,6 +245,7 @@ class _MCPWrapperBase(Tool):
     """Common reconnect handling for wrappers bound to one MCP server session."""
 
     _plugin_discoverable = False
+    _name: str  # 由子类在 __init__ 中设置
 
     def _set_mcp_connection(self, session: Any, server_name: str) -> None:
         self._session = session
