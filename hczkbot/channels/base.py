@@ -32,13 +32,13 @@ class BaseChannel(ABC):
     send_tool_hints: bool = False
     show_reasoning: bool = True
 
-    def __init__(self, config: Any, bus: MessageBus):
+    def __init__(self, config: Any, bus: MessageBus | None):
         """
         Initialize the channel.
 
         Args:
             config: Channel-specific configuration.
-            bus: The message bus for communication.
+            bus: The message bus for communication (None during standalone login flows).
         """
         self.config = config
         self.logger = logger.bind(channel=self.name)

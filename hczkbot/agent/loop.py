@@ -122,7 +122,7 @@ class TurnContext:
     on_progress: Callable[..., Awaitable[None]] | None = None
     on_stream: Callable[[str], Awaitable[None]] | None = None
     on_stream_end: Callable[..., Awaitable[None]] | None = None
-    on_retry_wait: Callable[[str], Awaitable[None]] | None = None
+    on_retry_wait: Callable[..., Awaitable[None]] | None = None
 
     pending_queue: asyncio.Queue | None = None
     pending_summary: str | None = None
@@ -499,6 +499,11 @@ class AgentLoop:
     def model_preset(self, name: str | None) -> None:
         self.set_model_preset(name)
 
+    @property
+    def workspace_sandbox(self) -> Any:
+        """Workspace sandbox status (read-only view for tools)."""
+        return self.workspace_scopes.sandbox_status
+
     def _build_model_preset_snapshot(self, name: str) -> ProviderSnapshot:
         return preset_helpers.build_runtime_preset_snapshot(
             name=name,
@@ -548,7 +553,7 @@ class AgentLoop:
             from hczkbot.agent.tools.screenshot import ScreenshotTool
 
             self.tools.register(
-                ScreenshotTool(
+                ScreenshotTool(  # type: ignore[abstract]
                     vision_provider_loader=self._vision_provider_loader,
                     config=self.tools_config.screenshot,
                 )
@@ -558,8 +563,8 @@ class AgentLoop:
         # DiscoverToolsTool is auto-registered in dynamic mode; bind the
         # registry so the meta-tool can search all registered tools.
         discover_tool = self.tools.get("discover_tools")
-        if discover_tool is not None:
-            discover_tool.bind_registry(self.tools)
+        if discover_tool is not None and hasattr(discover_tool, "bind_registry"):
+            discover_tool.bind_registry(self.tools)  # type: ignore[attr-defined]
             registered.append("discover_tools")
 
         # Register the register_tool / unregister_tool meta-tools so the
@@ -570,12 +575,12 @@ class AgentLoop:
             UnregisterToolTool,
         )
 
-        register_tool = RegisterToolTool()
+        register_tool = RegisterToolTool()  # type: ignore[abstract]
         register_tool.bind_registry(self.tools)
         self.tools.register(register_tool)
         registered.append("register_tool")
 
-        unregister_tool = UnregisterToolTool()
+        unregister_tool = UnregisterToolTool()  # type: ignore[abstract]
         unregister_tool.bind_registry(self.tools)
         self.tools.register(unregister_tool)
         registered.append("unregister_tool")
@@ -591,7 +596,7 @@ class AgentLoop:
         # ColdStorageTool lets the agent search tools rotated to cold storage.
         from hczkbot.agent.tools.cold_storage import ColdStorageTool
 
-        cold_storage = ColdStorageTool()
+        cold_storage = ColdStorageTool()  # type: ignore[abstract]
         cold_storage.bind_usage_stats(self._usage_stats)
         self.tools.register(cold_storage)
         registered.append("cold_storage")
@@ -609,14 +614,16 @@ class AgentLoop:
         """
         skills_entries: list[dict[str, str]] | None = None
         try:
-            skills_entries = [
-                {
-                    "name": s["name"],
-                    "capability": self.skills._get_skill_description(s["name"]),
-                    "usage_md": s["path"],
-                }
-                for s in self.skills.list_skills()
-            ]
+            skills_loader = getattr(self, "skills", None)
+            if skills_loader is not None:
+                skills_entries = [
+                    {
+                        "name": s["name"],
+                        "capability": skills_loader._get_skill_description(s["name"]),
+                        "usage_md": s["path"],
+                    }
+                    for s in skills_loader.list_skills()
+                ]
         except Exception:
             logger.debug("Failed to list skills for tool index", exc_info=True)
         return self.tools.generate_index(skills_entries)
@@ -834,8 +841,8 @@ class AgentLoop:
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
         on_stream: Callable[[str], Awaitable[None]] | None = None,
-        on_stream_end: Callable[[bool], Awaitable[None]] | None = None,
-        on_retry_wait: Callable[[float], Awaitable[None]] | None = None,
+        on_stream_end: Callable[..., Awaitable[None]] | None = None,
+        on_retry_wait: Callable[..., Awaitable[None]] | None = None,
         session: Session | None = None,
         channel: str = "",
         chat_id: str = "",
@@ -1070,7 +1077,8 @@ class AgentLoop:
             except asyncio.CancelledError:
                 # Preserve real task cancellation so shutdown can complete cleanly.
                 # Only ignore non-task CancelledError signals that may leak from integrations.
-                if not self._running or asyncio.current_task().cancelling():
+                current_task = asyncio.current_task()
+                if not self._running or (current_task is not None and current_task.cancelling()):
                     raise
                 continue
             except Exception as e:
@@ -1155,7 +1163,8 @@ class AgentLoop:
                 pending = asyncio.Queue(maxsize=20)
                 self._pending_queues[session_key] = pending
                 try:
-                    on_stream = on_stream_end = None
+                    on_stream: Callable[[str], Awaitable[None]] | None = None
+                    on_stream_end: Callable[..., Awaitable[None]] | None = None
                     if msg.metadata.get("_wants_stream"):
                         # Split one answer into distinct stream segments.
                         stream_base_id = f"{msg.session_key}:{time.time_ns()}"
@@ -1164,7 +1173,7 @@ class AgentLoop:
                         def _current_stream_id() -> str:
                             return f"{stream_base_id}:{stream_segment}"
 
-                        async def on_stream(delta: str) -> None:
+                        async def _on_stream(delta: str) -> None:
                             meta = dict(msg.metadata or {})
                             meta["_stream_delta"] = True
                             meta["_stream_id"] = _current_stream_id()
@@ -1174,7 +1183,7 @@ class AgentLoop:
                                 metadata=meta,
                             ))
 
-                        async def on_stream_end(*, resuming: bool = False) -> None:
+                        async def _on_stream_end(*, resuming: bool = False) -> None:
                             nonlocal stream_segment
                             meta = dict(msg.metadata or {})
                             meta["_stream_end"] = True
@@ -1186,6 +1195,9 @@ class AgentLoop:
                                 metadata=meta,
                             ))
                             stream_segment += 1
+
+                        on_stream = _on_stream
+                        on_stream_end = _on_stream_end
 
                     response = await self._process_message(
                         msg, on_stream=on_stream, on_stream_end=on_stream_end,
@@ -1606,7 +1618,7 @@ class AgentLoop:
             metadata=meta,
         )
 
-    async def _state_restore(self, ctx: TurnContext) -> TurnState:
+    async def _state_restore(self, ctx: TurnContext) -> str:
         """Restore checkpoint / pending user turn; extract documents."""
         msg = ctx.msg
 
@@ -1643,11 +1655,13 @@ class AgentLoop:
         return self.channels_config.extract_document_text
 
     async def _state_compact(self, ctx: TurnContext) -> str:
+        assert ctx.session is not None  # set by _state_restore
         ctx.session, pending = self.auto_compact.prepare_session(ctx.session, ctx.session_key)
         ctx.pending_summary = pending
         return "ok"
 
     async def _state_command(self, ctx: TurnContext) -> str:
+        assert ctx.session is not None  # set by _state_restore
         raw = ctx.msg.content.strip()
         cmd_ctx = CommandContext(
             msg=ctx.msg, session=ctx.session, key=ctx.session_key, raw=raw, loop=self
@@ -1673,6 +1687,7 @@ class AgentLoop:
         return "dispatch"
 
     async def _state_build(self, ctx: TurnContext) -> str:
+        assert ctx.session is not None  # set by _state_restore
         if not ctx.ephemeral:
             await self.consolidator.maybe_consolidate_by_tokens(
                 ctx.session,
@@ -1755,6 +1770,7 @@ class AgentLoop:
         return "ok"
 
     async def _state_save(self, ctx: TurnContext) -> str:
+        assert ctx.session is not None  # set by _state_restore
         turn_continuation.prepare_save_boundary(ctx)
 
         if (
@@ -1797,9 +1813,11 @@ class AgentLoop:
         if ctx.suppress_response:
             ctx.outbound = None
             return "ok"
+        # _state_save guarantees final_content is non-None when suppress_response is False
+        final_content = ctx.final_content or ""
         ctx.outbound = self._assemble_outbound(
             ctx.msg,
-            ctx.final_content,
+            final_content,
             ctx.all_messages,
             ctx.stop_reason,
             ctx.had_injections,

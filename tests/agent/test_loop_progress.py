@@ -2,6 +2,7 @@
 
 import asyncio
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -372,7 +373,7 @@ class TestToolEventProgress:
             ),
         )
         loop.tools.execute = AsyncMock(side_effect=execute)
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -419,7 +420,7 @@ class TestToolEventProgress:
         provider.chat_stream_with_retry = AsyncMock()
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="openai-codex/gpt-5.5")
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="whatsapp",
@@ -459,7 +460,7 @@ class TestToolEventProgress:
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="openai-codex/gpt-5.5")
         _attach_webui_runtime_events(loop, bus)
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -514,7 +515,7 @@ class TestToolEventProgress:
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="openai-codex/gpt-5.5")
         _attach_webui_runtime_events(loop, bus)
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -568,7 +569,7 @@ class TestToolEventProgress:
                 await on_content_delta("inspect it.")
             return response
 
-        loop.provider.chat_stream_with_retry = chat_stream_with_retry
+        loop.provider.chat_stream_with_retry = chat_stream_with_retry  # type: ignore[method-assign]
         loop.provider.chat_with_retry = AsyncMock()
         loop.tools.get_definitions = MagicMock(return_value=[])
         loop.tools.prepare_call = MagicMock(return_value=(None, {"path": "foo.txt"}, None))
@@ -608,7 +609,7 @@ class TestToolEventProgress:
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
         _attach_webui_runtime_events(loop, bus)
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -645,7 +646,7 @@ class TestToolEventProgress:
         async def raise_from_turn(*_args, **_kwargs):
             raise RuntimeError("boom")
 
-        loop._process_message = raise_from_turn  # type: ignore[method-assign]
+        loop._process_message = raise_from_turn
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -692,7 +693,7 @@ class TestToolEventProgress:
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
         _attach_webui_runtime_events(loop, bus)
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await asyncio.wait_for(loop._dispatch(InboundMessage(
             channel="websocket",
@@ -744,7 +745,7 @@ class TestToolEventProgress:
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
         _attach_webui_runtime_events(loop, bus)
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         captured: dict[str, object] = {}
 
@@ -763,9 +764,9 @@ class TestToolEventProgress:
             if "_generate_title_and_notify" in name:
                 scheduled_title.append(coro)
             elif hasattr(coro, "close"):
-                coro.close()
+                cast(Any, coro).close()
 
-        loop._schedule_background = schedule_background  # type: ignore[method-assign]
+        loop._schedule_background = schedule_background
 
         await loop._dispatch(InboundMessage(
             channel="websocket",
@@ -825,7 +826,7 @@ class TestToolEventProgress:
         provider.chat_with_retry = AsyncMock(return_value=LLMResponse(content="Done", tool_calls=[]))
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
         loop.tools.get_definitions = MagicMock(return_value=[])
-        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
+        loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)
 
         await loop._dispatch(InboundMessage(
             channel="slack",

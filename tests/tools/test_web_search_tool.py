@@ -3,8 +3,7 @@
 import httpx
 import pytest
 
-from hczkbot.agent.tools.web import WebSearchTool
-from hczkbot.config.schema import WebSearchConfig
+from hczkbot.agent.tools.web import WebSearchConfig, WebSearchTool
 
 
 def _tool(
@@ -13,7 +12,7 @@ def _tool(
     base_url: str = "",
     user_agent: str | None = None,
 ) -> WebSearchTool:
-    return WebSearchTool(
+    return WebSearchTool(  # type: ignore[abstract]
         config=WebSearchConfig(provider=provider, api_key=api_key, base_url=base_url),
         user_agent=user_agent,
     )
@@ -591,8 +590,8 @@ async def test_olostep_search_formats_answer_and_sources(monkeypatch):
     import types
 
     fake_mod = types.ModuleType("olostep")
-    fake_mod.AsyncOlostep = MockAsyncOlostep
-    fake_mod.Olostep_BaseError = Exception
+    fake_mod.AsyncOlostep = MockAsyncOlostep  # type: ignore[attr-defined]
+    fake_mod.Olostep_BaseError = Exception  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "olostep", fake_mod)
 
     tool = _tool(provider="olostep", api_key="olostep-key")
@@ -619,8 +618,8 @@ async def test_olostep_missing_key_falls_back_to_duckduckgo(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "fallback"}]
 
     fake_mod = types.ModuleType("olostep")
-    fake_mod.AsyncOlostep = object
-    fake_mod.Olostep_BaseError = Exception
+    fake_mod.AsyncOlostep = object  # type: ignore[attr-defined]
+    fake_mod.Olostep_BaseError = Exception  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "olostep", fake_mod)
 
     monkeypatch.delenv("OLOSTEP_API_KEY", raising=False)

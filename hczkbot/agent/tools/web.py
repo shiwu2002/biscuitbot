@@ -42,7 +42,7 @@ class WebSearchConfig(Base):
     api_key: str = ""
     base_url: str = ""
     max_results: int = 5
-    timeout: int = 30
+    timeout: float = 30.0
 
 
 class WebFetchConfig(Base):
@@ -229,13 +229,19 @@ class WebSearchTool(Tool):
     """Search the web using configured provider."""
     _scopes = {"core", "subagent"}
 
-    name = "web_search"
-    description = (
-        "Search the web. Returns titles, URLs, and snippets. "
-        "count defaults to 5 (max 10). "
-        "Some providers support timeRange, authLevel, and queryRewrite. "
-        "Use web_fetch to read a specific page in full."
-    )
+    @property
+    def name(self) -> str:
+        return "web_search"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Search the web. Returns titles, URLs, and snippets. "
+            "count defaults to 5 (max 10). "
+            "Some providers support timeRange, authLevel, and queryRewrite. "
+            "Use web_fetch to read a specific page in full."
+        )
+
     _capability = (
         "Search the web for current information; returns titles, URLs, and snippets."
     )
@@ -254,11 +260,12 @@ class WebSearchTool(Tool):
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
-        config_loader = None
+        config_loader: Callable[[], WebSearchConfig] | None = None
         if ctx.provider_snapshot_loader is not None:
-            def config_loader():
+            def _loader() -> WebSearchConfig:
                 from hczkbot.config.loader import load_config, resolve_config_env_vars
                 return resolve_config_env_vars(load_config()).tools.web.search
+            config_loader = _loader
         return cls(
             config=ctx.config.web.search,
             proxy=ctx.config.web.proxy,
@@ -382,7 +389,7 @@ class WebSearchTool(Tool):
 
     async def _search_olostep(self, query: str, n: int) -> str:
         try:
-            from olostep import AsyncOlostep, Olostep_BaseError
+            from olostep import AsyncOlostep, Olostep_BaseError  # type: ignore[import-not-found]
         except ImportError:
             return "Error: olostep package not installed. Run: pip install olostep"
         api_key = self.config.api_key or os.environ.get("OLOSTEP_API_KEY", "")
@@ -396,7 +403,7 @@ class WebSearchTool(Tool):
                     http_client = getattr(transport, "_client", None)
                     if transport is not None and isinstance(http_client, httpx.AsyncClient):
                         await http_client.aclose()
-                        transport._client = httpx.AsyncClient(  # type: ignore[attr-defined]
+                        transport._client = httpx.AsyncClient(
                             proxy=self.proxy,
                             headers=dict(http_client.headers),
                             timeout=http_client.timeout,
@@ -807,12 +814,18 @@ class WebFetchTool(Tool):
     """Fetch and extract content from a URL."""
     _scopes = {"core", "subagent"}
 
-    name = "web_fetch"
-    description = (
-        "Fetch a URL and extract readable content (HTML → markdown/text). "
-        "Output is capped at maxChars (default 50 000). "
-        "Works for most web pages and docs; may fail on login-walled or JS-heavy sites."
-    )
+    @property
+    def name(self) -> str:
+        return "web_fetch"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Fetch a URL and extract readable content (HTML → markdown/text). "
+            "Output is capped at maxChars (default 50 000). "
+            "Works for most web pages and docs; may fail on login-walled or JS-heavy sites."
+        )
+
     _capability = (
         "Fetch a URL and extract readable content as markdown/text for analysis."
     )
@@ -859,6 +872,8 @@ class WebFetchTool(Tool):
         url = url.strip(" \t\r\n`\"'")
         extract_mode = kwargs.pop("extractMode", extract_mode)
         max_chars = kwargs.pop("maxChars", max_chars) or self.max_chars
+        # 确保 max_chars 是 int（pyright 无法从 `or` 表达式推断出非 None 类型）
+        assert max_chars is not None
         is_valid, error_msg = _validate_url_safe(url)
         if not is_valid:
             return json.dumps({"error": f"URL validation failed: {error_msg}", "url": url}, ensure_ascii=False)

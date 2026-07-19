@@ -7,7 +7,7 @@ import signal
 import sys
 from contextlib import nullcontext, suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 # Force UTF-8 encoding for Windows console
 if sys.platform == "win32":
@@ -15,8 +15,8 @@ if sys.platform == "win32":
         os.environ["PYTHONIOENCODING"] = "utf-8"
         # Re-open stdout/stderr with UTF-8 encoding
         with suppress(Exception):
-            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
 # Keep console encoding setup before importing CLI UI/logging libraries.
 import typer  # noqa: E402
@@ -199,9 +199,13 @@ def _make_console() -> Console:
 
 def _render_interactive_ansi(render_fn) -> str:
     """Render Rich output to ANSI so prompt_toolkit can print it safely."""
+    color_system = cast(
+        "Literal['auto', 'standard', '256', 'truecolor', 'windows'] | None",
+        console.color_system or "standard",
+    )
     ansi_console = Console(
         force_terminal=sys.stdout.isatty(),
-        color_system=console.color_system or "standard",
+        color_system=color_system,
         width=console.width,
     )
     with ansi_console.capture() as capture:
@@ -621,15 +625,15 @@ def _run_quick_setup(config, config_path: Path) -> None:
 @app.command()
 def onboard(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
     wizard: bool = typer.Option(False, "--wizard", help="Use interactive wizard"),
 ):
     """Initialize hczkbot configuration and workspace."""
     from hczkbot.config.loader import get_config_path, load_config, save_config, set_config_path
     from hczkbot.config.schema import Config
 
-    if config:
-        config_path = Path(config).expanduser().resolve()
+    if config_file:
+        config_path = Path(config_file).expanduser().resolve()
         set_config_path(config_path)
         console.print(f"[dim]Using config: {config_path}[/dim]")
     else:
@@ -847,7 +851,7 @@ def serve(
     timeout: float | None = typer.Option(None, "--timeout", "-t", help="Per-request timeout (seconds)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show hczkbot runtime logs"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
 ):
     """Start the OpenAI-compatible API server (/v1/chat/completions)."""
     try:
@@ -868,7 +872,7 @@ def serve(
     else:
         logger.disable("hczkbot")
 
-    runtime_config = _load_runtime_config(config, workspace)
+    runtime_config = _load_runtime_config(config_file, workspace)
     api_cfg = runtime_config.api
     host = host if host is not None else api_cfg.host
     port = port if port is not None else api_cfg.port
@@ -923,7 +927,7 @@ def gateway(
     port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
 ):
     """Start the hczkbot gateway."""
     if verbose:
@@ -940,7 +944,7 @@ def gateway(
             colorize=None,
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
-    cfg = _load_runtime_config(config, workspace)
+    cfg = _load_runtime_config(config_file, workspace)
     _run_gateway(cfg, port=port)
 
 
@@ -1492,14 +1496,14 @@ def _run_gateway(
 def desktop(
     port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
     width: int = typer.Option(1200, "--width", help="Window width"),
     height: int = typer.Option(800, "--height", help="Window height"),
 ):
     """Launch hczkbot as a native desktop application."""
     from hczkbot.desktop.app import run_desktop
 
-    cfg = _load_runtime_config(config, workspace)
+    cfg = _load_runtime_config(config_file, workspace)
     run_desktop(cfg, port=port, width=width, height=height)
 
 
@@ -1513,7 +1517,7 @@ def agent(
     message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
     session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
     markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
     logs: bool = typer.Option(False, "--logs/--no-logs", help="Show hczkbot runtime logs during chat"),
 ):
@@ -1524,7 +1528,7 @@ def agent(
     from hczkbot.cron.service import CronService
     from hczkbot.providers.image_generation import image_gen_provider_configs
 
-    config = _load_runtime_config(config, workspace)
+    config = _load_runtime_config(config_file, workspace)
     sync_workspace_templates(config.workspace_path)
 
     bus = MessageBus()
@@ -1675,7 +1679,7 @@ def agent(
 
                         if await _maybe_print_interactive_progress(
                             msg,
-                            renderer,
+                            _thinking,
                             agent_loop.channels_config,
                             renderer,
                             reasoning_buffer,

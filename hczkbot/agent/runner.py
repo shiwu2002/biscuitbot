@@ -851,12 +851,13 @@ class AgentRunner:
         progress_state: dict[str, bool] | None = None
         live_file_edits: StreamingFileEditTracker | None = None
 
+        progress_cb = spec.progress_callback
         if (
-            spec.progress_callback is not None
-            and on_progress_accepts_file_edit_events(spec.progress_callback)
+            progress_cb is not None
+            and on_progress_accepts_file_edit_events(progress_cb)
         ):
             async def _emit_live_file_edits(events: list[dict[str, Any]]) -> None:
-                await invoke_file_edit_progress(spec.progress_callback, events)
+                await invoke_file_edit_progress(progress_cb, events)
 
             live_file_edits = StreamingFileEditTracker(
                 workspace=spec.workspace,
@@ -891,6 +892,7 @@ class AgentRunner:
                 on_stream_recover=_stream_recover,
             )
         elif wants_progress_streaming:
+            assert progress_cb is not None  # wants_progress_streaming requires progress_callback
             stream_buf = ""
             think_extractor = IncrementalThinkExtractor()
             progress_state = {"reasoning_open": False}
@@ -913,7 +915,7 @@ class AgentRunner:
                         await hook.emit_reasoning_end()
                         progress_state["reasoning_open"] = False
                     context.streamed_content = True
-                    await spec.progress_callback(incremental)
+                    await progress_cb(incremental)
 
             coro = self.provider.chat_stream_with_retry(
                 **kwargs,
@@ -1679,7 +1681,7 @@ class AgentRunner:
         for tool_call in tool_calls:
             get_tool = getattr(spec.tools, "get", None)
             tool = get_tool(tool_call.name) if callable(get_tool) else None
-            can_batch = bool(tool and tool.concurrency_safe)
+            can_batch = bool(tool and getattr(tool, "concurrency_safe", False))
             if can_batch:
                 current.append(tool_call)
                 continue

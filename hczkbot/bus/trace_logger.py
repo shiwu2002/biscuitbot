@@ -15,8 +15,6 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from loguru import logger
-
 from hczkbot.bus.runtime_events import AgentTraceEvent, RuntimeEventBus
 
 
@@ -59,7 +57,7 @@ def _ansi_supported() -> bool:
             and sys.stderr.isatty()
             and sys.platform != "win32"
         )
-    return _ANSI_ENABLED
+    return _ANSI_ENABLED or False
 
 
 def _color(text: str, color: str) -> str:

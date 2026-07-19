@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Self, TypeGuard
 
 from pydantic import Field, field_validator, model_validator
 from websockets.asyncio.server import ServerConnection, serve, unix_serve
@@ -185,7 +185,7 @@ def _parse_inbound_payload(raw: str) -> str | None:
 _CHAT_ID_RE = re.compile(r"^[A-Za-z0-9_:-]{1,64}$")
 
 
-def _is_valid_chat_id(value: Any) -> bool:
+def _is_valid_chat_id(value: Any) -> TypeGuard[str]:
     return isinstance(value, str) and _CHAT_ID_RE.match(value) is not None
 
 
