@@ -975,6 +975,8 @@ def _run_gateway(
     port = port if port is not None else config.gateway.port
 
     console.print(f"{__logo__} 正在启动 hczkbot 网关，版本 {__version__} 端口 {port}...")
+    if open_browser_url:
+        console.print(f"  WebUI 地址：[cyan]{open_browser_url}[/cyan]")
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     runtime_events = RuntimeEventBus()
