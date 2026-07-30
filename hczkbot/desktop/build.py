@@ -22,32 +22,32 @@ SPEC_FILE = PROJECT_ROOT / "hczkbot" / "desktop" / "hczkbot.spec"
 
 def build_webui() -> None:
     """构建 WebUI 前端到 hczkbot/web/dist/"""
-    print("[1/3] Building WebUI...")
+    print("[1/3] 正在构建 WebUI...")
     if not (WEBUI_DIR / "package.json").exists():
-        print("  Skip: webui/package.json not found")
+        print("  跳过：未找到 webui/package.json")
         return
     subprocess.run(["bun", "install"], cwd=WEBUI_DIR, check=True)
     subprocess.run(["bun", "run", "build"], cwd=WEBUI_DIR, check=True)
-    print("  WebUI built to hczkbot/web/dist/")
+    print("  WebUI 已构建至 hczkbot/web/dist/")
 
 
 def ensure_pyinstaller() -> None:
     """确保 PyInstaller 已安装"""
-    print("[2/3] Checking PyInstaller...")
+    print("[2/3] 正在检查 PyInstaller...")
     try:
         import PyInstaller  # noqa: F401
     except ImportError:
-        print("  Installing PyInstaller...")
+        print("  正在安装 PyInstaller...")
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "pyinstaller"],
             check=True,
         )
-    print("  PyInstaller ready")
+    print("  PyInstaller 就绪")
 
 
 def run_pyinstaller(*, console: bool = False) -> None:
     """运行 PyInstaller 打包"""
-    print("[3/3] Building desktop application...")
+    print("[3/3] 正在构建桌面应用...")
     cmd = [
         sys.executable,
         "-m",
@@ -63,15 +63,15 @@ def run_pyinstaller(*, console: bool = False) -> None:
     subprocess.run(cmd, cwd=PROJECT_ROOT, check=True)
 
     if sys.platform == "darwin":
-        print("\nDone! Output: dist/hczkbot.app")
+        print("\n完成！输出：dist/hczkbot.app")
     else:
-        print("\nDone! Output: dist/hczkbot/")
+        print("\n完成！输出：dist/hczkbot/")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build hczkbot desktop app")
-    parser.add_argument("--skip-webui", action="store_true", help="Skip WebUI build")
-    parser.add_argument("--console", action="store_true", help="Build with console (debug)")
+    parser = argparse.ArgumentParser(description="构建 hczkbot 桌面应用")
+    parser.add_argument("--skip-webui", action="store_true", help="跳过 WebUI 构建")
+    parser.add_argument("--console", action="store_true", help="带控制台构建（调试用）")
     args = parser.parse_args()
 
     if not args.skip_webui:

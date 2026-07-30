@@ -45,7 +45,7 @@ try:
     from nio.exceptions import EncryptionError
 except ImportError as e:
     raise ImportError(
-        "Matrix dependencies not installed. Run: pip install hczkbot-ai[matrix]"
+        "Matrix dependencies not installed. Run: pip install hczkbot[matrix]"
     ) from e
 
 from hczkbot.bus.events import OutboundMessage

@@ -87,7 +87,7 @@ class SafeFileHistory(FileHistory):
 app = typer.Typer(
     name="hczkbot",
     context_settings={"help_option_names": ["-h", "--help"]},
-    help=f"{__logo__} hczkbot - Personal AI Assistant",
+    help=f"{__logo__} hczkbot - 个人 AI 助手",
     no_args_is_help=True,
 )
 
@@ -97,11 +97,9 @@ _REASONING_SENTENCE_ENDINGS = (".", "!", "?", "。", "！", "？")
 _REASONING_FLUSH_CHARS = 60
 
 _HEARTBEAT_PREAMBLE = (
-    "[Your response will be delivered directly to the user's messaging app. "
-    "Output ONLY the final user-facing message. Never reference internal "
-    "files (HEARTBEAT.md, AWARENESS.md, etc.), your instructions, or your "
-    "decision process. If nothing needs reporting, respond with just "
-    "'All clear.' and nothing else.]\n\n"
+    "[你的回复将直接发送到用户的消息应用。只输出最终面向用户的消息。"
+    "永远不要引用内部文件（HEARTBEAT.md、AWARENESS.md 等）、你的指令或你的决策过程。"
+    "如果没有什么需要报告的，只回复'一切正常。'即可。]\n\n"
 )
 
 
@@ -408,7 +406,7 @@ async def _read_interactive_input_async() -> str:
     try:
         with patch_stdout():
             return await _PROMPT_SESSION.prompt_async(
-                HTML("<b fg='ansiblue'>You:</b> "),
+                HTML("<b fg='ansiblue'>你：</b> "),
             )
     except EOFError as exc:
         raise KeyboardInterrupt from exc
@@ -426,7 +424,7 @@ def main(
         None, "--version", "-v", callback=version_callback, is_eager=True
     ),
 ):
-    """hczkbot - Personal AI Assistant."""
+    """hczkbot - 个人 AI 助手。"""
     pass
 
 
@@ -457,9 +455,9 @@ def _run_quick_setup(config, config_path: Path) -> None:
     try:
         import questionary
     except ImportError:
-        console.print("[yellow]![/yellow] Quick setup requires 'questionary'. Install with:")
+        console.print("[yellow]![/yellow] 快速安装需要 'questionary'。请安装：")
         console.print("  pip install questionary")
-        console.print(f"\n  Or manually edit: [cyan]{config_path}[/cyan]")
+        console.print(f"\n  或手动编辑：[cyan]{config_path}[/cyan]")
         return
 
     # 非交互式环境（如 pytest CliRunner、CI、管道输入）下跳过交互式引导
@@ -476,8 +474,8 @@ def _run_quick_setup(config, config_path: Path) -> None:
 
     # --- Step 0: Welcome ---
     console.print()
-    console.print(Align.center(f"{__logo__} [bold cyan]hczkbot Quick Setup[/bold cyan]"))
-    console.print(Align.center("[dim]Let's get you started in 3 steps[/dim]"))
+    console.print(Align.center(f"{__logo__} [bold cyan]hczkbot 快速安装[/bold cyan]"))
+    console.print(Align.center("[dim]3 步开始使用[/dim]"))
     console.print()
 
     # Build provider choices (skip gateway-only, oauth, direct, local providers)
@@ -489,18 +487,18 @@ def _run_quick_setup(config, config_path: Path) -> None:
         provider_choices.append((spec.name, label))
 
     if not provider_choices:
-        console.print("[red]No providers available.[/red]")
+        console.print("[red]没有可用的 LLM 提供商。[/red]")
         return
 
     # --- Step 1: Select Provider ---
     selected_name = questionary.select(
-        "Step 1/3 — Select your LLM provider:",
+        "步骤 1/3 — 选择 LLM 提供商：",
         choices=[label for _, label in provider_choices],
         default=provider_choices[0][1] if provider_choices else None,
     ).ask()
 
     if not selected_name:
-        console.print("[yellow]Setup cancelled.[/yellow]")
+        console.print("[yellow]安装已取消。[/yellow]")
         return
 
     # Map display name back to internal name
@@ -519,11 +517,11 @@ def _run_quick_setup(config, config_path: Path) -> None:
     }
     url = key_urls.get(provider_name, "")
     if url:
-        console.print(f"  [dim]Get your key: {url}[/dim]")
+        console.print(f"  [dim]获取密钥：{url}[/dim]")
 
-    api_key = questionary.password("Step 2/3 — Enter your API key:").ask()
+    api_key = questionary.password("步骤 2/3 — 输入 API 密钥：").ask()
     if not api_key:
-        console.print("[yellow]Setup cancelled.[/yellow]")
+        console.print("[yellow]安装已取消。[/yellow]")
         return
 
     # Apply API key and base URL to config
@@ -570,7 +568,7 @@ def _run_quick_setup(config, config_path: Path) -> None:
     default_model, model_choices = model_defaults.get(provider_name, (f"{provider_name}/default", [f"{provider_name}/default"]))
 
     selected_model = questionary.select(
-        f"Step 3/3 — Select model ({selected_name}):",
+        f"步骤 3/3 — 选择模型 ({selected_name}):",
         choices=model_choices,
         default=model_choices[0],
     ).ask()
@@ -607,35 +605,35 @@ def _run_quick_setup(config, config_path: Path) -> None:
 
     # --- Done ---
     console.print()
-    console.print(Align.center("[bold green]✓ Setup complete![/bold green]"))
+    console.print(Align.center("[bold green]✓ 安装完成！[/bold green]"))
     console.print()
-    console.print(f"  Provider: [cyan]{selected_name}[/cyan]")
-    console.print(f"  Model:    [cyan]{model_id}[/cyan]")
-    console.print(f"  Config:   [cyan]{config_path}[/cyan]")
+    console.print(f"  提供商：[cyan]{selected_name}[/cyan]")
+    console.print(f"  模型：[cyan]{model_id}[/cyan]")
+    console.print(f"  配置：[cyan]{config_path}[/cyan]")
     console.print()
-    console.print("  You can now run:")
+    console.print("  现在可以运行：")
     console.print("    [green]hczkbot agent -m \"Hello!\"[/green]")
     console.print("    [green]hczkbot gateway[/green]")
     console.print()
-    console.print("  For more options (channels, presets, tools), run:")
+    console.print("  更多选项（频道、预设、工具），请运行：")
     console.print("    [dim]hczkbot onboard --wizard[/dim]")
     console.print()
 
 
 @app.command()
 def onboard(
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
-    wizard: bool = typer.Option(False, "--wizard", help="Use interactive wizard"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+    wizard: bool = typer.Option(False, "--wizard", help="使用交互式引导"),
 ):
-    """Initialize hczkbot configuration and workspace."""
+    """初始化 hczkbot 配置和工作区。"""
     from hczkbot.config.loader import get_config_path, load_config, save_config, set_config_path
     from hczkbot.config.schema import Config
 
     if config_file:
         config_path = Path(config_file).expanduser().resolve()
         set_config_path(config_path)
-        console.print(f"[dim]Using config: {config_path}[/dim]")
+        console.print(f"[dim]使用配置：{config_path}[/dim]")
     else:
         config_path = get_config_path()
 
@@ -649,29 +647,29 @@ def onboard(
         if wizard:
             config = _apply_workspace_override(load_config(config_path))
         else:
-            console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
+            console.print(f"[yellow]配置文件已存在于 {config_path}[/yellow]")
             console.print(
-                "  [bold]y[/bold] = overwrite with defaults (existing values will be lost)"
+                "  [bold]y[/bold] = 使用默认值覆盖（已有值将丢失）"
             )
             console.print(
-                "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields"
+                "  [bold]N[/bold] = 刷新配置，保留已有值并添加新字段"
             )
-            if typer.confirm("Overwrite?"):
+            if typer.confirm("是否覆盖？"):
                 config = _apply_workspace_override(Config())
                 save_config(config, config_path)
-                console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
+                console.print(f"[green]✓[/green] 配置已重置为默认值，位于 {config_path}")
             else:
                 config = _apply_workspace_override(load_config(config_path))
                 save_config(config, config_path)
                 console.print(
-                    f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)"
+                    f"[green]✓[/green] 配置已刷新，位于 {config_path}（已有值已保留）"
                 )
     else:
         config = _apply_workspace_override(Config())
         # In wizard mode, don't save yet - the wizard will handle saving if should_save=True
         if not wizard:
             save_config(config, config_path)
-            console.print(f"[green]✓[/green] Created config at {config_path}")
+            console.print(f"[green]✓[/green] 配置已创建，位于 {config_path}")
 
     # Run interactive wizard if enabled
     if wizard:
@@ -680,15 +678,15 @@ def onboard(
         try:
             result = run_onboard(initial_config=config)
             if not result.should_save:
-                console.print("[yellow]Configuration discarded. No changes were saved.[/yellow]")
+                console.print("[yellow]配置已丢弃，未保存任何更改。[/yellow]")
                 return
 
             config = result.config
             save_config(config, config_path)
-            console.print(f"[green]✓[/green] Config saved at {config_path}")
+            console.print(f"[green]✓[/green] 配置已保存，位于 {config_path}")
         except Exception as e:
-            console.print(f"[red]✗[/red] Error during configuration: {e}")
-            console.print("[yellow]Please run 'hczkbot onboard' again to complete setup.[/yellow]")
+            console.print(f"[red]✗[/red] 配置过程中出错：{e}")
+            console.print("[yellow]请再次运行 'hczkbot onboard' 完成安装。[/yellow]")
             raise typer.Exit(1)
 
     # Quick setup: when no API key is configured, guide user through essential steps
@@ -700,7 +698,7 @@ def onboard(
     workspace_path = get_workspace_path(config.workspace_path)
     if not workspace_path.exists():
         workspace_path.mkdir(parents=True, exist_ok=True)
-        console.print(f"[green]✓[/green] Created workspace at {workspace_path}")
+        console.print(f"[green]✓[/green] 工作区已创建，位于 {workspace_path}")
 
     sync_workspace_templates(workspace_path)
 
@@ -710,25 +708,25 @@ def onboard(
         agent_cmd += f" --config {config_path}"
         gateway_cmd += f" --config {config_path}"
 
-    console.print(f"\n{__logo__} hczkbot is ready!")
+    console.print(f"\n{__logo__} hczkbot 已就绪！")
     if _has_any_api_key(config):
-        console.print("\nNext steps:")
-        console.print(f"  1. Chat:     [cyan]{agent_cmd}[/cyan]")
-        console.print(f"  2. Gateway:  [cyan]{gateway_cmd}[/cyan]")
-        console.print("  3. Advanced: [cyan]hczkbot onboard --wizard[/cyan]")
+        console.print("\n后续步骤：")
+        console.print(f"  1. 聊天：     [cyan]{agent_cmd}[/cyan]")
+        console.print(f"  2. 网关：  [cyan]{gateway_cmd}[/cyan]")
+        console.print("  3. 高级设置：[cyan]hczkbot onboard --wizard[/cyan]")
     elif wizard:
-        console.print("\nNext steps:")
-        console.print(f"  1. Chat: [cyan]{agent_cmd}[/cyan]")
-        console.print(f"  2. Start gateway: [cyan]{gateway_cmd}[/cyan]")
+        console.print("\n后续步骤：")
+        console.print(f"  1. 聊天：[cyan]{agent_cmd}[/cyan]")
+        console.print(f"  2. 启动网关：[cyan]{gateway_cmd}[/cyan]")
     else:
-        console.print("\nNext steps:")
-        console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
+        console.print("\n后续步骤：")
+        console.print(f"  1. 将 API 密钥添加到 [cyan]{config_path}[/cyan]")
         console.print("     DeepSeek:   https://platform.deepseek.com/api_keys")
         console.print("     OpenAI:      https://platform.openai.com/api-keys")
         console.print("     Anthropic:   https://console.anthropic.com/settings/keys")
         console.print("     DashScope:   https://dashscope.console.aliyun.com/apiKey")
         console.print("     Zhipu (智谱): https://open.bigmodel.cn/usercenter/apikeys")
-        console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
+        console.print(f"  2. 聊天：[cyan]{agent_cmd}[/cyan]")
     console.print(
         "\n[dim]Docs: https://github.com/hczkbot/hczkbot[/dim]"
     )
@@ -791,15 +789,15 @@ def _load_runtime_config(config: str | None = None, workspace: str | None = None
     if config:
         config_path = Path(config).expanduser().resolve()
         if not config_path.exists():
-            console.print(f"[red]Error: Config file not found: {config_path}[/red]")
+            console.print(f"[red]错误：配置文件未找到：{config_path}[/red]")
             raise typer.Exit(1)
         set_config_path(config_path)
-        console.print(f"[dim]Using config: {config_path}[/dim]")
+        console.print(f"[dim]使用配置：{config_path}[/dim]")
 
     try:
         loaded = resolve_config_env_vars(load_config(config_path))
     except ValueError as e:
-        console.print(f"[red]Error: {e}[/red]")
+        console.print(f"[red]错误：{e}[/red]")
         raise typer.Exit(1)
     _warn_deprecated_config_keys(config_path)
     if workspace:
@@ -821,8 +819,7 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
         return
     if "memoryWindow" in raw.get("agents", {}).get("defaults", {}):
         console.print(
-            "[dim]Hint: `memoryWindow` in your config is no longer used "
-            "and can be safely removed.[/dim]"
+            "[dim]提示：配置中的 `memoryWindow` 已不再使用，可以安全删除。[/dim]"
         )
 
 
@@ -846,18 +843,18 @@ def _migrate_cron_store(config: "Config") -> None:
 
 @app.command()
 def serve(
-    port: int | None = typer.Option(None, "--port", "-p", help="API server port"),
-    host: str | None = typer.Option(None, "--host", "-H", help="Bind address"),
-    timeout: float | None = typer.Option(None, "--timeout", "-t", help="Per-request timeout (seconds)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show hczkbot runtime logs"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    port: int | None = typer.Option(None, "--port", "-p", help="API 服务器端口"),
+    host: str | None = typer.Option(None, "--host", "-H", help="绑定地址"),
+    timeout: float | None = typer.Option(None, "--timeout", "-t", help="单请求超时时间（秒）"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="显示 hczkbot 运行时日志"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """Start the OpenAI-compatible API server (/v1/chat/completions)."""
+    """启动 OpenAI 兼容 API 服务器 (/v1/chat/completions)。"""
     try:
         from aiohttp import web  # noqa: F401
     except ImportError:
-        console.print("[red]aiohttp is required. Install with: pip install 'hczkbot-ai[api]'[/red]")
+        console.print("[red]需要 aiohttp。请安装：pip install 'hczkbot[api]'[/red]")
         raise typer.Exit(1)
 
     from loguru import logger
@@ -887,19 +884,18 @@ def serve(
             image_generation_provider_configs=image_gen_provider_configs(runtime_config),
         )
     except ValueError as exc:
-        console.print(f"[red]Error: {exc}[/red]")
+        console.print(f"[red]错误：{exc}[/red]")
         raise typer.Exit(1) from exc
 
     model_name, preset_tag = _model_display(runtime_config)
-    console.print(f"{__logo__} Starting OpenAI-compatible API server")
-    console.print(f"  [cyan]Endpoint[/cyan] : http://{host}:{port}/v1/chat/completions")
-    console.print(f"  [cyan]Model[/cyan]    : {model_name}{preset_tag}")
-    console.print("  [cyan]Session[/cyan]  : api:default")
-    console.print(f"  [cyan]Timeout[/cyan]  : {timeout}s")
+    console.print(f"{__logo__} 正在启动 OpenAI 兼容 API 服务器")
+    console.print(f"  [cyan]端点[/cyan] : http://{host}:{port}/v1/chat/completions")
+    console.print(f"  [cyan]模型[/cyan]    : {model_name}{preset_tag}")
+    console.print("  [cyan]会话[/cyan]  : api:default")
+    console.print(f"  [cyan]超时[/cyan]  : {timeout}s")
     if host in {"0.0.0.0", "::"}:
         console.print(
-            "[yellow]Warning:[/yellow] API is bound to all interfaces. "
-            "Only do this behind a trusted network boundary, firewall, or reverse proxy."
+            "[yellow]警告：[/yellow]API 绑定到所有网络接口。请确保仅在受信任的网络边界、防火墙或反向代理后使用。"
         )
     console.print()
 
@@ -924,12 +920,12 @@ def serve(
 
 @app.command()
 def gateway(
-    port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    port: int | None = typer.Option(None, "--port", "-p", help="网关端口"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """Start the hczkbot gateway."""
+    """启动 hczkbot 网关。"""
     if verbose:
         logger.remove(_log_handler_id)
         logger.add(
@@ -945,7 +941,10 @@ def gateway(
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
     cfg = _load_runtime_config(config_file, workspace)
-    _run_gateway(cfg, port=port)
+    gw_port = port if port is not None else cfg.gateway.port
+    gw_host = cfg.gateway.host or "127.0.0.1"
+    open_url = f"http://{gw_host}:{gw_port}/"
+    _run_gateway(cfg, port=port, open_browser_url=open_url)
 
 
 def _run_gateway(
@@ -975,14 +974,14 @@ def _run_gateway(
 
     port = port if port is not None else config.gateway.port
 
-    console.print(f"{__logo__} Starting hczkbot gateway version {__version__} on port {port}...")
+    console.print(f"{__logo__} 正在启动 hczkbot 网关，版本 {__version__} 端口 {port}...")
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     runtime_events = RuntimeEventBus()
     try:
         provider_snapshot = build_provider_snapshot(config)
     except ValueError as exc:
-        console.print(f"[red]Error: {exc}[/red]")
+        console.print(f"[red]错误：{exc}[/red]")
         raise typer.Exit(1) from exc
     session_manager = SessionManager(config.workspace_path)
 
@@ -1334,19 +1333,19 @@ def _run_gateway(
         return "cli", "direct"
 
     if channels.enabled_channels:
-        console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
+        console.print(f"[green]✓[/green] 已启用频道：{', '.join(channels.enabled_channels)}")
     else:
-        console.print("[yellow]Warning: No channels enabled[/yellow]")
+        console.print("[yellow]警告：未启用任何频道[/yellow]")
 
     cron_status = cron.status()
     if cron_status["jobs"] > 0:
-        console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
+        console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} 个定时任务")
 
     hb_cfg = config.gateway.heartbeat
     if hb_cfg.enabled:
-        console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
+        console.print(f"[green]✓[/green] Heartbeat: 每 {hb_cfg.interval_s} 秒")
     else:
-        console.print("[yellow]✗[/yellow] Heartbeat: disabled")
+        console.print("[yellow]✗[/yellow] 心跳：已禁用")
 
     async def _health_server(host: str, health_port: int):
         """Lightweight HTTP health endpoint on the gateway port."""
@@ -1387,7 +1386,7 @@ def _run_gateway(
             writer.close()
 
         server = await asyncio.start_server(handle, host, health_port)
-        console.print(f"[green]✓[/green] Health endpoint: http://{host}:{health_port}/health")
+        console.print(f"[green]✓[/green] 健康检查端点：http://{host}:{health_port}/health")
         async with server:
             await server.serve_forever()
     # Register Dream system job (idempotent on restart)
@@ -1400,9 +1399,9 @@ def _run_gateway(
             schedule=dream_cfg.build_schedule(config.agents.defaults.timezone),
             payload=CronPayload(kind="system_event"),
         ))
-        console.print(f"[green]✓[/green] Dream: {dream_cfg.describe_schedule()}")
+        console.print(f"[green]✓[/green] 梦境：{dream_cfg.describe_schedule()}")
     else:
-        console.print("[yellow]○[/yellow] Dream: disabled")
+        console.print("[yellow]○[/yellow] 梦境：已禁用")
 
     # Register Heartbeat system job (idempotent on restart)
     if hb_cfg.enabled:
@@ -1449,9 +1448,9 @@ def _run_gateway(
                 await asyncio.sleep(0.1)
         try:
             webbrowser.open(open_browser_url)
-            console.print(f"[green]✓[/green] Opened browser at {open_browser_url}")
+            console.print(f"[green]✓[/green] 已打开浏览器：{open_browser_url}")
         except Exception as e:
-            console.print(f"[yellow]Could not open browser ({e}); visit {open_browser_url}[/yellow]")
+            console.print(f"[yellow]无法打开浏览器 ({e})，请访问 {open_browser_url}[/yellow]")
 
     async def run():
         try:
@@ -1466,11 +1465,11 @@ def _run_gateway(
                 tasks.append(_open_browser_when_ready())
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
-            console.print("\nShutting down...")
+            console.print("\n正在关闭...")
         except Exception:
             import traceback
 
-            console.print("\n[red]Error: Gateway crashed unexpectedly[/red]")
+            console.print("\n[red]错误：网关意外崩溃[/red]")
             console.print(traceback.format_exc())
         finally:
             await agent.close_mcp()
@@ -1494,13 +1493,13 @@ def _run_gateway(
 
 @app.command()
 def desktop(
-    port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
-    width: int = typer.Option(1200, "--width", help="Window width"),
-    height: int = typer.Option(800, "--height", help="Window height"),
+    port: int | None = typer.Option(None, "--port", "-p", help="网关端口"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+    width: int = typer.Option(1200, "--width", help="窗口宽度"),
+    height: int = typer.Option(800, "--height", help="窗口高度"),
 ):
-    """Launch hczkbot as a native desktop application."""
+    """以原生桌面应用方式启动 hczkbot。"""
     from hczkbot.desktop.app import run_desktop
 
     cfg = _load_runtime_config(config_file, workspace)
@@ -1514,14 +1513,14 @@ def desktop(
 
 @app.command()
 def agent(
-    message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
-    session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
-    logs: bool = typer.Option(False, "--logs/--no-logs", help="Show hczkbot runtime logs during chat"),
+    message: str = typer.Option(None, "--message", "-m", help="发送给智能体的消息"),
+    session_id: str = typer.Option("cli:direct", "--session", "-s", help="会话 ID"),
+    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="以 Markdown 渲染助手输出"),
+    logs: bool = typer.Option(False, "--logs/--no-logs", help="在聊天中显示 hczkbot 运行时日志"),
 ):
-    """Interact with the agent directly."""
+    """直接与智能体交互。"""
     from loguru import logger
 
     from hczkbot.bus.queue import MessageBus
@@ -1553,7 +1552,7 @@ def agent(
             image_generation_provider_configs=image_gen_provider_configs(config),
         )
     except ValueError as exc:
-        console.print(f"[red]Error: {exc}[/red]")
+        console.print(f"[red]错误：{exc}[/red]")
         raise typer.Exit(1) from exc
     restart_notice = consume_restart_notice_from_env()
     if restart_notice and should_show_cli_restart_notice(restart_notice, session_id):
@@ -1627,7 +1626,7 @@ def agent(
         _init_prompt_session()
         _model, _preset_tag = _model_display(config)
         _icon = config.agents.defaults.bot_icon or __logo__
-        console.print(f"{_icon} Interactive mode [bold blue]({_model})[/bold blue]{_preset_tag} — type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit\n")
+        console.print(f"{_icon} 交互模式 [bold blue]({_model})[/bold blue]{_preset_tag} — 输入 [bold]exit[/bold] 或 [bold]Ctrl+C[/bold] 退出\n")
 
         if ":" in session_id:
             cli_channel, cli_chat_id = session_id.split(":", 1)
@@ -1637,7 +1636,7 @@ def agent(
         def _handle_signal(signum, frame):
             sig_name = signal.Signals(signum).name
             _restore_terminal()
-            console.print(f"\nReceived {sig_name}, goodbye!")
+            console.print(f"\n收到信号 {sig_name}，再见！")
             sys.exit(0)
 
         signal.signal(signal.SIGINT, _handle_signal)
@@ -1718,7 +1717,7 @@ def agent(
 
                         if _is_exit_command(command):
                             _restore_terminal()
-                            console.print("\nGoodbye!")
+                            console.print("\n再见！")
                             break
 
                         turn_done.clear()
@@ -1758,11 +1757,11 @@ def agent(
                             await renderer.close()
                     except KeyboardInterrupt:
                         _restore_terminal()
-                        console.print("\nGoodbye!")
+                        console.print("\n再见！")
                         break
                     except EOFError:
                         _restore_terminal()
-                        console.print("\nGoodbye!")
+                        console.print("\n再见！")
                         break
             finally:
                 agent_loop.stop()
@@ -1778,15 +1777,15 @@ def agent(
 # ============================================================================
 
 
-channels_app = typer.Typer(help="Manage channels")
+channels_app = typer.Typer(help="管理频道")
 app.add_typer(channels_app, name="channels")
 
 
 @channels_app.command("status")
 def channels_status(
-    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """Show channel status."""
+    """显示频道状态。"""
     from hczkbot.channels.registry import discover_all
     from hczkbot.config.loader import load_config, set_config_path
 
@@ -1818,11 +1817,11 @@ def channels_status(
 
 @channels_app.command("login")
 def channels_login(
-    channel_name: str = typer.Argument(..., help="Channel name (e.g. weixin, whatsapp)"),
-    force: bool = typer.Option(False, "--force", "-f", help="Force re-authentication even if already logged in"),
-    config_path: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    channel_name: str = typer.Argument(..., help="频道名称（如 weixin、whatsapp）"),
+    force: bool = typer.Option(False, "--force", "-f", help="强制重新认证（即使已登录）"),
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """Authenticate with a channel via QR code or other interactive login."""
+    """通过二维码或其他交互方式登录频道。"""
     from hczkbot.channels.registry import discover_all
     from hczkbot.config.loader import load_config, set_config_path
 
@@ -1855,13 +1854,13 @@ def channels_login(
 # Plugin Commands
 # ============================================================================
 
-plugins_app = typer.Typer(help="Manage channel plugins")
+plugins_app = typer.Typer(help="管理频道插件")
 app.add_typer(plugins_app, name="plugins")
 
 
 @plugins_app.command("list")
 def plugins_list():
-    """List all discovered channels (built-in and plugins)."""
+    """列出所有已发现的频道（内置和插件）。"""
     from hczkbot.channels.registry import discover_all, discover_channel_names
     from hczkbot.config.loader import load_config
 
@@ -1900,7 +1899,7 @@ def plugins_list():
 
 @app.command()
 def status():
-    """Show hczkbot status."""
+    """显示 hczkbot 状态。"""
     from hczkbot.config.loader import get_config_path, load_config
 
     config_path = get_config_path()

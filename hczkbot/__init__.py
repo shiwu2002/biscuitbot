@@ -19,10 +19,10 @@ def _read_pyproject_version() -> str | None:
 
 def _resolve_version() -> str:
     try:
-        return _pkg_version("hczkbot-ai")
+        return _pkg_version("hczkbot")
     except PackageNotFoundError:
         # 源码检出通常在没有安装 dist-info 的情况下导入 hczkbot
-        return _read_pyproject_version() or "0.2.1"
+        return _read_pyproject_version() or "0.2.2"
 
 
 __version__ = _resolve_version()
