@@ -1779,7 +1779,7 @@ def agent(
 # ============================================================================
 
 
-channels_app = typer.Typer(help="管理频道")
+channels_app = typer.Typer(help="管理频道", no_args_is_help=True)
 app.add_typer(channels_app, name="channels")
 
 
@@ -1856,7 +1856,7 @@ def channels_login(
 # Plugin Commands
 # ============================================================================
 
-plugins_app = typer.Typer(help="管理频道插件")
+plugins_app = typer.Typer(help="管理频道插件", no_args_is_help=True)
 app.add_typer(plugins_app, name="plugins")
 
 

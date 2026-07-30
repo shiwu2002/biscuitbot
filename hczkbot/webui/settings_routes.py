@@ -121,6 +121,8 @@ class WebUISettingsRouter:
             return await self._handle_settings_mcp_presets(request)
         if path == "/api/settings/version-check":
             return await self._handle_settings_version_check(request)
+        if path == "/api/settings/self-update":
+            return await self._handle_settings_self_update(request)
         mcp_action = _MCP_PRESET_ACTIONS_BY_PATH.get(path)
         if mcp_action is not None:
             return await self._handle_settings_mcp_presets(request, mcp_action)
@@ -372,3 +374,43 @@ class WebUISettingsRouter:
         return self._json_response({
             "updateAvailable": update_info,
         })
+
+    async def _handle_settings_self_update(self, request: WsRequest) -> Response:
+        """Run pip install --upgrade hczkbot and return the result."""
+        if not self._authorized(request):
+            return self._unauthorized()
+        if request.method != "POST":
+            return self._error_response(405, "Method Not Allowed")
+
+        import subprocess
+        import sys
+
+        def _run_pip_upgrade() -> dict[str, Any]:
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "hczkbot"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                output = (result.stdout or "") + (result.stderr or "")
+                if result.returncode == 0:
+                    # 解析安装的版本
+                    import re
+                    match = re.search(r"Successfully installed hczkbot-([^\s]+)", output)
+                    new_ver = match.group(1) if match else None
+                    return {"success": True, "newVersion": new_ver, "output": output.strip()}
+                return {"success": False, "output": output.strip()}
+            except Exception as e:
+                return {"success": False, "output": str(e)}
+
+        try:
+            update_result = await asyncio.to_thread(_run_pip_upgrade)
+        except Exception:
+            self.logger.exception("self-update failed")
+            return self._error_response(500, "self-update failed")
+
+        payload: dict[str, Any] = {"selfUpdate": update_result}
+        if update_result.get("success"):
+            payload["requires_restart"] = True
+        return self._json_response(self._with_restart_state(payload, section="runtime"))

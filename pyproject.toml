@@ -1,6 +1,6 @@
 [project]
 name = "hczkbot"
-version = "0.2.2"
+version = "0.2.3"
 description = "A lightweight personal AI assistant framework"
 readme = { file = "docs/PROJECT_GUIDE.md", content-type = "text/markdown" }
 requires-python = ">=3.11"

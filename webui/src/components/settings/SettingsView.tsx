@@ -95,6 +95,7 @@ import {
   runCliAppAction,
   runMcpPresetAction,
   saveCustomMcpServer,
+  selfUpdate,
   updateAutomation,
   updateImageGenerationSettings,
   updateMcpServerTools,
@@ -2222,9 +2223,11 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
   const { token } = useClient();
   const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [result, setResult] = useState<
     | { type: "up-to-date" }
     | { type: "update"; latestVersion: string; pypiUrl?: string }
+    | { type: "updated"; newVersion?: string }
     | { type: "error"; message: string }
     | null
   >(null);
@@ -2250,6 +2253,22 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
     }
   };
 
+  const handleSelfUpdate = async () => {
+    setUpdating(true);
+    try {
+      const res = await selfUpdate(token);
+      if (res.selfUpdate?.success) {
+        setResult({ type: "updated", newVersion: res.selfUpdate.newVersion });
+      } else {
+        setResult({ type: "error", message: res.selfUpdate?.output || "更新失败" });
+      }
+    } catch (err) {
+      setResult({ type: "error", message: (err as Error).message });
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   return (
     <div className="flex min-h-[62px] flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="min-w-0">
@@ -2265,7 +2284,7 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
           size="sm"
           variant="outline"
           onClick={() => void handleCheck()}
-          disabled={checking}
+          disabled={checking || updating}
           className="rounded-full"
         >
           {checking ? (
@@ -2275,32 +2294,46 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
           )}
           {checking
             ? tx("settings.about.checking", "Checking...")
-            : tx("settings.about.checkForUpdates", "Check for updates")}
+            : tx("settings.about.checkForUpdates", "检查更新")}
         </Button>
         {result?.type === "up-to-date" ? (
           <span className="inline-flex items-center gap-1.5 text-[12px] text-emerald-600 dark:text-emerald-300">
             <Check className="h-3 w-3" aria-hidden />
-            {tx("settings.about.upToDate", "You're up to date")}
+            {tx("settings.about.upToDate", "已是最新版本")}
           </span>
         ) : null}
         {result?.type === "update" ? (
-          <span className="inline-flex items-center gap-1.5 text-[12px] text-blue-600 dark:text-blue-300">
-            <ArrowUpCircle className="h-3 w-3" aria-hidden />
-            {t("settings.about.updateAvailable", {
-              defaultValue: "Update available v{{version}}",
-              version: result.latestVersion,
-            })}
-            {result.pypiUrl ? (
-              <a
-                href={result.pypiUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-0.5 underline-offset-2 hover:underline"
-              >
-                PyPI
-                <ExternalLink className="h-2.5 w-2.5" aria-hidden />
-              </a>
-            ) : null}
+          <div className="flex flex-col items-end gap-2">
+            <span className="inline-flex items-center gap-1.5 text-[12px] text-blue-600 dark:text-blue-300">
+              <ArrowUpCircle className="h-3 w-3" aria-hidden />
+              {t("settings.about.updateAvailable", {
+                defaultValue: "有可用更新 v{{version}}",
+                version: result.latestVersion,
+              })}
+            </span>
+            <Button
+              size="sm"
+              variant="default"
+              onClick={() => void handleSelfUpdate()}
+              disabled={updating}
+              className="rounded-full"
+            >
+              {updating ? (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+              ) : (
+                <ArrowUpCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              )}
+              {updating
+                ? tx("settings.about.updating", "正在更新...")
+                : tx("settings.about.updateNow", "立即更新")}
+            </Button>
+          </div>
+        ) : null}
+        {result?.type === "updated" ? (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-emerald-600 dark:text-emerald-300">
+            <Check className="h-3 w-3" aria-hidden />
+            {tx("settings.about.updateSuccess", "更新成功，请重启应用")}
+            {result.newVersion ? ` (v${result.newVersion})` : ""}
           </span>
         ) : null}
         {result?.type === "error" ? (

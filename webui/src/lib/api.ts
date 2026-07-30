@@ -335,6 +335,27 @@ export async function checkVersion(
   );
 }
 
+export interface SelfUpdateResult {
+  selfUpdate: {
+    success: boolean;
+    newVersion?: string;
+    output?: string;
+  };
+  requires_restart?: boolean;
+}
+
+export async function selfUpdate(
+  token: string,
+  base: string = "",
+): Promise<SelfUpdateResult> {
+  return request<SelfUpdateResult>(
+    `${base}/api/settings/self-update`,
+    token,
+    { method: "POST" },
+    120_000,
+  );
+}
+
 export async function fetchWorkspaces(
   token: string,
   base: string = "",
