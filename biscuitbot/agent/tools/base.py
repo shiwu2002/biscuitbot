@@ -74,12 +74,12 @@ class Schema(ABC):
                 errors.append(f"{label} must be >= {schema['minimum']}")
             if "maximum" in schema and val > schema["maximum"]:
                 errors.append(f"{label} must be <= {schema['maximum']}")
-        if t == "string":
+        if t == "string" and isinstance(val, str):
             if "minLength" in schema and len(val) < schema["minLength"]:
                 errors.append(f"{label} must be at least {schema['minLength']} chars")
             if "maxLength" in schema and len(val) > schema["maxLength"]:
                 errors.append(f"{label} must be at most {schema['maxLength']} chars")
-        if t == "object":
+        if t == "object" and isinstance(val, dict):
             props = schema.get("properties", {})
             for k in schema.get("required", []):
                 if k not in val:
@@ -87,7 +87,7 @@ class Schema(ABC):
             for k, v in val.items():
                 if k in props:
                     errors.extend(Schema.validate_json_schema_value(v, props[k], Schema.subpath(path, k)))
-        if t == "array":
+        if t == "array" and isinstance(val, list):
             if "minItems" in schema and len(val) < schema["minItems"]:
                 errors.append(f"{label} must have at least {schema['minItems']} items")
             if "maxItems" in schema and len(val) > schema["maxItems"]:
@@ -146,10 +146,19 @@ class Tool(ABC):
         ...
 
     @property
-    @abstractmethod
     def parameters(self) -> dict[str, Any]:
-        """JSON Schema for tool parameters."""
-        ...
+        """JSON Schema for tool parameters.
+
+        Subclasses must either override this or apply the
+        ``@tool_parameters(...)`` class decorator.  Intentionally not
+        ``@abstractmethod``: static checkers cannot see the decorator's
+        runtime injection, so marking it abstract would flag every
+        decorated subclass as uninstantiable.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} must define `parameters` "
+            "or apply the @tool_parameters decorator"
+        )
 
     @property
     def capability(self) -> str:

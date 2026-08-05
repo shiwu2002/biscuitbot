@@ -117,7 +117,7 @@ class AgentProgressHook(AgentHook):
             tool_events = [build_tool_event_start_payload(tc) for tc in context.tool_calls]
             await invoke_on_progress(
                 self._on_progress,
-                tool_hint,
+                tool_hint, # type: ignore
                 tool_hint=True,
                 tool_events=tool_events,
             )

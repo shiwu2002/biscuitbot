@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from aiohttp import web
+from aiohttp.multipart import BodyPartReader
 from loguru import logger
 
 from biscuitbot.config.paths import get_media_dir
@@ -173,6 +174,8 @@ async def _parse_multipart(request: web.Request) -> tuple[str, list[str], str | 
         part = await reader.next()
         if part is None:
             break
+        if not isinstance(part, BodyPartReader):
+            continue
         if part.name == "message":
             text = (await part.read()).decode("utf-8")
         elif part.name == "session_id":
@@ -202,7 +205,7 @@ async def _parse_multipart(request: web.Request) -> tuple[str, list[str], str | 
 # ---------------------------------------------------------------------------
 
 
-async def handle_chat_completions(request: web.Request) -> web.Response:
+async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     """POST /v1/chat/completions — supports JSON and multipart/form-data."""
     content_type = request.content_type or ""
     if not isinstance(content_type, str):
