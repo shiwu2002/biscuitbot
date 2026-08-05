@@ -941,9 +941,13 @@ def gateway(
             filter=lambda record: record["extra"].setdefault("channel", "-") or True,
         )
     cfg = _load_runtime_config(config_file, workspace)
-    gw_port = port if port is not None else cfg.gateway.port
-    gw_host = cfg.gateway.host or "127.0.0.1"
-    open_url = f"http://{gw_host}:{gw_port}/"
+    # WebUI 由 websocket 频道提供，使用其端口而非 gateway 端口
+    ws_cfg = getattr(cfg.channels, "websocket", None) or {}
+    ws_enabled = ws_cfg.get("enabled", False) if isinstance(ws_cfg, dict) else getattr(ws_cfg, "enabled", False)
+    ws_port = ws_cfg.get("port", 8765) if isinstance(ws_cfg, dict) else getattr(ws_cfg, "port", 8765)
+    ws_host = ws_cfg.get("host", None) if isinstance(ws_cfg, dict) else getattr(ws_cfg, "host", None)
+    webui_host = ws_host or cfg.gateway.host or "127.0.0.1"
+    open_url = f"http://{webui_host}:{ws_port}/" if ws_enabled else None
     _run_gateway(cfg, port=port, open_browser_url=open_url)
 
 

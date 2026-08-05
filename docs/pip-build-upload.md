@@ -4,10 +4,10 @@
 
 修改以下两处，版本号必须一致：
 
-| 文件 | 位置 | 示例 |
-|------|------|------|
-| `pyproject.toml` | `version = "0.2.2"` | 改为 `version = "0.2.3"` |
-| `hczkbot/__init__.py` | `_read_pyproject_version() or "0.2.2"` | 改为 `"0.2.3"` |
+| 文件                    | 位置                                     | 示例                     |
+| --------------------- | -------------------------------------- | ---------------------- |
+| `pyproject.toml`      | `version = "0.2.2"`                    | 改为 `version = "0.2.3"` |
+| `hczkbot/__init__.py` | `_read_pyproject_version() or "0.2.2"` | 改为 `"0.2.3"`           |
 
 ## 2. 清理旧包和编译缓存
 
@@ -25,6 +25,7 @@ python -m build
 ```
 
 生成文件：
+
 - `dist/hczkbot-{版本}-py3-none-any.whl` — Wheel 包
 - `dist/hczkbot-{版本}.tar.gz` — 源码包
 
@@ -35,6 +36,7 @@ twine upload dist/*
 ```
 
 交互式输入：
+
 - **Username**: `__token__`
 - **Password**: `pypi-xxxx...`（从 [pypi.org](https://pypi.org/) 账户设置 → API Token 获取）
 

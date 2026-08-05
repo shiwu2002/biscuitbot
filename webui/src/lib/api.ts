@@ -351,7 +351,7 @@ export async function selfUpdate(
   return request<SelfUpdateResult>(
     `${base}/api/settings/self-update`,
     token,
-    { method: "POST" },
+    undefined,
     120_000,
   );
 }

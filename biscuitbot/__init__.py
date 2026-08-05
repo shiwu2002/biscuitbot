@@ -22,7 +22,7 @@ def _resolve_version() -> str:
         return _pkg_version("hczkbot")
     except PackageNotFoundError:
         # 源码检出通常在没有安装 dist-info 的情况下导入 hczkbot
-        return _read_pyproject_version() or "0.2.4"
+        return _read_pyproject_version() or "0.2.7"
 
 
 __version__ = _resolve_version()

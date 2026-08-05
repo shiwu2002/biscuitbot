@@ -379,8 +379,6 @@ class WebUISettingsRouter:
         """Run pip install --upgrade hczkbot and return the result."""
         if not self._authorized(request):
             return self._unauthorized()
-        if request.method != "POST":
-            return self._error_response(405, "Method Not Allowed")
 
         import subprocess
         import sys
