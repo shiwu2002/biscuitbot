@@ -113,6 +113,29 @@ async def _http_get(
     )
 
 
+async def _wait_for_listen(host: str, port: int, timeout: float = 5.0) -> None:
+    """Poll until the TCP port accepts connections (or raise after ``timeout``).
+
+    Replaces a fixed ``asyncio.sleep`` so server readiness does not depend on
+    machine load — important under the full test suite where skill discovery
+    can delay the bind on Windows.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            _reader, writer = await asyncio.open_connection(host, port)
+        except OSError:
+            await asyncio.sleep(0.1)
+            continue
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except (OSError, asyncio.CancelledError):
+            pass
+        return
+    raise AssertionError(f"server on {host}:{port} not ready within {timeout}s")
+
+
 def _seed_session(workspace: Path, key: str = "websocket:test") -> SessionManager:
     sm = SessionManager(workspace)
     s = Session(key=key)
@@ -355,7 +378,7 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
         port=29920,
     )
     server_task = asyncio.create_task(channel.start())
-    await asyncio.sleep(0.3)
+    await _wait_for_listen("127.0.0.1", 29920)
     try:
         deny = await _http_get("http://127.0.0.1:29920/api/webui/skills")
         assert deny.status_code == 401

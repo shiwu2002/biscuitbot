@@ -647,11 +647,19 @@ async def test_exec_head_tail_truncation(tmp_path) -> None:
     assert "Exit code:" in result
 
 
-async def test_exec_timeout_parameter() -> None:
+async def test_exec_timeout_parameter(tmp_path) -> None:
     """LLM-supplied timeout should override the constructor default."""
     tool = ExecTool(timeout=60)
-    # A very short timeout should cause the command to be killed
-    result = await tool.execute(command="sleep 10", timeout=1)
+    # A very short timeout should cause the command to be killed.
+    # Use a temp Python script so the command is cross-platform (Windows has
+    # no `sleep` binary) and avoids cmd.exe `-c` quoting pitfalls.
+    script_file = tmp_path / "sleep.py"
+    script_file.write_text("import time; time.sleep(10)", encoding="utf-8")
+    if sys.platform == "win32":
+        command = subprocess.list2cmdline([sys.executable, str(script_file)])
+    else:
+        command = f"{shlex.quote(sys.executable)} {shlex.quote(str(script_file))}"
+    result = await tool.execute(command=command, timeout=1)
     assert "timed out" in result
     assert "1 seconds" in result
 

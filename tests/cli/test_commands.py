@@ -95,9 +95,9 @@ def test_onboard_fresh_install(mock_paths):
     result = runner.invoke(app, ["onboard"])
 
     assert result.exit_code == 0
-    assert "Created config" in result.stdout
-    assert "Created workspace" in result.stdout
-    assert "biscuitbot is ready" in result.stdout
+    assert "配置已创建" in result.stdout
+    assert "工作区已创建" in result.stdout
+    assert "biscuitbot 已就绪" in result.stdout
     assert config_file.exists()
     assert (workspace_dir / "AGENTS.md").exists()
     assert (workspace_dir / "memory" / "MEMORY.md").exists()
@@ -113,8 +113,8 @@ def test_onboard_existing_config_refresh(mock_paths):
     result = runner.invoke(app, ["onboard"], input="n\n")
 
     assert result.exit_code == 0
-    assert "Config already exists" in result.stdout
-    assert "existing values preserved" in result.stdout
+    assert "配置文件已存在" in result.stdout
+    assert "已有值已保留" in result.stdout
     assert workspace_dir.exists()
     assert (workspace_dir / "AGENTS.md").exists()
 
@@ -127,8 +127,8 @@ def test_onboard_existing_config_overwrite(mock_paths):
     result = runner.invoke(app, ["onboard"], input="y\n")
 
     assert result.exit_code == 0
-    assert "Config already exists" in result.stdout
-    assert "Config reset to defaults" in result.stdout
+    assert "配置文件已存在" in result.stdout
+    assert "配置已重置为默认值" in result.stdout
     assert workspace_dir.exists()
 
 
@@ -178,7 +178,7 @@ def test_onboard_interactive_discard_does_not_save_or_create_workspace(mock_path
     result = runner.invoke(app, ["onboard", "--wizard"])
 
     assert result.exit_code == 0
-    assert "No changes were saved" in result.stdout
+    assert "未保存任何更改" in result.stdout
     assert not config_file.exists()
     assert not workspace_dir.exists()
 
@@ -745,7 +745,7 @@ def test_agent_hints_about_deprecated_memory_window(mock_agent_runtime, tmp_path
 
     assert result.exit_code == 0
     assert "memoryWindow" in result.stdout
-    assert "no longer used" in result.stdout
+    assert "已不再使用" in result.stdout
 
 
 def test_heartbeat_retains_recent_messages_by_default():
@@ -1417,7 +1417,7 @@ def test_gateway_uses_configured_port_when_cli_flag_is_missing(monkeypatch, tmp_
     result = runner.invoke(app, ["gateway", "--config", str(config_file)])
 
     assert isinstance(result.exception, _StopGatewayError)
-    assert "port 18791" in result.stdout
+    assert "端口 18791" in result.stdout
 
 
 def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path) -> None:
@@ -1434,7 +1434,7 @@ def test_gateway_cli_port_overrides_configured_port(monkeypatch, tmp_path: Path)
     result = runner.invoke(app, ["gateway", "--config", str(config_file), "--port", "18792"])
 
     assert isinstance(result.exception, _StopGatewayError)
-    assert "port 18792" in result.stdout
+    assert "端口 18792" in result.stdout
 
 
 def test_gateway_health_endpoint_binds_and_serves_expected_responses(
@@ -1549,7 +1549,7 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
     assert result.exit_code == 0
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 18791
-    assert "Health endpoint: http://127.0.0.1:18791/health" in result.stdout
+    assert "健康检查端点：http://127.0.0.1:18791/health" in result.stdout
 
     def _call_handler(path: str) -> tuple[str, _FakeWriter]:
         request = f"GET {path} HTTP/1.1\r\nHost: localhost\r\n\r\n".encode()
