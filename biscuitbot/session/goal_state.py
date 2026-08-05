@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping, MutableMapping
 
-from hczkbot.session.manager import SessionManager
+from biscuitbot.session.manager import SessionManager
 
 GOAL_STATE_KEY = "goal_state"
 # Older builds stored the same JSON blob under this key.
@@ -113,11 +113,11 @@ def runner_wall_llm_timeout_s(
     metadata: Mapping[str, Any] | None = None,
     message_metadata: Mapping[str, Any] | None = None,
 ) -> float | None:
-    """Wall-clock cap for :class:`~hczkbot.agent.runner.AgentRunner` when streaming an LLM.
+    """Wall-clock cap for :class:`~biscuitbot.agent.runner.AgentRunner` when streaming an LLM.
 
     Returns ``0.0`` to disable ``asyncio.wait_for`` around the request when this is a
-    sustained-goal turn; ``None`` means use ``HCZKBOT_LLM_TIMEOUT_S``. Pass in-memory
-    ``metadata`` when the caller already holds :attr:`~hczkbot.session.manager.Session.metadata`
+    sustained-goal turn; ``None`` means use ``BISCUITBOT_LLM_TIMEOUT_S``. Pass in-memory
+    ``metadata`` when the caller already holds :attr:`~biscuitbot.session.manager.Session.metadata`
     for this turn.
     """
     meta: Mapping[str, Any] | None = metadata

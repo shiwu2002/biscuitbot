@@ -12,8 +12,8 @@ import os
 
 import pytest
 
-from hczkbot.agent.tools import file_state
-from hczkbot.agent.tools.filesystem import EditFileTool, ReadFileTool, _find_match
+from biscuitbot.agent.tools import file_state
+from biscuitbot.agent.tools.filesystem import EditFileTool, ReadFileTool, _find_match
 
 
 @pytest.fixture(autouse=True)

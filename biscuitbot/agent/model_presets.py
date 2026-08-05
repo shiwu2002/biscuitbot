@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from hczkbot.config.schema import ModelPresetConfig
-from hczkbot.providers.base import LLMProvider
-from hczkbot.providers.factory import ProviderSnapshot, build_provider_snapshot
+from biscuitbot.config.schema import ModelPresetConfig
+from biscuitbot.providers.base import LLMProvider
+from biscuitbot.providers.factory import ProviderSnapshot, build_provider_snapshot
 
 PresetSnapshotLoader = Callable[[str], ProviderSnapshot]
 

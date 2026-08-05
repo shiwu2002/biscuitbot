@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { HczkbotClient } from "@/lib/hczkbot-client";
+import { BiscuitbotClient } from "@/lib/biscuitbot-client";
 
 /**
- * Minimal fake WebSocket implementing the subset HczkbotClient touches.
+ * Minimal fake WebSocket implementing the subset BiscuitbotClient touches.
  * Every instance is retrievable via ``FakeSocket.instances`` so tests can
  * drive open/close/message lifecycles deterministically.
  */
@@ -65,13 +65,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  Reflect.deleteProperty(window, "hczkbotHost");
+  Reflect.deleteProperty(window, "biscuitbotHost");
   vi.useRealTimers();
 });
 
-describe("HczkbotClient", () => {
+describe("BiscuitbotClient", () => {
   it("routes events to the matching chat handler", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -97,7 +97,7 @@ describe("HczkbotClient", () => {
     const hostFactory = vi.fn(
       (url: string) => new FakeSocket(`host:${url}`) as unknown as WebSocket,
     );
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: browserFactory,
@@ -106,11 +106,11 @@ describe("HczkbotClient", () => {
     client.connect();
     expect(lastSocket().url).toBe("browser:ws://test");
     client.close();
-    client.updateUrl("hczkbot-host://engine/", hostFactory);
+    client.updateUrl("biscuitbot-host://engine/", hostFactory);
     client.connect();
 
-    expect(hostFactory).toHaveBeenCalledWith("hczkbot-host://engine/");
-    expect(lastSocket().url).toBe("host:hczkbot-host://engine/");
+    expect(hostFactory).toHaveBeenCalledWith("biscuitbot-host://engine/");
+    expect(lastSocket().url).toBe("host:biscuitbot-host://engine/");
   });
 
   it("uses the host socket bridge for native host URLs", async () => {
@@ -118,7 +118,7 @@ describe("HczkbotClient", () => {
       | ((event: { id: string; type: "open" | "close" | "error"; message?: string }) => void)
       | null = null;
     const openSocket = vi.fn(async () => "host-socket-1");
-    Object.defineProperty(window, "hczkbotHost", {
+    Object.defineProperty(window, "biscuitbotHost", {
       configurable: true,
       value: {
         openSocket,
@@ -130,8 +130,8 @@ describe("HczkbotClient", () => {
         }),
       },
     });
-    const client = new HczkbotClient({
-      url: "hczkbot-host://engine/",
+    const client = new BiscuitbotClient({
+      url: "biscuitbot-host://engine/",
       reconnect: false,
     });
     const status = vi.fn();
@@ -141,12 +141,12 @@ describe("HczkbotClient", () => {
     await Promise.resolve();
     socketEventHandler?.({ id: "host-socket-1", type: "open" });
 
-    expect(openSocket).toHaveBeenCalledWith("hczkbot-host://engine/");
+    expect(openSocket).toHaveBeenCalledWith("biscuitbot-host://engine/");
     expect(status).toHaveBeenLastCalledWith("open");
   });
 
   it("buffers chat events while no chat handler is registered and replays on subscribe", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -166,7 +166,7 @@ describe("HczkbotClient", () => {
   });
 
   it("records goal_status run strip without an onChat subscriber", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -189,7 +189,7 @@ describe("HczkbotClient", () => {
   });
 
   it("clears run strip when a turn_end arrives without idle", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -213,7 +213,7 @@ describe("HczkbotClient", () => {
   });
 
   it("notifies run status subscribers and replays running chats", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -244,7 +244,7 @@ describe("HczkbotClient", () => {
   });
 
   it("records goal_state per chat_id without an onChat subscriber", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -275,7 +275,7 @@ describe("HczkbotClient", () => {
   });
 
   it("records goal_state from turn_end payload when present", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -291,7 +291,7 @@ describe("HczkbotClient", () => {
   });
 
   it("buffers after unsubscribe until the chat is subscribed again", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -312,7 +312,7 @@ describe("HczkbotClient", () => {
   });
 
   it("dispatches runtime model updates globally", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -332,7 +332,7 @@ describe("HczkbotClient", () => {
   });
 
   it("dispatches session updates globally", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -365,7 +365,7 @@ describe("HczkbotClient", () => {
   });
 
   it("resolves newChat() via the server-assigned chat_id", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -379,7 +379,7 @@ describe("HczkbotClient", () => {
   });
 
   it("serializes workspace scope for new chats and messages", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -413,7 +413,7 @@ describe("HczkbotClient", () => {
   });
 
   it("sends transcription requests and resolves transcription results outside chat dispatch", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -445,7 +445,7 @@ describe("HczkbotClient", () => {
   });
 
   it("rejects pending transcription requests on server errors and socket close", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -468,7 +468,7 @@ describe("HczkbotClient", () => {
   });
 
   it("queues sends while connecting and flushes on open", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -485,7 +485,7 @@ describe("HczkbotClient", () => {
   });
 
   it("includes an explicit turn id on outbound WebUI messages", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -503,7 +503,7 @@ describe("HczkbotClient", () => {
   });
 
   it("includes image generation options in outbound messages", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -530,7 +530,7 @@ describe("HczkbotClient", () => {
   });
 
   it("includes CLI app attachments in outbound messages", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -573,7 +573,7 @@ describe("HczkbotClient", () => {
   });
 
   it("includes MCP preset attachments in outbound messages", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -620,7 +620,7 @@ describe("HczkbotClient", () => {
   });
 
   it("re-attaches known chats after a reconnect", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: true,
       maxBackoffMs: 10,
@@ -645,7 +645,7 @@ describe("HczkbotClient", () => {
   });
 
   it("reports status transitions through onStatus", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -659,7 +659,7 @@ describe("HczkbotClient", () => {
   });
 
   it("does not schedule a reconnect when close() is called explicitly", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: true,
       maxBackoffMs: 10,
@@ -679,7 +679,7 @@ describe("HczkbotClient", () => {
   });
 
   it("passes media through into the message envelope", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -700,7 +700,7 @@ describe("HczkbotClient", () => {
   });
 
   it("omits media from the envelope when no images are attached", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -719,7 +719,7 @@ describe("HczkbotClient", () => {
   });
 
   it("emits a message_too_big error when the socket closes with code 1009", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -734,7 +734,7 @@ describe("HczkbotClient", () => {
   });
 
   it("emits workspace scope rejection errors from server frames", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -759,7 +759,7 @@ describe("HczkbotClient", () => {
   });
 
   it("rejects pending new chats when workspace scope is rejected", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -780,7 +780,7 @@ describe("HczkbotClient", () => {
   });
 
   it("isolates throwing error handlers so reconnect bookkeeping still runs", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: true,
       maxBackoffMs: 5,
@@ -802,7 +802,7 @@ describe("HczkbotClient", () => {
   });
 
   it("does not emit a stream error on a vanilla socket close", () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: false,
       socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
@@ -816,7 +816,7 @@ describe("HczkbotClient", () => {
   });
 
   it("surfaces 'reconnecting' only on an unexpected drop", async () => {
-    const client = new HczkbotClient({
+    const client = new BiscuitbotClient({
       url: "ws://test",
       reconnect: true,
       maxBackoffMs: 5,

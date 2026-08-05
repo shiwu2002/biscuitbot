@@ -2,7 +2,7 @@
 
 This module only knows how to call external transcription APIs such as
 OpenAI Whisper. Product-level config fallback, WebUI upload validation,
-and channel integration live in ``hczkbot.audio.transcription``.
+and channel integration live in ``biscuitbot.audio.transcription``.
 """
 
 import asyncio

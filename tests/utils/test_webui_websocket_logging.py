@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from hczkbot.webui.websocket_logging import (
+from biscuitbot.webui.websocket_logging import (
     OPENING_HANDSHAKE_FAILED_MESSAGE,
     WebSocketHandshakeNoiseFilter,
 )

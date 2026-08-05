@@ -1,7 +1,7 @@
 import pytest
 
-from hczkbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
-from hczkbot.utils.evaluator import evaluate_response
+from biscuitbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from biscuitbot.utils.evaluator import evaluate_response
 
 
 class DummyProvider(LLMProvider):

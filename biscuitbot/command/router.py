@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 if TYPE_CHECKING:
-    from hczkbot.bus.events import InboundMessage, OutboundMessage
-    from hczkbot.session.manager import Session
+    from biscuitbot.bus.events import InboundMessage, OutboundMessage
+    from biscuitbot.session.manager import Session
 
 Handler = Callable[["CommandContext"], Awaitable["OutboundMessage | None"]]
 

@@ -15,65 +15,65 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
 from loguru import logger
 
-from hczkbot.agent import context as agent_context
-from hczkbot.agent import model_presets as preset_helpers
-from hczkbot.agent.autocompact import AutoCompact
-from hczkbot.agent.context import ContextBuilder
-from hczkbot.agent.cron_turns import CronTurnCoordinator
-from hczkbot.agent.hook import AgentHook, CompositeHook
-from hczkbot.agent.memory import Consolidator
-from hczkbot.agent.progress_hook import AgentProgressHook
-from hczkbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
-from hczkbot.agent.subagent import SubagentManager
-from hczkbot.agent.tools.context import RequestContext, bind_request_context, reset_request_context
-from hczkbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
-from hczkbot.agent.tools.message import MessageTool
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.agent.tools.self import MyTool
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.progress import build_bus_progress_callback
-from hczkbot.bus.queue import MessageBus
-from hczkbot.bus.runtime_events import (
+from biscuitbot.agent import context as agent_context
+from biscuitbot.agent import model_presets as preset_helpers
+from biscuitbot.agent.autocompact import AutoCompact
+from biscuitbot.agent.context import ContextBuilder
+from biscuitbot.agent.cron_turns import CronTurnCoordinator
+from biscuitbot.agent.hook import AgentHook, CompositeHook
+from biscuitbot.agent.memory import Consolidator
+from biscuitbot.agent.progress_hook import AgentProgressHook
+from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
+from biscuitbot.agent.subagent import SubagentManager
+from biscuitbot.agent.tools.context import RequestContext, bind_request_context, reset_request_context
+from biscuitbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
+from biscuitbot.agent.tools.message import MessageTool
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.self import MyTool
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.progress import build_bus_progress_callback
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.bus.runtime_events import (
     RuntimeEventBus,
     RuntimeEventPublisher,
     ensure_runtime_event_publisher,
 )
-from hczkbot.command import CommandContext, CommandRouter, register_builtin_commands
-from hczkbot.config.schema import AgentDefaults, ModelPresetConfig
-from hczkbot.cron.session_turns import (
+from biscuitbot.command import CommandContext, CommandRouter, register_builtin_commands
+from biscuitbot.config.schema import AgentDefaults, ModelPresetConfig
+from biscuitbot.cron.session_turns import (
     cron_history_overrides,
 )
-from hczkbot.providers.base import LLMProvider
-from hczkbot.providers.factory import ProviderSnapshot
-from hczkbot.security.workspace_access import (
+from biscuitbot.providers.base import LLMProvider
+from biscuitbot.providers.factory import ProviderSnapshot
+from biscuitbot.security.workspace_access import (
     WorkspaceScopeResolver,
     bind_workspace_scope,
     reset_workspace_scope,
 )
-from hczkbot.session import turn_continuation
-from hczkbot.session.goal_state import (
+from biscuitbot.session import turn_continuation
+from biscuitbot.session.goal_state import (
     goal_state_runtime_lines,
     runner_wall_llm_timeout_s,
     sustained_goal_active,
 )
-from hczkbot.session.keys import UNIFIED_SESSION_KEY, session_key_for_channel
-from hczkbot.session.manager import Session, SessionManager
-from hczkbot.utils.document import extract_documents, reference_non_image_attachments
-from hczkbot.utils.helpers import image_placeholder_text
-from hczkbot.utils.helpers import truncate_text as truncate_text_fn
-from hczkbot.utils.image_generation_intent import image_generation_prompt
-from hczkbot.utils.llm_runtime import LLMRuntime
-from hczkbot.utils.runtime import (
+from biscuitbot.session.keys import UNIFIED_SESSION_KEY, session_key_for_channel
+from biscuitbot.session.manager import Session, SessionManager
+from biscuitbot.utils.document import extract_documents, reference_non_image_attachments
+from biscuitbot.utils.helpers import image_placeholder_text
+from biscuitbot.utils.helpers import truncate_text as truncate_text_fn
+from biscuitbot.utils.image_generation_intent import image_generation_prompt
+from biscuitbot.utils.llm_runtime import LLMRuntime
+from biscuitbot.utils.runtime import (
     EMPTY_FINAL_RESPONSE_MESSAGE,
 )
 
 if TYPE_CHECKING:
-    from hczkbot.config.schema import (
+    from biscuitbot.config.schema import (
         ChannelsConfig,
         ProviderConfig,
         ToolsConfig,
     )
-    from hczkbot.cron.service import CronService
+    from biscuitbot.cron.service import CronService
 
 
 class TurnState(Enum):
@@ -215,7 +215,7 @@ class AgentLoop:
         runtime_model_publisher: Callable[[str, str | None], None] | None = None,
         vision_provider_loader: Callable[[], LLMProvider | None] | None = None,
     ):
-        from hczkbot.config.schema import ToolsConfig
+        from biscuitbot.config.schema import ToolsConfig
 
         _tc = tools_config or ToolsConfig()
         defaults = AgentDefaults()
@@ -329,8 +329,8 @@ class AgentLoop:
             dispatch=self._dispatch,
             is_running=lambda: self._running,
         )
-        # HCZKBOT_MAX_CONCURRENT_REQUESTS: <=0 means unlimited; default 3.
-        _max = int(os.environ.get("HCZKBOT_MAX_CONCURRENT_REQUESTS", "3"))
+        # BISCUITBOT_MAX_CONCURRENT_REQUESTS: <=0 means unlimited; default 3.
+        _max = int(os.environ.get("BISCUITBOT_MAX_CONCURRENT_REQUESTS", "3"))
         self._concurrency_gate: asyncio.Semaphore | None = (
             asyncio.Semaphore(_max) if _max > 0 else None
         )
@@ -374,7 +374,7 @@ class AgentLoop:
         allowing callers to override or extend the standard config-derived
         parameters (e.g. ``cron_service``, ``session_manager``).
         """
-        from hczkbot.providers.factory import make_provider
+        from biscuitbot.providers.factory import make_provider
 
         if bus is None:
             bus = MessageBus()
@@ -390,7 +390,7 @@ class AgentLoop:
         )
         vision_provider_loader = extra.pop("vision_provider_loader", None)
         if vision_provider_loader is None:
-            from hczkbot.providers.factory import build_vision_provider
+            from biscuitbot.providers.factory import build_vision_provider
 
             _config_ref = config
 
@@ -521,8 +521,8 @@ class AgentLoop:
 
     def _register_default_tools(self) -> None:
         """Register the default set of tools via plugin loader."""
-        from hczkbot.agent.tools.context import ToolContext
-        from hczkbot.agent.tools.loader import ToolLoader
+        from biscuitbot.agent.tools.context import ToolContext
+        from biscuitbot.agent.tools.loader import ToolLoader
 
         ctx = ToolContext(
             config=self.tools_config,
@@ -550,7 +550,7 @@ class AgentLoop:
 
         # ScreenshotTool needs vision_provider_loader — manual registration
         if self.tools_config.screenshot.enable:
-            from hczkbot.agent.tools.screenshot import ScreenshotTool
+            from biscuitbot.agent.tools.screenshot import ScreenshotTool
 
             self.tools.register(
                 ScreenshotTool(  # type: ignore[abstract]
@@ -570,7 +570,7 @@ class AgentLoop:
         # Register the register_tool / unregister_tool meta-tools so the
         # agent can install custom tools at runtime.  These are always
         # available (always_include=True) and need the registry bound.
-        from hczkbot.agent.tools.register_tool import (
+        from biscuitbot.agent.tools.register_tool import (
             RegisterToolTool,
             UnregisterToolTool,
         )
@@ -587,14 +587,14 @@ class AgentLoop:
 
         # Initialize usage stats for cold-storage rotation.  Persists to
         # workspace/.agent_tools/ so cold tools survive restarts.
-        from hczkbot.agent.tools.usage_stats import UsageStats
+        from biscuitbot.agent.tools.usage_stats import UsageStats
 
         stats_dir = self.workspace / ".agent_tools"
         self._usage_stats = UsageStats(base_dir=stats_dir)
         self.tools.set_usage_stats(self._usage_stats)
 
         # ColdStorageTool lets the agent search tools rotated to cold storage.
-        from hczkbot.agent.tools.cold_storage import ColdStorageTool
+        from biscuitbot.agent.tools.cold_storage import ColdStorageTool
 
         cold_storage = ColdStorageTool()  # type: ignore[abstract]
         cold_storage.bind_usage_stats(self._usage_stats)
@@ -672,7 +672,7 @@ class AgentLoop:
         session_key: str | None = None,
     ) -> None:
         """Update context for all tools that need routing info."""
-        from hczkbot.agent.tools.context import ContextAware
+        from biscuitbot.agent.tools.context import ContextAware
 
         effective_key = session_key or session_key_for_channel(
             channel,
@@ -988,8 +988,8 @@ class AgentLoop:
                 retry_wait_callback=on_retry_wait,
                 checkpoint_callback=_checkpoint,
                 injection_callback=_drain_pending,
-                # Sustained goals may legitimately exceed HCZKBOT_LLM_TIMEOUT_S; idle stall
-                # is still capped by HCZKBOT_STREAM_IDLE_TIMEOUT_S in streaming providers.
+                # Sustained goals may legitimately exceed BISCUITBOT_LLM_TIMEOUT_S; idle stall
+                # is still capped by BISCUITBOT_STREAM_IDLE_TIMEOUT_S in streaming providers.
                 llm_timeout_s=runner_wall_llm_timeout_s(
                     self.sessions,
                     session.key if session is not None else session_key,

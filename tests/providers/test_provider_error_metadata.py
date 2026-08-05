@@ -2,9 +2,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.base import LLMProvider, LLMResponse
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.base import LLMProvider, LLMResponse
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def _fake_response(

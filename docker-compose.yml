@@ -3,7 +3,7 @@ x-common-config: &common-config
     context: .
     dockerfile: Dockerfile
   volumes:
-    - ~/.hczkbot:/home/hczkbot/.hczkbot
+    - ~/.biscuitbot:/home/biscuitbot/.biscuitbot
   cap_drop:
     - ALL
   cap_add:
@@ -13,8 +13,8 @@ x-common-config: &common-config
     - seccomp=unconfined
 
 services:
-  hczkbot-gateway:
-    container_name: hczkbot-gateway
+  biscuitbot-gateway:
+    container_name: biscuitbot-gateway
     <<: *common-config
     command: ["gateway"]
     restart: unless-stopped
@@ -30,11 +30,11 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  hczkbot-api:
-    container_name: hczkbot-api
+  biscuitbot-api:
+    container_name: biscuitbot-api
     <<: *common-config
     command:
-      ["serve", "--host", "0.0.0.0", "-w", "/home/hczkbot/.hczkbot/api-workspace"]
+      ["serve", "--host", "0.0.0.0", "-w", "/home/biscuitbot/.biscuitbot/api-workspace"]
     restart: unless-stopped
     ports:
       - 127.0.0.1:8900:8900
@@ -47,7 +47,7 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  hczkbot-cli:
+  biscuitbot-cli:
     <<: *common-config
     profiles:
       - cli

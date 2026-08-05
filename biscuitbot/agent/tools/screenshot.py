@@ -13,15 +13,15 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.schema import (
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.config_base import Base
+from biscuitbot.config_base import Base
 
 if TYPE_CHECKING:
-    from hczkbot.providers.base import LLMProvider
+    from biscuitbot.providers.base import LLMProvider
 
 
 class ScreenshotToolConfig(Base):

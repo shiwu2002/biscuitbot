@@ -9,7 +9,7 @@ import {
   toolTraceLinesFromEvents,
 } from "@/lib/tool-traces";
 import { hasPendingAgentActivity } from "@/lib/activity-timeline";
-import type { StreamError } from "@/lib/hczkbot-client";
+import type { StreamError } from "@/lib/biscuitbot-client";
 import type {
   InboundEvent,
   OutboundCliAppMention,
@@ -427,7 +427,7 @@ export interface SendOptions {
   workspaceScope?: WorkspaceScopePayload | null;
 }
 
-export function useHczkbotStream(
+export function useBiscuitbotStream(
   chatId: string | null,
   initialMessages: UIMessage[] = [],
   hasPendingToolCalls = false,

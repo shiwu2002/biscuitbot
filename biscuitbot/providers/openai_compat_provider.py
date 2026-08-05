@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 from loguru import logger
 from pydantic.alias_generators import to_snake
 
-from hczkbot.providers.base import (
+from biscuitbot.providers.base import (
     LLMProvider,
     LLMResponse,
     ToolCallRequest,
@@ -28,7 +28,7 @@ from hczkbot.providers.base import (
     resolve_stream_idle_timeout_s,
     tool_arguments_json_for_replay,
 )
-from hczkbot.providers.openai_responses import (
+from biscuitbot.providers.openai_responses import (
     consume_sdk_stream,
     convert_messages,
     convert_tools,
@@ -38,7 +38,7 @@ from hczkbot.providers.openai_responses import (
 if TYPE_CHECKING:
     from openai import AsyncOpenAI as AsyncOpenAIType
 
-    from hczkbot.providers.registry import ProviderSpec
+    from biscuitbot.providers.registry import ProviderSpec
 
 # Module-level placeholder — set lazily by _ensure_client on first real
 # use, or replaced by tests via ``patch(...)``.  Kept as a plain name so
@@ -54,8 +54,8 @@ _ALNUM = string.ascii_letters + string.digits
 _STANDARD_TC_KEYS = frozenset({"id", "type", "index", "function"})
 _STANDARD_FN_KEYS = frozenset({"name", "arguments"})
 _DEFAULT_OPENROUTER_HEADERS = {
-    "HTTP-Referer": "https://github.com/HKUDS/hczkbot",
-    "X-OpenRouter-Title": "hczkbot",
+    "HTTP-Referer": "https://github.com/HKUDS/biscuitbot",
+    "X-OpenRouter-Title": "biscuitbot",
     "X-OpenRouter-Categories": "cli-agent,personal-agent",
 }
 _KIMI_THINKING_MODELS: frozenset[str] = frozenset({
@@ -142,7 +142,7 @@ def _gateway_reasoning_extra_body(style: str, effort: str | None) -> dict[str, A
 
 def _openai_compat_timeout_s() -> float:
     """Return the bounded request timeout used for OpenAI-compatible providers."""
-    return _float_env("HCZKBOT_OPENAI_COMPAT_TIMEOUT_S", _OPENAI_COMPAT_REQUEST_TIMEOUT_S)
+    return _float_env("BISCUITBOT_OPENAI_COMPAT_TIMEOUT_S", _OPENAI_COMPAT_REQUEST_TIMEOUT_S)
 
 
 def _float_env(name: str, default: float) -> float:
@@ -222,7 +222,7 @@ def _extract_tc_extras(tc: Any) -> tuple[
 
 
 def _uses_openrouter_attribution(spec: "ProviderSpec | None", api_base: str | None) -> bool:
-    """Apply Hczkbot attribution headers to OpenRouter requests by default."""
+    """Apply Biscuitbot attribution headers to OpenRouter requests by default."""
     if spec and spec.name == "openrouter":
         return True
     return bool(api_base and "openrouter" in api_base.lower())

@@ -12,13 +12,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.command.builtin import build_help_text
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.utils.helpers import safe_filename, split_message
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.command.builtin import build_help_text
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.utils.helpers import safe_filename, split_message
 
 DISCORD_AVAILABLE = importlib.util.find_spec("discord") is not None
 if TYPE_CHECKING:
@@ -244,7 +244,7 @@ if DISCORD_AVAILABLE:
                 )
 
         async def send_outbound(self, msg: OutboundMessage) -> None:
-            """Send a hczkbot outbound message using Discord transport rules."""
+            """Send a biscuitbot outbound message using Discord transport rules."""
             channel_id = int(msg.chat_id)
 
             channel = self._channel._known_channels.get(msg.chat_id) or self.get_channel(channel_id)
@@ -394,7 +394,7 @@ class DiscordChannel(BaseChannel):
     async def start(self) -> None:
         """Start the Discord client."""
         if not DISCORD_AVAILABLE:
-            self.logger.error("discord.py not installed. Run: pip install hczkbot[discord]")
+            self.logger.error("discord.py not installed. Run: pip install biscuitbot[discord]")
             return
 
         if not self.config.token:

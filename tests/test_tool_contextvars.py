@@ -4,13 +4,13 @@ import asyncio
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.agent.tools.context import RequestContext
-from hczkbot.agent.tools.cron import CronTool
-from hczkbot.agent.tools.message import MessageTool
-from hczkbot.agent.tools.spawn import SpawnTool
-from hczkbot.cron.service import CronService
-from hczkbot.session.keys import UNIFIED_SESSION_KEY
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.agent.tools.context import RequestContext
+from biscuitbot.agent.tools.cron import CronTool
+from biscuitbot.agent.tools.message import MessageTool
+from biscuitbot.agent.tools.spawn import SpawnTool
+from biscuitbot.cron.service import CronService
+from biscuitbot.session.keys import UNIFIED_SESSION_KEY
 
 
 @pytest.mark.asyncio

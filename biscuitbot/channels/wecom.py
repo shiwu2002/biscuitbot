@@ -12,11 +12,11 @@ from typing import Any
 
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
 
 WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None
 
@@ -102,7 +102,7 @@ class WecomChannel(BaseChannel):
     async def start(self) -> None:
         """Start the WeCom bot with WebSocket long connection."""
         if not WECOM_AVAILABLE:
-            self.logger.error("SDK not installed. Run: pip install hczkbot[wecom]")
+            self.logger.error("SDK not installed. Run: pip install biscuitbot[wecom]")
             return
 
         if not self.config.bot_id or not self.config.secret:

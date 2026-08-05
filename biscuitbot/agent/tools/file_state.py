@@ -151,7 +151,7 @@ class FileStateStore:
 
 
 _current_file_states: ContextVar[FileStates | None] = ContextVar(
-    "hczkbot_file_states",
+    "biscuitbot_file_states",
     default=None,
 )
 

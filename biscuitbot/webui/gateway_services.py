@@ -8,11 +8,11 @@ from typing import Any, Callable
 
 from loguru import logger as default_logger
 
-from hczkbot.webui.gateway_tokens import GatewayTokenStore
-from hczkbot.webui.media_gateway import WebUIMediaGateway
-from hczkbot.webui.transcript import WebUITranscriptRecorder
-from hczkbot.webui.workspaces import WebUIWorkspaceController
-from hczkbot.webui.ws_http import GatewayHTTPHandler
+from biscuitbot.webui.gateway_tokens import GatewayTokenStore
+from biscuitbot.webui.media_gateway import WebUIMediaGateway
+from biscuitbot.webui.transcript import WebUITranscriptRecorder
+from biscuitbot.webui.workspaces import WebUIWorkspaceController
+from biscuitbot.webui.ws_http import GatewayHTTPHandler
 
 
 @dataclass(frozen=True)

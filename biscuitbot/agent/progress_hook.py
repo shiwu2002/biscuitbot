@@ -8,15 +8,15 @@ from typing import Any, Awaitable, Callable
 
 from loguru import logger
 
-from hczkbot.agent.hook import AgentHook, AgentHookContext
-from hczkbot.utils.helpers import IncrementalThinkExtractor, strip_think
-from hczkbot.utils.progress_events import (
+from biscuitbot.agent.hook import AgentHook, AgentHookContext
+from biscuitbot.utils.helpers import IncrementalThinkExtractor, strip_think
+from biscuitbot.utils.progress_events import (
     build_tool_event_finish_payloads,
     build_tool_event_start_payload,
     invoke_on_progress,
     on_progress_accepts_tool_events,
 )
-from hczkbot.utils.tool_hints import format_tool_hints
+from biscuitbot.utils.tool_hints import format_tool_hints
 
 
 class AgentProgressHook(AgentHook):

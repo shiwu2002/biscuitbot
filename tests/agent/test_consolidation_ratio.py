@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
-import hczkbot.agent.memory as memory_module
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import GenerationSettings, LLMResponse
+import biscuitbot.agent.memory as memory_module
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import GenerationSettings, LLMResponse
 
 
 def _make_loop(

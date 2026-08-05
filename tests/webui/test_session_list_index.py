@@ -4,9 +4,9 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import hczkbot.webui.session_list_index as session_list_index
-from hczkbot.cron.session_turns import CRON_HISTORY_META
-from hczkbot.session.manager import SessionManager
+import biscuitbot.webui.session_list_index as session_list_index
+from biscuitbot.cron.session_turns import CRON_HISTORY_META
+from biscuitbot.session.manager import SessionManager
 
 
 def test_webui_session_list_reuses_valid_index_without_scanning_files(

@@ -7,7 +7,7 @@ import pytest
 
 # Check optional QQ dependencies before running tests
 try:
-    from hczkbot.channels import qq
+    from biscuitbot.channels import qq
     QQ_AVAILABLE = getattr(qq, "QQ_AVAILABLE", False)
 except ImportError:
     QQ_AVAILABLE = False
@@ -17,9 +17,9 @@ if not QQ_AVAILABLE:
 
 import aiohttp
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.qq import QQChannel, QQConfig
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.qq import QQChannel, QQConfig
 
 
 class _FakeApi:

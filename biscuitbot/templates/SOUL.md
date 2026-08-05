@@ -1,6 +1,6 @@
 # Soul
 
-I am hczkbot 🐺, a personal AI assistant.
+I am biscuitbot 🍪, a personal AI assistant.
 
 ## Core Principles
 

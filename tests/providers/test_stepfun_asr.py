@@ -10,18 +10,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from hczkbot.audio.transcription_registry import (
+from biscuitbot.audio.transcription_registry import (
     get_transcription_provider,
     transcription_provider_names,
 )
-from hczkbot.config.schema import Config
+from biscuitbot.config.schema import Config
 
 pytest.skip(
     "StepFunTranscriptionProvider was removed during transcription refactor",
     allow_module_level=True,
 )
 
-from hczkbot.providers.transcription import StepFunTranscriptionProvider
+from biscuitbot.providers.transcription import StepFunTranscriptionProvider
 
 
 @pytest.fixture
@@ -311,7 +311,7 @@ def test_stepfun_in_registry() -> None:
     spec = get_transcription_provider("stepfun")
     assert spec is not None
     assert spec.default_model == "stepaudio-2.5-asr"
-    assert spec.adapter == "hczkbot.providers.transcription:StepFunTranscriptionProvider"
+    assert spec.adapter == "biscuitbot.providers.transcription:StepFunTranscriptionProvider"
 
 
 def test_config_resolves_stepfun() -> None:
@@ -322,7 +322,7 @@ def test_config_resolves_stepfun() -> None:
     config.transcription.model = "stepaudio-2.5-asr"
     config.transcription.language = "zh"
 
-    from hczkbot.audio.transcription import resolve_transcription_config
+    from biscuitbot.audio.transcription import resolve_transcription_config
 
     resolved = resolve_transcription_config(config)
 

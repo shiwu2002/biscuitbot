@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.agent.hook import AgentHook, AgentHookContext, AgentRunHookContext, CompositeHook
+from biscuitbot.agent.hook import AgentHook, AgentHookContext, AgentRunHookContext, CompositeHook
 
 
 def _ctx() -> AgentHookContext:
@@ -349,18 +349,18 @@ async def test_composite_can_wrap_another_composite():
 
 
 def _make_loop(tmp_path, hooks=None):
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
     provider.generation.max_tokens = 4096
 
-    with patch("hczkbot.agent.loop.ContextBuilder"), \
-         patch("hczkbot.agent.loop.SessionManager"), \
-         patch("hczkbot.agent.loop.SubagentManager") as mock_sub_mgr, \
-         patch("hczkbot.agent.loop.Consolidator"):
+    with patch("biscuitbot.agent.loop.ContextBuilder"), \
+         patch("biscuitbot.agent.loop.SessionManager"), \
+         patch("biscuitbot.agent.loop.SubagentManager") as mock_sub_mgr, \
+         patch("biscuitbot.agent.loop.Consolidator"):
         mock_sub_mgr.return_value.cancel_by_session = AsyncMock(return_value=0)
         loop = AgentLoop(
             bus=bus, provider=provider, workspace=tmp_path, hooks=hooks,
@@ -371,7 +371,7 @@ def _make_loop(tmp_path, hooks=None):
 @pytest.mark.asyncio
 async def test_agent_loop_extra_hook_receives_calls(tmp_path):
     """Extra hook passed to AgentLoop is called alongside core LoopHook."""
-    from hczkbot.providers.base import LLMResponse
+    from biscuitbot.providers.base import LLMResponse
 
     events: list[str] = []
 
@@ -408,7 +408,7 @@ async def test_agent_loop_extra_hook_receives_calls(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_loop_extra_hook_error_isolation(tmp_path):
     """A faulty extra hook does not crash the agent loop."""
-    from hczkbot.providers.base import LLMResponse
+    from biscuitbot.providers.base import LLMResponse
 
     class BadHook(AgentHook):
         async def before_iteration(self, context):
@@ -430,7 +430,7 @@ async def test_agent_loop_extra_hook_error_isolation(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_loop_extra_hooks_do_not_swallow_loop_hook_errors(tmp_path):
     """Extra hooks must not change the core LoopHook failure behavior."""
-    from hczkbot.providers.base import LLMResponse, ToolCallRequest
+    from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
     loop = _make_loop(tmp_path, hooks=[AgentHook()])
     loop.provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
@@ -451,7 +451,7 @@ async def test_agent_loop_extra_hooks_do_not_swallow_loop_hook_errors(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_loop_no_hooks_backward_compat(tmp_path):
     """Without hooks param, behavior is identical to before."""
-    from hczkbot.providers.base import LLMResponse, ToolCallRequest
+    from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
     loop = _make_loop(tmp_path)
     loop.provider.chat_with_retry = AsyncMock(return_value=LLMResponse(

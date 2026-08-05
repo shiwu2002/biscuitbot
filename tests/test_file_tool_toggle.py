@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
-from hczkbot.agent.tools.context import ToolContext
-from hczkbot.agent.tools.file_state import FileStates
-from hczkbot.agent.tools.filesystem import FileToolsConfig, ReadFileTool
-from hczkbot.agent.tools.loader import ToolLoader
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.config.schema import Config, ToolsConfig
+from biscuitbot.agent.tools.context import ToolContext
+from biscuitbot.agent.tools.file_state import FileStates
+from biscuitbot.agent.tools.filesystem import FileToolsConfig, ReadFileTool
+from biscuitbot.agent.tools.loader import ToolLoader
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.config.schema import Config, ToolsConfig
 
 FILE_TOOL_NAMES = {
     "apply_patch",

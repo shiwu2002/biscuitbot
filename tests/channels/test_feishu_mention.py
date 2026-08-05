@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 
-from hczkbot.channels.feishu import FeishuChannel
+from biscuitbot.channels.feishu import FeishuChannel
 
 
 def _make_channel(bot_open_id: str | None = None) -> FeishuChannel:

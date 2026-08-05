@@ -5,8 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from hczkbot.apps.cli import CliAppError, CliAppManager, CliAppsRuntimeConfig
-from hczkbot.config.loader import load_config
+from biscuitbot.apps.cli import CliAppError, CliAppManager, CliAppsRuntimeConfig
+from biscuitbot.config.loader import load_config
 
 QueryParams = dict[str, list[str]]
 

@@ -2,7 +2,7 @@
 
 import asyncio
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
 
 
 class MessageBus:

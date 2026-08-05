@@ -1,11 +1,11 @@
 from unittest.mock import patch
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 async def test_openai_compat_disables_sdk_retries_by_default() -> None:
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI") as mock_client:
+    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI") as mock_client:
         provider = OpenAICompatProvider(api_key="sk-test", default_model="gpt-4o")
         await provider._ensure_client()
 

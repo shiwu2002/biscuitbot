@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from hczkbot.config.loader import set_config_path
-from hczkbot.utils.artifacts import (
+from biscuitbot.config.loader import set_config_path
+from biscuitbot.utils.artifacts import (
     ArtifactError,
     decode_image_data_url,
     store_generated_image_artifact,

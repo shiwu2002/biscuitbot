@@ -9,7 +9,7 @@ from contextlib import suppress
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, TypeVar
 
-from hczkbot.agent.tools.filesystem import ListDirTool, _FsTool
+from biscuitbot.agent.tools.filesystem import ListDirTool, _FsTool
 
 _DEFAULT_HEAD_LIMIT = 250
 _DEFAULT_FILE_HEAD_LIMIT = 200

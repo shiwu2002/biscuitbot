@@ -29,7 +29,7 @@ Directly operate the host operating system: keyboard/mouse simulation, clipboard
 
 ## How to use
 
-1. **Confirm the tool is enabled.** It is off by default. If `system_io` is not registered, tell the user to set `tools.system_io.enable = true` in config. The pynput/pyserial dependencies are bundled with hczkbot, so no extra install is needed for full keyboard/mouse/serial support.
+1. **Confirm the tool is enabled.** It is off by default. If `system_io` is not registered, tell the user to set `tools.system_io.enable = true` in config. The pynput/pyserial dependencies are bundled with biscuitbot, so no extra install is needed for full keyboard/mouse/serial support.
 2. **Pick the action** from the table below and pass it as `action`.
 3. **Read docs/system_io.md** for per-action parameters and platform requirements before first use in a session.
 

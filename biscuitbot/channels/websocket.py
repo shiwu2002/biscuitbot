@@ -1,4 +1,4 @@
-"""WebSocket server channel: hczkbot acts as a WebSocket server and serves connected clients."""
+"""WebSocket server channel: biscuitbot acts as a WebSocket server and serves connected clients."""
 
 from __future__ import annotations
 
@@ -18,36 +18,36 @@ from websockets.asyncio.server import ServerConnection, serve, unix_serve
 from websockets.exceptions import ConnectionClosed
 from websockets.http11 import Request as WsRequest
 
-from hczkbot.bus.events import OUTBOUND_META_AGENT_UI, OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.security.workspace_access import (
+from biscuitbot.bus.events import OUTBOUND_META_AGENT_UI, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.security.workspace_access import (
     WORKSPACE_SCOPE_METADATA_KEY,
     WorkspaceScopeError,
 )
-from hczkbot.session.goal_state import goal_state_ws_blob
-from hczkbot.session.webui_turns import websocket_turn_wall_started_at
-from hczkbot.utils.media_decode import (
+from biscuitbot.session.goal_state import goal_state_ws_blob
+from biscuitbot.session.webui_turns import websocket_turn_wall_started_at
+from biscuitbot.utils.media_decode import (
     FileSizeExceeded,
     save_base64_data_url,
 )
-from hczkbot.webui.cli_apps_api import normalize_cli_app_mentions
-from hczkbot.webui.forking import handle_webui_fork_chat
-from hczkbot.webui.gateway_services import GatewayServices
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.cli_apps_api import normalize_cli_app_mentions
+from biscuitbot.webui.forking import handle_webui_fork_chat
+from biscuitbot.webui.gateway_services import GatewayServices
+from biscuitbot.webui.http_utils import (
     normalize_config_path as _normalize_config_path,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     parse_request_path as _parse_request_path,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     query_first as _query_first,
 )
-from hczkbot.webui.mcp_presets_api import normalize_mcp_preset_mentions
-from hczkbot.webui.transcription_ws import webui_transcription_event
-from hczkbot.webui.websocket_logging import websockets_server_logger
+from biscuitbot.webui.mcp_presets_api import normalize_mcp_preset_mentions
+from biscuitbot.webui.transcription_ws import webui_transcription_event
+from biscuitbot.webui.websocket_logging import websockets_server_logger
 
 
 class WebSocketConfig(Base):
@@ -60,10 +60,10 @@ class WebSocketConfig(Base):
     - ``token_issue_path``: If non-empty, **GET** (HTTP/1.1) to this path returns JSON
       ``{"token": "...", "expires_in": <seconds>}``; use ``?token=...`` when opening the WebSocket.
       Must differ from ``path`` (the WS upgrade path). If the client runs in the **same process** as
-      hczkbot and shares the asyncio loop, use a thread or async HTTP client for GET—do not call
+      biscuitbot and shares the asyncio loop, use a thread or async HTTP client for GET—do not call
       blocking ``urllib`` or synchronous ``httpx`` from inside a coroutine.
     - ``token_issue_secret``: If non-empty, token requests must send ``Authorization: Bearer <secret>`` or
-      ``X-Hczkbot-Auth: <secret>``.
+      ``X-Biscuitbot-Auth: <secret>``.
     - ``websocket_requires_token``: If True, the handshake must include a valid token (static or issued and not expired).
     - Each connection has its own session: a unique ``chat_id`` maps to the agent session internally.
     - ``media`` field in outbound messages contains local filesystem paths; remote clients need a
@@ -423,7 +423,7 @@ class WebSocketChannel(BaseChannel):
     # -- Server lifecycle and connection ingress ---------------------------
 
     async def start(self) -> None:
-        from hczkbot.utils.logging_bridge import redirect_lib_logging
+        from biscuitbot.utils.logging_bridge import redirect_lib_logging
 
         redirect_lib_logging("websockets", level="WARNING")
         ws_logger = websockets_server_logger()

@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from hczkbot.providers.openai_compat_provider import (
+from biscuitbot.providers.openai_compat_provider import (
     OpenAICompatProvider,
     _is_local_endpoint,
 )

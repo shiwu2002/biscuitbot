@@ -8,12 +8,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from hczkbot.audio.transcription import (
+from biscuitbot.audio.transcription import (
     TranscriptionIngressError,
     resolve_transcription_config,
     transcribe_audio_data_url,
 )
-from hczkbot.config.loader import load_config
+from biscuitbot.config.loader import load_config
 
 _MAX_REQUEST_ID_LENGTH = 80
 

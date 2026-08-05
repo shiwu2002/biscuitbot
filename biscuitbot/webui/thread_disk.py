@@ -6,9 +6,9 @@ from pathlib import Path
 
 from loguru import logger
 
-from hczkbot.config.paths import get_webui_dir
-from hczkbot.session.manager import SessionManager
-from hczkbot.webui.transcript import delete_webui_transcript
+from biscuitbot.config.paths import get_webui_dir
+from biscuitbot.session.manager import SessionManager
+from biscuitbot.webui.transcript import delete_webui_transcript
 
 
 def webui_thread_file_path(session_key: str) -> Path:

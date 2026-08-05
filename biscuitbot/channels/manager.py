@@ -11,20 +11,20 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.schema import Config
-from hczkbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.schema import Config
+from biscuitbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
 
 if TYPE_CHECKING:
-    from hczkbot.session.manager import SessionManager
+    from biscuitbot.session.manager import SessionManager
 
 
 def _default_webui_dist() -> Path | None:
     """Return the absolute path to the bundled webui dist directory if it exists."""
     try:
-        import hczkbot.web as web_pkg  # type: ignore[import-not-found]
+        import biscuitbot.web as web_pkg  # type: ignore[import-not-found]
     except ImportError:
         return None
     candidate = Path(web_pkg.__file__).resolve().parent / "dist"
@@ -80,7 +80,7 @@ class ChannelManager:
 
     def _init_channels(self) -> None:
         """Initialize channels discovered via pkgutil scan + entry_points plugins."""
-        from hczkbot.channels.registry import discover_channel_names, discover_enabled
+        from biscuitbot.channels.registry import discover_channel_names, discover_enabled
 
         # Collect enabled module names first, then only import those.
         # Channel configs live in ChannelsConfig's extra fields (via
@@ -110,8 +110,8 @@ class ChannelManager:
             try:
                 kwargs: dict[str, Any] = {}
                 if cls.name == "websocket":
-                    from hczkbot.channels.websocket import WebSocketConfig
-                    from hczkbot.webui.gateway_services import build_gateway_services
+                    from biscuitbot.channels.websocket import WebSocketConfig
+                    from biscuitbot.webui.gateway_services import build_gateway_services
 
                     parsed = WebSocketConfig.model_validate(section)
                     static_path = _default_webui_dist() if self._webui_static_dist else None

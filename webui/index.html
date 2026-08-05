@@ -6,15 +6,15 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="hczkbot web UI — chat with your hczkbot workspace."
+      content="biscuitbot web UI — chat with your biscuitbot workspace."
       data-i18n-meta="description"
     />
     <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/x-icon" href="/brand/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/brand/hczkbot_favicon_32.png" />
-    <link rel="icon" type="image/png" sizes="73x75" href="/brand/hczkbot_icon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/brand/hczkbot_apple_touch.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/biscuitbot_favicon_32.png" />
+    <link rel="icon" type="image/png" sizes="73x75" href="/brand/biscuitbot_icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/biscuitbot_apple_touch.png" />
     <style>
       html,
       body,
@@ -81,7 +81,7 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("hczkbot-webui.theme");
+          var stored = localStorage.getItem("biscuitbot-webui.theme");
           var dark =
             stored === "dark" ||
             (!stored &&
@@ -93,43 +93,43 @@
     </script>
     <script>
       (function () {
-        var localeKey = "hczkbot.locale";
+        var localeKey = "biscuitbot.locale";
         var copy = {
           en: {
-            boot: "Loading hczkbot…",
-            description: "hczkbot web UI — chat with your hczkbot workspace."
+            boot: "Loading biscuitbot…",
+            description: "biscuitbot web UI — chat with your biscuitbot workspace."
           },
           "zh-CN": {
-            boot: "正在加载 hczkbot…",
-            description: "hczkbot Web UI —— 与你的 hczkbot 工作区对话。"
+            boot: "正在加载 biscuitbot…",
+            description: "biscuitbot Web UI —— 与你的 biscuitbot 工作区对话。"
           },
           "zh-TW": {
-            boot: "正在載入 hczkbot…",
-            description: "hczkbot Web UI —— 與你的 hczkbot 工作區對話。"
+            boot: "正在載入 biscuitbot…",
+            description: "biscuitbot Web UI —— 與你的 biscuitbot 工作區對話。"
           },
           fr: {
-            boot: "Chargement de hczkbot…",
-            description: "Interface web hczkbot — discutez avec votre espace de travail hczkbot."
+            boot: "Chargement de biscuitbot…",
+            description: "Interface web biscuitbot — discutez avec votre espace de travail biscuitbot."
           },
           ja: {
-            boot: "hczkbot を読み込み中…",
-            description: "hczkbot Web UI — hczkbot ワークスペースと会話します。"
+            boot: "biscuitbot を読み込み中…",
+            description: "biscuitbot Web UI — biscuitbot ワークスペースと会話します。"
           },
           ko: {
-            boot: "hczkbot 불러오는 중…",
-            description: "hczkbot 웹 UI — hczkbot 작업공간과 대화하세요."
+            boot: "biscuitbot 불러오는 중…",
+            description: "biscuitbot 웹 UI — biscuitbot 작업공간과 대화하세요."
           },
           es: {
-            boot: "Cargando hczkbot…",
-            description: "Interfaz web de hczkbot: conversa con tu espacio de trabajo de hczkbot."
+            boot: "Cargando biscuitbot…",
+            description: "Interfaz web de biscuitbot: conversa con tu espacio de trabajo de biscuitbot."
           },
           vi: {
-            boot: "Đang tải hczkbot…",
-            description: "Giao diện web hczkbot — trò chuyện với workspace hczkbot của bạn."
+            boot: "Đang tải biscuitbot…",
+            description: "Giao diện web biscuitbot — trò chuyện với workspace biscuitbot của bạn."
           },
           id: {
-            boot: "Memuat hczkbot…",
-            description: "UI web hczkbot — ngobrol dengan workspace hczkbot Anda."
+            boot: "Memuat biscuitbot…",
+            description: "UI web biscuitbot — ngobrol dengan workspace biscuitbot Anda."
           }
         };
 
@@ -171,14 +171,14 @@
         } catch {}
       })();
     </script>
-    <title>hczkbot</title>
+    <title>biscuitbot</title>
   </head>
   <body class="bg-background text-foreground antialiased">
     <div id="root">
       <div class="boot-splash">
         <div class="boot-splash-inner">
           <span class="boot-dot" aria-hidden="true"></span>
-          <span data-boot-copy>Loading hczkbot…</span>
+          <span data-boot-copy>Loading biscuitbot…</span>
         </div>
       </div>
     </div>

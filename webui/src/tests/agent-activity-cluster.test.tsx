@@ -535,8 +535,8 @@ describe("AgentActivityCluster", () => {
             id: "t-search",
             role: "tool",
             kind: "trace",
-            content: 'web_search({"query":"hczkbot architecture"})',
-            traces: ['web_search({"query":"hczkbot architecture"})'],
+            content: 'web_search({"query":"biscuitbot architecture"})',
+            traces: ['web_search({"query":"biscuitbot architecture"})'],
             createdAt: 1,
           },
           {
@@ -881,7 +881,7 @@ describe("AgentActivityCluster", () => {
           fileEdits: [{
             call_id: "call-write",
             tool: "write_file",
-            path: "/Users/renxubin/.hczkbot/workspace/agent-research-video/composition.html",
+            path: "/Users/renxubin/.biscuitbot/workspace/agent-research-video/composition.html",
             phase: "error",
             added: 0,
             deleted: 0,

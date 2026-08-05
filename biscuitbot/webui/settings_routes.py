@@ -15,12 +15,12 @@ from typing import Any
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
-from hczkbot.agent.tools.mcp import request_mcp_reload
-from hczkbot.bus.queue import MessageBus
-from hczkbot.webui.cli_apps_api import cli_apps_action, cli_apps_payload
-from hczkbot.webui.http_utils import query_first as _query_first
-from hczkbot.webui.mcp_presets_api import mcp_presets_settings_action
-from hczkbot.webui.settings_api import (
+from biscuitbot.agent.tools.mcp import request_mcp_reload
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.webui.cli_apps_api import cli_apps_action, cli_apps_payload
+from biscuitbot.webui.http_utils import query_first as _query_first
+from biscuitbot.webui.mcp_presets_api import mcp_presets_settings_action
+from biscuitbot.webui.settings_api import (
     WebUISettingsError,
     create_model_configuration,
     decorate_settings_payload,
@@ -37,11 +37,11 @@ from hczkbot.webui.settings_api import (
     update_transcription_settings,
     update_web_search_settings,
 )
-from hczkbot.webui.version_check import check_for_update
+from biscuitbot.webui.version_check import check_for_update
 
 QueryParams = dict[str, list[str]]
 
-_MCP_VALUES_HEADER = "X-Hczkbot-MCP-Values"
+_MCP_VALUES_HEADER = "X-Biscuitbot-MCP-Values"
 _MCP_VALUES_HEADER_MAX_BYTES = 64 * 1024
 
 _MCP_PRESET_ACTIONS_BY_PATH = {
@@ -376,7 +376,7 @@ class WebUISettingsRouter:
         })
 
     async def _handle_settings_self_update(self, request: WsRequest) -> Response:
-        """Run pip install --upgrade hczkbot and return the result."""
+        """Run pip install --upgrade biscuitbot and return the result."""
         if not self._authorized(request):
             return self._unauthorized()
 
@@ -386,7 +386,7 @@ class WebUISettingsRouter:
         def _run_pip_upgrade() -> dict[str, Any]:
             try:
                 result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "--upgrade", "hczkbot"],
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "biscuitbot"],
                     capture_output=True,
                     text=True,
                     timeout=120,
@@ -395,7 +395,7 @@ class WebUISettingsRouter:
                 if result.returncode == 0:
                     # 解析安装的版本
                     import re
-                    match = re.search(r"Successfully installed hczkbot-([^\s]+)", output)
+                    match = re.search(r"Successfully installed biscuitbot-([^\s]+)", output)
                     new_ver = match.group(1) if match else None
                     return {"success": True, "newVersion": new_ver, "output": output.strip()}
                 return {"success": False, "output": output.strip()}

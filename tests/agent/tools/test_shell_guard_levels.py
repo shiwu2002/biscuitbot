@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hczkbot.agent.tools.shell import ExecTool
+from biscuitbot.agent.tools.shell import ExecTool
 
 
 def _fake_resolve_private(hostname, port, family=0, type_=0):
@@ -109,7 +109,7 @@ def test_off_still_respects_user_deny_patterns():
 def test_ssrf_blocks_internal_url_at_all_levels(level):
     """SSRF protection must block internal/private URLs regardless of guard_level."""
     tool = ExecTool(guard_level=level, working_dir="/tmp")
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_private):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_private):
         assert _blocked(tool, "curl http://169.254.169.254/latest/meta-data/")
 
 
@@ -126,7 +126,7 @@ def test_workspace_boundary_blocks_traversal_at_all_levels(level, tmp_path):
 
 def test_deny_patterns_count_by_level():
     """Verify the number of hardcoded patterns at each level."""
-    from hczkbot.agent.tools.shell import _CATASTROPHIC_DENY_PATTERNS, _FRICTION_DENY_PATTERNS
+    from biscuitbot.agent.tools.shell import _CATASTROPHIC_DENY_PATTERNS, _FRICTION_DENY_PATTERNS
 
     standard = ExecTool(guard_level="standard", working_dir="/tmp")
     minimal = ExecTool(guard_level="minimal", working_dir="/tmp")

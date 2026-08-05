@@ -6,10 +6,10 @@ untrusted-content snippet at standard/minimal and exclude it at off.
 
 from __future__ import annotations
 
-from hczkbot.agent.context import ContextBuilder
-from hczkbot.agent.subagent import SubagentManager
-from hczkbot.config.schema import ToolsConfig
-from hczkbot.providers.base import LLMProvider
+from biscuitbot.agent.context import ContextBuilder
+from biscuitbot.agent.subagent import SubagentManager
+from biscuitbot.config.schema import ToolsConfig
+from biscuitbot.providers.base import LLMProvider
 
 _UNTRUSTED_MARKER = "untrusted external data"
 

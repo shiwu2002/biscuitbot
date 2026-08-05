@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.session.manager import Session, SessionManager
+from biscuitbot.session.manager import Session, SessionManager
 
 # Test constants
 MEMORY_WINDOW = 50
@@ -486,9 +486,9 @@ class TestNewCommandArchival:
 
     @staticmethod
     def _make_loop(tmp_path: Path):
-        from hczkbot.agent.loop import AgentLoop
-        from hczkbot.bus.queue import MessageBus
-        from hczkbot.providers.base import LLMResponse
+        from biscuitbot.agent.loop import AgentLoop
+        from biscuitbot.bus.queue import MessageBus
+        from biscuitbot.providers.base import LLMResponse
 
         bus = MessageBus()
         provider = MagicMock()
@@ -508,7 +508,7 @@ class TestNewCommandArchival:
     @pytest.mark.asyncio
     async def test_new_clears_session_immediately_even_if_archive_fails(self, tmp_path: Path) -> None:
         """/new clears session immediately; archive is fire-and-forget."""
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
 
         loop = self._make_loop(tmp_path)
         session = loop.sessions.get_or_create("cli:test")
@@ -541,7 +541,7 @@ class TestNewCommandArchival:
 
     @pytest.mark.asyncio
     async def test_new_archives_only_unconsolidated_messages(self, tmp_path: Path) -> None:
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
 
         loop = self._make_loop(tmp_path)
         session = loop.sessions.get_or_create("cli:test")
@@ -574,7 +574,7 @@ class TestNewCommandArchival:
 
     @pytest.mark.asyncio
     async def test_new_clears_session_and_responds(self, tmp_path: Path) -> None:
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
 
         loop = self._make_loop(tmp_path)
         session = loop.sessions.get_or_create("cli:test")
@@ -599,7 +599,7 @@ class TestNewCommandArchival:
     @pytest.mark.asyncio
     async def test_close_mcp_drains_background_tasks(self, tmp_path: Path) -> None:
         """close_mcp waits for background tasks to complete."""
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
 
         loop = self._make_loop(tmp_path)
         session = loop.sessions.get_or_create("cli:test")

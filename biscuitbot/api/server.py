@@ -1,4 +1,4 @@
-"""OpenAI-compatible HTTP API server for a fixed hczkbot session.
+"""OpenAI-compatible HTTP API server for a fixed biscuitbot session.
 
 Provides /v1/chat/completions and /v1/models endpoints.
 All requests route to a single persistent API session.
@@ -16,18 +16,18 @@ from typing import Any
 from aiohttp import web
 from loguru import logger
 
-from hczkbot.config.paths import get_media_dir
-from hczkbot.utils.helpers import safe_filename
-from hczkbot.utils.media_decode import (
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.utils.helpers import safe_filename
+from biscuitbot.utils.media_decode import (
     MAX_FILE_SIZE,
 )
-from hczkbot.utils.media_decode import (
+from biscuitbot.utils.media_decode import (
     FileSizeExceeded as _FileSizeExceeded,
 )
-from hczkbot.utils.media_decode import (
+from biscuitbot.utils.media_decode import (
     save_base64_data_url as _save_base64_data_url,
 )
-from hczkbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
+from biscuitbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
 __all__ = (
     "MAX_FILE_SIZE",
@@ -210,7 +210,7 @@ async def handle_chat_completions(request: web.Request) -> web.Response:
 
     agent_loop = request.app["agent_loop"]
     timeout_s: float = request.app.get("request_timeout", 120.0)
-    model_name: str = request.app.get("model_name", "hczkbot")
+    model_name: str = request.app.get("model_name", "biscuitbot")
 
     stream = False
     try:
@@ -365,7 +365,7 @@ async def handle_chat_completions(request: web.Request) -> web.Response:
 
 async def handle_models(request: web.Request) -> web.Response:
     """GET /v1/models"""
-    model_name = request.app.get("model_name", "hczkbot")
+    model_name = request.app.get("model_name", "biscuitbot")
     return web.json_response(
         {
             "object": "list",
@@ -374,7 +374,7 @@ async def handle_models(request: web.Request) -> web.Response:
                     "id": model_name,
                     "object": "model",
                     "created": 0,
-                    "owned_by": "hczkbot",
+                    "owned_by": "biscuitbot",
                 }
             ],
         }
@@ -392,7 +392,7 @@ async def handle_health(request: web.Request) -> web.Response:
 
 
 def create_app(
-    agent_loop, model_name: str = "hczkbot", request_timeout: float = 120.0
+    agent_loop, model_name: str = "biscuitbot", request_timeout: float = 120.0
 ) -> web.Application:
     """Create the aiohttp application.
 

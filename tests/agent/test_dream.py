@@ -2,9 +2,9 @@
 
 import pytest
 
-from hczkbot.agent.memory import MemoryStore
-from hczkbot.providers.base import LLMResponse
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.agent.memory import MemoryStore
+from biscuitbot.providers.base import LLMResponse
+from biscuitbot.utils.prompt_templates import render_template
 
 
 @pytest.fixture
@@ -135,9 +135,9 @@ class TestEphemeralDirect:
         """Factory fixture that builds a minimal AgentLoop with mocked deps."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from hczkbot.agent.loop import AgentLoop
-        from hczkbot.agent.memory import MemoryStore
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.loop import AgentLoop
+        from biscuitbot.agent.memory import MemoryStore
+        from biscuitbot.bus.queue import MessageBus
 
         store = MemoryStore(tmp_path)
         store.write_soul("# Soul")
@@ -153,9 +153,9 @@ class TestEphemeralDirect:
         )
 
         with (
-            patch("hczkbot.agent.loop.SessionManager"),
-            patch("hczkbot.agent.loop.SubagentManager") as mock_sub,
-            patch("hczkbot.agent.loop.Consolidator") as mock_consolidator_cls,
+            patch("biscuitbot.agent.loop.SessionManager"),
+            patch("biscuitbot.agent.loop.SubagentManager") as mock_sub,
+            patch("biscuitbot.agent.loop.Consolidator") as mock_consolidator_cls,
         ):
             mock_sub.return_value.cancel_by_session = AsyncMock(return_value=0)
             mock_consolidator_cls.return_value.maybe_consolidate_by_tokens = AsyncMock()
@@ -262,8 +262,8 @@ class TestEphemeralDirect:
         """Dream must only see the batch selected by build_dream_prompt."""
         from unittest.mock import MagicMock
 
-        from hczkbot.agent.loop import AgentLoop
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.loop import AgentLoop
+        from biscuitbot.bus.queue import MessageBus
 
         store = MemoryStore(tmp_path)
         for i in range(60):
@@ -317,9 +317,9 @@ class TestEphemeralHooks:
         """Build an AgentLoop with a spy hook to verify hook firing behavior."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        from hczkbot.agent.hook import AgentHook
-        from hczkbot.agent.loop import AgentLoop
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.hook import AgentHook
+        from biscuitbot.agent.loop import AgentLoop
+        from biscuitbot.bus.queue import MessageBus
 
         bus = MessageBus()
         provider = MagicMock()
@@ -338,9 +338,9 @@ class TestEphemeralHooks:
         spy.after_iteration = AsyncMock()
 
         with (
-            patch("hczkbot.agent.loop.SessionManager"),
-            patch("hczkbot.agent.loop.SubagentManager") as mock_sub,
-            patch("hczkbot.agent.loop.Consolidator") as mock_consolidator_cls,
+            patch("biscuitbot.agent.loop.SessionManager"),
+            patch("biscuitbot.agent.loop.SubagentManager") as mock_sub,
+            patch("biscuitbot.agent.loop.Consolidator") as mock_consolidator_cls,
         ):
             mock_sub.return_value.cancel_by_session = AsyncMock(return_value=0)
             mock_consolidator_cls.return_value.maybe_consolidate_by_tokens = AsyncMock()
@@ -377,7 +377,7 @@ class TestDreamCommitMessage:
         import subprocess
         from unittest.mock import AsyncMock, MagicMock
 
-        from hczkbot.agent.memory import MemoryStore
+        from biscuitbot.agent.memory import MemoryStore
 
         store = MemoryStore(tmp_path)
         store.write_soul("# Soul")

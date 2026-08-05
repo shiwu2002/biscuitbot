@@ -9,18 +9,18 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from hczkbot.audio.transcription import (
+from biscuitbot.audio.transcription import (
     EffectiveTranscriptionConfig,
     resolve_transcription_config,
     transcribe_audio_file,
 )
-from hczkbot.audio.transcription_registry import (
+from biscuitbot.audio.transcription_registry import (
     get_transcription_provider,
     resolve_transcription_provider,
     transcription_provider_names,
 )
-from hczkbot.config.schema import Config
-from hczkbot.providers.transcription import (
+from biscuitbot.config.schema import Config
+from biscuitbot.providers.transcription import (
     OpenAITranscriptionProvider,
     _audio_mime_type,
     _resolve_api_path,
@@ -85,7 +85,7 @@ def test_resolver_prefers_top_level_transcription_over_legacy_channels() -> None
 def test_transcription_registry_lists_providers_and_aliases() -> None:
     groq = get_transcription_provider("groq")
     assert groq is not None
-    assert groq.adapter == "hczkbot.providers.transcription:OpenAITranscriptionProvider"
+    assert groq.adapter == "biscuitbot.providers.transcription:OpenAITranscriptionProvider"
     assert groq.load_adapter() is OpenAITranscriptionProvider
     assert groq.default_model == "whisper-large-v3-turbo"
 

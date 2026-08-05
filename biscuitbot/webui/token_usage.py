@@ -13,8 +13,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from loguru import logger
 
-from hczkbot.agent.hook import AgentHook, AgentHookContext
-from hczkbot.config.paths import get_webui_dir
+from biscuitbot.agent.hook import AgentHook, AgentHookContext
+from biscuitbot.config.paths import get_webui_dir
 
 TOKEN_USAGE_SCHEMA_VERSION = 1
 _MAX_STATE_FILE_BYTES = 512 * 1024

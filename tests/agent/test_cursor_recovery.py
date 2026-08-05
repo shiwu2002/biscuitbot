@@ -9,7 +9,7 @@ history.jsonl (e.g. ``"cursor": "abc"``).  The original ``_next_cursor`` and
 
 import pytest
 
-from hczkbot.agent.memory import MemoryStore
+from biscuitbot.agent.memory import MemoryStore
 
 
 @pytest.fixture

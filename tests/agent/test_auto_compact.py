@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.command import CommandContext
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMResponse
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.command import CommandContext
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import LLMResponse
 
 
 def _make_loop(
@@ -81,7 +81,7 @@ def _make_fake_compact(
     track_count: bool = False,
 ):
     """Return a fake compact_idle_session that mirrors the real method's session mutation."""
-    from hczkbot.session.manager import Session as _Session
+    from biscuitbot.session.manager import Session as _Session
 
     state = {"count": 0}
 
@@ -185,7 +185,7 @@ class TestSessionTTLConfig:
 
     def test_session_file_cap_is_internal_constant(self):
         """Session file cap should remain an internal constant, not a config field."""
-        from hczkbot.session.manager import FILE_MAX_MESSAGES
+        from biscuitbot.session.manager import FILE_MAX_MESSAGES
         assert FILE_MAX_MESSAGES == 2000
 
 
@@ -240,11 +240,11 @@ class TestAgentLoopTTLParam:
             await loop._process_message(msg)
 
         session = loop.sessions.get_or_create("cli:direct")
-        from hczkbot.session.manager import FILE_MAX_MESSAGES
+        from biscuitbot.session.manager import FILE_MAX_MESSAGES
         assert len(session.messages) <= FILE_MAX_MESSAGES
 
     def test_session_enforce_file_cap_skips_archive_when_dropped_prefix_already_consolidated(self, tmp_path):
-        from hczkbot.session.manager import Session
+        from biscuitbot.session.manager import Session
         archive_fn = MagicMock()
         session = Session(key="cli:direct")
         for i in range(8):
@@ -257,7 +257,7 @@ class TestAgentLoopTTLParam:
         archive_fn.assert_not_called()
 
     def test_session_enforce_file_cap_archives_only_unconsolidated_dropped_prefix(self, tmp_path):
-        from hczkbot.session.manager import Session
+        from biscuitbot.session.manager import Session
         archive_fn = MagicMock()
         session = Session(key="cli:direct")
         for i in range(8):

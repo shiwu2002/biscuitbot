@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hczkbot.agent.tools.base import tool_parameters
-from hczkbot.agent.tools.filesystem import _FsTool
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import tool_parameters
+from biscuitbot.agent.tools.filesystem import _FsTool
+from biscuitbot.agent.tools.schema import (
     ArraySchema,
     BooleanSchema,
     ObjectSchema,

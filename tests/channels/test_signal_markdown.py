@@ -1,7 +1,7 @@
 """Unit tests for the Signal markdown → plain text + textStyle converter."""
 
-from hczkbot.channels.signal import _markdown_to_signal, _partition_styles
-from hczkbot.utils.helpers import split_message
+from biscuitbot.channels.signal import _markdown_to_signal, _partition_styles
+from biscuitbot.utils.helpers import split_message
 
 
 def _utf16_len(s: str) -> int:

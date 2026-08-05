@@ -15,9 +15,9 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.config.paths import get_webui_dir
-from hczkbot.cron.session_turns import CRON_HISTORY_META
-from hczkbot.session.manager import (
+from biscuitbot.config.paths import get_webui_dir
+from biscuitbot.cron.session_turns import CRON_HISTORY_META
+from biscuitbot.session.manager import (
     _SESSION_LIST_PREVIEW_MAX_CHARS,
     _SESSION_LIST_PREVIEW_MAX_RECORDS,
     Session,

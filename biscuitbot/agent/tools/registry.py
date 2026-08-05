@@ -20,10 +20,10 @@ import os
 import re
 from typing import TYPE_CHECKING, Any
 
-from hczkbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.base import Tool
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.usage_stats import UsageStats
+    from biscuitbot.agent.tools.usage_stats import UsageStats
 
 
 class ToolRegistry:
@@ -230,7 +230,7 @@ class ToolRegistry:
         if not file_path or not os.path.isfile(file_path):
             return None, (
                 f"工具文件不存在：{file_path}。请先用 write_file 创建工具 Python 文件。"
-                f"工具必须继承 hczkbot.agent.tools.base.Tool 并实现 name/description/parameters/execute。"
+                f"工具必须继承 biscuitbot.agent.tools.base.Tool 并实现 name/description/parameters/execute。"
             )
         if not docs_md_path or not os.path.isfile(docs_md_path):
             return None, (
@@ -250,7 +250,7 @@ class ToolRegistry:
         except Exception as e:
             return None, (
                 f"工具文件导入失败：{e}。"
-                f"请检查 Python 语法、导入语句（需要 from hczkbot.agent.tools.base import Tool）。"
+                f"请检查 Python 语法、导入语句（需要 from biscuitbot.agent.tools.base import Tool）。"
             )
 
         # 3. Find exactly one Tool subclass defined in this module
@@ -264,7 +264,7 @@ class ToolRegistry:
         ]
         if not tool_classes:
             return None, (
-                "未找到 Tool 子类。工具类必须继承 hczkbot.agent.tools.base.Tool，"
+                "未找到 Tool 子类。工具类必须继承 biscuitbot.agent.tools.base.Tool，"
                 "且类名不以 _ 开头。示例：class MyTool(Tool): ..."
             )
         if len(tool_classes) > 1:

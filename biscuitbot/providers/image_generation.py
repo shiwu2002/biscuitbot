@@ -15,8 +15,8 @@ from urllib.parse import urlparse
 import httpx
 from loguru import logger
 
-from hczkbot.providers.registry import find_by_name
-from hczkbot.utils.helpers import detect_image_mime
+from biscuitbot.providers.registry import find_by_name
+from biscuitbot.utils.helpers import detect_image_mime
 
 
 def extract_domain(url: str) -> str:

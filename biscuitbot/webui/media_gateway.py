@@ -10,15 +10,15 @@ from typing import Any
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
-from hczkbot.config.paths import get_media_dir
-from hczkbot.webui.media_api import (
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.webui.media_api import (
     attach_signed_media_urls,
     serve_signed_media,
     sign_media_path,
     sign_or_stage_media_path,
     signed_media_attachments,
 )
-from hczkbot.webui.transcript import rewrite_local_markdown_images
+from biscuitbot.webui.transcript import rewrite_local_markdown_images
 
 
 class WebUIMediaGateway:

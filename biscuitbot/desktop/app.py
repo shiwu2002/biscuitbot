@@ -1,6 +1,6 @@
 """Desktop application runner.
 
-Starts the hczkbot gateway in a daemon thread and opens a native pywebview
+Starts the biscuitbot gateway in a daemon thread and opens a native pywebview
 window that loads the WebUI.  When the window closes the process exits,
 taking the daemon gateway thread with it.
 """
@@ -55,7 +55,7 @@ def run_desktop(
     """
     import webview
 
-    from hczkbot.cli.commands import _run_gateway
+    from biscuitbot.cli.commands import _run_gateway
 
     host = config.gateway.host or "127.0.0.1"
     port = port if port is not None else config.gateway.port
@@ -80,7 +80,7 @@ def run_desktop(
 
     gateway_thread = threading.Thread(
         target=_gateway_target,
-        name="hczkbot-gateway",
+        name="biscuitbot-gateway",
         daemon=True,
     )
     gateway_thread.start()
@@ -99,7 +99,7 @@ def run_desktop(
 
     # 创建并运行原生窗口
     webview.create_window(
-        title="hczkbot",
+        title="biscuitbot",
         url=url,
         width=width,
         height=height,

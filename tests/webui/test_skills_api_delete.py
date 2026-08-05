@@ -1,4 +1,4 @@
-"""Tests for ``hczkbot.webui.skills_api.delete_workspace_skill``."""
+"""Tests for ``biscuitbot.webui.skills_api.delete_workspace_skill``."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from hczkbot.agent import skills as skills_module
-from hczkbot.agent.skills import SkillsLoader
-from hczkbot.webui.skills_api import (
+from biscuitbot.agent import skills as skills_module
+from biscuitbot.agent.skills import SkillsLoader
+from biscuitbot.webui.skills_api import (
     SkillDeletionError,
     delete_workspace_skill,
     webui_skills_payload,
@@ -27,7 +27,7 @@ def _write_skill(
     skill_dir.mkdir(parents=True)
     lines = ["---"]
     if metadata_json is not None:
-        payload = json.dumps({"hczkbot": metadata_json}, separators=(",", ":"))
+        payload = json.dumps({"biscuitbot": metadata_json}, separators=(",", ":"))
         lines.append(f"metadata: {payload}")
     lines.extend(["---", "", body])
     path = skill_dir / "SKILL.md"

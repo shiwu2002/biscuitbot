@@ -12,9 +12,9 @@ try:
 except ImportError:
     pytest.skip("Slack dependencies not installed (slack-sdk)", allow_module_level=True)
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.slack import SLACK_MAX_MESSAGE_LEN, SlackChannel, SlackConfig
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.slack import SLACK_MAX_MESSAGE_LEN, SlackChannel, SlackConfig
 
 
 class _FakeAsyncWebClient:
@@ -646,7 +646,7 @@ def test_slack_download_rejects_login_html() -> None:
 def test_slack_download_failure_marker_is_actionable() -> None:
     marker = SlackChannel._download_failure_marker("image", "screenshot.png", "download failed")
 
-    assert "not available to hczkbot" in marker
+    assert "not available to biscuitbot" in marker
     assert "files:read" in marker
     assert "reinstall the Slack app" in marker
 

@@ -1,4 +1,4 @@
-# hczkbot 打包与上传 PyPI 操作文档
+# biscuitbot 打包与上传 PyPI 操作文档
 
 ## 1. 更新版本号
 
@@ -7,7 +7,7 @@
 | 文件                    | 位置                                     | 示例                     |
 | --------------------- | -------------------------------------- | ---------------------- |
 | `pyproject.toml`      | `version = "0.2.2"`                    | 改为 `version = "0.2.3"` |
-| `hczkbot/__init__.py` | `_read_pyproject_version() or "0.2.2"` | 改为 `"0.2.3"`           |
+| `biscuitbot/__init__.py` | `_read_pyproject_version() or "0.2.2"` | 改为 `"0.2.3"`           |
 
 ## 2. 清理旧包和编译缓存
 
@@ -26,8 +26,8 @@ python -m build
 
 生成文件：
 
-- `dist/hczkbot-{版本}-py3-none-any.whl` — Wheel 包
-- `dist/hczkbot-{版本}.tar.gz` — 源码包
+- `dist/biscuitbot-{版本}-py3-none-any.whl` — Wheel 包
+- `dist/biscuitbot-{版本}.tar.gz` — 源码包
 
 ## 4. 上传到 PyPI
 
@@ -43,8 +43,8 @@ twine upload dist/*
 ## 5. 验证
 
 ```bash
-pip install --upgrade hczkbot
-hczkbot -v
+pip install --upgrade biscuitbot
+biscuitbot -v
 ```
 
 ## 附：API Token 配置（免交互上传）

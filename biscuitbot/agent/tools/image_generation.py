@@ -7,32 +7,32 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import Field
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.schema import (
     ArraySchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config_base import Base
-from hczkbot.providers.image_generation import (
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config_base import Base
+from biscuitbot.providers.image_generation import (
     ImageGenerationError,
     ImageGenerationProvider,
     extract_domain,
     get_image_gen_provider,
 )
-from hczkbot.security.workspace_access import current_tool_workspace
-from hczkbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
-from hczkbot.utils.artifacts import (
+from biscuitbot.security.workspace_access import current_tool_workspace
+from biscuitbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
+from biscuitbot.utils.artifacts import (
     ArtifactError,
     generated_image_tool_result,
     store_generated_image_artifact,
 )
-from hczkbot.utils.helpers import detect_image_mime
+from biscuitbot.utils.helpers import detect_image_mime
 
 if TYPE_CHECKING:
-    from hczkbot.config.schema import ProviderConfig
+    from biscuitbot.config.schema import ProviderConfig
 
 
 class ImageGenerationToolConfig(Base):
@@ -159,7 +159,7 @@ class ImageGenerationTool(Tool):
             )
         except WorkspaceBoundaryError as exc:
             raise ImageGenerationError(
-                "reference_images must be inside the workspace or hczkbot media directory"
+                "reference_images must be inside the workspace or biscuitbot media directory"
             ) from exc
         except OSError as exc:
             raise ImageGenerationError(f"reference image not found: {value}") from exc

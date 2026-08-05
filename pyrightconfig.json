@@ -1,5 +1,5 @@
 {
-  "include": ["hczkbot"],
+  "include": ["biscuitbot"],
   "exclude": ["**/__pycache__", "**/.venv", "tests", "webui"],
   "typeCheckingMode": "basic",
   "reportMissingImports": "warning",

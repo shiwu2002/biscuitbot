@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
-    from hczkbot.providers.base import LLMProvider
+    from biscuitbot.providers.base import LLMProvider
 
 _EVALUATE_TOOL = [
     {

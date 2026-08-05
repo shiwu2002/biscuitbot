@@ -8,8 +8,8 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.registry import ToolRegistry
 
 _SKIP_MODULES = frozenset({
     "base", "schema", "registry", "context", "loader", "config",
@@ -20,7 +20,7 @@ _SKIP_MODULES = frozenset({
 class ToolLoader:
     def __init__(self, package: Any = None, *, test_classes: list[type[Tool]] | None = None):
         if package is None:
-            import hczkbot.agent.tools as _pkg
+            import biscuitbot.agent.tools as _pkg
             package = _pkg
         self._package = package
         self._test_classes = test_classes
@@ -65,7 +65,7 @@ class ToolLoader:
             return self._plugins
         plugins: dict[str, type[Tool]] = {}
         try:
-            eps = entry_points(group="hczkbot.tools")
+            eps = entry_points(group="biscuitbot.tools")
         except Exception:
             return plugins
         for ep in eps:

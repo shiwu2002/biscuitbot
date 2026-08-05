@@ -1,4 +1,4 @@
-"""Lightweight WebSocket test client for integration testing the hczkbot WebSocket channel.
+"""Lightweight WebSocket test client for integration testing the biscuitbot WebSocket channel.
 
 Provides an async ``WsTestClient`` class and token-issuance helpers that
 integration tests can import and use directly::

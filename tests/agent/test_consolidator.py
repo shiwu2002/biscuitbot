@@ -4,14 +4,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.memory import (
+from biscuitbot.agent.memory import (
     _ARCHIVE_SUMMARY_MAX_CHARS,
     Consolidator,
     MemoryStore,
 )
-from hczkbot.providers.base import LLMResponse
-from hczkbot.session.manager import Session
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.providers.base import LLMResponse
+from biscuitbot.session.manager import Session
+from biscuitbot.utils.prompt_templates import render_template
 
 
 @pytest.fixture
@@ -123,7 +123,7 @@ class TestConsolidatorPromptContract:
 class TestConsolidatorArchiveErrorHandling:
     """archive() must fall back to raw_archive when the LLM returns an error
     response (finish_reason == 'error'), e.g. overloaded / quota exceeded.
-    See https://github.com/HKUDS/hczkbot/issues/3244
+    See https://github.com/HKUDS/biscuitbot/issues/3244
     """
 
     async def test_archive_falls_back_on_error_finish_reason(self, consolidator, mock_provider, store):
@@ -362,7 +362,7 @@ class TestCompactIdleSession:
     @pytest.fixture
     def real_consolidator(self, store, mock_provider):
         """Create a Consolidator with a real SessionManager (not a mock)."""
-        from hczkbot.session.manager import SessionManager
+        from biscuitbot.session.manager import SessionManager
 
         sessions = SessionManager(store.workspace)
         return Consolidator(
@@ -643,8 +643,8 @@ class TestConsolidatorSessionRefresh:
     @pytest.mark.asyncio
     async def test_reloads_before_empty_session_guard(self, tmp_path):
         """A stale empty reference must not skip a non-empty cached session."""
-        from hczkbot.agent.memory import Consolidator, MemoryStore
-        from hczkbot.session.manager import Session, SessionManager
+        from biscuitbot.agent.memory import Consolidator, MemoryStore
+        from biscuitbot.session.manager import Session, SessionManager
 
         store = MemoryStore(tmp_path)
         provider = MagicMock()
@@ -686,8 +686,8 @@ class TestConsolidatorSessionRefresh:
         """After compact_idle_session replaces the session, a concurrent
         maybe_consolidate_by_tokens with the old reference should use the
         fresh session from cache instead of overwriting."""
-        from hczkbot.agent.memory import Consolidator, MemoryStore
-        from hczkbot.session.manager import SessionManager
+        from biscuitbot.agent.memory import Consolidator, MemoryStore
+        from biscuitbot.session.manager import SessionManager
 
         store = MemoryStore(tmp_path)
         provider = MagicMock()

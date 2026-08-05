@@ -8,9 +8,9 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.pairing import (
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.pairing import (
     PAIRING_CODE_META_KEY,
     format_pairing_reply,
     generate_code,
@@ -23,7 +23,7 @@ class BaseChannel(ABC):
     Abstract base class for chat channel implementations.
 
     Each channel (Telegram, Discord, etc.) should implement this interface
-    to integrate with the hczkbot message bus.
+    to integrate with the biscuitbot message bus.
     """
 
     name: str = "base"
@@ -48,11 +48,11 @@ class BaseChannel(ABC):
     async def transcribe_audio(self, file_path: str | Path) -> str:
         """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
         try:
-            from hczkbot.audio.transcription import (
+            from biscuitbot.audio.transcription import (
                 resolve_transcription_config,
                 transcribe_audio_file,
             )
-            from hczkbot.config.loader import load_config
+            from biscuitbot.config.loader import load_config
 
             return await transcribe_audio_file(file_path, resolve_transcription_config(load_config()))
         except Exception:

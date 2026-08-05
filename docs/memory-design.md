@@ -1,8 +1,8 @@
-# hczkbot 记忆系统设计文档
+# biscuitbot 记忆系统设计文档
 
 ## 1. 概述
 
-hczkbot 的记忆系统是一个**两层 + 两阶段**的混合记忆架构，旨在让 Agent 跨会话保留长期信息，同时控制上下文窗口的 token 成本。
+biscuitbot 的记忆系统是一个**两层 + 两阶段**的混合记忆架构，旨在让 Agent 跨会话保留长期信息，同时控制上下文窗口的 token 成本。
 
 核心设计目标：
 
@@ -12,7 +12,7 @@ hczkbot 的记忆系统是一个**两层 + 两阶段**的混合记忆架构，�
 - **可追溯**：所有长期记忆变更通过 Git 版本控制
 - **可回滚**：支持恢复到任意 Dream 快照
 
-核心代码位置：[hczkbot/agent/memory.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py)
+核心代码位置：[biscuitbot/agent/memory.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py)
 
 ---
 
@@ -56,7 +56,7 @@ hczkbot 的记忆系统是一个**两层 + 两阶段**的混合记忆架构，�
 
 ## 3. 记忆文件分层
 
-记忆系统管理四类文件，由 [MemoryStore](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L40) 统一管理，遵循 **MECE（相互独立、完全穷尽）** 原则：
+记忆系统管理四类文件，由 [MemoryStore](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L40) 统一管理，遵循 **MECE（相互独立、完全穷尽）** 原则：
 
 | 文件 | 路径 | 用途 | 管理者 |
 |------|------|------|--------|
@@ -70,7 +70,7 @@ hczkbot 的记忆系统是一个**两层 + 两阶段**的混合记忆架构，�
 
 ### 3.1 文件路由规则
 
-Dream 模板（[templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/dream.md)）定义了严格的路由规则：
+Dream 模板（[templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/dream.md)）定义了严格的路由规则：
 
 - **USER.md**：个人属性（身份、偏好、习惯、沟通风格）— 不含技术配置
 - **SOUL.md**：Agent 行为规则、护栏、交互模式、工具策略 — 不含用户事实
@@ -82,14 +82,14 @@ Dream 模板（[templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot
 ### 3.2 保护机制
 
 - 用户和 Agent **不应直接编辑** `SOUL.md`、`USER.md`、`MEMORY.md`，由 Dream 自动管理
-- `history.jsonl` 和 `.dream_cursor` 受 Shell 工具保护，禁止直接写入（[tools/shell.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/shell.py#L189)）
-- 模板内容检测：[ContextBuilder._is_template_content](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py#L179) 会跳过未自定义的模板文件，避免注入占位符内容
+- `history.jsonl` 和 `.dream_cursor` 受 Shell 工具保护，禁止直接写入（[tools/shell.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/shell.py#L189)）
+- 模板内容检测：[ContextBuilder._is_template_content](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/context.py#L179) 会跳过未自定义的模板文件，避免注入占位符内容
 
 ---
 
 ## 4. MemoryStore：纯文件 I/O 层
 
-[MemoryStore](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L40) 是记忆系统的底层存储抽象，只负责文件读写，不涉及 LLM 调用。
+[MemoryStore](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L40) 是记忆系统的底层存储抽象，只负责文件读写，不涉及 LLM 调用。
 
 ### 4.1 核心职责
 
@@ -122,10 +122,10 @@ class MemoryStore:
 
 ### 4.3 原子写入与并发安全
 
-- **cursor 分配 + 追加**：使用 `threading.Lock` 串行化（[memory.py:275](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L275)），防止并发写入产生重复 cursor
-- **compact_history 加锁**：`compact_history` 在 `_append_lock` 内执行读-改-写（[memory.py:387](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L387)），防止并发 `append_history` 的条目被原子重写覆盖丢失
-- **整文件重写**：`_write_entries` 使用 temp 文件 + `os.replace` + `fsync` + 目录 `fsync` 保证原子性和持久性（[memory.py:483](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L483)）
-- **游标文件原子写入**：`.cursor` 和 `.dream_cursor` 均使用 `atomic_write_text`（temp + rename + fsync）写入（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py#L355)），崩溃时不会产生部分写入
+- **cursor 分配 + 追加**：使用 `threading.Lock` 串行化（[memory.py:275](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L275)），防止并发写入产生重复 cursor
+- **compact_history 加锁**：`compact_history` 在 `_append_lock` 内执行读-改-写（[memory.py:387](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L387)），防止并发 `append_history` 的条目被原子重写覆盖丢失
+- **整文件重写**：`_write_entries` 使用 temp 文件 + `os.replace` + `fsync` + 目录 `fsync` 保证原子性和持久性（[memory.py:483](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L483)）
+- **游标文件原子写入**：`.cursor` 和 `.dream_cursor` 均使用 `atomic_write_text`（temp + rename + fsync）写入（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/utils/helpers.py#L355)），崩溃时不会产生部分写入
 - **history.jsonl 追加 fsync**：`append_history` 在追加后 `f.flush()` + `os.fsync()`，保证数据落盘
 - **Windows 兼容**：目录 fsync 在 Windows 上跳过（NTFS 同步元数据）
 
@@ -147,11 +147,11 @@ class MemoryStore:
 | `_RAW_ARCHIVE_MAX_CHARS` | 16,000 | LLM 失败时的原始转储上限 |
 | `_ARCHIVE_SUMMARY_MAX_CHARS` | 8,000 | LLM 摘要上限 |
 
-`compact_history()` 在条目数超限时丢弃最旧的条目，**但不会静默删除**——被驱逐的条目归档到 `history-archive-YYYY-MM.jsonl`（[memory.py:406](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L406)），保留审计可追溯性。
+`compact_history()` 在条目数超限时丢弃最旧的条目，**但不会静默删除**——被驱逐的条目归档到 `history-archive-YYYY-MM.jsonl`（[memory.py:406](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L406)），保留审计可追溯性。
 
 ### 4.6 `_read_last_entry` 健壮读取
 
-`_read_last_entry`（[memory.py:437](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L437)）用于高效读取 history.jsonl 的最后一条记录（避免全文件扫描来分配下一个 cursor）：
+`_read_last_entry`（[memory.py:437](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L437)）用于高效读取 history.jsonl 的最后一条记录（避免全文件扫描来分配下一个 cursor）：
 
 - **循环倍增读取**：从 8KB 开始，若最后一行 JSON 解析失败（截断），倍增读取窗口（16KB→32KB→...）直到成功或读完全文件。单条记录可达 24KB+（8000 字符摘要 × 3 字节 UTF-8），固定 4KB 窗口会截断。
 - **UnicodeDecodeError 处理**：当读取窗口恰好切断多字节 UTF-8 字符（CJK 文本常见），`decode("utf-8")` 抛出异常时也倍增窗口重试，而非直接返回 None。这对中文场景至关重要。
@@ -169,7 +169,7 @@ class MemoryStore:
 
 ## 5. Consolidator：Token 预算触发的会话内整合
 
-[Consolidator](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L623) 负责在会话进行中，当 prompt token 接近上下文窗口时，将旧消息摘要归档到 `history.jsonl`。
+[Consolidator](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L623) 负责在会话进行中，当 prompt token 接近上下文窗口时，将旧消息摘要归档到 `history.jsonl`。
 
 ### 5.1 Token 预算模型
 
@@ -184,7 +184,7 @@ _input_token_budget = context_window_tokens - max_completion_tokens - _SAFETY_BU
 
 ### 5.2 整合流程
 
-`maybe_consolidate_by_tokens` 的核心循环（[memory.py:862](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L862)）：
+`maybe_consolidate_by_tokens` 的核心循环（[memory.py:862](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L862)）：
 
 1. **获取会话锁**：`get_lock(session_key)` 使用 `WeakValueDictionary` 维护每会话 `asyncio.Lock`
 2. **刷新会话引用**：AutoCompact 可能已替换会话对象
@@ -206,11 +206,11 @@ _input_token_budget = context_window_tokens - max_completion_tokens - _SAFETY_BU
 
 ### 5.4 LLM 摘要归档
 
-`archive` 方法（[memory.py:855](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L855)）：
+`archive` 方法（[memory.py:855](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L855)）：
 
 1. 格式化消息为 `[timestamp] ROLE [tools: ...]: content` 形式
 2. 截断到 token 预算内
-3. 调用 LLM，使用 [consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) 模板，注入 `session_key` 上下文（多会话场景下帮助 LLM 区分不同渠道/聊天的事实）
+3. 调用 LLM，使用 [consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/consolidator_archive.md) 模板，注入 `session_key` 上下文（多会话场景下帮助 LLM 区分不同渠道/聊天的事实）
 4. LLM 输出带属性标签的原子事实列表
 5. 追加到 `history.jsonl`
 6. **失败兜底**：LLM 调用失败时 `raw_archive` 原始转储（最多 16,000 字符）
@@ -233,7 +233,7 @@ Dream 在第二阶段会读取这些标签作为路由和保留提示，并从�
 
 ## 6. Dream：两阶段长期记忆整合
 
-Dream 是 hczkbot 记忆系统的核心创新，采用**两阶段**设计将短期会话历史沉淀为长期结构化记忆。
+Dream 是 biscuitbot 记忆系统的核心创新，采用**两阶段**设计将短期会话历史沉淀为长期结构化记忆。
 
 ### 6.1 两阶段流程
 
@@ -270,7 +270,7 @@ Dream 是 hczkbot 记忆系统的核心创新，采用**两阶段**设计将短�
 #### 6.3.1 触发方式
 
 - **定时触发**：由 cron 系统任务自动执行，默认每 2 小时（`DreamConfig.interval_h`）
-- **手动触发**：用户执行 `/dream` 命令（[command/builtin.py:306](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py#L306)）
+- **手动触发**：用户执行 `/dream` 命令（[command/builtin.py:306](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/command/builtin.py#L306)）
 
 #### 6.3.1a 多批次循环处理
 
@@ -289,21 +289,21 @@ while batches < _DREAM_MAX_BATCHES:
 - **token 控制**：最大 3 批次 × 20 条 = 60 条/次，平衡积压消化速度与 token 消耗
 - **安全停止**：任一批次未干净完成则立即停止，游标不推进
 - **进度报告**：运行结束后报告处理批次数和剩余 pending 条目数
-- **常量复用**：`cmd_dream` 和 cron job 共享 `_DREAM_MAX_BATCHES` 常量（[builtin.py:20](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py#L20)）
+- **常量复用**：`cmd_dream` 和 cron job 共享 `_DREAM_MAX_BATCHES` 常量（[builtin.py:20](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/command/builtin.py#L20)）
 
 #### 6.3.2 提示词构建
 
-`build_dream_prompt`（[memory.py:467](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L467)）：
+`build_dream_prompt`（[memory.py:467](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L467)）：
 
 1. 读取 `.dream_cursor`，获取未处理的历史条目
 2. 取最近 `max_entries=20` 条
 3. 每条截断到 500 字符
-4. 渲染 [dream.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/dream.md) 模板
+4. 渲染 [dream.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/dream.md) 模板
 5. 拼接历史上下文
 
 #### 6.3.3 受限工具集
 
-`build_dream_tools`（[memory.py:491](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L491)）构建一个**受限**的 ToolRegistry，仅包含：
+`build_dream_tools`（[memory.py:491](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L491)）构建一个**受限**的 ToolRegistry，仅包含：
 
 | 工具 | 可读路径 | 可写路径 |
 |------|---------|---------|
@@ -316,7 +316,7 @@ while batches < _DREAM_MAX_BATCHES:
 
 #### 6.3.4 Dream 提示词设计要点
 
-[dream.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/dream.md) 模板的核心设计：
+[dream.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/dream.md) 模板的核心设计：
 
 - **文件路由明确**：每个事实路由到唯一规范文件
 - **MECE 强制**：跨文件不重复，多文件冲突时保留最具体副本
@@ -348,7 +348,7 @@ def dream_run_completed(resp: object | None) -> bool:
 
 ## 7. AutoCompact：空闲会话自动压缩
 
-[AutoCompact](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/autocompact.py) 处理长时间空闲的会话，避免累积过多历史。
+[AutoCompact](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/autocompact.py) 处理长时间空闲的会话，避免累积过多历史。
 
 ### 7.1 触发条件
 
@@ -358,7 +358,7 @@ def dream_run_completed(resp: object | None) -> bool:
 
 ### 7.2 压缩流程
 
-`compact_idle_session`（[memory.py:971](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L971)）：
+`compact_idle_session`（[memory.py:971](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L971)）：
 
 1. 获取会话级整合锁
 2. 重新加载会话（可能已被其他流程替换）
@@ -380,7 +380,7 @@ def dream_run_completed(resp: object | None) -> bool:
 
 ## 8. 上下文注入
 
-[ContextBuilder](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py#L51) 负责将记忆注入到 LLM 的系统提示词中。
+[ContextBuilder](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/context.py#L51) 负责将记忆注入到 LLM 的系统提示词中。
 
 ### 8.1 系统提示词组装顺序
 
@@ -397,7 +397,7 @@ def dream_run_completed(resp: object | None) -> bool:
 
 ### 8.2 历史注入策略
 
-`read_recent_history_for_prompt`（[memory.py:365](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L365)）：
+`read_recent_history_for_prompt`（[memory.py:365](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L365)）：
 
 - 读取 `.dream_cursor` 之后的未处理历史
 - **会话隔离模式**（默认）：只返回当前 `session_key` 的条目
@@ -406,7 +406,7 @@ def dream_run_completed(resp: object | None) -> bool:
 
 #### 8.2a 积压历史 Backlog 摘要
 
-当未处理历史超过 `_MAX_RECENT_HISTORY`（50 条）时，`_format_recent_history`（[context.py:184](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py#L184)）不会静默丢弃早期条目，而是将积压区**最接近 recent 窗口的 20 条**（`backlog[-20:]`）截断为 100 字符摘要，以 `[Backlog]` 前缀注入：
+当未处理历史超过 `_MAX_RECENT_HISTORY`（50 条）时，`_format_recent_history`（[context.py:184](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/context.py#L184)）不会静默丢弃早期条目，而是将积压区**最接近 recent 窗口的 20 条**（`backlog[-20:]`）截断为 100 字符摘要，以 `[Backlog]` 前缀注入：
 
 ```
 - [Backlog: 80 earlier entries not shown in full]
@@ -432,7 +432,7 @@ _INTERNAL_HISTORY_SESSION_KEYS = {"heartbeat"}
 
 ## 9. GitStore：版本控制与回滚
 
-[GitStore](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/gitstore.py#L45) 使用 dulwich（纯 Python Git 实现）为记忆文件提供版本控制。
+[GitStore](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/utils/gitstore.py#L45) 使用 dulwich（纯 Python Git 实现）为记忆文件提供版本控制。
 
 ### 9.1 追踪文件
 
@@ -450,7 +450,7 @@ GitStore(workspace, tracked_files=[
 
 - Dream 每次运行后自动提交（`auto_commit`）
 - 提交消息包含 Dream 摘要内容
-- 作者固定为 `hczkbot <hczkbot@dream>`
+- 作者固定为 `biscuitbot <biscuitbot@dream>`
 - `.gitignore` 配置为只追踪指定文件（`/*` 排除所有，再 `!` 白名单）
 
 ### 9.3 命令支持
@@ -465,7 +465,7 @@ GitStore(workspace, tracked_files=[
 
 `revert` 操作通过将 tracked files 恢复到目标 commit 的父 commit 状态来实现，然后创建一个新的 revert commit，保证历史可追溯。`.dream_cursor` 不在 tracked files 中，因此回滚不会影响 Dream 处理进度。
 
-`/dream-log` 末尾通过 `count_unprocessed_history()`（[memory.py:530](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py#L530)）显示当前 pending 条目数，让用户直观感知 Dream 是否积压。
+`/dream-log` 末尾通过 `count_unprocessed_history()`（[memory.py:530](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py#L530)）显示当前 pending 条目数，让用户直观感知 Dream 是否积压。
 
 ---
 
@@ -473,7 +473,7 @@ GitStore(workspace, tracked_files=[
 
 ### 10.1 DreamConfig
 
-定义于 [config/schema.py:52](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py#L52)：
+定义于 [config/schema.py:52](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/schema.py#L52)：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -551,7 +551,7 @@ LLM 调用
 
 ### 11.3 搜索路径（Agent 主动检索）
 
-Agent 可通过内置 `grep` 工具搜索 `history.jsonl`（见 [skills/memory/SKILL.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/skills/memory/SKILL.md)）：
+Agent 可通过内置 `grep` 工具搜索 `history.jsonl`（见 [skills/memory/SKILL.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/skills/memory/SKILL.md)）：
 
 ```
 grep(pattern="keyword", path="memory/history.jsonl", case_insensitive=true)
@@ -584,7 +584,7 @@ grep(pattern="keyword", path="memory", glob="*.jsonl", output_mode="count")
 ### 12.4 全链路原子写入
 
 所有记忆文件的写入均使用原子操作（temp + rename + fsync）：
-- `atomic_write_text`（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py#L355)）统一处理 `.cursor`、`.dream_cursor`
+- `atomic_write_text`（[helpers.py:355](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/utils/helpers.py#L355)）统一处理 `.cursor`、`.dream_cursor`
 - `_write_entries` 处理 `history.jsonl` 整文件重写
 - `append_history` 追加后 fsync 保证数据落盘
 - `compact_history` 在 `_append_lock` 内执行，消除并发竞态
@@ -619,20 +619,20 @@ Dream 工具集严格限制为只读 + 记忆文件编辑，无法执行 shell�
 
 | 文件 | 职责 |
 |------|------|
-| [hczkbot/agent/memory.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/memory.py) | MemoryStore + Consolidator 核心 |
-| [hczkbot/agent/context.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py) | 上下文构建与记忆注入（含 Backlog 摘要） |
-| [hczkbot/agent/autocompact.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/autocompact.py) | 空闲会话自动压缩 |
-| [hczkbot/agent/loop.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/loop.py) | Agent 主循环，整合触发点 |
-| [hczkbot/utils/helpers.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/helpers.py) | `atomic_write_text` 原子写入工具 |
-| [hczkbot/utils/gitstore.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/utils/gitstore.py) | Git 版本控制 |
-| [hczkbot/templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/dream.md) | Dream 提示词模板 |
-| [hczkbot/templates/agent/consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/agent/consolidator_archive.md) | Consolidator 摘要模板（含 session_key 上下文） |
-| [hczkbot/templates/memory/MEMORY.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/memory/MEMORY.md) | MEMORY.md 模板 |
-| [hczkbot/templates/SOUL.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/SOUL.md) | SOUL.md 模板 |
-| [hczkbot/templates/USER.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/templates/USER.md) | USER.md 模板 |
-| [hczkbot/skills/memory/SKILL.md](file:///Volumes/data/hczkAgent/nanobot/hczkbot/skills/memory/SKILL.md) | 记忆系统技能说明 |
-| [hczkbot/command/builtin.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/command/builtin.py) | /dream 系列命令 + `_DREAM_MAX_BATCHES` 常量 |
-| [hczkbot/config/schema.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py) | DreamConfig 配置 |
-| [hczkbot/cli/commands.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/cli/commands.py) | Dream cron 任务（多批次循环） |
+| [biscuitbot/agent/memory.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/memory.py) | MemoryStore + Consolidator 核心 |
+| [biscuitbot/agent/context.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/context.py) | 上下文构建与记忆注入（含 Backlog 摘要） |
+| [biscuitbot/agent/autocompact.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/autocompact.py) | 空闲会话自动压缩 |
+| [biscuitbot/agent/loop.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/loop.py) | Agent 主循环，整合触发点 |
+| [biscuitbot/utils/helpers.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/utils/helpers.py) | `atomic_write_text` 原子写入工具 |
+| [biscuitbot/utils/gitstore.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/utils/gitstore.py) | Git 版本控制 |
+| [biscuitbot/templates/agent/dream.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/dream.md) | Dream 提示词模板 |
+| [biscuitbot/templates/agent/consolidator_archive.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/agent/consolidator_archive.md) | Consolidator 摘要模板（含 session_key 上下文） |
+| [biscuitbot/templates/memory/MEMORY.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/memory/MEMORY.md) | MEMORY.md 模板 |
+| [biscuitbot/templates/SOUL.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/SOUL.md) | SOUL.md 模板 |
+| [biscuitbot/templates/USER.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/templates/USER.md) | USER.md 模板 |
+| [biscuitbot/skills/memory/SKILL.md](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/skills/memory/SKILL.md) | 记忆系统技能说明 |
+| [biscuitbot/command/builtin.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/command/builtin.py) | /dream 系列命令 + `_DREAM_MAX_BATCHES` 常量 |
+| [biscuitbot/config/schema.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/schema.py) | DreamConfig 配置 |
+| [biscuitbot/cli/commands.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/cli/commands.py) | Dream cron 任务（多批次循环） |
 | [tests/agent/test_memory_store.py](file:///Volumes/data/hczkAgent/nanobot/tests/agent/test_memory_store.py) | MemoryStore 测试（含归档、计数测试） |
 | [tests/command/test_builtin_dream.py](file:///Volumes/data/hczkAgent/nanobot/tests/command/test_builtin_dream.py) | Dream 命令测试（含多批次循环测试） |

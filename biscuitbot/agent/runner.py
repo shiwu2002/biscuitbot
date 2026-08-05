@@ -14,20 +14,20 @@ from typing import Any, Callable
 
 from loguru import logger
 
-from hczkbot.agent.hook import AgentHook, AgentHookContext, AgentRunHookContext
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
-from hczkbot.utils.file_edit_events import (
+from biscuitbot.agent.hook import AgentHook, AgentHookContext, AgentRunHookContext
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from biscuitbot.utils.file_edit_events import (
     StreamingFileEditTracker,
     build_file_edit_end_event,
     build_file_edit_error_event,
     build_file_edit_start_event,
     prepare_file_edit_trackers,
 )
-from hczkbot.utils.file_edit_events import (
+from biscuitbot.utils.file_edit_events import (
     prepare_file_edit_tracker as _prepare_file_edit_tracker,
 )
-from hczkbot.utils.helpers import (
+from biscuitbot.utils.helpers import (
     IncrementalThinkExtractor,
     build_assistant_message,
     estimate_message_tokens,
@@ -38,12 +38,12 @@ from hczkbot.utils.helpers import (
     strip_think,
     truncate_text,
 )
-from hczkbot.utils.progress_events import (
+from biscuitbot.utils.progress_events import (
     invoke_file_edit_progress,
     on_progress_accepts_file_edit_events,
 )
-from hczkbot.utils.prompt_templates import render_template
-from hczkbot.utils.runtime import (
+from biscuitbot.utils.prompt_templates import render_template
+from biscuitbot.utils.runtime import (
     EMPTY_FINAL_RESPONSE_MESSAGE,
     build_budget_exhausted_finalization_message,
     build_finalization_retry_message,
@@ -826,8 +826,8 @@ class AgentRunner:
         if timeout_s is None:
             # Default to a finite timeout to avoid per-session lock starvation when an LLM
             # request hangs indefinitely (e.g. gateway/network stall).
-            # Set HCZKBOT_LLM_TIMEOUT_S=0 to disable.
-            raw = os.environ.get("HCZKBOT_LLM_TIMEOUT_S", "300").strip()
+            # Set BISCUITBOT_LLM_TIMEOUT_S=0 to disable.
+            raw = os.environ.get("BISCUITBOT_LLM_TIMEOUT_S", "300").strip()
             try:
                 timeout_s = float(raw)
             except (TypeError, ValueError):
@@ -926,9 +926,9 @@ class AgentRunner:
             coro = self.provider.chat_with_retry(**kwargs)
 
         # Streaming requests already have provider-level idle timeouts
-        # (HCZKBOT_STREAM_IDLE_TIMEOUT_S). Do not also apply the outer wall-clock
+        # (BISCUITBOT_STREAM_IDLE_TIMEOUT_S). Do not also apply the outer wall-clock
         # LLM timeout here, or healthy long reasoning streams can be killed just
-        # because total elapsed time exceeded HCZKBOT_LLM_TIMEOUT_S.
+        # because total elapsed time exceeded BISCUITBOT_LLM_TIMEOUT_S.
         outer_timeout_s = None if (wants_streaming or wants_progress_streaming) else timeout_s
         try:
             response = (

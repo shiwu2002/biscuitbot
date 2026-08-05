@@ -1,4 +1,4 @@
-export const LOCALE_STORAGE_KEY = "hczkbot.locale";
+export const LOCALE_STORAGE_KEY = "biscuitbot.locale";
 
 export const supportedLocales = [
   { code: "zh-CN", label: "Chinese (Simplified)", nativeLabel: "简体中文" },

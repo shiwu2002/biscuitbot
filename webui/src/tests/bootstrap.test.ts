@@ -28,8 +28,8 @@ describe("bootstrap helpers", () => {
   });
 
   it("preserves the host socket bridge URL", () => {
-    expect(deriveWsUrl("/", "tok en", "hczkbot-host://engine/")).toBe(
-      "hczkbot-host://engine/?token=tok%20en",
+    expect(deriveWsUrl("/", "tok en", "biscuitbot-host://engine/")).toBe(
+      "biscuitbot-host://engine/?token=tok%20en",
     );
   });
 

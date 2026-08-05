@@ -1,4 +1,4 @@
-"""Utility functions for hczkbot."""
+"""Utility functions for biscuitbot."""
 
 import base64
 import json
@@ -215,7 +215,7 @@ def current_time_str(timezone: str | None = None) -> str:
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
 _TOOL_RESULT_PREVIEW_CHARS = 1200
-_TOOL_RESULTS_DIR = ".hczkbot/tool-results"
+_TOOL_RESULTS_DIR = ".biscuitbot/tool-results"
 _TOOL_RESULT_RETENTION_SECS = 7 * 24 * 60 * 60
 _TOOL_RESULT_MAX_BUCKETS = 32
 _TRUNCATED_SUFFIX = "\n... (truncated)"
@@ -626,7 +626,7 @@ def build_status_content(
     if cached and last_in:
         token_line += f" ({cached * 100 // last_in}% cached)"
     lines = [
-        f"\U0001f43a hczkbot v{version}",
+        f"\U0001f43a biscuitbot v{version}",
         f"\U0001f9e0 Model: {model}",
         token_line,
         f"\U0001f4da Context: {ctx_used_str}/{ctx_total_str} ({ctx_pct}% of input budget)",
@@ -644,7 +644,7 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     from importlib.resources import files as pkg_files
 
     try:
-        tpl = pkg_files("hczkbot") / "templates"
+        tpl = pkg_files("biscuitbot") / "templates"
     except Exception:
         logger.debug("Failed to locate bundled templates directory", exc_info=True)
         return []
@@ -676,7 +676,7 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
 
     # Initialize git for memory version control
     try:
-        from hczkbot.utils.gitstore import GitStore
+        from biscuitbot.utils.gitstore import GitStore
 
         gs = GitStore(
             workspace,
@@ -694,11 +694,11 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
 
 
 def load_bundled_template(template_name: str) -> str | None:
-    """Read a bundled template file from the hczkbot package."""
+    """Read a bundled template file from the biscuitbot package."""
     from importlib.resources import files as pkg_files
 
     with suppress(Exception):
-        tpl = pkg_files("hczkbot") / "templates" / template_name
+        tpl = pkg_files("biscuitbot") / "templates" / template_name
         if tpl.is_file():
             return tpl.read_text(encoding="utf-8")
     return None

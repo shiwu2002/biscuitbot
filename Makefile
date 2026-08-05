@@ -7,7 +7,7 @@ install:
 
 # 启动开发服务器
 dev:
-	uv run hczkbot run
+	uv run biscuitbot run
 
 # WebUI 开发
 webui-dev:
@@ -31,16 +31,16 @@ test-fast:
 
 # 代码检查
 lint:
-	uv run ruff check hczkbot
-	uv run ruff format --check hczkbot
+	uv run ruff check biscuitbot
+	uv run ruff format --check biscuitbot
 
 format:
-	uv run ruff check hczkbot --fix
-	uv run ruff format hczkbot
+	uv run ruff check biscuitbot --fix
+	uv run ruff format biscuitbot
 
 # 类型检查
 typecheck:
-	uv run pyright hczkbot
+	uv run pyright biscuitbot
 
 # 全量检查（提交前运行）
 check: lint test

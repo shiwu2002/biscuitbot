@@ -145,7 +145,7 @@ def issue_route_secret_matches(headers: Any, configured_secret: str) -> bool:
     if authorization and authorization.lower().startswith("bearer "):
         supplied = authorization[7:].strip()
         return hmac.compare_digest(supplied, configured_secret)
-    header_token = headers.get("X-Hczkbot-Auth") or headers.get("x-hczkbot-auth")
+    header_token = headers.get("X-Biscuitbot-Auth") or headers.get("x-biscuitbot-auth")
     if not header_token:
         return False
     return hmac.compare_digest(header_token.strip(), configured_secret)

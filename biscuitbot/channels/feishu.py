@@ -17,13 +17,13 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.utils.helpers import safe_filename
-from hczkbot.utils.logging_bridge import redirect_lib_logging
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.utils.helpers import safe_filename
+from biscuitbot.utils.logging_bridge import redirect_lib_logging
 
 if TYPE_CHECKING:
     from lark_oapi.api.im.v1.model import MentionEvent, P2ImMessageReceiveV1

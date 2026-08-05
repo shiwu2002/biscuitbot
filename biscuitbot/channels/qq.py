@@ -3,7 +3,7 @@
 Inbound:
 - Parse QQ botpy messages (C2C / Group)
 - Download attachments to media dir using chunked streaming write (memory-safe)
-- Publish to Hczkbot bus via BaseChannel._handle_message()
+- Publish to Biscuitbot bus via BaseChannel._handle_message()
 - Content includes a clear, actionable "Received files:" list with local paths
 
 Outbound:
@@ -34,15 +34,15 @@ import aiohttp
 from loguru import logger
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.schema import Base
-from hczkbot.security.network import validate_url_target
-from hczkbot.utils.logging_bridge import redirect_lib_logging
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.schema import Base
+from biscuitbot.security.network import validate_url_target
+from biscuitbot.utils.logging_bridge import redirect_lib_logging
 
 try:
-    from hczkbot.config.paths import get_media_dir
+    from biscuitbot.config.paths import get_media_dir
 except Exception:  # pragma: no cover
     get_media_dir = None  # type: ignore
 
@@ -110,7 +110,7 @@ def _make_bot_class(channel: QQChannel) -> type[botpy.Client]:
 
     class _Bot(botpy.Client):
         def __init__(self):
-            # Disable botpy's file log — hczkbot uses loguru; default "botpy.log" fails on read-only fs
+            # Disable botpy's file log — biscuitbot uses loguru; default "botpy.log" fails on read-only fs
             super().__init__(intents=intents, ext_handlers=False)
 
         async def on_ready(self):
@@ -138,7 +138,7 @@ class QQConfig(Base):
     msg_format: Literal["plain", "markdown"] = "plain"
     ack_message: str = "⏳ Processing..."
 
-    # Optional: directory to save inbound attachments. If empty, use hczkbot get_media_dir("qq").
+    # Optional: directory to save inbound attachments. If empty, use biscuitbot get_media_dir("qq").
     media_dir: str = ""
 
     # Download tuning
@@ -183,9 +183,9 @@ class QQChannel(BaseChannel):
             try:
                 root = Path(get_media_dir("qq"))
             except Exception:
-                root = Path.home() / ".hczkbot" / "media" / "qq"
+                root = Path.home() / ".biscuitbot" / "media" / "qq"
         else:
-            root = Path.home() / ".hczkbot" / "media" / "qq"
+            root = Path.home() / ".biscuitbot" / "media" / "qq"
 
         root.mkdir(parents=True, exist_ok=True)
         self.logger.info("media directory: {}", str(root))

@@ -5,7 +5,7 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING
 
-from hczkbot.providers.base import LLMProvider, LLMResponse
+from biscuitbot.providers.base import LLMProvider, LLMResponse
 
 __all__ = [
     "LLMProvider",
@@ -20,8 +20,8 @@ _LAZY_IMPORTS = {
 }
 
 if TYPE_CHECKING:
-    from hczkbot.providers.anthropic_provider import AnthropicProvider
-    from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+    from biscuitbot.providers.anthropic_provider import AnthropicProvider
+    from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def __getattr__(name: str):

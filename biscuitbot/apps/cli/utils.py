@@ -48,7 +48,7 @@ def _cli_app_runtime_lines(
     if "@" not in text:
         return []
     try:
-        from hczkbot.apps.cli import CliAppManager
+        from biscuitbot.apps.cli import CliAppManager
 
         mentions = CliAppManager(workspace=workspace).mentioned_installed_apps(text)
     except Exception:

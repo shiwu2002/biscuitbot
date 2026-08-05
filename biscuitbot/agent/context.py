@@ -6,21 +6,21 @@ import platform
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from hczkbot.agent.memory import MemoryStore
-from hczkbot.agent.skills import SkillsLoader
-from hczkbot.agent.tools import mcp as mcp_tools
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.apps.cli import utils as cli_app_utils
-from hczkbot.bus.events import InboundMessage
-from hczkbot.session.goal_state import goal_state_runtime_lines
-from hczkbot.utils.helpers import (
+from biscuitbot.agent.memory import MemoryStore
+from biscuitbot.agent.skills import SkillsLoader
+from biscuitbot.agent.tools import mcp as mcp_tools
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.apps.cli import utils as cli_app_utils
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.session.goal_state import goal_state_runtime_lines
+from biscuitbot.utils.helpers import (
     current_time_str,
     detect_image_mime,
     load_bundled_template,
     truncate_text,
     truncate_text_to_tokens,
 )
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.utils.prompt_templates import render_template
 
 
 def session_extra(metadata: Mapping[str, Any] | None) -> dict[str, Any]:

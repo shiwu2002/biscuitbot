@@ -5,19 +5,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.context import ContextBuilder
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.cron.session_turns import CRON_HISTORY_META, CRON_TRIGGER_META
-from hczkbot.providers.base import LLMResponse
-from hczkbot.session.goal_state import GOAL_STATE_KEY
-from hczkbot.session.manager import Session, SessionManager
-from hczkbot.session.turn_continuation import (
+from biscuitbot.agent.context import ContextBuilder
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.cron.session_turns import CRON_HISTORY_META, CRON_TRIGGER_META
+from biscuitbot.providers.base import LLMResponse
+from biscuitbot.session.goal_state import GOAL_STATE_KEY
+from biscuitbot.session.manager import Session, SessionManager
+from biscuitbot.session.turn_continuation import (
     INTERNAL_CONTINUATION_META,
     INTERNAL_CONTINUATION_RUN_STARTED_AT_META,
 )
-from hczkbot.session.webui_turns import (
+from biscuitbot.session.webui_turns import (
     TITLE_GENERATION_MAX_TOKENS,
     TITLE_GENERATION_REASONING_EFFORT,
     WEBUI_SESSION_METADATA_KEY,
@@ -26,12 +26,12 @@ from hczkbot.session.webui_turns import (
     clean_generated_title,
     maybe_generate_webui_title,
 )
-from hczkbot.utils.llm_runtime import LLMRuntime
+from biscuitbot.utils.llm_runtime import LLMRuntime
 
 
 def _mk_loop() -> AgentLoop:
     loop = AgentLoop.__new__(AgentLoop)
-    from hczkbot.config.schema import AgentDefaults
+    from biscuitbot.config.schema import AgentDefaults
 
     loop.max_tool_result_chars = AgentDefaults().max_tool_result_chars
     return loop
@@ -222,7 +222,7 @@ def test_webui_title_update_uses_captured_llm_runtime(
         return False
 
     monkeypatch.setattr(
-        "hczkbot.session.webui_turns.maybe_generate_webui_title_after_turn",
+        "biscuitbot.session.webui_turns.maybe_generate_webui_title_after_turn",
         fake_title_after_turn,
     )
     coordinator = WebuiTurnCoordinator(
@@ -959,7 +959,7 @@ async def test_process_message_uses_explicit_session_metadata_for_goal_context(
 async def test_run_agent_loop_goal_continue_message_reads_latest_metadata(
     tmp_path: Path,
 ) -> None:
-    from hczkbot.agent.runner import AgentRunResult
+    from biscuitbot.agent.runner import AgentRunResult
 
     loop = _make_full_loop(tmp_path)
     session = loop.sessions.get_or_create("websocket:late-goal")
@@ -1079,8 +1079,8 @@ async def test_next_turn_after_crash_closes_pending_user_turn_before_new_input(t
 
 @pytest.mark.asyncio
 async def test_stop_preserves_runtime_checkpoint_for_next_turn(tmp_path: Path) -> None:
-    from hczkbot.command.builtin import cmd_stop
-    from hczkbot.command.router import CommandContext
+    from biscuitbot.command.builtin import cmd_stop
+    from biscuitbot.command.router import CommandContext
 
     loop = _make_full_loop(tmp_path)
     loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]

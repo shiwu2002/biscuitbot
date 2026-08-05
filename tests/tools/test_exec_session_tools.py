@@ -6,12 +6,12 @@ import shlex
 import subprocess
 import sys
 
-from hczkbot.agent.tools.exec_session import (
+from biscuitbot.agent.tools.exec_session import (
     ExecSessionManager,
     ListExecSessionsTool,
     WriteStdinTool,
 )
-from hczkbot.agent.tools.shell import ExecTool
+from biscuitbot.agent.tools.shell import ExecTool
 
 
 def _python_command(code: str) -> str:

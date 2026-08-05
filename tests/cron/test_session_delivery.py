@@ -1,7 +1,7 @@
 import pytest
 
-from hczkbot.cron.session_delivery import origin_delivery_context
-from hczkbot.cron.types import CronJob, CronPayload
+from biscuitbot.cron.session_delivery import origin_delivery_context
+from biscuitbot.cron.types import CronJob, CronPayload
 
 
 def test_origin_delivery_context_uses_explicit_origin_fields() -> None:

@@ -25,14 +25,14 @@ from telegram.error import BadRequest, NetworkError, TimedOut
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.request import HTTPXRequest
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.command.builtin import build_help_text
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.security.network import validate_url_target
-from hczkbot.utils.helpers import split_message
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.command.builtin import build_help_text
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.security.network import validate_url_target
+from biscuitbot.utils.helpers import split_message
 
 TELEGRAM_MAX_MESSAGE_LEN = 4000  # Telegram message character limit
 # Telegram's actual API limit is 4096; we split raw markdown at 4000 as a
@@ -465,7 +465,7 @@ class TelegramChannel(BaseChannel):
 
     @staticmethod
     def _normalize_telegram_command(content: str) -> str:
-        """Map Telegram-safe command aliases back to canonical hczkbot commands."""
+        """Map Telegram-safe command aliases back to canonical biscuitbot commands."""
         if not content.startswith("/"):
             return content
         if content == "/dream_log" or content.startswith("/dream_log "):
@@ -969,7 +969,7 @@ class TelegramChannel(BaseChannel):
             await self._send_pairing_code_if_private(sender_id, update.message, user)
             return
         await update.message.reply_text(
-            f"👋 Hi {user.first_name}! I'm hczkbot.\n\n"
+            f"👋 Hi {user.first_name}! I'm biscuitbot.\n\n"
             "Send me a message and I'll respond!\n"
             "Type /help to see available commands."
         )
@@ -1179,7 +1179,7 @@ class TelegramChannel(BaseChannel):
 
     @staticmethod
     def _queue_key_for_message(message) -> str:
-        """Return the final hczkbot session key used for ordered Telegram ingress."""
+        """Return the final biscuitbot session key used for ordered Telegram ingress."""
         return TelegramChannel._derive_topic_session_key(message) or f"telegram:{message.chat_id}"
 
     @staticmethod

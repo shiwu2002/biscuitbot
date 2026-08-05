@@ -1,7 +1,7 @@
 ---
 name: update-setup
 tier: system
-description: "One-time setup wizard for the hczkbot upgrade skill. Triggers: setup update, configure update, 切设置更新, 初始化更新."
+description: "One-time setup wizard for the biscuitbot upgrade skill. Triggers: setup update, configure update, 切设置更新, 初始化更新."
 ---
 
 # Update Setup
@@ -16,16 +16,16 @@ If it exists, ask the user: "An upgrade skill already exists. Reconfigure?" Wait
 
 ## Step 2: Current Version and Install Clues
 
-Use `exec` to run `hczkbot --version`. Tell the user the current version.
+Use `exec` to run `biscuitbot --version`. Tell the user the current version.
 
 Then collect install clues with `exec`. These commands are best-effort; if one fails,
 keep going and show the useful output:
 
 ```
-command -v hczkbot || true
-python -m pip show hczkbot-ai || true
-pipx list | sed -n '/hczkbot-ai/,+3p' || true
-uv tool list | sed -n '/hczkbot-ai/,+3p' || true
+command -v biscuitbot || true
+python -m pip show biscuitbot-ai || true
+pipx list | sed -n '/biscuitbot-ai/,+3p' || true
+uv tool list | sed -n '/biscuitbot-ai/,+3p' || true
 ```
 
 Summarize what you found in one short paragraph. Use the clues only to suggest a
@@ -36,7 +36,7 @@ likely install method. Do not treat them as confirmation.
 CRITICAL: Do not write `skills/update/SKILL.md` until the install method is
 explicitly confirmed by the user. The install method must come from a user
 answer or confirmation, not from inference alone. If you cannot get a clear
-answer, stop and ask the user to rerun this setup when they know how hczkbot was
+answer, stop and ask the user to rerun this setup when they know how biscuitbot was
 installed.
 
 Ask the user the questions below, one at a time, in your response text. Wait for
@@ -54,7 +54,7 @@ If the user selected `not sure`, explain the difference between the options and
 stop. Do not generate the upgrade skill.
 
 If the user selected `source (git clone)`, ask for the local checkout path:
-`question: "Where is your hczkbot source checkout? Enter an absolute path or a path relative to this workspace:"`.
+`question: "Where is your biscuitbot source checkout? Enter an absolute path or a path relative to this workspace:"`.
 
 **Question 2 — Optional dependencies:**
 
@@ -81,9 +81,9 @@ Determine the upgrade command from the install method:
 
 | Method | Command |
 |--------|---------|
-| uv | `uv tool install "hczkbot-ai[EXTRAS]" --force` |
-| pipx | `pipx install --force "hczkbot-ai[EXTRAS]"` |
-| pip | `python -m pip install --upgrade "hczkbot-ai[EXTRAS]"` |
+| uv | `uv tool install "biscuitbot-ai[EXTRAS]" --force` |
+| pipx | `pipx install --force "biscuitbot-ai[EXTRAS]"` |
+| pip | `python -m pip install --upgrade "biscuitbot-ai[EXTRAS]"` |
 | source | `cd <SOURCE_CHECKOUT> && git pull && python -m pip install -e ".[EXTRAS]"` |
 
 For source installs, include extras in the editable install command when selected. Quote the source checkout path if it contains spaces.
@@ -107,18 +107,18 @@ Use `write_file` to write `skills/update/SKILL.md` with this content:
 ```
 ---
 name: update
-description: "Upgrade hczkbot to the latest version. Triggers: upgrade hczkbot, update hczkbot, 升级hczkbot, 更新hczkbot."
+description: "Upgrade biscuitbot to the latest version. Triggers: upgrade biscuitbot, update biscuitbot, 升级biscuitbot, 更新biscuitbot."
 ---
 
-# Update Hczkbot
+# Update Biscuitbot
 
 1. (If proxy configured) Set proxy: `export http_proxy=URL && export https_proxy=URL`
 2. Use `exec` to run the preflight check: <PREFLIGHT_CHECK>. If it fails, stop and tell the user to rerun `update-setup` because the saved install method no longer matches this environment.
 3. Use `exec` to run the upgrade command: <UPGRADE_COMMAND>
-4. Use `exec` to verify: `hczkbot --version`
-5. Tell the user the new version. Say: "Run `/restart` to restart hczkbot and apply the update. If `/restart` is unavailable in this channel, restart the hczkbot process manually."
+4. Use `exec` to verify: `biscuitbot --version`
+5. Tell the user the new version. Say: "Run `/restart` to restart biscuitbot and apply the update. If `/restart` is unavailable in this channel, restart the biscuitbot process manually."
 ```
 
 ## Step 5: Confirm
 
-Tell the user: "Upgrade skill created. Say 'upgrade hczkbot' when you want to update."
+Tell the user: "Upgrade skill created. Say 'upgrade biscuitbot' when you want to update."

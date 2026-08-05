@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
-import { useHczkbotStream } from "@/hooks/useHczkbotStream";
+import { useBiscuitbotStream } from "@/hooks/useBiscuitbotStream";
 import type { InboundEvent, GoalStateWsPayload } from "@/lib/types";
 import { ClientProvider } from "@/providers/ClientProvider";
 
@@ -79,7 +79,7 @@ function wrap(client: ReturnType<typeof fakeClient>["client"]) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ClientProvider
-        client={client as unknown as import("@/lib/hczkbot-client").HczkbotClient}
+        client={client as unknown as import("@/lib/biscuitbot-client").BiscuitbotClient}
         token="tok"
       >
         {children}
@@ -96,11 +96,11 @@ async function flushStreamFrame() {
   });
 }
 
-describe("useHczkbotStream", () => {
+describe("useBiscuitbotStream", () => {
   it("batches answer deltas into one animation-frame update", async () => {
     const fake = fakeClient();
     const requestFrame = vi.spyOn(window, "requestAnimationFrame");
-    const { result } = renderHook(() => useHczkbotStream("chat-batch", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-batch", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -133,7 +133,7 @@ describe("useHczkbotStream", () => {
 
   it("flushes pending delta text before turn_end finalizes the turn", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-flush", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-flush", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -160,7 +160,7 @@ describe("useHczkbotStream", () => {
 
   it("preserves proactive automation source metadata on complete assistant messages", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-cron", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-cron", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -202,7 +202,7 @@ describe("useHczkbotStream", () => {
     ];
 
     const { result } = renderHook(
-      () => useHczkbotStream("chat-cron-done", initialMessages),
+      () => useBiscuitbotStream("chat-cron-done", initialMessages),
       { wrapper: wrap(fake.client) },
     );
 
@@ -213,7 +213,7 @@ describe("useHczkbotStream", () => {
   it("drops pending stream work when switching chats", async () => {
     const fake = fakeClient();
     const { result, rerender } = renderHook(
-      ({ chatId }: { chatId: string }) => useHczkbotStream(chatId, EMPTY_MESSAGES),
+      ({ chatId }: { chatId: string }) => useBiscuitbotStream(chatId, EMPTY_MESSAGES),
       {
         wrapper: wrap(fake.client),
         initialProps: { chatId: "chat-old" },
@@ -255,7 +255,7 @@ describe("useHczkbotStream", () => {
       createdAt: Date.now(),
     }];
     const { result } = renderHook(
-      () => useHczkbotStream("chat-p", initialMessages, true),
+      () => useBiscuitbotStream("chat-p", initialMessages, true),
       {
         wrapper: wrap(fake.client),
       },
@@ -266,7 +266,7 @@ describe("useHczkbotStream", () => {
 
   it("collapses consecutive tool_hint frames into one trace row", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-t", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-t", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -308,7 +308,7 @@ describe("useHczkbotStream", () => {
 
   it("treats progress with arbitrary agent_ui like ordinary trace text", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-au", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-au", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
     act(() => {
@@ -330,7 +330,7 @@ describe("useHczkbotStream", () => {
 
   it("renders live tool traces from structured tool events", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-tool-events", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-tool-events", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -367,7 +367,7 @@ describe("useHczkbotStream", () => {
 
   it("dedupes finish-phase tool events after their start trace", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-tool-finish", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-tool-finish", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -421,7 +421,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps phase updates when a tool event trace line is deduped", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-tool-phase", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-tool-phase", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -469,7 +469,7 @@ describe("useHczkbotStream", () => {
 
   it("renders live file_edit events as their own activity trace", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-edit", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-edit", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -535,7 +535,7 @@ describe("useHczkbotStream", () => {
 
   it("replaces matching write_file tool events with live file edit activity", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-edit-events", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-edit-events", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -598,7 +598,7 @@ describe("useHczkbotStream", () => {
 
   it("upgrades pending file_edit placeholders when the path arrives", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-edit-pending", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-edit-pending", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -650,7 +650,7 @@ describe("useHczkbotStream", () => {
 
   it("merges file_edit updates after interleaved progress events", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-edit-progress", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-edit-progress", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -713,7 +713,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps interrupted pre-tool text as assistant output before activity", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-stream-segments", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-stream-segments", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -760,7 +760,7 @@ describe("useHczkbotStream", () => {
 
   it("does not replace interrupted pre-tool text with final stream_end text", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-stream-end-final", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-stream-end-final", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -806,7 +806,7 @@ describe("useHczkbotStream", () => {
 
   it("splits live assistant output around tool hints without moving it into reasoning", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-live-segments", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-live-segments", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -851,7 +851,7 @@ describe("useHczkbotStream", () => {
 
   it("opens a new activity segment for reasoning after file edit activity", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-segments", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-segments", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -906,7 +906,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps file edit blocks ordered across a new reasoning phase", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-file-order", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-file-order", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -965,7 +965,7 @@ describe("useHczkbotStream", () => {
 
   it("accumulates reasoning_delta chunks on a placeholder until reasoning_end", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -999,7 +999,7 @@ describe("useHczkbotStream", () => {
 
   it("absorbs a streaming reasoning placeholder into the answer turn that follows", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r2", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r2", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1026,7 +1026,7 @@ describe("useHczkbotStream", () => {
 
   it("ignores empty reasoning_delta frames", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r3", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r3", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1043,7 +1043,7 @@ describe("useHczkbotStream", () => {
 
   it("treats legacy kind=reasoning messages as a complete delta + end pair", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r4", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r4", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1063,7 +1063,7 @@ describe("useHczkbotStream", () => {
 
   it("starts a new Thought block when reasoning arrives after visible output", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r5", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r5", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1098,7 +1098,7 @@ describe("useHczkbotStream", () => {
     dateNow.mockImplementation(() => now);
     try {
       const fake = fakeClient();
-      const { result } = renderHook(() => useHczkbotStream("chat-r5-lat", EMPTY_MESSAGES), {
+      const { result } = renderHook(() => useBiscuitbotStream("chat-r5-lat", EMPTY_MESSAGES), {
         wrapper: wrap(fake.client),
       });
       await act(async () => {});
@@ -1129,7 +1129,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps alternating reasoning and answer deltas in separate ordered blocks", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r5b", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r5b", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1192,7 +1192,7 @@ describe("useHczkbotStream", () => {
       },
     ];
     const { result } = renderHook(
-      () => useHczkbotStream("chat-r6", initialMessages),
+      () => useBiscuitbotStream("chat-r6", initialMessages),
       { wrapper: wrap(fake.client) },
     );
 
@@ -1216,7 +1216,7 @@ describe("useHczkbotStream", () => {
 
   it("does not attach reasoning across a tool trace boundary", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-r7", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-r7", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1257,7 +1257,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps tool-call reasoning before the matching live tool trace", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-tool-reasoning", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-tool-reasoning", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1300,7 +1300,7 @@ describe("useHczkbotStream", () => {
 
   it("absorbs non-streamed final answers into the preceding reasoning placeholder", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-final-reasoning", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-final-reasoning", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1347,7 +1347,7 @@ describe("useHczkbotStream", () => {
 
   it("prunes reasoning-only placeholders when a turn ends without an answer", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-empty-thinking", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-empty-thinking", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1384,7 +1384,7 @@ describe("useHczkbotStream", () => {
       },
     ];
     const { result } = renderHook(
-      () => useHczkbotStream("chat-stale-thinking", initialMessages),
+      () => useBiscuitbotStream("chat-stale-thinking", initialMessages),
       { wrapper: wrap(fake.client) },
     );
 
@@ -1401,7 +1401,7 @@ describe("useHczkbotStream", () => {
 
   it("attaches assistant media_urls to complete messages", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-m", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-m", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1422,7 +1422,7 @@ describe("useHczkbotStream", () => {
 
   it("keeps assistant html media as a file attachment", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-html-media", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-html-media", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1442,7 +1442,7 @@ describe("useHczkbotStream", () => {
 
   it("infers assistant svg media as an image attachment", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-svg-media", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-svg-media", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1462,7 +1462,7 @@ describe("useHczkbotStream", () => {
 
   it("corrects explicit image media when the name is a non-image file", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-mislabelled-html", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-mislabelled-html", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1482,7 +1482,7 @@ describe("useHczkbotStream", () => {
 
   it("suppresses redundant stream confirmation after assistant media", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-img-result", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-img-result", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1521,7 +1521,7 @@ describe("useHczkbotStream", () => {
 
   it("passes image generation options to the websocket client", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-img", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-img", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1546,7 +1546,7 @@ describe("useHczkbotStream", () => {
 
   it("stops the active turn without adding a user slash command bubble", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-stop", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-stop", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1569,7 +1569,7 @@ describe("useHczkbotStream", () => {
   it("keeps streaming alive across stream_end and completes on turn_end", async () => {
     const fake = fakeClient();
     const onTurnEnd = vi.fn();
-    const { result } = renderHook(() => useHczkbotStream("chat-s", EMPTY_MESSAGES, false, onTurnEnd), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-s", EMPTY_MESSAGES, false, onTurnEnd), {
       wrapper: wrap(fake.client),
     });
 
@@ -1628,7 +1628,7 @@ describe("useHczkbotStream", () => {
 
   it("replaces streamed content with final stream_end text when provided", async () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-stream-final", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-stream-final", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1660,7 +1660,7 @@ describe("useHczkbotStream", () => {
 
   it("creates an assistant bubble from final stream_end text without prior delta", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-stream-end-only", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-stream-end-only", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1682,7 +1682,7 @@ describe("useHczkbotStream", () => {
 
   it("stamps latency on the last assistant bubble from turn_end", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-lat", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-lat", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1708,7 +1708,7 @@ describe("useHczkbotStream", () => {
 
   it("tracks goal_status running and clears on idle", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-g", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-g", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1736,7 +1736,7 @@ describe("useHczkbotStream", () => {
 
   it("clears runStartedAt on turn_end even without idle", () => {
     const fake = fakeClient();
-    const { result } = renderHook(() => useHczkbotStream("chat-g", EMPTY_MESSAGES), {
+    const { result } = renderHook(() => useBiscuitbotStream("chat-g", EMPTY_MESSAGES), {
       wrapper: wrap(fake.client),
     });
 
@@ -1762,7 +1762,7 @@ describe("useHczkbotStream", () => {
   it("restores runStartedAt after switching away and back when goal_status was recorded without a subscriber", () => {
     const fake = fakeClient();
     const { result, rerender } = renderHook(
-      ({ chatId }: { chatId: string }) => useHczkbotStream(chatId, EMPTY_MESSAGES),
+      ({ chatId }: { chatId: string }) => useBiscuitbotStream(chatId, EMPTY_MESSAGES),
       {
         wrapper: wrap(fake.client),
         initialProps: { chatId: "chat-a" },
@@ -1798,7 +1798,7 @@ describe("useHczkbotStream", () => {
   it("tracks goal_state per chat and restores after switching sessions", () => {
     const fake = fakeClient();
     const { result, rerender } = renderHook(
-      ({ chatId }: { chatId: string }) => useHczkbotStream(chatId, EMPTY_MESSAGES),
+      ({ chatId }: { chatId: string }) => useBiscuitbotStream(chatId, EMPTY_MESSAGES),
       {
         wrapper: wrap(fake.client),
         initialProps: { chatId: "chat-a" },

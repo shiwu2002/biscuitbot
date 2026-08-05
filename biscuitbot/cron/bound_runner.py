@@ -8,13 +8,13 @@ import time
 import uuid
 from typing import Any, Protocol
 
-from hczkbot.agent.tools.cron import CronTool
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.cron.session_delivery import origin_delivery_context
-from hczkbot.cron.session_turns import CRON_DEFER_UNTIL_IDLE_META, CRON_TRIGGER_META
-from hczkbot.cron.types import CronJob
-from hczkbot.cron.webui_metadata import cron_proactive_delivery_metadata
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.agent.tools.cron import CronTool
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.cron.session_delivery import origin_delivery_context
+from biscuitbot.cron.session_turns import CRON_DEFER_UNTIL_IDLE_META, CRON_TRIGGER_META
+from biscuitbot.cron.types import CronJob
+from biscuitbot.cron.webui_metadata import cron_proactive_delivery_metadata
+from biscuitbot.utils.prompt_templates import render_template
 
 
 class BoundCronAgent(Protocol):

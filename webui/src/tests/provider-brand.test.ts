@@ -20,11 +20,11 @@ describe("provider brand logos", () => {
   });
 
   it("normalizes path-like favicon domains for secondary fallbacks", () => {
-    expect(logoFallbackUrls("https://www.google.com/s2/favicons?domain=github.com/hczkbot/hczkbot&sz=64")).toEqual([
-      "https://www.google.com/s2/favicons?domain=github.com/hczkbot/hczkbot&sz=64",
+    expect(logoFallbackUrls("https://www.google.com/s2/favicons?domain=github.com/biscuitbot/biscuitbot&sz=64")).toEqual([
+      "https://www.google.com/s2/favicons?domain=github.com/biscuitbot/biscuitbot&sz=64",
       "https://github.com/favicon.ico",
       "https://icons.duckduckgo.com/ip3/github.com.ico",
-      "https://www.google.com/s2/favicons?domain=github.com%2Fhczkbot%2Fhczkbot&sz=64",
+      "https://www.google.com/s2/favicons?domain=github.com%2Fbiscuitbot%2Fbiscuitbot&sz=64",
     ]);
   });
 });

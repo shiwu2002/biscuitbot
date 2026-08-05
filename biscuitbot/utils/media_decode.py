@@ -1,6 +1,6 @@
 """Shared helpers for decoding ``data:...;base64,...`` URLs to disk.
 
-Historically lived in ``hczkbot.api.server``; now shared by the WebSocket
+Historically lived in ``biscuitbot.api.server``; now shared by the WebSocket
 channel so the ``api`` + ``websocket`` ingress paths apply the same parsing,
 size guard, and filesystem layout.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from hczkbot.utils.helpers import safe_filename
+from biscuitbot.utils.helpers import safe_filename
 
 DEFAULT_MAX_BYTES = 10 * 1024 * 1024
 MAX_FILE_SIZE = DEFAULT_MAX_BYTES

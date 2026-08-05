@@ -1,9 +1,9 @@
 """Application-level audio transcription service.
 
-This module owns hczkbot's transcription behavior: config resolution,
+This module owns biscuitbot's transcription behavior: config resolution,
 legacy channel fallback, upload validation, temporary-file handling, and
 dispatch to provider adapters. It deliberately does not know provider-specific
-HTTP details; those live in ``hczkbot.providers.transcription``.
+HTTP details; those live in ``biscuitbot.providers.transcription``.
 """
 
 from __future__ import annotations
@@ -16,13 +16,13 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.audio.transcription_registry import (
+from biscuitbot.audio.transcription_registry import (
     get_transcription_provider,
     resolve_transcription_provider,
 )
-from hczkbot.config.paths import get_media_dir
-from hczkbot.providers.registry import find_by_name
-from hczkbot.utils.media_decode import FileSizeExceeded, save_base64_data_url
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.providers.registry import find_by_name
+from biscuitbot.utils.media_decode import FileSizeExceeded, save_base64_data_url
 
 TranscriptionProviderName = str
 
@@ -80,7 +80,7 @@ def _provider_default_api_base(provider: str) -> str | None:
     spec = find_by_name(provider)
     if spec:
         return spec.default_api_base
-    from hczkbot.audio.transcription_registry import get_transcription_provider
+    from biscuitbot.audio.transcription_registry import get_transcription_provider
     ts = get_transcription_provider(provider)
     return ts.default_api_base if ts else None
 
@@ -108,7 +108,7 @@ def _resolve_transcription_api_base(provider: str, provider_cfg: Any) -> str:
     # Each transcription client appends its own service-specific path.
     llm_api_base = getattr(provider_cfg, "api_base", None) if provider_cfg else None
     if llm_api_base:
-        from hczkbot.providers.image_generation import extract_domain
+        from biscuitbot.providers.image_generation import extract_domain
         return extract_domain(llm_api_base)
     return _provider_default_api_base(provider) or ""
 

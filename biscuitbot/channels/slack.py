@@ -13,13 +13,13 @@ from slack_sdk.socket_mode.websockets import SocketModeClient
 from slack_sdk.web.async_client import AsyncWebClient
 from slackify_markdown import slackify_markdown
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.pairing import is_approved
-from hczkbot.utils.helpers import safe_filename, split_message
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.pairing import is_approved
+from biscuitbot.utils.helpers import safe_filename, split_message
 
 
 class SlackDMConfig(Base):
@@ -490,7 +490,7 @@ class SlackChannel(BaseChannel):
     @staticmethod
     def _download_failure_marker(marker_type: str, name: str, reason: str) -> str:
         return (
-            f"[{marker_type}: {name}: {reason}; not available to hczkbot. "
+            f"[{marker_type}: {name}: {reason}; not available to biscuitbot. "
             "Check Slack files:read scope, reinstall the Slack app, and ensure the bot can access the file.]"
         )
 

@@ -6,13 +6,13 @@ from typing import Any, Awaitable, Callable
 
 from loguru import logger
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.context import ContextAware, RequestContext
-from hczkbot.agent.tools.path_utils import resolve_workspace_path
-from hczkbot.agent.tools.schema import ArraySchema, StringSchema, tool_parameters_schema
-from hczkbot.security.workspace_access import current_tool_workspace
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.config.paths import get_workspace_path
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from biscuitbot.agent.tools.path_utils import resolve_workspace_path
+from biscuitbot.agent.tools.schema import ArraySchema, StringSchema, tool_parameters_schema
+from biscuitbot.security.workspace_access import current_tool_workspace
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.config.paths import get_workspace_path
 
 
 @tool_parameters(
@@ -196,7 +196,7 @@ class MessageTool(Tool, ContextAware):
         buttons: list[list[str]] | None = None,
         **kwargs: Any,
     ) -> str:
-        from hczkbot.utils.helpers import strip_think
+        from biscuitbot.utils.helpers import strip_think
 
         content = strip_think(content)
 

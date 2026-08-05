@@ -12,7 +12,7 @@ from urllib.parse import quote, urlparse
 
 from pydantic import Field
 
-from hczkbot.security.workspace_policy import is_path_within
+from biscuitbot.security.workspace_policy import is_path_within
 
 try:
     import aiohttp
@@ -45,16 +45,16 @@ try:
     from nio.exceptions import EncryptionError
 except ImportError as e:
     raise ImportError(
-        "Matrix dependencies not installed. Run: pip install hczkbot[matrix]"
+        "Matrix dependencies not installed. Run: pip install biscuitbot[matrix]"
     ) from e
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_data_dir, get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.utils.helpers import safe_filename
-from hczkbot.utils.logging_bridge import redirect_lib_logging
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_data_dir, get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.utils.helpers import safe_filename
+from biscuitbot.utils.logging_bridge import redirect_lib_logging
 
 TYPING_NOTICE_TIMEOUT_MS = 30_000
 # Must stay below TYPING_NOTICE_TIMEOUT_MS so the indicator doesn't expire mid-processing.

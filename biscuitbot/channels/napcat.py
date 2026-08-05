@@ -19,13 +19,13 @@ from pydantic import Field
 from websockets.asyncio.client import ClientConnection
 from websockets.asyncio.client import connect as ws_connect
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.security.network import validate_url_target
-from hczkbot.utils.helpers import safe_filename
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.security.network import validate_url_target
+from biscuitbot.utils.helpers import safe_filename
 
 _DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=60)
 _ACTION_TIMEOUT = 20.0
@@ -471,7 +471,7 @@ class NapcatChannel(BaseChannel):
                 return None
             return {"type": "image", "data": {"file": ref}}
         # Local path → base64 so it works even when napcat runs on a
-        # different host/container than hczkbot.
+        # different host/container than biscuitbot.
         path = Path(os.path.expanduser(ref)).resolve()
         if not path.is_file():
             logger.warning("napcat: local image not found: {}", path)

@@ -1,1 +1,1 @@
-"""CLI module for hczkbot."""
+"""CLI module for biscuitbot."""

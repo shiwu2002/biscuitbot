@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.base import (
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.base import (
     DEFAULT_STREAM_IDLE_TIMEOUT_S,
     MAX_STREAM_IDLE_TIMEOUT_S,
     resolve_stream_idle_timeout_s,
 )
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 class _AsyncStream:
@@ -60,7 +60,7 @@ def test_stream_idle_timeout_parser_accepts_and_clamps_numeric_values() -> None:
 
 @pytest.mark.asyncio
 async def test_openai_compat_stream_ignores_invalid_idle_timeout_env(monkeypatch) -> None:
-    monkeypatch.setenv("HCZKBOT_STREAM_IDLE_TIMEOUT_S", "abc")
+    monkeypatch.setenv("BISCUITBOT_STREAM_IDLE_TIMEOUT_S", "abc")
     provider = OpenAICompatProvider(api_key="sk-test", api_base="https://example.com/v1")
 
     chunk = SimpleNamespace(
@@ -89,7 +89,7 @@ async def test_openai_compat_stream_ignores_invalid_idle_timeout_env(monkeypatch
 
 @pytest.mark.asyncio
 async def test_anthropic_stream_ignores_invalid_idle_timeout_env(monkeypatch) -> None:
-    monkeypatch.setenv("HCZKBOT_STREAM_IDLE_TIMEOUT_S", "abc")
+    monkeypatch.setenv("BISCUITBOT_STREAM_IDLE_TIMEOUT_S", "abc")
     provider = AnthropicProvider(api_key="sk-test")
     provider._client = MagicMock()
     provider._client.messages.stream = MagicMock(return_value=_AnthropicStream([]))

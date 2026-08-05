@@ -1,11 +1,11 @@
-"""Document text extraction utilities for hczkbot."""
+"""Document text extraction utilities for biscuitbot."""
 
 import mimetypes
 from pathlib import Path
 
 from loguru import logger
 
-from hczkbot.utils.helpers import detect_image_mime
+from biscuitbot.utils.helpers import detect_image_mime
 
 # Supported file extensions for text extraction
 SUPPORTED_EXTENSIONS: set[str] = {

@@ -9,7 +9,7 @@ from typing import Any
 
 from websockets.http11 import Request as WsRequest
 
-from hczkbot.webui.http_utils import bearer_token
+from biscuitbot.webui.http_utils import bearer_token
 
 
 @dataclass

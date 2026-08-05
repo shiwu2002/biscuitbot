@@ -1,6 +1,6 @@
 """Chat channels module with plugin architecture."""
 
-from hczkbot.channels.base import BaseChannel
-from hczkbot.channels.manager import ChannelManager
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.channels.manager import ChannelManager
 
 __all__ = ["BaseChannel", "ChannelManager"]

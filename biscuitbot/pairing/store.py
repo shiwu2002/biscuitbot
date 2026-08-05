@@ -1,6 +1,6 @@
 """Pairing store for DM sender approval.
 
-Persistent storage at ``~/.hczkbot/pairing.json`` keeps approved senders
+Persistent storage at ``~/.biscuitbot/pairing.json`` keeps approved senders
 and pending pairing codes per channel.  The store is designed for
 private-assistant scale: small JSON file, simple locking, no external DB.
 """
@@ -17,8 +17,8 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.config.paths import get_data_dir
-from hczkbot.utils.helpers import _write_text_atomic
+from biscuitbot.config.paths import get_data_dir
+from biscuitbot.utils.helpers import _write_text_atomic
 
 # threading.Lock is used so store functions remain callable from both sync CLI
 # and async channel handlers.  At private-assistant scale (small JSON file,

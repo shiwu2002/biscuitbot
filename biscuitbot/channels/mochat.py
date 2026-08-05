@@ -12,11 +12,11 @@ from typing import Any
 
 import httpx
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_runtime_subdir
-from hczkbot.config.schema import Base
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_runtime_subdir
+from biscuitbot.config.schema import Base
 from pydantic import Field
 
 try:

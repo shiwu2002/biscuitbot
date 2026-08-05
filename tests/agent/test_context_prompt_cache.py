@@ -8,7 +8,7 @@ from datetime import datetime as real_datetime
 from importlib.resources import files as pkg_files
 from pathlib import Path
 
-from hczkbot.agent.context import ContextBuilder
+from biscuitbot.agent.context import ContextBuilder
 
 
 class _FakeDatetime(real_datetime):
@@ -26,7 +26,7 @@ def _make_workspace(tmp_path: Path) -> Path:
 
 
 def test_bootstrap_files_are_backed_by_templates() -> None:
-    template_dir = pkg_files("hczkbot") / "templates"
+    template_dir = pkg_files("biscuitbot") / "templates"
 
     for filename in ContextBuilder.BOOTSTRAP_FILES:
         assert (template_dir / filename).is_file(), f"missing bootstrap template: {filename}"
@@ -279,7 +279,7 @@ def test_partial_dream_processing_shows_only_remainder(tmp_path) -> None:
 
 def test_execution_rules_in_system_prompt(tmp_path) -> None:
     """Execution rules should appear in the system prompt via default SOUL.md."""
-    from hczkbot.utils.helpers import sync_workspace_templates
+    from biscuitbot.utils.helpers import sync_workspace_templates
 
     workspace = _make_workspace(tmp_path)
     sync_workspace_templates(workspace, silent=True)
@@ -298,7 +298,7 @@ def test_identity_has_no_behavioral_instructions(tmp_path) -> None:
     builder = ContextBuilder(workspace)
 
     identity = builder._get_identity(channel=None)
-    assert "You are hczkbot" not in identity
+    assert "You are biscuitbot" not in identity
     assert "Act, don't narrate" not in identity
     assert "Execution Rules" not in identity
 
@@ -316,7 +316,7 @@ def test_system_prompt_does_not_warn_about_message_time_markers(tmp_path) -> Non
 
 def test_default_soul_template_contains_execution_rules() -> None:
     """Default SOUL.md template must contain execution rules with act/plan layering."""
-    soul = (pkg_files("hczkbot") / "templates" / "SOUL.md").read_text(encoding="utf-8")
+    soul = (pkg_files("biscuitbot") / "templates" / "SOUL.md").read_text(encoding="utf-8")
     assert "## Execution Rules" in soul
     assert "single-step tasks" in soul
     assert "multi-step tasks" in soul
@@ -417,7 +417,7 @@ def test_always_skills_excluded_from_skills_index(tmp_path) -> None:
 def test_template_memory_md_is_skipped(tmp_path) -> None:
     """MEMORY.md matching the bundled template should not inject the Memory section."""
     workspace = _make_workspace(tmp_path)
-    from hczkbot.utils.helpers import sync_workspace_templates
+    from biscuitbot.utils.helpers import sync_workspace_templates
     sync_workspace_templates(workspace, silent=True)
 
     builder = ContextBuilder(workspace)
@@ -428,13 +428,13 @@ def test_template_memory_md_is_skipped(tmp_path) -> None:
     # also contains "# Memory" but is followed by "## Structure", not
     # "## Long-term Memory".
     assert "# Memory\n\n## Long-term Memory" not in prompt
-    assert "This file is automatically updated by hczkbot" not in prompt
+    assert "This file is automatically updated by biscuitbot" not in prompt
 
 
 def test_customized_memory_md_is_injected(tmp_path) -> None:
     """A Dream-populated MEMORY.md should be injected normally."""
     workspace = _make_workspace(tmp_path)
-    from hczkbot.utils.helpers import sync_workspace_templates
+    from biscuitbot.utils.helpers import sync_workspace_templates
     sync_workspace_templates(workspace, silent=True)
 
     (workspace / "memory" / "MEMORY.md").write_text(

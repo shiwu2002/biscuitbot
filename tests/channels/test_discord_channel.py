@@ -9,15 +9,15 @@ import pytest
 pytest.importorskip("discord")
 import discord
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.discord import (
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.discord import (
     MAX_MESSAGE_LEN,
     DiscordBotClient,
     DiscordChannel,
     DiscordConfig,
 )
-from hczkbot.command.builtin import build_help_text
+from biscuitbot.command.builtin import build_help_text
 
 
 # Minimal Discord client test double used to control startup/readiness behavior.
@@ -229,7 +229,7 @@ async def test_start_returns_when_discord_dependency_missing(monkeypatch) -> Non
         DiscordConfig(enabled=True, token="token", allow_from=["*"]),
         MessageBus(),
     )
-    monkeypatch.setattr("hczkbot.channels.discord.DISCORD_AVAILABLE", False)
+    monkeypatch.setattr("biscuitbot.channels.discord.DISCORD_AVAILABLE", False)
 
     await channel.start()
 
@@ -248,7 +248,7 @@ async def test_start_handles_client_construction_failure(monkeypatch) -> None:
     def _boom(owner, *, intents, proxy=None, proxy_auth=None):
         raise RuntimeError("bad client")
 
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _boom)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _boom)
 
     await channel.start()
 
@@ -266,7 +266,7 @@ async def test_start_handles_client_start_failure(monkeypatch) -> None:
 
     _FakeDiscordClient.instances.clear()
     _FakeDiscordClient.start_error = RuntimeError("connect failed")
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 
@@ -599,7 +599,7 @@ async def test_on_message_downloads_attachments(tmp_path, monkeypatch) -> None:
         handled.append(kwargs)
 
     channel._handle_message = capture_handle  # type: ignore[method-assign]
-    monkeypatch.setattr("hczkbot.channels.discord.get_media_dir", lambda _name: tmp_path)
+    monkeypatch.setattr("biscuitbot.channels.discord.get_media_dir", lambda _name: tmp_path)
 
     await channel._on_message(
         _make_message(
@@ -623,7 +623,7 @@ async def test_on_message_marks_failed_attachment_download(tmp_path, monkeypatch
         handled.append(kwargs)
 
     channel._handle_message = capture_handle  # type: ignore[method-assign]
-    monkeypatch.setattr("hczkbot.channels.discord.get_media_dir", lambda _name: tmp_path)
+    monkeypatch.setattr("biscuitbot.channels.discord.get_media_dir", lambda _name: tmp_path)
 
     await channel._on_message(
         _make_message(
@@ -716,7 +716,7 @@ async def test_send_delta_streams_by_editing_message(monkeypatch) -> None:
     client.channels[123] = target
 
     times = iter([1.0, 3.0, 5.0])
-    monkeypatch.setattr("hczkbot.channels.discord.time.monotonic", lambda: next(times, 5.0))
+    monkeypatch.setattr("biscuitbot.channels.discord.time.monotonic", lambda: next(times, 5.0))
 
     await owner.send_delta("123", "hel", {"_stream_delta": True, "_stream_id": "s1"})
     await owner.send_delta("123", "lo", {"_stream_delta": True, "_stream_id": "s1"})
@@ -743,7 +743,7 @@ async def test_send_delta_stream_end_splits_oversized_reply(monkeypatch) -> None
     assert len(chunks) == 2
 
     times = iter([1.0, 3.0])
-    monkeypatch.setattr("hczkbot.channels.discord.time.monotonic", lambda: next(times, 3.0))
+    monkeypatch.setattr("biscuitbot.channels.discord.time.monotonic", lambda: next(times, 3.0))
 
     await owner.send_delta("123", prefix, {"_stream_delta": True, "_stream_id": "s1"})
     await owner.send_delta("123", suffix, {"_stream_delta": True, "_stream_id": "s1"})
@@ -1163,7 +1163,7 @@ async def test_start_passes_proxy_to_client(monkeypatch) -> None:
         ),
         MessageBus(),
     )
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 
@@ -1188,7 +1188,7 @@ async def test_start_passes_proxy_auth_when_credentials_provided(monkeypatch) ->
         ),
         MessageBus(),
     )
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 
@@ -1214,7 +1214,7 @@ async def test_start_no_proxy_auth_when_only_username(monkeypatch) -> None:
         ),
         MessageBus(),
     )
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 
@@ -1235,7 +1235,7 @@ async def test_start_no_proxy_auth_when_only_password(monkeypatch) -> None:
         ),
         MessageBus(),
     )
-    monkeypatch.setattr("hczkbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
+    monkeypatch.setattr("biscuitbot.channels.discord.DiscordBotClient", _FakeDiscordClient)
 
     await channel.start()
 

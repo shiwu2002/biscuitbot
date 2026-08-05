@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.cold_storage import ColdStorageTool
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.agent.tools.usage_stats import ColdEntry, UsageStats
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.cold_storage import ColdStorageTool
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.usage_stats import ColdEntry, UsageStats
 
 
 def _make_tool(tool_name: str, *, always_include: bool = False) -> Tool:

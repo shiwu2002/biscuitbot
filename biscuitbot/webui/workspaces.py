@@ -10,8 +10,8 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.config.paths import get_webui_dir
-from hczkbot.security.workspace_access import (
+from biscuitbot.config.paths import get_webui_dir
+from biscuitbot.security.workspace_access import (
     WORKSPACE_SCOPE_METADATA_KEY,
     WorkspaceScope,
     WorkspaceScopeError,

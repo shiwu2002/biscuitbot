@@ -8,14 +8,14 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from hczkbot.channels.base import BaseChannel
+    from biscuitbot.channels.base import BaseChannel
 
 _INTERNAL = frozenset({"base", "manager", "registry"})
 
 
 def discover_channel_names() -> list[str]:
     """Return all built-in channel module names by scanning the package (zero imports)."""
-    import hczkbot.channels as pkg
+    import biscuitbot.channels as pkg
 
     return [
         name
@@ -26,14 +26,14 @@ def discover_channel_names() -> list[str]:
 
 def load_channel_class(module_name: str) -> type[BaseChannel]:
     """Import *module_name* and return the first BaseChannel subclass found."""
-    from hczkbot.channels.base import BaseChannel as _Base
+    from biscuitbot.channels.base import BaseChannel as _Base
 
-    mod = importlib.import_module(f"hczkbot.channels.{module_name}")
+    mod = importlib.import_module(f"biscuitbot.channels.{module_name}")
     for attr in dir(mod):
         obj = getattr(mod, attr)
         if isinstance(obj, type) and issubclass(obj, _Base) and obj is not _Base:
             return obj
-    raise ImportError(f"No BaseChannel subclass in hczkbot.channels.{module_name}")
+    raise ImportError(f"No BaseChannel subclass in biscuitbot.channels.{module_name}")
 
 
 def discover_plugins(enabled_names: set[str] | None = None) -> dict[str, type[BaseChannel]]:
@@ -41,7 +41,7 @@ def discover_plugins(enabled_names: set[str] | None = None) -> dict[str, type[Ba
     from importlib.metadata import entry_points
 
     plugins: dict[str, type[BaseChannel]] = {}
-    for ep in entry_points(group="hczkbot.channels"):
+    for ep in entry_points(group="biscuitbot.channels"):
         if enabled_names is not None and ep.name not in enabled_names:
             continue
         try:

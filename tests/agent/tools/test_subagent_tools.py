@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.config.schema import AgentDefaults
+from biscuitbot.config.schema import AgentDefaults
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
@@ -15,10 +15,10 @@ _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 @pytest.mark.asyncio
 async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
     """allowed_env_keys from ExecToolConfig must be forwarded to the subagent's ExecTool."""
-    from hczkbot.agent.subagent import SubagentManager, SubagentStatus
-    from hczkbot.agent.tools.shell import ExecToolConfig
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.config.schema import ToolsConfig
+    from biscuitbot.agent.subagent import SubagentManager, SubagentStatus
+    from biscuitbot.agent.tools.shell import ExecToolConfig
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.config.schema import ToolsConfig
 
     bus = MessageBus()
     provider = MagicMock()
@@ -58,8 +58,8 @@ async def test_subagent_exec_tool_receives_allowed_env_keys(tmp_path):
 @pytest.mark.asyncio
 async def test_subagent_uses_configured_max_iterations(tmp_path):
     """Subagents should honor the configured tool-iteration limit."""
-    from hczkbot.agent.subagent import SubagentManager, SubagentStatus
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.subagent import SubagentManager, SubagentStatus
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -97,8 +97,8 @@ async def test_subagent_uses_configured_max_iterations(tmp_path):
 @pytest.mark.asyncio
 async def test_spawn_forwards_temperature_to_run_spec(tmp_path):
     """A temperature passed to spawn() should reach the AgentRunSpec."""
-    from hczkbot.agent.subagent import SubagentManager
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -130,9 +130,9 @@ async def test_spawn_forwards_temperature_to_run_spec(tmp_path):
 @pytest.mark.asyncio
 async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
     """SpawnTool should return an error string when the concurrency limit is reached."""
-    from hczkbot.agent.subagent import SubagentManager
-    from hczkbot.agent.tools.spawn import SpawnTool
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.agent.tools.spawn import SpawnTool
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -159,7 +159,7 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
 
     mgr.runner.run = AsyncMock(side_effect=fake_run)
 
-    from hczkbot.agent.tools.context import RequestContext
+    from biscuitbot.agent.tools.context import RequestContext
 
     tool = SpawnTool(mgr)
     tool.set_context(RequestContext(channel="test", chat_id="c1", session_key="test:c1"))
@@ -181,8 +181,8 @@ async def test_spawn_tool_rejects_when_at_concurrency_limit(tmp_path):
 
 def test_subagent_default_max_concurrent_matches_agent_defaults(tmp_path):
     """Direct SubagentManager construction should use the agent default concurrency limit."""
-    from hczkbot.agent.subagent import SubagentManager
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -200,8 +200,8 @@ def test_subagent_default_max_concurrent_matches_agent_defaults(tmp_path):
 
 def test_subagent_default_max_iterations_matches_agent_defaults(tmp_path):
     """Direct SubagentManager construction should use the agent default limit."""
-    from hczkbot.agent.subagent import SubagentManager
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -219,8 +219,8 @@ def test_subagent_default_max_iterations_matches_agent_defaults(tmp_path):
 
 def test_agent_loop_passes_max_iterations_to_subagents(tmp_path):
     """AgentLoop's configured limit should be shared with spawned subagents."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -240,8 +240,8 @@ def test_agent_loop_passes_max_iterations_to_subagents(tmp_path):
 @pytest.mark.asyncio
 async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
     """Runtime max_iterations changes should be reflected before tool execution."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -281,10 +281,10 @@ async def test_agent_loop_syncs_updated_max_iterations_before_run(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_blocks_while_subagents_running(tmp_path):
     """_drain_pending should block when no messages are available but sub-agents are still running."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.events import InboundMessage
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.session.manager import Session
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.events import InboundMessage
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.session.manager import Session
 
     bus = MessageBus()
     provider = MagicMock()
@@ -373,8 +373,8 @@ async def test_drain_pending_blocks_while_subagents_running(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_no_block_when_no_subagents(tmp_path):
     """_drain_pending should not block when no sub-agents are running."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -419,9 +419,9 @@ async def test_drain_pending_no_block_when_no_subagents(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_pending_timeout(tmp_path):
     """_drain_pending should return empty after timeout when sub-agents hang."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.session.manager import Session
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.session.manager import Session
 
     bus = MessageBus()
     provider = MagicMock()
@@ -472,7 +472,7 @@ async def test_drain_pending_timeout(tmp_path):
         awaitable.close()
         raise asyncio.TimeoutError
 
-    with patch("hczkbot.agent.loop.asyncio.wait_for", side_effect=_timeout):
+    with patch("biscuitbot.agent.loop.asyncio.wait_for", side_effect=_timeout):
         results = await injection_callback()
         assert results == []
 

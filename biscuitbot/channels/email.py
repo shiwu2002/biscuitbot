@@ -22,12 +22,12 @@ from typing import Any, Literal
 from loguru import logger
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.utils.helpers import safe_filename
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.utils.helpers import safe_filename
 
 
 class EmailConfig(Base):
@@ -234,7 +234,7 @@ class EmailChannel(BaseChannel):
             self.logger.info("Skip automatic reply to {}: auto_reply_enabled is false", to_addr)
             return
 
-        base_subject = self._last_subject_by_chat.get(to_addr, "hczkbot reply")
+        base_subject = self._last_subject_by_chat.get(to_addr, "biscuitbot reply")
         subject = self._reply_subject(base_subject)
         if msg.metadata and isinstance(msg.metadata.get("subject"), str):
             override = msg.metadata["subject"].strip()
@@ -905,7 +905,7 @@ class EmailChannel(BaseChannel):
         return html.unescape(text)
 
     def _reply_subject(self, base_subject: str) -> str:
-        subject = (base_subject or "").strip() or "hczkbot reply"
+        subject = (base_subject or "").strip() or "biscuitbot reply"
         prefix = self.config.subject_prefix or "Re: "
         if subject.lower().startswith("re:"):
             return subject

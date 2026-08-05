@@ -31,7 +31,7 @@ import {
 } from "@/lib/bootstrap";
 import { displayTitle } from "@/lib/chat-groups";
 import { deriveTitle } from "@/lib/format";
-import { HczkbotClient } from "@/lib/hczkbot-client";
+import { BiscuitbotClient } from "@/lib/biscuitbot-client";
 import { ClientProvider, useClient } from "@/providers/ClientProvider";
 import type {
   ChatSummary,
@@ -57,17 +57,17 @@ type BootState =
   | { status: "auth"; failed?: boolean }
   | {
       status: "ready";
-      client: HczkbotClient;
+      client: BiscuitbotClient;
       token: string;
       tokenExpiresAt: number;
       modelName: string | null;
       runtimeSurface: RuntimeSurface;
     };
 
-const SIDEBAR_STORAGE_KEY = "hczkbot-webui.sidebar";
-const SESSION_UPDATES_STORAGE_KEY = "hczkbot-webui.sidebar.session-updates.v1";
-const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "hczkbot-webui.sidebar.completed-runs.v1";
-const RESTART_STARTED_KEY = "hczkbot-webui.restartStartedAt";
+const SIDEBAR_STORAGE_KEY = "biscuitbot-webui.sidebar";
+const SESSION_UPDATES_STORAGE_KEY = "biscuitbot-webui.sidebar.session-updates.v1";
+const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "biscuitbot-webui.sidebar.completed-runs.v1";
+const RESTART_STARTED_KEY = "biscuitbot-webui.restartStartedAt";
 const SIDEBAR_WIDTH = 272;
 const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
@@ -344,7 +344,7 @@ export default function App() {
   const bootstrapSecretRef = useRef("");
 
   const refreshReadyClient = useCallback(
-    async (client: HczkbotClient, fallbackSurface: RuntimeSurface) => {
+    async (client: BiscuitbotClient, fallbackSurface: RuntimeSurface) => {
       const boot = await fetchBootstrap("", bootstrapSecretRef.current);
       const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
       const runtimeSurface = boot.runtime_surface
@@ -385,7 +385,7 @@ export default function App() {
           const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
           const runtimeSurface = toRuntimeSurface(boot.runtime_surface);
           const runtimeHost = createRuntimeHost(runtimeSurface, boot.runtime_capabilities);
-          const client = new HczkbotClient({
+          const client = new BiscuitbotClient({
             url,
             socketFactory: runtimeHost.socketFactory,
             onReauth: async () => {

@@ -1,7 +1,7 @@
 import pytest
 
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.runtime_events import (
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.runtime_events import (
     RuntimeEventBus,
     RuntimeEventContext,
     RuntimeEventPublisher,

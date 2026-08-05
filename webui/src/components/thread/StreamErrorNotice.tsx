@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { StreamError } from "@/lib/hczkbot-client";
+import type { StreamError } from "@/lib/biscuitbot-client";
 
 interface StreamErrorNoticeProps {
   error: StreamError;

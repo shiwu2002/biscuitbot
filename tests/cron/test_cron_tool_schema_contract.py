@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from hczkbot.agent.tools.context import RequestContext
-from hczkbot.agent.tools.cron import CronTool
-from hczkbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.context import RequestContext
+from biscuitbot.agent.tools.cron import CronTool
+from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 class _SvcStub:

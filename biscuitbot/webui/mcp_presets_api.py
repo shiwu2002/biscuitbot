@@ -16,12 +16,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.apps.protocol import app_manifest, compact_dict
-from hczkbot.config.loader import load_config, resolve_config_env_vars, save_config
-from hczkbot.config.paths import get_runtime_subdir
-from hczkbot.config.schema import MCPServerConfig
-from hczkbot.utils.helpers import ensure_dir
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.apps.protocol import app_manifest, compact_dict
+from biscuitbot.config.loader import load_config, resolve_config_env_vars, save_config
+from biscuitbot.config.paths import get_runtime_subdir
+from biscuitbot.config.schema import MCPServerConfig
+from biscuitbot.utils.helpers import ensure_dir
 
 QueryParams = dict[str, list[str]]
 
@@ -727,7 +727,7 @@ def _custom_manifest(name: str, cfg: MCPServerConfig) -> dict[str, Any]:
     return app_manifest(
         app_id=name,
         display_name=name,
-        description="Custom MCP server from hczkbot config.",
+        description="Custom MCP server from biscuitbot config.",
         category="custom",
         source="mcp-custom",
         brand_color="#64748B",
@@ -802,7 +802,7 @@ def _custom_payload(
         "name": name,
         "display_name": name,
         "category": "custom",
-        "description": "Custom MCP server from hczkbot config.",
+        "description": "Custom MCP server from biscuitbot config.",
         "docs_url": "",
         "transport": transport,
         "requires": "",
@@ -916,7 +916,7 @@ async def _close_mcp_stacks(stacks: Mapping[str, Any]) -> None:
 
 async def mcp_presets_test_action(query: QueryParams) -> dict[str, Any]:
     """Connect to an enabled MCP preset and report its tool surface."""
-    from hczkbot.agent.tools.mcp import connect_mcp_servers
+    from biscuitbot.agent.tools.mcp import connect_mcp_servers
 
     name = (_query_first(query, "name") or "").strip()
     if not name:

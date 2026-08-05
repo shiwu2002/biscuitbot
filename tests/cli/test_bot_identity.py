@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from hczkbot.cli.stream import StreamRenderer, ThinkingSpinner
-from hczkbot.config.schema import AgentDefaults, Config
+from biscuitbot.cli.stream import StreamRenderer, ThinkingSpinner
+from biscuitbot.config.schema import AgentDefaults, Config
 
 
 def test_bot_name_and_icon_defaults_preserve_current_branding() -> None:
-    """Default values keep the existing 'hczkbot' name and cat icon."""
+    """Default values keep the existing 'biscuitbot' name and cat icon."""
     defaults = AgentDefaults()
 
-    assert defaults.bot_name == "hczkbot"
-    assert defaults.bot_icon == "🐺"
+    assert defaults.bot_name == "biscuitbot"
+    assert defaults.bot_icon == "🍪"
 
 
 def test_bot_name_and_icon_can_be_overridden_via_config() -> None:

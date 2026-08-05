@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Protocol, runtime_checkable
 
 _CURRENT_REQUEST_CONTEXT: ContextVar["RequestContext | None"] = ContextVar(
-    "hczkbot_tool_request_context",
+    "biscuitbot_tool_request_context",
     default=None,
 )
 

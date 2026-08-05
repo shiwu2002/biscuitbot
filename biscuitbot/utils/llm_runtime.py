@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from hczkbot.providers.base import LLMProvider
+from biscuitbot.providers.base import LLMProvider
 
 
 @dataclass(frozen=True)

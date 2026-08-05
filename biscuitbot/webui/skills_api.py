@@ -6,7 +6,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from hczkbot.agent.skills import SkillsLoader
+from biscuitbot.agent.skills import SkillsLoader
 
 
 class SkillDeletionError(Exception):

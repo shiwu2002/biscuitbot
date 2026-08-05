@@ -20,8 +20,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.base import Tool
-    from hczkbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.base import Tool
+    from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 @dataclass
@@ -60,7 +60,7 @@ def _resolve_md_path(usage_md: str, workspace: Path) -> Path | None:
 def _resolve_source_file(tool: "Tool") -> str:
     """Best-effort source-file path for the tool's Python module."""
     module = getattr(tool.__class__, "__module__", "")
-    if module and module.startswith("hczkbot."):
+    if module and module.startswith("biscuitbot."):
         parts = module.split(".")
         return str(Path(_TOOLS_DIR.parent.parent.parent, *parts)) + ".py"
     return ""

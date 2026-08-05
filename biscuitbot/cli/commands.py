@@ -1,4 +1,4 @@
-"""CLI commands for hczkbot."""
+"""CLI commands for biscuitbot."""
 
 import asyncio
 import os
@@ -22,7 +22,7 @@ if sys.platform == "win32":
 import typer  # noqa: E402
 from loguru import logger  # noqa: E402
 
-# Remove default handler and re-add with unified hczkbot format
+# Remove default handler and re-add with unified biscuitbot format
 logger.remove()
 _log_handler_id = logger.add(
     sys.stderr,
@@ -47,14 +47,14 @@ from rich.markdown import Markdown  # noqa: E402
 from rich.table import Table  # noqa: E402
 from rich.text import Text  # noqa: E402
 
-from hczkbot import __logo__, __version__  # noqa: E402
-from hczkbot.agent.loop import AgentLoop  # noqa: E402
-from hczkbot.cli.stream import StreamRenderer, ThinkingSpinner  # noqa: E402
-from hczkbot.config.paths import get_workspace_path, is_default_workspace  # noqa: E402
-from hczkbot.config.schema import Config  # noqa: E402
-from hczkbot.utils.evaluator import evaluate_response  # noqa: E402
-from hczkbot.utils.helpers import sync_workspace_templates  # noqa: E402
-from hczkbot.utils.restart import (  # noqa: E402
+from biscuitbot import __logo__, __version__  # noqa: E402
+from biscuitbot.agent.loop import AgentLoop  # noqa: E402
+from biscuitbot.cli.stream import StreamRenderer, ThinkingSpinner  # noqa: E402
+from biscuitbot.config.paths import get_workspace_path, is_default_workspace  # noqa: E402
+from biscuitbot.config.schema import Config  # noqa: E402
+from biscuitbot.utils.evaluator import evaluate_response  # noqa: E402
+from biscuitbot.utils.helpers import sync_workspace_templates  # noqa: E402
+from biscuitbot.utils.restart import (  # noqa: E402
     consume_restart_notice_from_env,
     format_restart_completed_message,
     should_show_cli_restart_notice,
@@ -85,9 +85,9 @@ class SafeFileHistory(FileHistory):
 
 
 app = typer.Typer(
-    name="hczkbot",
+    name="biscuitbot",
     context_settings={"help_option_names": ["-h", "--help"]},
-    help=f"{__logo__} hczkbot - 个人 AI 助手",
+    help=f"{__logo__} biscuitbot - 个人 AI 助手",
     no_args_is_help=True,
 )
 
@@ -179,7 +179,7 @@ def _init_prompt_session() -> None:
 
         _SAVED_TERM_ATTRS = termios.tcgetattr(sys.stdin.fileno())
 
-    from hczkbot.config.paths import get_cli_history_path
+    from biscuitbot.config.paths import get_cli_history_path
 
     history_file = get_cli_history_path()
     history_file.parent.mkdir(parents=True, exist_ok=True)
@@ -223,7 +223,7 @@ def _print_agent_response(
     body = _response_renderable(content, render_markdown, metadata)
     if show_header:
         console.print()
-        console.print(f"[cyan]{__logo__} hczkbot[/cyan]")
+        console.print(f"[cyan]{__logo__} biscuitbot[/cyan]")
     console.print(body)
     console.print()
 
@@ -259,7 +259,7 @@ async def _print_interactive_response(
         ansi = _render_interactive_ansi(
             lambda c: (
                 c.print(),
-                c.print(f"[cyan]{__logo__} hczkbot[/cyan]"),
+                c.print(f"[cyan]{__logo__} biscuitbot[/cyan]"),
                 c.print(_response_renderable(content, render_markdown, metadata)),
                 c.print(),
             )
@@ -414,7 +414,7 @@ async def _read_interactive_input_async() -> str:
 
 def version_callback(value: bool):
     if value:
-        console.print(f"{__logo__} hczkbot v{__version__}")
+        console.print(f"{__logo__} biscuitbot v{__version__}")
         raise typer.Exit()
 
 
@@ -424,7 +424,7 @@ def main(
         None, "--version", "-v", callback=version_callback, is_eager=True
     ),
 ):
-    """hczkbot - 个人 AI 助手。"""
+    """biscuitbot - 个人 AI 助手。"""
     pass
 
 
@@ -435,7 +435,7 @@ def main(
 
 def _has_any_api_key(config) -> bool:
     """Check if any provider has an API key configured."""
-    from hczkbot.providers.registry import PROVIDERS
+    from biscuitbot.providers.registry import PROVIDERS
 
     for spec in PROVIDERS:
         if spec.is_direct or spec.is_local or spec.is_oauth:
@@ -468,13 +468,13 @@ def _run_quick_setup(config, config_path: Path) -> None:
         console.print("  [dim]或附加 --wizard 在真实终端中运行[/dim]")
         return
 
-    from hczkbot.providers.registry import PROVIDERS
-    from hczkbot.config.loader import save_config
+    from biscuitbot.providers.registry import PROVIDERS
+    from biscuitbot.config.loader import save_config
     from rich.align import Align
 
     # --- Step 0: Welcome ---
     console.print()
-    console.print(Align.center(f"{__logo__} [bold cyan]hczkbot 快速安装[/bold cyan]"))
+    console.print(Align.center(f"{__logo__} [bold cyan]biscuitbot 快速安装[/bold cyan]"))
     console.print(Align.center("[dim]3 步开始使用[/dim]"))
     console.print()
 
@@ -612,11 +612,11 @@ def _run_quick_setup(config, config_path: Path) -> None:
     console.print(f"  配置：[cyan]{config_path}[/cyan]")
     console.print()
     console.print("  现在可以运行：")
-    console.print("    [green]hczkbot agent -m \"Hello!\"[/green]")
-    console.print("    [green]hczkbot gateway[/green]")
+    console.print("    [green]biscuitbot agent -m \"Hello!\"[/green]")
+    console.print("    [green]biscuitbot gateway[/green]")
     console.print()
     console.print("  更多选项（频道、预设、工具），请运行：")
-    console.print("    [dim]hczkbot onboard --wizard[/dim]")
+    console.print("    [dim]biscuitbot onboard --wizard[/dim]")
     console.print()
 
 
@@ -626,9 +626,9 @@ def onboard(
     config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
     wizard: bool = typer.Option(False, "--wizard", help="使用交互式引导"),
 ):
-    """初始化 hczkbot 配置和工作区。"""
-    from hczkbot.config.loader import get_config_path, load_config, save_config, set_config_path
-    from hczkbot.config.schema import Config
+    """初始化 biscuitbot 配置和工作区。"""
+    from biscuitbot.config.loader import get_config_path, load_config, save_config, set_config_path
+    from biscuitbot.config.schema import Config
 
     if config_file:
         config_path = Path(config_file).expanduser().resolve()
@@ -673,7 +673,7 @@ def onboard(
 
     # Run interactive wizard if enabled
     if wizard:
-        from hczkbot.cli.onboard import run_onboard
+        from biscuitbot.cli.onboard import run_onboard
 
         try:
             result = run_onboard(initial_config=config)
@@ -686,7 +686,7 @@ def onboard(
             console.print(f"[green]✓[/green] 配置已保存，位于 {config_path}")
         except Exception as e:
             console.print(f"[red]✗[/red] 配置过程中出错：{e}")
-            console.print("[yellow]请再次运行 'hczkbot onboard' 完成安装。[/yellow]")
+            console.print("[yellow]请再次运行 'biscuitbot onboard' 完成安装。[/yellow]")
             raise typer.Exit(1)
 
     # Quick setup: when no API key is configured, guide user through essential steps
@@ -702,18 +702,18 @@ def onboard(
 
     sync_workspace_templates(workspace_path)
 
-    agent_cmd = 'hczkbot agent -m "Hello!"'
-    gateway_cmd = "hczkbot gateway"
+    agent_cmd = 'biscuitbot agent -m "Hello!"'
+    gateway_cmd = "biscuitbot gateway"
     if config:
         agent_cmd += f" --config {config_path}"
         gateway_cmd += f" --config {config_path}"
 
-    console.print(f"\n{__logo__} hczkbot 已就绪！")
+    console.print(f"\n{__logo__} biscuitbot 已就绪！")
     if _has_any_api_key(config):
         console.print("\n后续步骤：")
         console.print(f"  1. 聊天：     [cyan]{agent_cmd}[/cyan]")
         console.print(f"  2. 网关：  [cyan]{gateway_cmd}[/cyan]")
-        console.print("  3. 高级设置：[cyan]hczkbot onboard --wizard[/cyan]")
+        console.print("  3. 高级设置：[cyan]biscuitbot onboard --wizard[/cyan]")
     elif wizard:
         console.print("\n后续步骤：")
         console.print(f"  1. 聊天：[cyan]{agent_cmd}[/cyan]")
@@ -728,7 +728,7 @@ def onboard(
         console.print("     Zhipu (智谱): https://open.bigmodel.cn/usercenter/apikeys")
         console.print(f"  2. 聊天：[cyan]{agent_cmd}[/cyan]")
     console.print(
-        "\n[dim]Docs: https://github.com/hczkbot/hczkbot[/dim]"
+        "\n[dim]Docs: https://github.com/biscuitbot/biscuitbot[/dim]"
     )
 
 
@@ -748,8 +748,8 @@ def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:
 
 def _onboard_plugins(config_path: Path) -> None:
     """Inject default config for all discovered channels (built-in + plugins)."""
-    from hczkbot.channels.registry import discover_all
-    from hczkbot.config.loader import _load_config_file
+    from biscuitbot.channels.registry import discover_all
+    from biscuitbot.config.loader import _load_config_file
 
     all_channels = discover_all()
     if not all_channels:
@@ -764,10 +764,10 @@ def _onboard_plugins(config_path: Path) -> None:
         else:
             channels[name] = _merge_missing_defaults(channels[name], cls.default_config())
 
-    from hczkbot.config.loader import save_config
+    from biscuitbot.config.loader import save_config
 
     # Re-validate through the Config model to get proper serialization
-    from hczkbot.config.schema import Config
+    from biscuitbot.config.schema import Config
 
     config = Config.model_validate(data)
     save_config(config, config_path)
@@ -783,7 +783,7 @@ def _model_display(config: Config) -> tuple[str, str]:
 
 def _load_runtime_config(config: str | None = None, workspace: str | None = None) -> Config:
     """Load config and optionally override the active workspace."""
-    from hczkbot.config.loader import load_config, resolve_config_env_vars, set_config_path
+    from biscuitbot.config.loader import load_config, resolve_config_env_vars, set_config_path
 
     config_path = None
     if config:
@@ -809,7 +809,7 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
     """Hint users to remove obsolete keys from their config file."""
     import json
 
-    from hczkbot.config.loader import get_config_path
+    from biscuitbot.config.loader import get_config_path
 
     path = config_path or get_config_path()
     try:
@@ -825,7 +825,7 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
 
 def _migrate_cron_store(config: "Config") -> None:
     """One-time migration: move legacy global cron store into the workspace."""
-    from hczkbot.config.paths import get_cron_dir
+    from biscuitbot.config.paths import get_cron_dir
 
     legacy_path = get_cron_dir() / "jobs.json"
     new_path = config.workspace_path / "cron" / "jobs.json"
@@ -846,7 +846,7 @@ def serve(
     port: int | None = typer.Option(None, "--port", "-p", help="API 服务器端口"),
     host: str | None = typer.Option(None, "--host", "-H", help="绑定地址"),
     timeout: float | None = typer.Option(None, "--timeout", "-t", help="单请求超时时间（秒）"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="显示 hczkbot 运行时日志"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="显示 biscuitbot 运行时日志"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
     config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
@@ -854,20 +854,20 @@ def serve(
     try:
         from aiohttp import web  # noqa: F401
     except ImportError:
-        console.print("[red]需要 aiohttp。请安装：pip install 'hczkbot[api]'[/red]")
+        console.print("[red]需要 aiohttp。请安装：pip install 'biscuitbot[api]'[/red]")
         raise typer.Exit(1)
 
     from loguru import logger
 
-    from hczkbot.api.server import create_app
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.providers.image_generation import image_gen_provider_configs
-    from hczkbot.session.manager import SessionManager
+    from biscuitbot.api.server import create_app
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.providers.image_generation import image_gen_provider_configs
+    from biscuitbot.session.manager import SessionManager
 
     if verbose:
-        logger.enable("hczkbot")
+        logger.enable("biscuitbot")
     else:
-        logger.disable("hczkbot")
+        logger.disable("biscuitbot")
 
     runtime_config = _load_runtime_config(config_file, workspace)
     api_cfg = runtime_config.api
@@ -925,7 +925,7 @@ def gateway(
     verbose: bool = typer.Option(False, "--verbose", "-v", help="详细输出"),
     config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """启动 hczkbot 网关。"""
+    """启动 biscuitbot 网关。"""
     if verbose:
         logger.remove(_log_handler_id)
         logger.add(
@@ -962,23 +962,23 @@ def _run_gateway(
     health_server_enabled: bool = True,
 ) -> None:
     """Shared gateway runtime; ``open_browser_url`` opens a tab once channels are up."""
-    from hczkbot.agent.tools.message import MessageTool
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.bus.runtime_events import RuntimeEventBus
-    from hczkbot.channels.manager import ChannelManager
-    from hczkbot.cron.bound_runner import run_bound_cron_job
-    from hczkbot.cron.service import CronJobSkippedError, CronService
-    from hczkbot.cron.session_turns import is_bound_cron_job
-    from hczkbot.cron.types import CronJob
-    from hczkbot.providers.factory import build_provider_snapshot, load_provider_snapshot
-    from hczkbot.providers.image_generation import image_gen_provider_configs
-    from hczkbot.session.manager import SessionManager
-    from hczkbot.session.webui_turns import WebuiTurnCoordinator
-    from hczkbot.webui.token_usage import TokenUsageHook
+    from biscuitbot.agent.tools.message import MessageTool
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.bus.runtime_events import RuntimeEventBus
+    from biscuitbot.channels.manager import ChannelManager
+    from biscuitbot.cron.bound_runner import run_bound_cron_job
+    from biscuitbot.cron.service import CronJobSkippedError, CronService
+    from biscuitbot.cron.session_turns import is_bound_cron_job
+    from biscuitbot.cron.types import CronJob
+    from biscuitbot.providers.factory import build_provider_snapshot, load_provider_snapshot
+    from biscuitbot.providers.image_generation import image_gen_provider_configs
+    from biscuitbot.session.manager import SessionManager
+    from biscuitbot.session.webui_turns import WebuiTurnCoordinator
+    from biscuitbot.webui.token_usage import TokenUsageHook
 
     port = port if port is not None else config.gateway.port
 
-    console.print(f"{__logo__} 正在启动 hczkbot 网关，版本 {__version__} 端口 {port}...")
+    console.print(f"{__logo__} 正在启动 biscuitbot 网关，版本 {__version__} 端口 {port}...")
     if open_browser_url:
         console.print(f"  WebUI 地址：[cyan]{open_browser_url}[/cyan]")
     sync_workspace_templates(config.workspace_path)
@@ -1020,11 +1020,11 @@ def _run_gateway(
     ).subscribe(runtime_events)
 
     # CLI 端口全链路追踪日志：彩色树形输出到 stderr
-    from hczkbot.bus.trace_logger import install_trace_logger
+    from biscuitbot.bus.trace_logger import install_trace_logger
     install_trace_logger(runtime_events)
 
-    from hczkbot.bus.events import OutboundMessage
-    from hczkbot.session.keys import session_key_for_channel
+    from biscuitbot.bus.events import OutboundMessage
+    from biscuitbot.session.keys import session_key_for_channel
 
     def _channel_session_key(channel: str, chat_id: str) -> str:
         return session_key_for_channel(
@@ -1077,7 +1077,7 @@ def _run_gateway(
 
         # Dream is an internal job — run directly, not through the agent loop.
         if job.name == "dream":
-            from hczkbot.agent.memory import MemoryStore
+            from biscuitbot.agent.memory import MemoryStore
 
             dream_session_key = MemoryStore.dream_session_key
             build_dream_commit_message = MemoryStore.build_dream_commit_message
@@ -1086,7 +1086,7 @@ def _run_gateway(
             store = agent.context.memory
             last_resp = None
             batches_processed = 0
-            from hczkbot.command.builtin import _DREAM_BATCH_TIMEOUT_S, _DREAM_MAX_BATCHES
+            from biscuitbot.command.builtin import _DREAM_BATCH_TIMEOUT_S, _DREAM_MAX_BATCHES
             try:
                 while batches_processed < _DREAM_MAX_BATCHES:
                     result = store.build_dream_prompt()
@@ -1135,7 +1135,7 @@ def _run_gateway(
             except Exception:
                 logger.exception("Dream cron job failed")
             finally:
-                from hczkbot.webui.token_usage import record_response_token_usage
+                from biscuitbot.webui.token_usage import record_response_token_usage
 
                 record_response_token_usage(
                     last_resp,
@@ -1220,7 +1220,7 @@ def _run_gateway(
             summary_parts: list[str] = []
 
             # 1. Docs consistency check → spawn docs-repair subagent on mismatch
-            from hczkbot.agent.tools.docs_consistency import (
+            from biscuitbot.agent.tools.docs_consistency import (
                 build_repair_task,
                 check_docs_consistency,
             )
@@ -1249,7 +1249,7 @@ def _run_gateway(
 
             # 2. Duplicate detection (report only, no auto-merge)
             try:
-                from hczkbot.agent.tools.duplicate_check import (
+                from biscuitbot.agent.tools.duplicate_check import (
                     build_duplicate_report,
                     check_duplicates,
                 )
@@ -1396,7 +1396,7 @@ def _run_gateway(
         async with server:
             await server.serve_forever()
     # Register Dream system job (idempotent on restart)
-    from hczkbot.cron.types import CronJob, CronPayload, CronSchedule
+    from biscuitbot.cron.types import CronJob, CronPayload, CronSchedule
     dream_cfg = config.agents.defaults.dream
     if dream_cfg.enabled:
         cron.register_system_job(CronJob(
@@ -1505,8 +1505,8 @@ def desktop(
     width: int = typer.Option(1200, "--width", help="窗口宽度"),
     height: int = typer.Option(800, "--height", help="窗口高度"),
 ):
-    """以原生桌面应用方式启动 hczkbot。"""
-    from hczkbot.desktop.app import run_desktop
+    """以原生桌面应用方式启动 biscuitbot。"""
+    from biscuitbot.desktop.app import run_desktop
 
     cfg = _load_runtime_config(config_file, workspace)
     run_desktop(cfg, port=port, width=width, height=height)
@@ -1524,14 +1524,14 @@ def agent(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
     config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
     markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="以 Markdown 渲染助手输出"),
-    logs: bool = typer.Option(False, "--logs/--no-logs", help="在聊天中显示 hczkbot 运行时日志"),
+    logs: bool = typer.Option(False, "--logs/--no-logs", help="在聊天中显示 biscuitbot 运行时日志"),
 ):
     """直接与智能体交互。"""
     from loguru import logger
 
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.cron.service import CronService
-    from hczkbot.providers.image_generation import image_gen_provider_configs
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.cron.service import CronService
+    from biscuitbot.providers.image_generation import image_gen_provider_configs
 
     config = _load_runtime_config(config_file, workspace)
     sync_workspace_templates(config.workspace_path)
@@ -1547,9 +1547,9 @@ def agent(
     cron = CronService(cron_store_path)
 
     if logs:
-        logger.enable("hczkbot")
+        logger.enable("biscuitbot")
     else:
-        logger.disable("hczkbot")
+        logger.disable("biscuitbot")
 
     try:
         agent_loop = AgentLoop.from_config(
@@ -1628,7 +1628,7 @@ def agent(
         asyncio.run(run_once())
     else:
         # Interactive mode — route through bus like other channels
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
         _init_prompt_session()
         _model, _preset_tag = _model_display(config)
         _icon = config.agents.defaults.bot_icon or __logo__
@@ -1792,8 +1792,8 @@ def channels_status(
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
     """显示频道状态。"""
-    from hczkbot.channels.registry import discover_all
-    from hczkbot.config.loader import load_config, set_config_path
+    from biscuitbot.channels.registry import discover_all
+    from biscuitbot.config.loader import load_config, set_config_path
 
     resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
     if resolved_config_path is not None:
@@ -1828,8 +1828,8 @@ def channels_login(
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
     """通过二维码或其他交互方式登录频道。"""
-    from hczkbot.channels.registry import discover_all
-    from hczkbot.config.loader import load_config, set_config_path
+    from biscuitbot.channels.registry import discover_all
+    from biscuitbot.config.loader import load_config, set_config_path
 
     resolved_config_path = Path(config_path).expanduser().resolve() if config_path else None
     if resolved_config_path is not None:
@@ -1867,8 +1867,8 @@ app.add_typer(plugins_app, name="plugins")
 @plugins_app.command("list")
 def plugins_list():
     """列出所有已发现的频道（内置和插件）。"""
-    from hczkbot.channels.registry import discover_all, discover_channel_names
-    from hczkbot.config.loader import load_config
+    from biscuitbot.channels.registry import discover_all, discover_channel_names
+    from biscuitbot.config.loader import load_config
 
     config = load_config()
     builtin_names = set(discover_channel_names())
@@ -1905,20 +1905,20 @@ def plugins_list():
 
 @app.command()
 def status():
-    """显示 hczkbot 状态。"""
-    from hczkbot.config.loader import get_config_path, load_config
+    """显示 biscuitbot 状态。"""
+    from biscuitbot.config.loader import get_config_path, load_config
 
     config_path = get_config_path()
     config = load_config()
     workspace = config.workspace_path
 
-    console.print(f"{__logo__} hczkbot Status\n")
+    console.print(f"{__logo__} biscuitbot Status\n")
 
     console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
     console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
 
     if config_path.exists():
-        from hczkbot.providers.registry import PROVIDERS
+        from biscuitbot.providers.registry import PROVIDERS
 
         _model, _preset_tag = _model_display(config)
         console.print(f"Model: {_model}{_preset_tag}")

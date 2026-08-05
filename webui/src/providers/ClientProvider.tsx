@@ -1,9 +1,9 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { HczkbotClient } from "@/lib/hczkbot-client";
+import type { BiscuitbotClient } from "@/lib/biscuitbot-client";
 
 interface ClientContextValue {
-  client: HczkbotClient;
+  client: BiscuitbotClient;
   token: string;
   modelName: string | null;
 }
@@ -16,7 +16,7 @@ export function ClientProvider({
   modelName = null,
   children,
 }: {
-  client: HczkbotClient;
+  client: BiscuitbotClient;
   token: string;
   modelName?: string | null;
   children: ReactNode;

@@ -16,10 +16,10 @@ from typing import Any, Literal
 from loguru import logger
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.schema import Base
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.schema import Base
 
 
 class WhatsAppConfig(Base):
@@ -33,7 +33,7 @@ class WhatsAppConfig(Base):
 
 
 def _bridge_token_path() -> Path:
-    from hczkbot.config.paths import get_runtime_subdir
+    from biscuitbot.config.paths import get_runtime_subdir
 
     return get_runtime_subdir("whatsapp-auth") / "bridge-token"
 
@@ -321,10 +321,10 @@ def _ensure_bridge_setup() -> Path:
     Returns the bridge directory. Raises RuntimeError if npm is not found
     or bridge cannot be built.
     """
-    from hczkbot.config.paths import get_bridge_install_dir
+    from biscuitbot.config.paths import get_bridge_install_dir
 
     user_bridge = get_bridge_install_dir()
-    stamp_file = user_bridge / ".hczkbot-bridge-source-hash"
+    stamp_file = user_bridge / ".biscuitbot-bridge-source-hash"
 
     # Find source bridge
     current_file = Path(__file__)
@@ -340,7 +340,7 @@ def _ensure_bridge_setup() -> Path:
     if not source:
         raise RuntimeError(
             "WhatsApp bridge source not found. "
-            "Try reinstalling: pip install --force-reinstall hczkbot"
+            "Try reinstalling: pip install --force-reinstall biscuitbot"
         )
 
     def source_hash(root: Path) -> str:

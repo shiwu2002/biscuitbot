@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from hczkbot.utils.document import (
+from biscuitbot.utils.document import (
     SUPPORTED_EXTENSIONS,
     _is_text_extension,
     extract_text,

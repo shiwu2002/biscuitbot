@@ -1,4 +1,4 @@
-"""hczkbot 交互式配置引导问卷。"""
+"""biscuitbot 交互式配置引导问卷。"""
 
 import json
 import types
@@ -16,13 +16,13 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from hczkbot.cli.models import (
+from biscuitbot.cli.models import (
     format_token_count,
     get_model_context_limit,
     get_model_suggestions,
 )
-from hczkbot.config.loader import get_config_path, load_config
-from hczkbot.config.schema import Config, ModelPresetConfig
+from biscuitbot.config.loader import get_config_path, load_config
+from biscuitbot.config.schema import Config, ModelPresetConfig
 
 console = Console()
 
@@ -367,14 +367,14 @@ def _show_config_panel(display_name: str, model: BaseModel, fields: list) -> Non
 
 def _show_main_menu_header() -> None:
     """展示主菜单头部。"""
-    from hczkbot import __logo__, __version__
+    from biscuitbot import __logo__, __version__
 
     console.print()
     # 使用 Align.CENTER 居中单行文本
     from rich.align import Align
 
     console.print(
-        Align.center(f"{__logo__} [bold cyan]hczkbot[{__version__}][/bold cyan]")
+        Align.center(f"{__logo__} [bold cyan]biscuitbot[{__version__}][/bold cyan]")
     )
     console.print()
 
@@ -624,7 +624,7 @@ def _handle_fallback_models_field(
     working_model: BaseModel, field_name: str, field_display: str, current_value: Any
 ) -> None:
     """处理 'fallback_models' 字段：基于预设列表管理备选模型。"""
-    from hczkbot.config.schema import InlineFallbackConfig
+    from biscuitbot.config.schema import InlineFallbackConfig
 
     items: list[Any] = list(current_value) if isinstance(current_value, list) else []
     preset_names = sorted(_MODEL_PRESET_CACHE)
@@ -822,7 +822,7 @@ def _try_auto_fill_context_window(model: BaseModel, new_model_name: str) -> None
     """当 context_window_tokens 仍为默认值时，尝试自动填充推荐值。
 
     注意:
-        本函数会从 hczkbot.config.schema 导入 AgentDefaults，
+        本函数会从 biscuitbot.config.schema 导入 AgentDefaults，
         以读取 context_window_tokens 的默认值。若 schema 变化需同步更新此耦合。
     """
     # 检查 context_window_tokens 字段是否存在
@@ -832,7 +832,7 @@ def _try_auto_fill_context_window(model: BaseModel, new_model_name: str) -> None
     current_context = getattr(model, "context_window_tokens", None)
 
     # 仅在当前值仍为默认（65536）时自动填充；用户已修改的不覆盖
-    from hczkbot.config.schema import AgentDefaults
+    from biscuitbot.config.schema import AgentDefaults
 
     default_context = AgentDefaults.model_fields["context_window_tokens"].default
 
@@ -965,7 +965,7 @@ def _configure_model_presets(config: Config) -> None:
 @lru_cache(maxsize=1)
 def _get_provider_info() -> dict[str, tuple[str, bool, bool, str]]:
     """从 registry 获取 provider 信息（带缓存）。"""
-    from hczkbot.providers.registry import PROVIDERS
+    from biscuitbot.providers.registry import PROVIDERS
 
     return {
         spec.name: (
@@ -1066,12 +1066,12 @@ def _get_channel_info() -> dict[str, tuple[str, type[BaseModel]]]:
     """从 channel 模块获取信息（显示名 + 配置类）。"""
     import importlib
 
-    from hczkbot.channels.registry import discover_all
+    from biscuitbot.channels.registry import discover_all
 
     result: dict[str, tuple[str, type[BaseModel]]] = {}
     for name, channel_cls in discover_all().items():
         try:
-            mod = importlib.import_module(f"hczkbot.channels.{name}")
+            mod = importlib.import_module(f"biscuitbot.channels.{name}")
             config_name = channel_cls.__name__.replace("Channel", "Config")
             config_cls = getattr(mod, config_name, None)
             if config_cls and isinstance(config_cls, type) and issubclass(config_cls, BaseModel):
@@ -1149,7 +1149,7 @@ def _configure_channels(config: Config) -> None:
 
 def _configure_mcp_servers(config: Config) -> None:
     """配置 MCP 服务器（预设目录 + 手动添加）。"""
-    from hczkbot.webui.mcp_presets_api import MCP_PRESETS
+    from biscuitbot.webui.mcp_presets_api import MCP_PRESETS
 
     while True:
         console.clear()
@@ -1268,7 +1268,7 @@ def _add_mcp_from_preset(config: Config, presets: tuple) -> None:
 
 def _add_mcp_custom(config: Config) -> None:
     """手动添加自定义 MCP 服务器。"""
-    from hczkbot.config.schema import MCPServerConfig
+    from biscuitbot.config.schema import MCPServerConfig
 
     name = _get_questionary().text("服务器名称（小写字母、数字、横线）:", default="").ask()
     if not name:

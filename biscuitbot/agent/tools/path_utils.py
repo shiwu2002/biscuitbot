@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from hczkbot.config.paths import get_media_dir
-from hczkbot.security.workspace_policy import (
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.security.workspace_policy import (
     is_path_within,
     resolve_allowed_path,
 )

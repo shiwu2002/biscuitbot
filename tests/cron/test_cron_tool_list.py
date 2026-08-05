@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from hczkbot.agent.tools.context import RequestContext
-from hczkbot.agent.tools.cron import CronTool
-from hczkbot.cron.service import CronService
-from hczkbot.cron.types import CronJob, CronJobState, CronPayload, CronSchedule
+from biscuitbot.agent.tools.context import RequestContext
+from biscuitbot.agent.tools.cron import CronTool
+from biscuitbot.cron.service import CronService
+from biscuitbot.cron.types import CronJob, CronJobState, CronPayload, CronSchedule
 
 
 def _make_tool(tmp_path) -> CronTool:

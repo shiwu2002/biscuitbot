@@ -9,10 +9,10 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from hczkbot.agent.tools import web as web_module
-from hczkbot.agent.tools.web import WebFetchTool
-from hczkbot.config.schema import WebFetchConfig
-from hczkbot.security.workspace_access import (
+from biscuitbot.agent.tools import web as web_module
+from biscuitbot.agent.tools.web import WebFetchTool
+from biscuitbot.config.schema import WebFetchConfig
+from biscuitbot.security.workspace_access import (
     bind_workspace_scope,
     build_workspace_scope,
     reset_workspace_scope,
@@ -32,7 +32,7 @@ def _fake_resolve_public(hostname, port, family=0, type_=0):
 @pytest.mark.asyncio
 async def test_web_fetch_blocks_private_ip():
     tool = WebFetchTool()
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_private):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_private):
         result = await tool.execute(url="http://169.254.169.254/computeMetadata/v1/")
     data = json.loads(result)
     assert "error" in data
@@ -44,7 +44,7 @@ async def test_web_fetch_blocks_localhost():
     tool = WebFetchTool()
     def _resolve_localhost(hostname, port, family=0, type_=0):
         return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))]
-    with patch("hczkbot.security.network.socket.getaddrinfo", _resolve_localhost):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _resolve_localhost):
         result = await tool.execute(url="http://localhost/admin")
     data = json.loads(result)
     assert "error" in data
@@ -60,7 +60,7 @@ async def test_web_fetch_blocks_localhost_even_in_full_workspace_scope(tmp_path)
 
     token = bind_workspace_scope(scope)
     try:
-        with patch("hczkbot.security.network.socket.getaddrinfo", _resolve_localhost):
+        with patch("biscuitbot.security.network.socket.getaddrinfo", _resolve_localhost):
             result = await tool.execute(url="http://localhost/admin")
     finally:
         reset_workspace_scope(token)
@@ -88,7 +88,7 @@ async def test_web_fetch_result_contains_untrusted_flag():
     async def _fake_get(self, url, **kwargs):
         return FakeResponse()
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
          patch("httpx.AsyncClient.get", _fake_get):
         result = await tool.execute(url="https://example.com/page")
 
@@ -101,7 +101,7 @@ async def test_web_fetch_result_contains_untrusted_flag():
 async def test_web_fetch_can_skip_jina_and_use_custom_user_agent(monkeypatch):
     tool = WebFetchTool(
         config=WebFetchConfig(use_jina_reader=False),
-        user_agent="hczkbot-test-agent",
+        user_agent="biscuitbot-test-agent",
     )
     seen_headers: list[dict] = []
 
@@ -152,16 +152,16 @@ async def test_web_fetch_can_skip_jina_and_use_custom_user_agent(monkeypatch):
 
     monkeypatch.setattr(tool, "_fetch_jina", _fail_jina)
     monkeypatch.setattr(tool, "_extract_readable_html", lambda html, mode: "Hello world")
-    monkeypatch.setattr("hczkbot.agent.tools.web.httpx.AsyncClient", FakeClient)
+    monkeypatch.setattr("biscuitbot.agent.tools.web.httpx.AsyncClient", FakeClient)
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public):
         result = await tool.execute(url="https://example.com/page")
 
     data = json.loads(result)
     assert data["extractor"] == "readability"
     assert [headers["User-Agent"] for headers in seen_headers] == [
-        "hczkbot-test-agent",
-        "hczkbot-test-agent",
+        "biscuitbot-test-agent",
+        "biscuitbot-test-agent",
     ]
 
 
@@ -195,9 +195,9 @@ async def test_web_fetch_falls_back_when_readability_dependency_is_missing(monke
         raise ModuleNotFoundError("No module named 'lxml_html_clean'")
 
     monkeypatch.setattr(tool, "_extract_readable_html", _missing_readability)
-    monkeypatch.setattr("hczkbot.agent.tools.web.httpx.AsyncClient", FakeClient)
+    monkeypatch.setattr("biscuitbot.agent.tools.web.httpx.AsyncClient", FakeClient)
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public):
         result = await tool._fetch_readability("https://example.com/page", "markdown", 5000)
 
     data = json.loads(result)
@@ -259,7 +259,7 @@ async def test_web_fetch_blocks_private_redirect_before_readability_request(monk
             return _fake_resolve_public(hostname, port, family, type_)
         return _REAL_GETADDRINFO(hostname, port, family, type_)
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", resolve_public_start_only):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", resolve_public_start_only):
         result = await tool.execute(url="https://attacker.example/start")
 
     data = json.loads(result)
@@ -296,14 +296,14 @@ async def test_web_fetch_blocks_private_redirect_before_returning_image(monkeypa
             kwargs.pop("proxy", None)
             super().__init__(*args, transport=transport, **kwargs)
 
-    monkeypatch.setattr("hczkbot.agent.tools.web.httpx.AsyncClient", TransportAsyncClient)
+    monkeypatch.setattr("biscuitbot.agent.tools.web.httpx.AsyncClient", TransportAsyncClient)
 
     def resolve_public_start_only(hostname, port, family=0, type_=0):
         if hostname == "example.com":
             return _fake_resolve_public(hostname, port, family, type_)
         return _REAL_GETADDRINFO(hostname, port, family, type_)
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", resolve_public_start_only):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", resolve_public_start_only):
         result = await tool.execute(url="https://example.com/image.png")
 
     data = json.loads(result)
@@ -343,7 +343,7 @@ async def test_web_fetch_does_not_request_private_redirect_target(monkeypatch):
             return _fake_resolve_public(hostname, port, family, type_)
         return _REAL_GETADDRINFO(hostname, port, family, type_)
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", resolve_public_start_only):
+    with patch("biscuitbot.security.network.socket.getaddrinfo", resolve_public_start_only):
         result = await tool.execute(url="https://attacker.example/start")
 
     data = json.loads(result)
@@ -399,7 +399,7 @@ async def test_web_fetch_standard_result_contains_banner():
     async def _fake_get(self, url, **kwargs):
         return FakeResponse()
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
          patch("httpx.AsyncClient.get", _fake_get):
         result = await tool.execute(url="https://example.com/page")
 
@@ -427,7 +427,7 @@ async def test_web_fetch_off_result_omits_banner():
     async def _fake_get(self, url, **kwargs):
         return FakeResponse()
 
-    with patch("hczkbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+    with patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
          patch("httpx.AsyncClient.get", _fake_get):
         result = await tool.execute(url="https://example.com/page")
 

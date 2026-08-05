@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.channels.manager import ChannelManager
-from hczkbot.config.schema import Config
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.channels.manager import ChannelManager
+from biscuitbot.config.schema import Config
 
 
 class MockChannel(BaseChannel):

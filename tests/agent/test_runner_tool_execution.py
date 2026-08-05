@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
-from hczkbot.providers.openai_responses.parsing import parse_response_output
+from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.openai_responses.parsing import parse_response_output
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
@@ -244,7 +244,7 @@ async def test_runner_rejects_near_miss_tool_name_without_executing():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("arguments", ['{path:"notes.txt"}', "null"])
 async def test_runner_rejects_openai_compat_invalid_arguments_without_executing(arguments):
-    with patch("hczkbot.providers.openai_compat_provider.AsyncOpenAI"):
+    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI"):
         parsed = OpenAICompatProvider()._parse({
             "choices": [{
                 "message": {

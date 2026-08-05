@@ -1,6 +1,6 @@
 # 架构设计文档
 
-本文档描述 hczkbot 项目的核心架构。所有引用的代码文件均可点击跳转。
+本文档描述 biscuitbot 项目的核心架构。所有引用的代码文件均可点击跳转。
 
 ## 1. 核心数据流
 
@@ -24,11 +24,11 @@
                └──────────┘
 ```
 
-渠道层调用 `publish_inbound` 投递 [InboundMessage](file:///Volumes/data/hczkAgent/nanobot/hczkbot/bus/events.py)；[AgentLoop._run_main_loop](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/loop.py) 消费后为每个 session 创建 `_dispatch` 任务；最终回复通过 `publish_outbound` 写回 [MessageBus](file:///Volumes/data/hczkAgent/nanobot/hczkbot/bus/queue.py) 的 outbound 队列。
+渠道层调用 `publish_inbound` 投递 [InboundMessage](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/bus/events.py)；[AgentLoop._run_main_loop](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/loop.py) 消费后为每个 session 创建 `_dispatch` 任务；最终回复通过 `publish_outbound` 写回 [MessageBus](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/bus/queue.py) 的 outbound 队列。
 
 ## 2. AgentLoop 状态机
 
-[AgentLoop](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/loop.py) 把单个消息的处理切分为 8 个状态（`TurnState` 枚举）：
+[AgentLoop](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/loop.py) 把单个消息的处理切分为 8 个状态（`TurnState` 枚举）：
 
 | 状态 | 职责 |
 |------|------|
@@ -43,11 +43,11 @@
 
 `_TRANSITIONS` 是事件驱动的转移表，handler 返回事件字符串，driver 查表得到下一状态；缺转移即抛 `RuntimeError`。`TurnContext` dataclass 在整个 turn 内承载 `msg`、`session`、`history`、`initial_messages`、`final_content`、`tools_used`、`trace` 等可变状态，避免跨 handler 传参。
 
-**并发模型**：`_dispatch` 使用 `_session_locks: dict[str, asyncio.Lock]` 保证同一 session 串行；跨 session 并发由 `_concurrency_gate`（`Semaphore`，默认 3，由 `HCZKBOT_MAX_CONCURRENT_REQUESTS` 控制）限流。活跃 turn 期间，`_pending_queues[session_key]` 接收后续消息实现 mid-turn 注入，而非创建竞争任务。
+**并发模型**：`_dispatch` 使用 `_session_locks: dict[str, asyncio.Lock]` 保证同一 session 串行；跨 session 并发由 `_concurrency_gate`（`Semaphore`，默认 3，由 `BISCUITBOT_MAX_CONCURRENT_REQUESTS` 控制）限流。活跃 turn 期间，`_pending_queues[session_key]` 接收后续消息实现 mid-turn 注入，而非创建竞争任务。
 
 ## 3. AgentRunner 执行循环
 
-[AgentRunner](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/runner.py) 是与产品层无关的工具循环引擎。
+[AgentRunner](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/runner.py) 是与产品层无关的工具循环引擎。
 
 - `AgentRunSpec`：单次执行的配置（`initial_messages`、`tools`、`model`、`max_iterations`、各类 callback、`context_window_tokens`、`goal_active_predicate` 等）。
 - `AgentRunResult`：执行结果（`final_content`、`messages`、`tools_used`、`usage`、`stop_reason`、`had_injections` 等）。
@@ -67,7 +67,7 @@
 
 ## 4. 上下文构建
 
-[ContextBuilder.build_system_prompt](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/context.py) 按以下顺序拼接（`\n\n---\n\n` 分隔）：
+[ContextBuilder.build_system_prompt](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/context.py) 按以下顺序拼接（`\n\n---\n\n` 分隔）：
 
 1. **Identity** — `_get_identity`：workspace 路径、运行时、平台策略、channel、`guard_level`。
 2. **Bootstrap files** — `_load_bootstrap_files`：`AGENTS.md`、`SOUL.md`、`USER.md`。
@@ -83,31 +83,31 @@
 
 ## 5. 会话管理
 
-[Session](file:///Volumes/data/hczkAgent/nanobot/hczkbot/session/manager.py) dataclass：`key`、`messages`、`created_at`/`updated_at`、`metadata`、`last_consolidated`（已归档到文件前缀数）。`get_history` 切片未归档消息，按 token 预算从尾部保留，并对齐到合法 user 起点；`retain_recent_legal_suffix` 与 `enforce_file_cap`（默认 2000 条）在超限时归档旧前缀。
+[Session](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/session/manager.py) dataclass：`key`、`messages`、`created_at`/`updated_at`、`metadata`、`last_consolidated`（已归档到文件前缀数）。`get_history` 切片未归档消息，按 token 预算从尾部保留，并对齐到合法 user 起点；`retain_recent_legal_suffix` 与 `enforce_file_cap`（默认 2000 条）在超限时归档旧前缀。
 
 **SessionManager**：JSONL 持久化于 `workspace/sessions/<safe_key>.jsonl`，首行为 metadata 记录，后续每行一条消息。`save` 采用 tmp 文件 + `os.replace` 原子写，`fsync=True` 时额外刷盘目录（用于优雅关闭 `flush_all`）。`_load` 支持从 legacy 路径迁移、`_repair` 容忍坏行；`fork_session_before_user_index` 支持 WebUI 分叉。
 
 **AutoCompact**：`check_expired` 在主循环空闲分支按 `session_ttl_minutes` 触发后台压缩；`prepare_session` 返回 `(session, pending_summary)`，summary 注入 system prompt 第 9 层。
 
-**持续目标状态**（[goal_state](file:///Volumes/data/hczkAgent/nanobot/hczkbot/session/goal_state.py)）：`metadata[GOAL_STATE_KEY]` 存储 `long_task` 目标。`goal_state_runtime_lines` 把目标文本追加进 Runtime Context；`sustained_goal_active` 为真时 `runner_wall_llm_timeout_s` 返回 `0.0`，关闭 LLM 墙钟超时以允许长任务运行（仍受 stream idle 超时约束）。
+**持续目标状态**（[goal_state](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/session/goal_state.py)）：`metadata[GOAL_STATE_KEY]` 存储 `long_task` 目标。`goal_state_runtime_lines` 把目标文本追加进 Runtime Context；`sustained_goal_active` 为真时 `runner_wall_llm_timeout_s` 返回 `0.0`，关闭 LLM 墙钟超时以允许长任务运行（仍受 stream idle 超时约束）。
 
 ## 6. 消息总线
 
-[MessageBus](file:///Volumes/data/hczkAgent/nanobot/hczkbot/bus/queue.py) 持有 `inbound` / `outbound` 两个 `asyncio.Queue`，提供 `publish_inbound`/`consume_inbound` 与 `publish_outbound`/`consume_outbound`，完全解耦渠道层与 agent 核心。
+[MessageBus](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/bus/queue.py) 持有 `inbound` / `outbound` 两个 `asyncio.Queue`，提供 `publish_inbound`/`consume_inbound` 与 `publish_outbound`/`consume_outbound`，完全解耦渠道层与 agent 核心。
 
-[InboundMessage](file:///Volumes/data/hczkAgent/nanobot/hczkbot/bus/events.py) / `OutboundMessage` 为 dataclass：前者含 `channel`、`sender_id`、`chat_id`、`content`、`media`、`metadata`、`session_key_override`（`session_key` 属性默认 `channel:chat_id`）；后者含 `channel`、`chat_id`、`content`、`reply_to`、`media`、`metadata`（可携带 `_agent_ui`、流式标记、延迟统计等）、`buttons`。
+[InboundMessage](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/bus/events.py) / `OutboundMessage` 为 dataclass：前者含 `channel`、`sender_id`、`chat_id`、`content`、`media`、`metadata`、`session_key_override`（`session_key` 属性默认 `channel:chat_id`）；后者含 `channel`、`chat_id`、`content`、`reply_to`、`media`、`metadata`（可携带 `_agent_ui`、流式标记、延迟统计等）、`buttons`。
 
 `RuntimeEventBus` 提供订阅/发布 `RuntimeEvent`；`RuntimeEventPublisher` 封装 turn 生命周期事件（`session_turn_started`、`run_status_changed`、`turn_completed`、`record_turn_runtime`、`record_turn_latency`、`runtime_model_changed`），供 WebUI 等客户端实时展示运行状态。
 
 ## 7. 子代理管理
 
-[SubagentManager](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/subagent.py) 采用 fire-and-forget 模型：`spawn` 通过 `asyncio.create_task` 启动后台任务并立即返回 `task_id`，不阻塞当前 turn。`_running_tasks`、`_task_statuses`、`_session_tasks` 三张表分别跟踪任务、状态、session 归属。
+[SubagentManager](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/subagent.py) 采用 fire-and-forget 模型：`spawn` 通过 `asyncio.create_task` 启动后台任务并立即返回 `task_id`，不阻塞当前 turn。`_running_tasks`、`_task_statuses`、`_session_tasks` 三张表分别跟踪任务、状态、session 归属。
 
 并发由 `max_concurrent_subagents`（来自 `AgentDefaults`）限制；`cancel_by_session` 用于 `/stop` 取消该 session 所有子代理；`get_running_count_by_session` 被 `_drain_pending` 用来在没有新注入但子代理仍跑时阻塞等待结果，保证子代理完成按序注入而非另起 turn。子代理使用独立 `ToolRegistry`（`scope="subagent"`）与 `FileStates`，完成后通过 system channel 把结果回投给 `MessageBus`。
 
 ## 8. MCP 服务器集成
 
-[mcp.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/mcp.py) 支持三种传输模式：`stdio`（`stdio_client`，启动子进程）、`sse`（`sse_client`）、`streamable_http`（`streamable_http_client`）。连接由 `connect_mcp_servers` 经 `AsyncExitStack` 管理，工具按 `mcp_<server>_` 前缀注册到 `ToolRegistry`。
+[mcp.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/mcp.py) 支持三种传输模式：`stdio`（`stdio_client`，启动子进程）、`sse`（`sse_client`）、`streamable_http`（`streamable_http_client`）。连接由 `connect_mcp_servers` 经 `AsyncExitStack` 管理，工具按 `mcp_<server>_` 前缀注册到 `ToolRegistry`。
 
 **跨 task cancel scope 问题**：anyio cancel scope（由 `stdio_client` 进入）是 task-local 的，必须在进入它的同一 task 内退出。`_mcp_owner_task` 记录调用 `_connect_mcp` 的 task（即 `run()`）；`_dispatch` 子任务无法直接关闭旧栈。
 
@@ -117,7 +117,7 @@
 
 ## 9. Cron 定时任务
 
-[CronService](file:///Volumes/data/hczkAgent/nanobot/hczkbot/cron/service.py) 采用异步定时器调度：`_arm_timer` 用 `asyncio.sleep` 安排下一次 tick，`_on_timer` 取出到期 job 依次执行后 `_save_store` 并重新 arm。`max_sleep_ms`(默认 5 分钟) 为最长睡眠上限。
+[CronService](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/cron/service.py) 采用异步定时器调度：`_arm_timer` 用 `asyncio.sleep` 安排下一次 tick，`_on_timer` 取出到期 job 依次执行后 `_save_store` 并重新 arm。`max_sleep_ms`(默认 5 分钟) 为最长睡眠上限。
 
 调度类型（`CronSchedule.kind`）：`at`（一次性绝对时间）、`every`（固定间隔）、`cron`（croniter 表达式 + 可选 `tz`）。`_compute_next_run` 计算下次运行时间。
 

@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.signal import (
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.signal import (
     SignalChannel,
     SignalConfig,
     SignalDMConfig,
@@ -810,7 +810,7 @@ class TestHandleDataMessageDM:
         # subsequent message — otherwise the pairing reply loops forever.
         approved = {"+19995550002"}
         monkeypatch.setattr(
-            "hczkbot.channels.signal.is_approved",
+            "biscuitbot.channels.signal.is_approved",
             lambda channel, sender_id: sender_id in approved,
         )
         ch = _make_channel(dm_enabled=True, dm_policy="allowlist", dm_allow_from=[])

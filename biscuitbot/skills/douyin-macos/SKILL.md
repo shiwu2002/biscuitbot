@@ -2,7 +2,7 @@
 name: douyin-macos
 tier: user
 description: 在 macOS 上通过 Safari + AppleScript 发布抖音图文/视频作品。
-metadata: {"hczkbot":{"requires":{"bins":["osascript"]}}}
+metadata: {"biscuitbot":{"requires":{"bins":["osascript"]}}}
 ---
 
 # 抖音发布（macOS）

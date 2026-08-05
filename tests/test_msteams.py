@@ -5,20 +5,20 @@ import pytest
 
 # Check optional msteams dependencies before running tests
 try:
-    from hczkbot.channels import msteams
+    from biscuitbot.channels import msteams
     MSTEAMS_AVAILABLE = getattr(msteams, "MSTEAMS_AVAILABLE", False)
 except ImportError:
     MSTEAMS_AVAILABLE = False
 
 if not MSTEAMS_AVAILABLE:
-    pytest.skip("MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install hczkbot-ai[msteams]", allow_module_level=True)
+    pytest.skip("MSTeams dependencies not installed (PyJWT, cryptography). Run: pip install biscuitbot-ai[msteams]", allow_module_level=True)
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-import hczkbot.channels.msteams as msteams_module
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.channels.msteams import ConversationRef, MSTeamsChannel
+import biscuitbot.channels.msteams as msteams_module
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.channels.msteams import ConversationRef, MSTeamsChannel
 
 
 class DummyBus:
@@ -59,7 +59,7 @@ class FakeHttpClient:
 
 @pytest.fixture
 def make_channel(tmp_path, monkeypatch):
-    monkeypatch.setattr("hczkbot.channels.msteams.get_workspace_path", lambda: tmp_path)
+    monkeypatch.setattr("biscuitbot.channels.msteams.get_workspace_path", lambda: tmp_path)
 
     def _make_channel(**config_overrides):
         config = {
@@ -95,7 +95,7 @@ async def test_handle_activity_personal_message_publishes_and_stores_ref(make_ch
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
         "channelData": {
             "tenant": {"id": "tenant-id"},
@@ -402,7 +402,7 @@ async def test_handle_activity_ignores_group_messages(make_channel):
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
     }
 
@@ -432,7 +432,7 @@ async def test_handle_activity_denied_sender_does_not_store_ref(make_channel, tm
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
         "channelData": {
             "tenant": {"id": "tenant-id"},
@@ -467,7 +467,7 @@ async def test_handle_activity_rejects_untrusted_service_url(make_channel, tmp_p
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
     }
 
@@ -485,7 +485,7 @@ async def test_handle_activity_mention_only_uses_default_response(make_channel):
     activity = {
         "type": "message",
         "id": "activity-3",
-        "text": "<at>Hczkbot</at>",
+        "text": "<at>Biscuitbot</at>",
         "serviceUrl": "https://smba.trafficmanager.net/amer/",
         "conversation": {
             "id": "conv-empty",
@@ -498,7 +498,7 @@ async def test_handle_activity_mention_only_uses_default_response(make_channel):
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
     }
 
@@ -516,7 +516,7 @@ async def test_handle_activity_mention_only_ignores_when_response_disabled(make_
     activity = {
         "type": "message",
         "id": "activity-4",
-        "text": "<at>Hczkbot</at>",
+        "text": "<at>Biscuitbot</at>",
         "serviceUrl": "https://smba.trafficmanager.net/amer/",
         "conversation": {
             "id": "conv-empty-disabled",
@@ -529,7 +529,7 @@ async def test_handle_activity_mention_only_ignores_when_response_disabled(make_
         },
         "recipient": {
             "id": "28:bot-id",
-            "name": "hczkbot",
+            "name": "biscuitbot",
         },
     }
 
@@ -542,7 +542,7 @@ async def test_handle_activity_mention_only_ignores_when_response_disabled(make_
 def test_strip_possible_bot_mention_removes_generic_at_tags(make_channel):
     ch = make_channel()
 
-    assert ch._strip_possible_bot_mention("<at>Hczkbot</at> hello") == "hello"
+    assert ch._strip_possible_bot_mention("<at>Biscuitbot</at> hello") == "hello"
     assert ch._strip_possible_bot_mention("hi <at>Some Bot</at> there") == "hi there"
 
 
@@ -550,7 +550,7 @@ def test_sanitize_inbound_text_keeps_normal_inline_message(make_channel):
     ch = make_channel()
 
     activity = {
-        "text": "<at>Hczkbot</at> normal inline message",
+        "text": "<at>Biscuitbot</at> normal inline message",
         "channelData": {},
     }
 
@@ -903,7 +903,7 @@ async def test_start_logs_install_hint_when_pyjwt_missing(make_channel, monkeypa
 
     await ch.start()
 
-    assert errors == ["PyJWT not installed. Run: pip install hczkbot-ai[msteams]"]
+    assert errors == ["PyJWT not installed. Run: pip install biscuitbot-ai[msteams]"]
 
 
 def test_save_refs_prunes_webchat_and_stale_refs(make_channel):

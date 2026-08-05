@@ -69,7 +69,7 @@ system_io(action="serial_read", port="/dev/ttyUSB0", baudrate=115200, bytes_to_r
 | 串口列表 | `pyserial` 或扫描 `/dev/tty.*` | `pyserial` 或扫描 `/dev/ttyUSB*` | `pyserial` 或扫描 `COM*` |
 | 串口读写 | 需要 `pyserial` | 需要 `pyserial` | 需要 `pyserial` |
 
-`pynput` 和 `pyserial` 已随 hczkbot 默认安装，无需额外安装可选依赖。
+`pynput` 和 `pyserial` 已随 biscuitbot 默认安装，无需额外安装可选依赖。
 
 ## 注意事项
 

@@ -1,7 +1,7 @@
 {
-  "name": "hczkbot-whatsapp-bridge",
+  "name": "biscuitbot-whatsapp-bridge",
   "version": "0.1.0",
-  "description": "WhatsApp bridge for hczkbot using Baileys",
+  "description": "WhatsApp bridge for biscuitbot using Baileys",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

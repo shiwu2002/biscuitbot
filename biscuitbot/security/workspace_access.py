@@ -22,7 +22,7 @@ _PROVIDER_LABELS = {
 }
 
 _CURRENT_WORKSPACE_SCOPE: ContextVar["WorkspaceScope | None"] = ContextVar(
-    "hczkbot_workspace_scope",
+    "biscuitbot_workspace_scope",
     default=None,
 )
 
@@ -203,7 +203,7 @@ def workspace_sandbox_status(
         enforced=False,
         provider="none",
         provider_label=_provider_label("none"),
-        summary="Workspace restriction uses hczkbot application-level guards.",
+        summary="Workspace restriction uses biscuitbot application-level guards.",
     )
 
 
@@ -390,9 +390,9 @@ def current_scope_allows_loopback(*, enabled: bool) -> bool:
 
 def _env_system_provider(environ: dict[str, str] | None = None) -> str | None:
     env = environ if environ is not None else os.environ
-    explicit_provider = env.get("HCZKBOT_WORKSPACE_SANDBOX_PROVIDER")
-    enforced = env.get("HCZKBOT_WORKSPACE_SANDBOX_ENFORCED")
-    compatibility = env.get("HCZKBOT_SANDBOX_ENFORCED")
+    explicit_provider = env.get("BISCUITBOT_WORKSPACE_SANDBOX_PROVIDER")
+    enforced = env.get("BISCUITBOT_WORKSPACE_SANDBOX_ENFORCED")
+    compatibility = env.get("BISCUITBOT_SANDBOX_ENFORCED")
 
     marker = enforced if enforced is not None else compatibility
     if marker is None:

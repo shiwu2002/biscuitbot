@@ -73,7 +73,7 @@ export function FilePreviewPanel({
         const message = error instanceof ApiError
           ? (error.status === 404 && /API route not found/i.test(error.message)
             ? t("filePreview.routeMissing", {
-              defaultValue: "File preview needs the latest gateway. Restart hczkbot gateway and try again.",
+              defaultValue: "File preview needs the latest gateway. Restart biscuitbot gateway and try again.",
             })
             : error.message)
           : t("filePreview.failed", { defaultValue: "Could not preview this file." });

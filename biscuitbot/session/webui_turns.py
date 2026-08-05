@@ -10,10 +10,10 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.bus import progress as bus_progress
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.bus.runtime_events import (
+from biscuitbot.bus import progress as bus_progress
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.bus.runtime_events import (
     AgentTraceEvent,
     GoalStateChanged,
     RuntimeEventBus,
@@ -23,12 +23,12 @@ from hczkbot.bus.runtime_events import (
     TurnCompleted,
     TurnRunStatusChanged,
 )
-from hczkbot.cron.session_turns import CRON_HISTORY_META
-from hczkbot.providers.base import LLMProvider
-from hczkbot.session.goal_state import goal_state_ws_blob
-from hczkbot.session.manager import Session, SessionManager
-from hczkbot.utils.helpers import strip_think, truncate_text
-from hczkbot.utils.llm_runtime import LLMRuntime
+from biscuitbot.cron.session_turns import CRON_HISTORY_META
+from biscuitbot.providers.base import LLMProvider
+from biscuitbot.session.goal_state import goal_state_ws_blob
+from biscuitbot.session.manager import Session, SessionManager
+from biscuitbot.utils.helpers import strip_think, truncate_text
+from biscuitbot.utils.llm_runtime import LLMRuntime
 
 WEBUI_SESSION_METADATA_KEY = "webui"
 WEBUI_TITLE_METADATA_KEY = "title"

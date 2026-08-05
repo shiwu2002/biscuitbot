@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.providers.base import LLMResponse
-from hczkbot.session.manager import Session
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.providers.base import LLMResponse
+from biscuitbot.session.manager import Session
 
 DEFAULT_MAX_MESSAGES = 120
 
@@ -135,25 +135,25 @@ class TestSchemaConfig:
     """Verify the config schema accepts max_messages."""
 
     def test_schema_default(self) -> None:
-        from hczkbot.config.schema import AgentDefaults
+        from biscuitbot.config.schema import AgentDefaults
 
         defaults = AgentDefaults()
         assert defaults.max_messages == DEFAULT_MAX_MESSAGES
 
     def test_schema_accepts_zero_as_builtin_limit(self) -> None:
-        from hczkbot.config.schema import AgentDefaults
+        from biscuitbot.config.schema import AgentDefaults
 
         defaults = AgentDefaults(max_messages=0)
         assert defaults.max_messages == 0
 
     def test_schema_accepts_positive(self) -> None:
-        from hczkbot.config.schema import AgentDefaults
+        from biscuitbot.config.schema import AgentDefaults
 
         defaults = AgentDefaults(max_messages=25)
         assert defaults.max_messages == 25
 
     def test_schema_rejects_negative(self) -> None:
-        from hczkbot.config.schema import AgentDefaults
+        from biscuitbot.config.schema import AgentDefaults
 
         with pytest.raises(Exception):  # Pydantic validation error
             AgentDefaults(max_messages=-1)

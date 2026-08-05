@@ -1,4 +1,4 @@
-"""Tests for the Hczkbot programmatic facade."""
+"""Tests for the Biscuitbot programmatic facade."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.hczkbot import Hczkbot, RunResult
+from biscuitbot.biscuitbot import Biscuitbot, RunResult
 
 
 def _write_config(tmp_path: Path, overrides: dict | None = None) -> Path:
@@ -25,35 +25,35 @@ def _write_config(tmp_path: Path, overrides: dict | None = None) -> Path:
 
 def test_from_config_missing_file():
     with pytest.raises(FileNotFoundError):
-        Hczkbot.from_config("/nonexistent/config.json")
+        Biscuitbot.from_config("/nonexistent/config.json")
 
 
 def test_from_config_creates_instance(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     assert bot._loop is not None
     assert bot._loop.workspace == tmp_path
 
 
 def test_from_config_default_path():
-    from hczkbot.config.schema import Config
+    from biscuitbot.config.schema import Config
 
-    with patch("hczkbot.config.loader.load_config") as mock_load, \
-         patch("hczkbot.providers.factory.make_provider") as mock_prov:
+    with patch("biscuitbot.config.loader.load_config") as mock_load, \
+         patch("biscuitbot.providers.factory.make_provider") as mock_prov:
         mock_load.return_value = Config()
         mock_prov.return_value = MagicMock()
         mock_prov.return_value.get_default_model.return_value = "test"
         mock_prov.return_value.generation.max_tokens = 4096
-        Hczkbot.from_config()
+        Biscuitbot.from_config()
         mock_load.assert_called_once_with(None)
 
 
 @pytest.mark.asyncio
 async def test_run_returns_result(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.bus.events import OutboundMessage
 
     mock_response = OutboundMessage(
         channel="cli", chat_id="direct", content="Hello back!"
@@ -69,11 +69,11 @@ async def test_run_returns_result(tmp_path):
 
 @pytest.mark.asyncio
 async def test_run_with_hooks(tmp_path):
-    from hczkbot.agent.hook import AgentHook, AgentHookContext
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.agent.hook import AgentHook, AgentHookContext
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     class TestHook(AgentHook):
         async def before_iteration(self, context: AgentHookContext) -> None:
@@ -93,9 +93,9 @@ async def test_run_with_hooks(tmp_path):
 @pytest.mark.asyncio
 async def test_run_hooks_restored_on_error(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
-    from hczkbot.agent.hook import AgentHook
+    from biscuitbot.agent.hook import AgentHook
 
     bot._loop.process_direct = AsyncMock(side_effect=RuntimeError("boom"))
     original_hooks = bot._loop._extra_hooks
@@ -109,7 +109,7 @@ async def test_run_hooks_restored_on_error(tmp_path):
 @pytest.mark.asyncio
 async def test_run_none_response(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     bot._loop.process_direct = AsyncMock(return_value=None)
 
     result = await bot.run("hi")
@@ -121,16 +121,16 @@ def test_workspace_override(tmp_path):
     custom_ws = tmp_path / "custom_workspace"
     custom_ws.mkdir()
 
-    bot = Hczkbot.from_config(config_path, workspace=custom_ws)
+    bot = Biscuitbot.from_config(config_path, workspace=custom_ws)
     assert bot._loop.workspace == custom_ws
 
 
 @pytest.mark.asyncio
 async def test_run_custom_session_key(tmp_path):
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     mock_response = OutboundMessage(
         channel="cli", chat_id="direct", content="ok"
@@ -142,10 +142,10 @@ async def test_run_custom_session_key(tmp_path):
 
 
 def test_import_from_top_level():
-    import hczkbot
+    import biscuitbot
 
-    assert hczkbot.Hczkbot is Hczkbot
-    assert hczkbot.RunResult is RunResult
+    assert biscuitbot.Biscuitbot is Biscuitbot
+    assert biscuitbot.RunResult is RunResult
 
 
 # ---------------------------------------------------------------------------
@@ -155,12 +155,12 @@ def test_import_from_top_level():
 @pytest.mark.asyncio
 async def test_run_populates_tools_used_across_iterations(tmp_path):
     """tools_used collects every tool name fired across all iterations, in order."""
-    from hczkbot.agent.hook import AgentHookContext
-    from hczkbot.bus.events import OutboundMessage
-    from hczkbot.providers.base import ToolCallRequest
+    from biscuitbot.agent.hook import AgentHookContext
+    from biscuitbot.bus.events import OutboundMessage
+    from biscuitbot.providers.base import ToolCallRequest
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     async def fake_process_direct(message, *, session_key):
         # Whatever hooks the SDK installed are now on the loop.
@@ -189,11 +189,11 @@ async def test_run_populates_tools_used_across_iterations(tmp_path):
 @pytest.mark.asyncio
 async def test_run_populates_final_messages(tmp_path):
     """messages reflects the agent's message list at the last iteration."""
-    from hczkbot.agent.hook import AgentHookContext
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.agent.hook import AgentHookContext
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     async def fake_process_direct(message, *, session_key):
         extras = bot._loop._extra_hooks
@@ -217,10 +217,10 @@ async def test_run_populates_final_messages(tmp_path):
 @pytest.mark.asyncio
 async def test_run_no_iterations_leaves_defaults_empty(tmp_path):
     """If process_direct never triggers after_iteration, tools_used/messages stay []."""
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     bot._loop.process_direct = AsyncMock(
         return_value=OutboundMessage(channel="cli", chat_id="direct", content="noop"),
     )
@@ -232,11 +232,11 @@ async def test_run_no_iterations_leaves_defaults_empty(tmp_path):
 @pytest.mark.asyncio
 async def test_run_user_hooks_still_fire_alongside_capture(tmp_path):
     """Capture hook must not displace user-provided hooks."""
-    from hczkbot.agent.hook import AgentHook, AgentHookContext
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.agent.hook import AgentHook, AgentHookContext
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     seen_iterations: list[int] = []
 
@@ -260,11 +260,11 @@ async def test_run_user_hooks_still_fire_alongside_capture(tmp_path):
 @pytest.mark.asyncio
 async def test_run_restores_extra_hooks_even_on_populated_iterations(tmp_path):
     """Previously-installed _extra_hooks must be restored regardless of capture state."""
-    from hczkbot.agent.hook import AgentHook, AgentHookContext
-    from hczkbot.bus.events import OutboundMessage
+    from biscuitbot.agent.hook import AgentHook, AgentHookContext
+    from biscuitbot.bus.events import OutboundMessage
 
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
 
     sentinel_hook = AgentHook()
     bot._loop._extra_hooks = [sentinel_hook]
@@ -282,8 +282,8 @@ async def test_run_restores_extra_hooks_even_on_populated_iterations(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sdk_capture_prefers_run_level_snapshot():
-    from hczkbot.agent.hook import AgentHookContext, AgentRunHookContext, SDKCaptureHook
-    from hczkbot.providers.base import ToolCallRequest
+    from biscuitbot.agent.hook import AgentHookContext, AgentRunHookContext, SDKCaptureHook
+    from biscuitbot.providers.base import ToolCallRequest
 
     hook = SDKCaptureHook()
     iter_messages = [{"role": "user", "content": "work"}]
@@ -310,7 +310,7 @@ async def test_sdk_capture_prefers_run_level_snapshot():
 @pytest.mark.asyncio
 async def test_aclose_delegates_to_loop_close_mcp(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     bot._loop.close_mcp = AsyncMock()
 
     await bot.aclose()
@@ -321,7 +321,7 @@ async def test_aclose_delegates_to_loop_close_mcp(tmp_path):
 @pytest.mark.asyncio
 async def test_context_manager_calls_aclose_on_exit(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     bot._loop.close_mcp = AsyncMock()
 
     async with bot as b:
@@ -333,7 +333,7 @@ async def test_context_manager_calls_aclose_on_exit(tmp_path):
 @pytest.mark.asyncio
 async def test_context_manager_does_not_swallow_exceptions(tmp_path):
     config_path = _write_config(tmp_path)
-    bot = Hczkbot.from_config(config_path, workspace=tmp_path)
+    bot = Biscuitbot.from_config(config_path, workspace=tmp_path)
     bot._loop.close_mcp = AsyncMock()
 
     with pytest.raises(ValueError):

@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.bus.events import InboundMessage
-from hczkbot.session import webui_turns as wth
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.session import webui_turns as wth
 
 
 @pytest.fixture(autouse=True)

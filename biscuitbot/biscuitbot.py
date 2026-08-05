@@ -1,4 +1,4 @@
-"""hczkbot 的高层编程接口。"""
+"""biscuitbot 的高层编程接口。"""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hczkbot.agent.hook import AgentHook, SDKCaptureHook
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.providers.image_generation import image_gen_provider_configs
+from biscuitbot.agent.hook import AgentHook, SDKCaptureHook
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.providers.image_generation import image_gen_provider_configs
 
 
 @dataclass(slots=True)
@@ -20,12 +20,12 @@ class RunResult:
     messages: list[dict[str, Any]]
 
 
-class Hczkbot:
-    """运行 hczkbot agent 的编程门面（facade）。
+class Biscuitbot:
+    """运行 biscuitbot agent 的编程门面（facade）。
 
     用法::
 
-        bot = Hczkbot.from_config()
+        bot = Biscuitbot.from_config()
         result = await bot.run("总结这个仓库", hooks=[MyHook()])
         print(result.content)
     """
@@ -39,16 +39,16 @@ class Hczkbot:
         config_path: str | Path | None = None,
         *,
         workspace: str | Path | None = None,
-    ) -> Hczkbot:
-        """从配置文件创建 Hczkbot 实例。
+    ) -> Biscuitbot:
+        """从配置文件创建 Biscuitbot 实例。
 
         Args:
             config_path: ``config.json`` 的路径。默认为
-                ``~/.hczkbot/config.json``。
+                ``~/.biscuitbot/config.json``。
             workspace: 覆盖配置中的工作区目录。
         """
-        from hczkbot.config.loader import load_config, resolve_config_env_vars
-        from hczkbot.config.schema import Config
+        from biscuitbot.config.loader import load_config, resolve_config_env_vars
+        from biscuitbot.config.schema import Config
 
         resolved: Path | None = None
         if config_path is not None:
@@ -105,7 +105,7 @@ class Hczkbot:
         """释放该实例持有的资源（MCP 连接等）。"""
         await self._loop.close_mcp()
 
-    async def __aenter__(self) -> Hczkbot:
+    async def __aenter__(self) -> Biscuitbot:
         return self
 
     async def __aexit__(self, *exc: object) -> None:

@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from hczkbot.agent.tools.cli_apps import CliAppsTool
-from hczkbot.agent.tools.filesystem import ReadFileTool
-from hczkbot.agent.tools.image_generation import ImageGenerationError, ImageGenerationTool
-from hczkbot.agent.tools.message import MessageTool
-from hczkbot.agent.tools.shell import ExecTool
-from hczkbot.agent.tools.spawn import SpawnTool
-from hczkbot.security.workspace_access import (
+from biscuitbot.agent.tools.cli_apps import CliAppsTool
+from biscuitbot.agent.tools.filesystem import ReadFileTool
+from biscuitbot.agent.tools.image_generation import ImageGenerationError, ImageGenerationTool
+from biscuitbot.agent.tools.message import MessageTool
+from biscuitbot.agent.tools.shell import ExecTool
+from biscuitbot.agent.tools.spawn import SpawnTool
+from biscuitbot.security.workspace_access import (
     WORKSPACE_SCOPE_METADATA_KEY,
     WorkspaceScopeError,
     bind_workspace_scope,
@@ -21,8 +21,8 @@ from hczkbot.security.workspace_access import (
     validate_workspace_scope_payload,
     workspace_scope_from_metadata,
 )
-from hczkbot.apps.cli.service import CliAppManager, CliAppsRuntimeConfig
-from hczkbot.config.schema import ImageGenerationToolConfig, ProviderConfig
+from biscuitbot.apps.cli.service import CliAppManager, CliAppsRuntimeConfig
+from biscuitbot.config.schema import ImageGenerationToolConfig, ProviderConfig
 
 PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
@@ -271,9 +271,9 @@ async def test_cli_app_scope_controls_working_dir(
     CliAppManager(workspace=project, data_dir=data_dir)._save_installed(
         {"demo": {"entry_point": "demo-cli"}}
     )
-    monkeypatch.setattr("hczkbot.apps.cli.service.get_runtime_subdir", lambda _name: data_dir)
+    monkeypatch.setattr("biscuitbot.apps.cli.service.get_runtime_subdir", lambda _name: data_dir)
     monkeypatch.setattr(
-        "hczkbot.apps.cli.service.shutil.which",
+        "biscuitbot.apps.cli.service.shutil.which",
         lambda entry: "/usr/bin/demo-cli" if entry == "demo-cli" else None,
     )
 
@@ -283,7 +283,7 @@ async def test_cli_app_scope_controls_working_dir(
         seen["cwd"] = kwargs["cwd"]
         return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("hczkbot.apps.cli.service.subprocess.run", fake_run)
+    monkeypatch.setattr("biscuitbot.apps.cli.service.subprocess.run", fake_run)
     tool = CliAppsTool(
         workspace=tmp_path,
         restrict_to_workspace=True,

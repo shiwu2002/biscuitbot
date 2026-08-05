@@ -6,16 +6,16 @@ from contextvars import ContextVar
 from datetime import datetime
 from typing import Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.context import ContextAware, RequestContext
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from biscuitbot.agent.tools.schema import (
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.cron.service import CronService
-from hczkbot.cron.types import CronJob, CronJobState, CronSchedule
-from hczkbot.session.keys import UNIFIED_SESSION_KEY
+from biscuitbot.cron.service import CronService
+from biscuitbot.cron.types import CronJob, CronJobState, CronSchedule
+from biscuitbot.session.keys import UNIFIED_SESSION_KEY
 
 _CRON_PARAMETERS = tool_parameters_schema(
     action=StringSchema("Action to perform", enum=["add", "list", "remove"]),

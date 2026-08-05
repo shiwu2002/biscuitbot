@@ -1,4 +1,4 @@
-"""On-demand version checker for hczkbot releases.
+"""On-demand version checker for biscuitbot releases.
 
 Checks PyPI for newer versions when explicitly requested (no background polling).
 """
@@ -11,9 +11,9 @@ from typing import Any
 import httpx
 from loguru import logger
 
-from hczkbot import __version__
+from biscuitbot import __version__
 
-_PYPI_URL = "https://pypi.org/pypi/hczkbot/json"
+_PYPI_URL = "https://pypi.org/pypi/biscuitbot/json"
 _CACHE_TTL_S = 300  # 5 minutes cache to avoid hammering PyPI
 
 _cache: tuple[float, str | None] = (0.0, None)
@@ -45,5 +45,5 @@ def check_for_update() -> dict[str, Any] | None:
     return {
         "currentVersion": __version__,
         "latestVersion": latest,
-        "pypiUrl": "https://pypi.org/project/hczkbot/",
+        "pypiUrl": "https://pypi.org/project/biscuitbot/",
     }

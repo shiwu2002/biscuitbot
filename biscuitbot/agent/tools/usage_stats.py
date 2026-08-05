@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 @dataclass

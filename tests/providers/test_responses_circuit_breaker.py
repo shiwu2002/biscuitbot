@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from hczkbot.providers.openai_compat_provider import (
+from biscuitbot.providers.openai_compat_provider import (
     OpenAICompatProvider,
     _RESPONSES_FAILURE_THRESHOLD,
     _RESPONSES_PROBE_INTERVAL_S,

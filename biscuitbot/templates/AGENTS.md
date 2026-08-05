@@ -7,14 +7,14 @@ Use this file for project-specific preferences, recurring workflow conventions, 
 ## Scheduled Reminders
 
 - Before scheduling reminders, check available skills and follow skill guidance first.
-- Use the built-in `cron` tool to create/list/remove jobs (do not call `hczkbot cron` via `exec`).
+- Use the built-in `cron` tool to create/list/remove jobs (do not call `biscuitbot cron` via `exec`).
 - Get USER_ID and CHANNEL from the current session (e.g., `8281248569` and `telegram` from `telegram:8281248569`).
 
 **Do NOT just write reminders to MEMORY.md** — that won't trigger actual notifications.
 
 ## Heartbeat Tasks
 
-`HEARTBEAT.md` is checked periodically by the protected heartbeat cron job that `hczkbot gateway` registers when `gateway.heartbeat.enabled` is true. Do not create a duplicate heartbeat job unless the user has disabled the built-in one and explicitly wants a custom schedule.
+`HEARTBEAT.md` is checked periodically by the protected heartbeat cron job that `biscuitbot gateway` registers when `gateway.heartbeat.enabled` is true. Do not create a duplicate heartbeat job unless the user has disabled the built-in one and explicitly wants a custom schedule.
 
 - Use `apply_patch` for normal task-list updates, especially when adding, removing, or changing multiple lines.
 - Use `edit_file` only for small exact replacements copied from the current `HEARTBEAT.md`.

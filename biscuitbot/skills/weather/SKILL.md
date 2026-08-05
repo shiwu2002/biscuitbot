@@ -3,7 +3,7 @@ name: weather
 tier: user
 description: Get current weather and forecasts (no API key required).
 homepage: https://wttr.in/:help
-metadata: {"hczkbot":{"emoji":"🌤️","requires":{"bins":["curl"]}}}
+metadata: {"biscuitbot":{"emoji":"🌤️","requires":{"bins":["curl"]}}}
 ---
 
 # Weather

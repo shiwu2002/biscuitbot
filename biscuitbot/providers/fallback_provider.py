@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.providers.base import LLMProvider, LLMResponse
+from biscuitbot.providers.base import LLMProvider, LLMResponse
 
 # Circuit breaker tuned to match OpenAICompatProvider's Responses API breaker.
 _PRIMARY_FAILURE_THRESHOLD = 3

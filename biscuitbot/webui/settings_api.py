@@ -14,22 +14,22 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
-from hczkbot import __version__
-from hczkbot.audio.transcription import resolve_transcription_config
-from hczkbot.audio.transcription_registry import (
+from biscuitbot import __version__
+from biscuitbot.audio.transcription import resolve_transcription_config
+from biscuitbot.audio.transcription_registry import (
     resolve_transcription_provider,
     transcription_provider_names,
 )
-from hczkbot.config.loader import get_config_path, load_config, save_config
-from hczkbot.config.schema import ModelPresetConfig, ProviderConfig
-from hczkbot.providers.image_generation import (
+from biscuitbot.config.loader import get_config_path, load_config, save_config
+from biscuitbot.config.schema import ModelPresetConfig, ProviderConfig
+from biscuitbot.providers.image_generation import (
     get_image_gen_provider,
     image_gen_provider_names,
 )
-from hczkbot.providers.registry import PROVIDERS, create_dynamic_spec, find_by_name
-from hczkbot.security.workspace_access import workspace_sandbox_status
-from hczkbot.webui.token_usage import token_usage_payload
-from hczkbot.webui.workspaces import (
+from biscuitbot.providers.registry import PROVIDERS, create_dynamic_spec, find_by_name
+from biscuitbot.security.workspace_access import workspace_sandbox_status
+from biscuitbot.webui.token_usage import token_usage_payload
+from biscuitbot.webui.workspaces import (
     read_webui_default_access_mode,
     write_webui_default_access_mode,
 )
@@ -1151,7 +1151,7 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
             changed = True
 
     if raw_guard_level is not None:
-        from hczkbot.security.guard_level import normalize_guard_level
+        from biscuitbot.security.guard_level import normalize_guard_level
         guard_level = normalize_guard_level(raw_guard_level)
         if config.tools.guard_level != guard_level:
             config.tools.guard_level = guard_level

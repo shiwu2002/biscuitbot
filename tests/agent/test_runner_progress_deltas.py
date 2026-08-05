@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 

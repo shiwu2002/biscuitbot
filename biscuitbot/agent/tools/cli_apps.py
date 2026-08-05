@@ -7,11 +7,11 @@ from typing import Any
 
 from pydantic import Field
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.schema import ArraySchema, BooleanSchema, IntegerSchema, StringSchema, tool_parameters_schema
-from hczkbot.security.workspace_access import current_tool_workspace
-from hczkbot.apps.cli import CliAppError, CliAppManager, CliAppsRuntimeConfig
-from hczkbot.config_base import Base
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.schema import ArraySchema, BooleanSchema, IntegerSchema, StringSchema, tool_parameters_schema
+from biscuitbot.security.workspace_access import current_tool_workspace
+from biscuitbot.apps.cli import CliAppError, CliAppManager, CliAppsRuntimeConfig
+from biscuitbot.config_base import Base
 
 
 class CliAppsToolConfig(Base):

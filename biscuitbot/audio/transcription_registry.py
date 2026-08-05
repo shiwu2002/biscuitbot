@@ -1,6 +1,6 @@
 """Registry for speech-to-text providers.
 
-Provider-specific HTTP adapters live in ``hczkbot.providers.transcription``.
+Provider-specific HTTP adapters live in ``biscuitbot.providers.transcription``.
 This module is the app-level source of truth for provider names, aliases,
 default models, and adapter class paths.
 """
@@ -47,18 +47,18 @@ TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
     TranscriptionProviderSpec(
         name="openai",
         default_model="whisper-1",
-        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
+        adapter="biscuitbot.providers.transcription:OpenAITranscriptionProvider",
     ),
     TranscriptionProviderSpec(
         name="groq",
         default_model="whisper-large-v3-turbo",
-        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
+        adapter="biscuitbot.providers.transcription:OpenAITranscriptionProvider",
         default_api_base="https://api.groq.com/openai/v1",
     ),
     TranscriptionProviderSpec(
         name="dashscope",
         default_model="paraformer-v2",
-        adapter="hczkbot.providers.transcription:OpenAITranscriptionProvider",
+        adapter="biscuitbot.providers.transcription:OpenAITranscriptionProvider",
         aliases=("aliyun", "tongyi"),
         default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
     ),

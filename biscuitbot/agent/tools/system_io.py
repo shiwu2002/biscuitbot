@@ -23,13 +23,13 @@ from typing import Any
 from loguru import logger
 from pydantic import Field
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.schema import (
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.config_base import Base
+from biscuitbot.config_base import Base
 
 _IS_WINDOWS = sys.platform == "win32"
 _IS_MACOS = sys.platform == "darwin"

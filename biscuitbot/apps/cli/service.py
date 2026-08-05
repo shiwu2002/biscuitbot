@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 
 import httpx
 
-from hczkbot.apps.protocol import app_manifest, compact_dict
-from hczkbot.config.paths import get_runtime_subdir
-from hczkbot.security.workspace_policy import is_path_within
+from biscuitbot.apps.protocol import app_manifest, compact_dict
+from biscuitbot.config.paths import get_runtime_subdir
+from biscuitbot.security.workspace_policy import is_path_within
 
 # CLI-Anything 注册表（港大 HKUDS 维护的开源 Agent CLI 应用目录）
 # 来源: https://github.com/HKUDS/CLI-Anything
@@ -65,7 +65,7 @@ _ARTIFACT_IGNORE_DIRS = frozenset({
     ".git",
     ".hg",
     ".mypy_cache",
-    ".hczkbot",
+    ".biscuitbot",
     ".pytest_cache",
     ".ruff_cache",
     ".venv",
@@ -493,11 +493,11 @@ class CliAppManager:
     def _manifest_source(self, app: dict[str, Any]) -> str:
         source = str(app.get("_source") or "harness")
         if source == "extensions":
-            return "hczkbot-extension"
+            return "biscuitbot-extension"
         return f"cli-anything:{source}"
 
     def _trust_registry(self, app: dict[str, Any]) -> str:
-        return "hczkbot-extension" if str(app.get("_source") or "") == "extensions" else "cli-anything"
+        return "biscuitbot-extension" if str(app.get("_source") or "") == "extensions" else "cli-anything"
 
     def get_app(self, name: str, *, force_refresh: bool = False) -> dict[str, Any]:
         wanted = name.lower()
@@ -654,7 +654,7 @@ class CliAppManager:
             "verification": (
                 ["package_manager_ok", "entry_point_absent", "managed_paths_absent"]
                 if strategy not in {"bundled", "unsupported"}
-                else ["hczkbot_state_absent", "managed_paths_absent"]
+                else ["biscuitbot_state_absent", "managed_paths_absent"]
             ),
         })
         return app_manifest(
@@ -917,7 +917,7 @@ class CliAppManager:
         name = str(app.get("name") or "unknown")
         display = str(app.get("display_name") or name)
         entry = str(app.get("entry_point") or f"cli-anything-{name}")
-        description = _catalog_description(app) or f"Use {display} from hczkbot."
+        description = _catalog_description(app) or f"Use {display} from biscuitbot."
         return f"""---
 name: {_safe_skill_name(name)}
 description: >-
@@ -926,7 +926,7 @@ description: >-
 
 # {display}
 
-Use this skill when the user asks hczkbot to operate {display} through its installed CLI app.
+Use this skill when the user asks biscuitbot to operate {display} through its installed CLI app.
 
 If the user attached `@{name}` in chat, treat that as the selected app for the current turn.
 
@@ -940,13 +940,13 @@ If the user attached `@{name}` in chat, treat that as the selected app for the c
 Prefer machine-readable output when the CLI supports `--json`.
 """
 
-    def _with_hczkbot_skill_note(self, content: str, app: dict[str, Any]) -> str:
-        marker = "<!-- hczkbot-cli-app-note -->"
+    def _with_biscuitbot_skill_note(self, content: str, app: dict[str, Any]) -> str:
+        marker = "<!-- biscuitbot-cli-app-note -->"
         if marker in content:
             return content
         name = str(app.get("name") or "unknown")
         note = f"""{marker}
-## Hczkbot execution
+## Biscuitbot execution
 
 Use the `run_cli_app` tool with `name="{name}"` for command execution. Do not invoke this CLI through shell unless the user explicitly asks. Prefer this skill when Runtime Context mentions `@{name}` as a CLI App Attachment.
 """
@@ -961,7 +961,7 @@ Use the `run_cli_app` tool with `name="{name}"` for command execution. Do not in
         path = self._skill_path(str(app["name"]))
         path.parent.mkdir(parents=True, exist_ok=True)
         content = self._fetch_skill_content(app) or self._fallback_skill(app)
-        content = self._with_hczkbot_skill_note(content, app)
+        content = self._with_biscuitbot_skill_note(content, app)
         path.write_text(content, encoding="utf-8")
         return path
 
@@ -1080,7 +1080,7 @@ Use the `run_cli_app` tool with `name="{name}"` for command execution. Do not in
                 )
                 message = (
                     f"Uninstall for {app['display_name']} completed, but {reason}, "
-                    "so hczkbot kept it installed."
+                    "so biscuitbot kept it installed."
                 )
                 return self.payload() | {
                     "last_action": {
@@ -1098,8 +1098,8 @@ Use the `run_cli_app` tool with `name="{name}"` for command execution. Do not in
         self.remove_skill(str(app["name"]))
         if strategy == "bundled" and still_available:
             message = (
-                f"Removed {app['display_name']} from hczkbot. {entry_point} "
-                "is still available because it is managed outside hczkbot."
+                f"Removed {app['display_name']} from biscuitbot. {entry_point} "
+                "is still available because it is managed outside biscuitbot."
             )
         elif still_available:
             message = (

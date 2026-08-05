@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
 
 
 def _make_channel() -> FeishuChannel:

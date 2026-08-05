@@ -1,6 +1,6 @@
 """Shared tool-argument parsing policy tests."""
 
-from hczkbot.providers.base import (
+from biscuitbot.providers.base import (
     parse_tool_arguments,
     tool_arguments_json_for_replay,
     tool_arguments_object_for_replay,

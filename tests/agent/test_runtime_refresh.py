@@ -2,12 +2,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.loader import save_config
-from hczkbot.config.schema import Config
-from hczkbot.providers.factory import ProviderSnapshot, load_provider_snapshot
-from hczkbot.webui.settings_api import update_agent_settings
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.loader import save_config
+from biscuitbot.config.schema import Config
+from biscuitbot.providers.factory import ProviderSnapshot, load_provider_snapshot
+from biscuitbot.webui.settings_api import update_agent_settings
 
 
 def _provider(default_model: str, max_tokens: int = 123) -> MagicMock:
@@ -86,7 +86,7 @@ def test_settings_context_window_refreshes_runtime_state(
     config.agents.defaults.context_window_tokens = 65_536
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     def loader(*, preset_name: str | None = None) -> ProviderSnapshot:
         return load_provider_snapshot(config_path, preset_name=preset_name)

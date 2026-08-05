@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
 
 
 def _make_provider(model: str = "claude-sonnet-4-6") -> AnthropicProvider:

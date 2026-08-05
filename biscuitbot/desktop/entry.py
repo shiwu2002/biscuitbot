@@ -1,4 +1,4 @@
-"""PyInstaller entry point for the hczkbot desktop application.
+"""PyInstaller entry point for the biscuitbot desktop application.
 
 This script bypasses typer's command dispatch and directly launches
 the desktop runner, avoiding the overhead of full CLI parsing in a
@@ -11,8 +11,8 @@ import sys
 
 
 def main() -> None:
-    from hczkbot.cli.commands import _load_runtime_config
-    from hczkbot.desktop.app import run_desktop
+    from biscuitbot.cli.commands import _load_runtime_config
+    from biscuitbot.desktop.app import run_desktop
 
     # 解析简单的命令行参数（在 frozen 环境中 typer 的解析可能不可靠）
     config = None

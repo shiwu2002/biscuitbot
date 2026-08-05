@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
-from hczkbot.security.workspace_access import WorkspaceScope
-from hczkbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
+from biscuitbot.security.workspace_access import WorkspaceScope
+from biscuitbot.security.workspace_policy import WorkspaceBoundaryError, resolve_allowed_path
 
 MAX_FILE_PREVIEW_BYTES = 384 * 1024
 

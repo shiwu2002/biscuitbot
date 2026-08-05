@@ -1,18 +1,18 @@
 # Provider 与 Channel 系统文档
 
-本文档描述 hczkbot 的 LLM Provider 子系统与聊天平台 Channel 子系统的设计与实现。
+本文档描述 biscuitbot 的 LLM Provider 子系统与聊天平台 Channel 子系统的设计与实现。
 
 ## 1. Provider 系统概览
 
-Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 厂商。核心代码位于 [providers/](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/) 目录。
+Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 厂商。核心代码位于 [providers/](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/) 目录。
 
-- **注册表**：[registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/registry.py) 中的 `PROVIDERS` 元组当前登记 9 个提供商（custom、anthropic、openai、deepseek、dashscope、zhipu、moonshot、stepfun、ollama），元组顺序即匹配优先级，网关类优先。
+- **注册表**：[registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/registry.py) 中的 `PROVIDERS` 元组当前登记 9 个提供商（custom、anthropic、openai、deepseek、dashscope、zhipu、moonshot、stepfun、ollama），元组顺序即匹配优先级，网关类优先。
 - **后端实现**：2 种 backend —— `openai_compat`（OpenAI 兼容协议，覆盖绝大多数厂商）与 `anthropic`（原生 Anthropic SDK）。backend 字段决定工厂分发到哪个实现类。
-- **三大模块**：基类 [base.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/base.py)、工厂 [factory.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/factory.py)、注册表 [registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/registry.py)，外加故障转移包装器 [fallback_provider.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/fallback_provider.py)。
+- **三大模块**：基类 [base.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/base.py)、工厂 [factory.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/factory.py)、注册表 [registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/registry.py)，外加故障转移包装器 [fallback_provider.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/fallback_provider.py)。
 
 ## 2. LLMProvider 基类
 
-[base.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/base.py) 中的 `LLMProvider(ABC)` 定义所有 provider 的统一契约与重试策略。
+[base.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/base.py) 中的 `LLMProvider(ABC)` 定义所有 provider 的统一契约与重试策略。
 
 ### 重试策略
 
@@ -36,7 +36,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ### 流式空闲超时
 
-通过环境变量 `HCZKBOT_STREAM_IDLE_TIMEOUT_S` 配置，`resolve_stream_idle_timeout_s` 负责安全解析：默认 `90.0` 秒，上限 `3600.0` 秒；非法或非正值回退默认，超过上限则钳制。超时后视为瞬时错误触发重试。
+通过环境变量 `BISCUITBOT_STREAM_IDLE_TIMEOUT_S` 配置，`resolve_stream_idle_timeout_s` 负责安全解析：默认 `90.0` 秒，上限 `3600.0` 秒；非法或非正值回退默认，超过上限则钳制。超时后视为瞬时错误触发重试。
 
 ### 抽象方法
 
@@ -48,7 +48,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ## 3. Provider 实例化
 
-[factory.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/factory.py) 负责从配置创建 provider 实例。
+[factory.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/factory.py) 负责从配置创建 provider 实例。
 
 ### ProviderSnapshot 不可变快照
 
@@ -69,7 +69,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ## 4. Provider 注册表
 
-[registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/registry.py) 是 provider 元数据的唯一真相源。
+[registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/registry.py) 是 provider 元数据的唯一真相源。
 
 - `PROVIDERS: tuple[ProviderSpec, ...]` 按**优先级排序**，注释明确「Order = priority」，网关类排在前面。新增 provider 只需追加一个 `ProviderSpec` 并在 `config/schema.py` 的 `ProvidersConfig` 加字段即可。
 - `ProviderSpec` 为 `frozen=True` dataclass，核心字段：`name`（配置字段名）、`keywords`（模型名匹配关键字）、`env_key`（API Key 环境变量）、`display_name`、`backend`。
@@ -80,7 +80,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ## 5. 故障转移
 
-[fallback_provider.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/fallback_provider.py) 的 `FallbackProvider(LLMProvider)` 包装主 provider 并透明切换到备用模型。
+[fallback_provider.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/fallback_provider.py) 的 `FallbackProvider(LLMProvider)` 包装主 provider 并透明切换到备用模型。
 
 - **主备切换**：主模型在流出内容前返回可转移错误（`_FALLBACK_ERROR_KINDS`：timeout、connection、server_error、rate_limit、overloaded）时，按顺序逐个尝试 `fallback_presets`。已流出内容则不切换以避免重复输出；流式超时是例外 —— 通过 `on_stream_recover` 回调关闭当前分段后在新分段续接。
 - **熔断器**：主 provider 连续失败计数 `_primary_failures` 达到 `_PRIMARY_FAILURE_THRESHOLD = 3` 即跳闸，冷却 `_PRIMARY_COOLDOWN_S = 60` 秒；冷却结束后半开试探一次。
@@ -89,16 +89,16 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ## 6. 辅助 Provider
 
-- **图像生成**：[image_generation.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/image_generation.py) 定义 `ImageGenerationError` 与 `GeneratedImageResponse`（images、content、raw），支持 DashScope 万相、Zhipu CogView、Gemini Imagen、Ollama 等多端点，默认超时 120 秒。
-- **语音转写**：[transcription.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/providers/transcription.py) 适配 OpenAI Whisper、Groq 等兼容端点。`_resolve_transcription_url` 兼容 chat 风格 base 与完整 `/audio/transcriptions` 路径。自带重试：`_MAX_RETRIES = 3`、`_BACKOFF_S = (1.0, 2.0, 4.0)`、`_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}`，覆盖 Whisper 端点偶发 502/503 与移动网络读写错误。
+- **图像生成**：[image_generation.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/image_generation.py) 定义 `ImageGenerationError` 与 `GeneratedImageResponse`（images、content、raw），支持 DashScope 万相、Zhipu CogView、Gemini Imagen、Ollama 等多端点，默认超时 120 秒。
+- **语音转写**：[transcription.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/providers/transcription.py) 适配 OpenAI Whisper、Groq 等兼容端点。`_resolve_transcription_url` 兼容 chat 风格 base 与完整 `/audio/transcriptions` 路径。自带重试：`_MAX_RETRIES = 3`、`_BACKOFF_S = (1.0, 2.0, 4.0)`、`_RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}`，覆盖 Whisper 端点偶发 502/503 与移动网络读写错误。
 
 ## 7. Channel 系统概览
 
-Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/) 目录。当前内置 **16 个** channel 模块，通过 [registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/registry.py) 的自动发现机制加载，并支持经 `entry_points` 注册的外部插件。
+Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/) 目录。当前内置 **16 个** channel 模块，通过 [registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/registry.py) 的自动发现机制加载，并支持经 `entry_points` 注册的外部插件。
 
 ## 8. BaseChannel 抽象基类
 
-[base.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/base.py) 的 `BaseChannel(ABC)` 定义三个抽象方法：
+[base.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/base.py) 的 `BaseChannel(ABC)` 定义三个抽象方法：
 
 - `start()` —— 连接平台并长驻监听入站消息，转交 `bus.publish_inbound`。
 - `stop()` —— 停止并清理资源。
@@ -117,7 +117,7 @@ Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volume
 
 ## 9. ChannelManager
 
-[manager.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/manager.py) 的 `ChannelManager` 统管 channel 生命周期与消息路由。
+[manager.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/manager.py) 的 `ChannelManager` 统管 channel 生命周期与消息路由。
 
 - **初始化** `_init_channels`：先用 `discover_channel_names()` 廉价列出模块名（零导入），再仅导入 `enabled=True` 的 channel；websocket channel 额外构建 gateway 服务。逐 channel 应用 `send_progress` / `send_tool_hints` / `show_reasoning` 布尔覆写（支持 camelCase 别名），并校验 `allow_from` 缺省时进入「配对码模式」。
 - **启停**：`start_all()` 创建出站分发协程并并发启动所有 channel；`stop_all()` 先取消分发协程再逐个 stop。
@@ -126,30 +126,30 @@ Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volume
 
 ### 自动发现
 
-[registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/registry.py) 提供三层发现：
+[registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/registry.py) 提供三层发现：
 
-- `discover_channel_names()`：用 `pkgutil.iter_modules` 扫描 `hczkbot.channels` 包，排除 `base`/`manager`/`registry` 内部模块，**不触发第三方 SDK 导入**。
+- `discover_channel_names()`：用 `pkgutil.iter_modules` 扫描 `biscuitbot.channels` 包，排除 `base`/`manager`/`registry` 内部模块，**不触发第三方 SDK 导入**。
 - `load_channel_class(module_name)`：导入模块并返回首个 `BaseChannel` 子类。
-- `discover_plugins(enabled_names)`：经 `importlib.metadata.entry_points(group="hczkbot.channels")` 加载外部插件；内置 channel 优先，插件不得遮蔽同名内置项。
+- `discover_plugins(enabled_names)`：经 `importlib.metadata.entry_points(group="biscuitbot.channels")` 加载外部插件；内置 channel 优先，插件不得遮蔽同名内置项。
 - `discover_enabled` / `discover_all`：合并内置与外部结果。
 
 ## 10. Channel 清单
 
 | 名称 | 文件 | 说明 |
 |------|------|------|
-| dingtalk | [dingtalk.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/dingtalk.py) | 钉钉机器人 |
-| discord | [discord.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/discord.py) | Discord |
-| email | [email.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/email.py) | 电子邮件（IMAP/SMTP） |
-| feishu | [feishu.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/feishu.py) | 飞书 |
-| matrix | [matrix.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/matrix.py) | Matrix 协议 |
-| mochat | [mochat.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/mochat.py) | MoChat |
-| msteams | [msteams.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/msteams.py) | Microsoft Teams |
-| napcat | [napcat.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/napcat.py) | NapCat（QQ 协议） |
-| qq | [qq.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/qq.py) | QQ |
-| signal | [signal.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/signal.py) | Signal |
-| slack | [slack.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/slack.py) | Slack |
-| telegram | [telegram.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/telegram.py) | Telegram |
-| websocket | [websocket.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/websocket.py) | WebSocket（WebUI 网关） |
-| wecom | [wecom.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/wecom.py) | 企业微信 |
-| weixin | [weixin.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/weixin.py) | 微信 |
-| whatsapp | [whatsapp.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/whatsapp.py) | WhatsApp |
+| dingtalk | [dingtalk.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/dingtalk.py) | 钉钉机器人 |
+| discord | [discord.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/discord.py) | Discord |
+| email | [email.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/email.py) | 电子邮件（IMAP/SMTP） |
+| feishu | [feishu.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/feishu.py) | 飞书 |
+| matrix | [matrix.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/matrix.py) | Matrix 协议 |
+| mochat | [mochat.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/mochat.py) | MoChat |
+| msteams | [msteams.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/msteams.py) | Microsoft Teams |
+| napcat | [napcat.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/napcat.py) | NapCat（QQ 协议） |
+| qq | [qq.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/qq.py) | QQ |
+| signal | [signal.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/signal.py) | Signal |
+| slack | [slack.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/slack.py) | Slack |
+| telegram | [telegram.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/telegram.py) | Telegram |
+| websocket | [websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py) | WebSocket（WebUI 网关） |
+| wecom | [wecom.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/wecom.py) | 企业微信 |
+| weixin | [weixin.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/weixin.py) | 微信 |
+| whatsapp | [whatsapp.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/whatsapp.py) | WhatsApp |

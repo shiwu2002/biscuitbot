@@ -46,4 +46,4 @@ Information about the user to help personalize interactions.
 
 ---
 
-*Edit this file to customize hczkbot's behavior for your needs.*
+*Edit this file to customize biscuitbot's behavior for your needs.*

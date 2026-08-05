@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from hczkbot.bus.events import InboundMessage
-from hczkbot.session.goal_state import GOAL_STATE_KEY
-from hczkbot.session.turn_continuation import (
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.session.goal_state import GOAL_STATE_KEY
+from biscuitbot.session.turn_continuation import (
     INTERNAL_CONTINUATION_KIND_META,
     INTERNAL_CONTINUATION_META,
     INTERNAL_CONTINUATION_PENDING_META,

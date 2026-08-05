@@ -1,1 +1,1 @@
-"""OpenAI-compatible HTTP API for hczkbot."""
+"""OpenAI-compatible HTTP API for biscuitbot."""

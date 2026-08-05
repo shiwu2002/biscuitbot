@@ -1,6 +1,6 @@
 """Runtime event bus for agent state notifications.
 
-This bus is separate from :mod:`hczkbot.bus.queue`: message bus events are
+This bus is separate from :mod:`biscuitbot.bus.queue`: message bus events are
 user/chat delivery, while runtime events are in-process state notifications
 that optional subscribers such as WebUI adapters may render.
 """
@@ -16,7 +16,7 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.bus.events import InboundMessage
+from biscuitbot.bus.events import InboundMessage
 
 
 @dataclass(frozen=True)

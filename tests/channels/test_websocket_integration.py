@@ -15,9 +15,9 @@ import pytest
 import websockets
 from ws_test_client import WsTestClient, issue_token, issue_token_ok
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.channels.websocket import WebSocketChannel, WebSocketConfig
-from hczkbot.webui.gateway_services import build_gateway_services
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.channels.websocket import WebSocketChannel, WebSocketConfig
+from biscuitbot.webui.gateway_services import build_gateway_services
 
 
 def _ch(bus: Any, port: int, **kw: Any) -> WebSocketChannel:

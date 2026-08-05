@@ -159,7 +159,7 @@ function stubVisualViewport({
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  Reflect.deleteProperty(window, "hczkbotHost");
+  Reflect.deleteProperty(window, "biscuitbotHost");
   if (ORIGINAL_MEDIA_DEVICES) {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
@@ -581,7 +581,7 @@ describe("ThreadComposer", () => {
   it("keeps project selection as a compact composer dropdown", async () => {
     const onWorkspaceScopeChange = vi.fn();
     const defaultScope = {
-      project_path: "/Users/test/.hczkbot/workspace",
+      project_path: "/Users/test/.biscuitbot/workspace",
       project_name: "workspace",
       access_mode: "restricted" as const,
       restrict_to_workspace: true,
@@ -643,12 +643,12 @@ describe("ThreadComposer", () => {
     const onWorkspaceScopeChange = vi.fn();
     const pickFolder = vi.fn().mockResolvedValue("/Users/test/native-project");
     const defaultScope = {
-      project_path: "/Users/test/.hczkbot/workspace",
+      project_path: "/Users/test/.biscuitbot/workspace",
       project_name: "workspace",
       access_mode: "full" as const,
       restrict_to_workspace: false,
     };
-    Object.defineProperty(window, "hczkbotHost", {
+    Object.defineProperty(window, "biscuitbotHost", {
       configurable: true,
       value: {
         getRuntimeInfo: vi.fn(),
@@ -685,7 +685,7 @@ describe("ThreadComposer", () => {
 
   it("uses the web path menu when no native host picker is available", async () => {
     const defaultScope = {
-      project_path: "/Users/test/.hczkbot/workspace",
+      project_path: "/Users/test/.biscuitbot/workspace",
       project_name: "workspace",
       access_mode: "full" as const,
       restrict_to_workspace: false,
@@ -833,11 +833,11 @@ describe("ThreadComposer", () => {
 
     expect(onStop).toHaveBeenCalledTimes(1);
     expect(input).toHaveValue("");
-    expect(window.localStorage.getItem("hczkbot.webui.slashCommandRecents")).toBeNull();
+    expect(window.localStorage.getItem("biscuitbot.webui.slashCommandRecents")).toBeNull();
   });
 
   it("orders recent slash commands first for the blank slash menu", () => {
-    window.localStorage.setItem("hczkbot.webui.slashCommandRecents", JSON.stringify(["/history"]));
+    window.localStorage.setItem("biscuitbot.webui.slashCommandRecents", JSON.stringify(["/history"]));
     render(
       <ThreadComposer
         onSend={vi.fn()}

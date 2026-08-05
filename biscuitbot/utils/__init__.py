@@ -1,4 +1,4 @@
-"""Utility functions for hczkbot."""
+"""Utility functions for biscuitbot."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import sys
 from importlib import import_module
 from types import ModuleType
 
-from hczkbot.utils.helpers import ensure_dir
-from hczkbot.utils.path import abbreviate_path
+from biscuitbot.utils.helpers import ensure_dir
+from biscuitbot.utils.path import abbreviate_path
 
 __all__ = ["ensure_dir", "abbreviate_path"]
 
@@ -30,9 +30,9 @@ class _LazyModuleAlias(ModuleType):
 
 
 _LEGACY_MODULE_ALIASES = {
-    "webui_thread_disk": "hczkbot.webui.thread_disk",
-    "webui_transcript": "hczkbot.webui.transcript",
-    "webui_turn_helpers": "hczkbot.session.webui_turns",
+    "webui_thread_disk": "biscuitbot.webui.thread_disk",
+    "webui_transcript": "biscuitbot.webui.transcript",
+    "webui_turn_helpers": "biscuitbot.session.webui_turns",
 }
 
 for _legacy_name, _target_name in _LEGACY_MODULE_ALIASES.items():

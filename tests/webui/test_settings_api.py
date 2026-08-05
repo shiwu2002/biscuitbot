@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from hczkbot.config.loader import load_config, save_config
-from hczkbot.config.schema import Config, ModelPresetConfig
-from hczkbot.webui.settings_api import (
+from biscuitbot.config.loader import load_config, save_config
+from biscuitbot.config.schema import Config, ModelPresetConfig
+from biscuitbot.webui.settings_api import (
     WebUISettingsError,
     create_model_configuration,
     provider_models_payload,
@@ -57,7 +57,7 @@ def test_create_model_configuration_writes_label_and_selects(
     config.agents.defaults.provider = "openai"
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = create_model_configuration(
         {
@@ -95,7 +95,7 @@ def test_create_model_configuration_accepts_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = create_model_configuration(
         {
@@ -125,7 +125,7 @@ def test_create_model_configuration_rejects_dynamic_custom_provider_without_api_
         }
     })
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="provider is not configured"):
         create_model_configuration(
@@ -143,7 +143,7 @@ def test_create_model_configuration_rejects_unconfigured_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="provider is not configured"):
         create_model_configuration(
@@ -168,7 +168,7 @@ def test_update_model_configuration_edits_named_preset_and_selects(
         model="openai/gpt-4.1",
     )
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_model_configuration(
         {
@@ -194,7 +194,7 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(api_base="https://old.example/v1"), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_provider_settings(
         {
@@ -220,7 +220,7 @@ def test_update_agent_settings_accepts_context_window_options(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_agent_settings({"context_window_tokens": ["262144"]})
 
@@ -241,7 +241,7 @@ def test_update_model_configuration_accepts_context_window_options(
         model="openai/gpt-4.1",
     )
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_model_configuration(
         {
@@ -261,7 +261,7 @@ def test_update_context_window_rejects_unknown_values(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="context_window_tokens must be 65536 or 262144"):
         update_agent_settings({"context_window_tokens": ["128000"]})
@@ -273,7 +273,7 @@ def test_update_model_configuration_rejects_default_preset(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="model configuration is required"):
         update_model_configuration({"name": ["default"], "model": ["openai/gpt-4.1"]})
@@ -285,7 +285,7 @@ def test_settings_payload_includes_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(defaults=True), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     providers = {row["name"]: row for row in payload["providers"]}
@@ -310,7 +310,7 @@ def test_settings_payload_marks_dynamic_custom_provider_without_api_base_unconfi
         }
     })
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     providers = {row["name"]: row for row in payload["providers"]}
@@ -329,8 +329,8 @@ def test_settings_payload_includes_network_safety_fields(
     config.tools.webui_allow_local_service_access = False
     config.tools.ssrf_whitelist = ["100.64.0.0/10"]
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = settings_payload()
 
@@ -350,8 +350,8 @@ def test_settings_payload_includes_exec_path_flags(
     config.tools.exec.path_prepend = "/venv/bin"
     config.tools.exec.path_append = "/usr/sbin"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = settings_payload()
 
@@ -369,7 +369,7 @@ def test_settings_payload_includes_effective_transcription_config(
     config.channels.transcription_language = "en"
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
 
@@ -389,7 +389,7 @@ def test_update_transcription_settings_writes_top_level_only(
     config.channels.transcription_provider = "openai"
     config.channels.transcription_language = "en"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_transcription_settings(
         {
@@ -421,7 +421,7 @@ def test_update_transcription_settings_validates_language(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="transcription language"):
         update_transcription_settings({"language": ["en-US"]})
@@ -434,10 +434,10 @@ def test_settings_payload_includes_token_usage_summary(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
 
-    from hczkbot.webui.token_usage import record_token_usage
+    from biscuitbot.webui.token_usage import record_token_usage
 
     record_token_usage({"prompt_tokens": 10, "completion_tokens": 5})
 
@@ -459,10 +459,10 @@ def test_settings_usage_payload_returns_lightweight_token_usage(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
 
-    from hczkbot.webui.token_usage import record_token_usage
+    from biscuitbot.webui.token_usage import record_token_usage
 
     record_token_usage({"prompt_tokens": 20, "completion_tokens": 2})
 
@@ -479,8 +479,8 @@ def test_update_network_safety_settings_writes_local_service_flag(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings(
         {
@@ -505,8 +505,8 @@ def test_update_network_safety_settings_accepts_legacy_restricted_default_access
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings({"webui_default_access_mode": ["restricted"]})
 
@@ -520,8 +520,8 @@ def test_update_network_safety_settings_default_access_is_webui_only(
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
     before = config_path.read_text(encoding="utf-8")
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("hczkbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings({"webui_default_access_mode": ["full"]})
 
@@ -540,7 +540,7 @@ def test_provider_models_payload_fetches_openai_compatible_models(
     config = Config()
     config.providers.deepseek.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     def fake_get(url: str, **kwargs):
         assert url == "https://api.deepseek.com/models"
@@ -556,7 +556,7 @@ def test_provider_models_payload_fetches_openai_compatible_models(
             request=httpx.Request("GET", url),
         )
 
-    monkeypatch.setattr("hczkbot.webui.settings_api.httpx.get", fake_get)
+    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fake_get)
 
     payload = provider_models_payload({"provider": ["deepseek"]})
 
@@ -573,7 +573,7 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     def fake_get(url: str, **kwargs):
         assert url == f"{DYNAMIC_PROVIDER_API_BASE}/models"
@@ -584,7 +584,7 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
             request=httpx.Request("GET", url),
         )
 
-    monkeypatch.setattr("hczkbot.webui.settings_api.httpx.get", fake_get)
+    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fake_get)
 
     payload = provider_models_payload({"provider": [DYNAMIC_PROVIDER_NAME]})
 
@@ -603,7 +603,7 @@ def test_settings_payload_includes_system_io_fields(
     config.tools.system_io.enable = True
     config.tools.system_io.allow_actions = ["clipboard_read", "usb_list"]
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     assert payload["system_io"]["enabled"] is True
@@ -621,7 +621,7 @@ def test_update_system_io_settings_toggles_enable(
     config_path = tmp_path / "config.json"
     config = Config.model_validate({})
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_system_io_settings({"enabled": ["true"]})
     saved = load_config(config_path)
@@ -638,7 +638,7 @@ def test_update_system_io_settings_writes_allow_actions(
     config = Config.model_validate({})
     config.tools.system_io.enable = True
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     payload = update_system_io_settings(
         {"allowActions": ["clipboard_read,usb_list,serial_list"]}
@@ -656,7 +656,7 @@ def test_update_system_io_settings_clears_allow_actions(
     config = Config.model_validate({})
     config.tools.system_io.allow_actions = ["clipboard_read"]
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     update_system_io_settings({"allowActions": [""]})
     saved = load_config(config_path)
@@ -670,7 +670,7 @@ def test_update_system_io_settings_rejects_unknown_action(
     config_path = tmp_path / "config.json"
     config = Config.model_validate({})
     save_config(config, config_path)
-    monkeypatch.setattr("hczkbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="unknown system_io action"):
         update_system_io_settings({"allowActions": ["clipboard_read,format_c_drive"]})

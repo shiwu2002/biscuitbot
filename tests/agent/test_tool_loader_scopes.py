@@ -1,8 +1,8 @@
 import pytest
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.context import ToolContext
-from hczkbot.agent.tools.loader import ToolLoader
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.context import ToolContext
+from biscuitbot.agent.tools.loader import ToolLoader
 
 
 class _CoreOnlyTool(Tool):
@@ -64,7 +64,7 @@ class _UniversalTool(Tool):
 
 @pytest.mark.asyncio
 async def test_loader_filters_by_scope():
-    from hczkbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.registry import ToolRegistry
 
     loader = ToolLoader(test_classes=[_CoreOnlyTool, _SubagentOnlyTool, _UniversalTool])
 

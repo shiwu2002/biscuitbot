@@ -1,5 +1,5 @@
 """
-hczkbot - 轻量级 AI agent 框架
+biscuitbot - 轻量级 AI agent 框架
 """
 
 import tomllib
@@ -19,18 +19,18 @@ def _read_pyproject_version() -> str | None:
 
 def _resolve_version() -> str:
     try:
-        return _pkg_version("hczkbot")
+        return _pkg_version("biscuitbot")
     except PackageNotFoundError:
-        # 源码检出通常在没有安装 dist-info 的情况下导入 hczkbot
-        return _read_pyproject_version() or "0.2.7"
+        # 源码检出通常在没有安装 dist-info 的情况下导入 biscuitbot
+        return _read_pyproject_version() or "0.3.0"
 
 
 __version__ = _resolve_version()
-__logo__ = "🐺"
+__logo__ = "🍪"
 
 _LAZY_EXPORTS = {
-    "Hczkbot": ".hczkbot",
-    "RunResult": ".hczkbot",
+    "Biscuitbot": ".biscuitbot",
+    "RunResult": ".biscuitbot",
 }
 
 
@@ -45,4 +45,4 @@ def __getattr__(name: str):
     return val
 
 
-__all__ = ["Hczkbot", "RunResult"]
+__all__ = ["Biscuitbot", "RunResult"]

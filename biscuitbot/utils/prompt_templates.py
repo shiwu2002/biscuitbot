@@ -1,4 +1,4 @@
-"""Load and render agent system prompt templates (Jinja2) under hczkbot/templates/.
+"""Load and render agent system prompt templates (Jinja2) under biscuitbot/templates/.
 
 Agent prompts live in ``templates/agent/`` (pass names like ``agent/identity.md``).
 Shared copy lives under ``agent/_snippets/`` and is included via

@@ -14,8 +14,8 @@ from typing import Any, Callable, Coroutine, Literal
 from filelock import FileLock
 from loguru import logger
 
-from hczkbot.cron.session_turns import is_bound_cron_job
-from hczkbot.cron.types import (
+from biscuitbot.cron.session_turns import is_bound_cron_job
+from biscuitbot.cron.types import (
     CronJob,
     CronJobState,
     CronPayload,
@@ -421,7 +421,7 @@ class CronService:
 
         Uses a temp-file + ``os.replace`` + ``fsync`` pattern so a crash or
         SIGKILL mid-write cannot leave the destination truncated or invalid.
-        Mirrors ``hczkbot.session.manager.SessionManager.save`` (see
+        Mirrors ``biscuitbot.session.manager.SessionManager.save`` (see
         commit 512bf59, ``fix(session): fsync sessions on graceful shutdown
         to prevent data loss``).  Without this, ``jobs.json`` could be
         corrupted on container shutdown and silently re-created empty on

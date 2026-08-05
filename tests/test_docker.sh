@@ -2,19 +2,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-IMAGE_NAME="hczkbot-test"
+IMAGE_NAME="biscuitbot-test"
 
 echo "=== Building Docker image ==="
 docker build -t "$IMAGE_NAME" .
 
 echo ""
-echo "=== Running 'hczkbot onboard' ==="
-docker run --name hczkbot-test-run "$IMAGE_NAME" onboard
+echo "=== Running 'biscuitbot onboard' ==="
+docker run --name biscuitbot-test-run "$IMAGE_NAME" onboard
 
 echo ""
-echo "=== Running 'hczkbot status' ==="
-STATUS_OUTPUT=$(docker commit hczkbot-test-run hczkbot-test-onboarded > /dev/null && \
-    docker run --rm hczkbot-test-onboarded status 2>&1) || true
+echo "=== Running 'biscuitbot status' ==="
+STATUS_OUTPUT=$(docker commit biscuitbot-test-run biscuitbot-test-onboarded > /dev/null && \
+    docker run --rm biscuitbot-test-onboarded status 2>&1) || true
 
 echo "$STATUS_OUTPUT"
 
@@ -31,7 +31,7 @@ check() {
     fi
 }
 
-check "hczkbot Status"
+check "biscuitbot Status"
 check "Config:"
 check "Workspace:"
 check "Model:"
@@ -50,7 +50,7 @@ fi
 # Cleanup
 echo ""
 echo "=== Cleanup ==="
-docker rm -f hczkbot-test-run 2>/dev/null || true
-docker rmi -f hczkbot-test-onboarded 2>/dev/null || true
+docker rm -f biscuitbot-test-run 2>/dev/null || true
+docker rmi -f biscuitbot-test-onboarded 2>/dev/null || true
 docker rmi -f "$IMAGE_NAME" 2>/dev/null || true
 echo "Done."

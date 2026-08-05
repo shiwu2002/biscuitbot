@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.agent.skills import SkillsLoader
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.command.builtin import cmd_skill, register_builtin_commands
-from hczkbot.command.router import CommandContext, CommandRouter
-from hczkbot.config.schema import ModelPresetConfig
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.agent.skills import SkillsLoader
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.command.builtin import cmd_skill, register_builtin_commands
+from biscuitbot.command.router import CommandContext, CommandRouter
+from biscuitbot.config.schema import ModelPresetConfig
 
 
 def _provider(default_model: str = "test-model") -> MagicMock:

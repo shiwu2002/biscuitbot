@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.providers.base import GenerationSettings, LLMResponse
-from hczkbot.session.webui_turns import WebuiTurnCoordinator
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.providers.base import GenerationSettings, LLMResponse
+from biscuitbot.session.webui_turns import WebuiTurnCoordinator
 
 
 def _make_loop(tmp_path):

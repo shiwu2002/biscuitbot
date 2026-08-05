@@ -26,7 +26,7 @@ function settingsPayload(): SettingsPayload {
       temperature: 0.1,
       reasoning_effort: null,
       timezone: "UTC",
-      bot_name: "hczkbot",
+      bot_name: "biscuitbot",
       bot_icon: "nb",
       tool_hint_max_length: 40,
     },

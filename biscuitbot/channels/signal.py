@@ -17,13 +17,13 @@ from typing import Any
 import httpx
 from pydantic import Field, computed_field, field_validator
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir
-from hczkbot.config.schema import Base
-from hczkbot.pairing import is_approved
-from hczkbot.utils.helpers import safe_filename, split_message
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.config.schema import Base
+from biscuitbot.pairing import is_approved
+from biscuitbot.utils.helpers import safe_filename, split_message
 
 
 @dataclass

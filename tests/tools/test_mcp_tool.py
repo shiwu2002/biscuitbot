@@ -8,8 +8,8 @@ from types import ModuleType, SimpleNamespace
 import httpx
 import pytest
 
-import hczkbot.agent.tools.mcp as mcp_mod
-from hczkbot.agent.tools.mcp import (
+import biscuitbot.agent.tools.mcp as mcp_mod
+from biscuitbot.agent.tools.mcp import (
     MCPPromptWrapper,
     MCPResourceWrapper,
     MCPToolWrapper,
@@ -17,8 +17,8 @@ from hczkbot.agent.tools.mcp import (
     _sanitize_name,
     connect_mcp_servers,
 )
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.config.schema import MCPServerConfig
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.config.schema import MCPServerConfig
 
 
 class _FakeTextContent:
@@ -450,7 +450,7 @@ async def test_connect_mcp_servers_enabled_tools_warns_on_unknown_entries(
     def _warning(message: str, *args: object) -> None:
         warnings.append(message.format(*args))
 
-    monkeypatch.setattr("hczkbot.agent.tools.mcp.logger.warning", _warning)
+    monkeypatch.setattr("biscuitbot.agent.tools.mcp.logger.warning", _warning)
 
     stacks = await connect_mcp_servers(
         {"test": MCPServerConfig(command="fake", enabled_tools=["unknown"])},
@@ -481,7 +481,7 @@ async def test_connect_mcp_servers_logs_stdio_pollution_hint(
         yield  # pragma: no cover
 
     monkeypatch.setattr(sys.modules["mcp.client.stdio"], "stdio_client", _broken_stdio_client)
-    monkeypatch.setattr("hczkbot.agent.tools.mcp.logger.exception", _error)
+    monkeypatch.setattr("biscuitbot.agent.tools.mcp.logger.exception", _error)
 
     registry = ToolRegistry()
     stacks = await connect_mcp_servers({"gh": MCPServerConfig(command="github-mcp")}, registry)
@@ -516,7 +516,7 @@ async def test_connect_mcp_servers_rejects_unsafe_http_urls_before_probe(
         warnings.append(message.format(*args))
 
     monkeypatch.setattr(mcp_mod.asyncio, "open_connection", _open_connection)
-    monkeypatch.setattr("hczkbot.agent.tools.mcp.logger.warning", _warning)
+    monkeypatch.setattr("biscuitbot.agent.tools.mcp.logger.warning", _warning)
 
     registry = ToolRegistry()
     stacks = await connect_mcp_servers({"local": config}, registry)
@@ -710,13 +710,13 @@ async def test_connect_mcp_servers_passes_stdio_cwd(
 
     registry = ToolRegistry()
     stacks = await connect_mcp_servers(
-        {"test": MCPServerConfig(command="fake", cwd="/tmp/hczkbot-mcp-test")},
+        {"test": MCPServerConfig(command="fake", cwd="/tmp/biscuitbot-mcp-test")},
         registry,
     )
     for stack in stacks.values():
         await stack.aclose()
 
-    assert captured["cwd"] == "/tmp/hczkbot-mcp-test"
+    assert captured["cwd"] == "/tmp/biscuitbot-mcp-test"
 
 
 # ---------------------------------------------------------------------------

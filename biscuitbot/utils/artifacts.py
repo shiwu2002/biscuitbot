@@ -11,8 +11,8 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from hczkbot.config.paths import get_media_dir
-from hczkbot.utils.helpers import detect_image_mime, ensure_dir
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.utils.helpers import detect_image_mime, ensure_dir
 
 _DATA_IMAGE_RE = re.compile(r"^data:(image/[A-Za-z0-9.+-]+);base64,(.*)$", re.DOTALL)
 _MIME_EXTENSIONS = {

@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.loader import set_config_path
-from hczkbot.config.schema import ImageGenerationToolConfig, ProviderConfig, ToolsConfig
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
-from hczkbot.providers.image_generation import GeneratedImageResponse
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.loader import set_config_path
+from biscuitbot.config.schema import ImageGenerationToolConfig, ProviderConfig, ToolsConfig
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.providers.image_generation import GeneratedImageResponse
 
 PNG_DATA_URL = (
     "data:image/png;base64,"
@@ -36,7 +36,7 @@ async def test_outbound_no_longer_carries_generated_media(
     """Media delivery is now the LLM's responsibility via the message tool."""
     set_config_path(tmp_path / "config.json")
     monkeypatch.setattr(
-        "hczkbot.agent.tools.image_generation.get_image_gen_provider",
+        "biscuitbot.agent.tools.image_generation.get_image_gen_provider",
         lambda name: FakeImageClient if name == "openrouter" else None,
     )
     provider = MagicMock()

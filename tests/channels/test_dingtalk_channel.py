@@ -8,7 +8,7 @@ import pytest
 
 # Check optional dingtalk dependencies before running tests
 try:
-    from hczkbot.channels import dingtalk
+    from biscuitbot.channels import dingtalk
     DINGTALK_AVAILABLE = getattr(dingtalk, "DINGTALK_AVAILABLE", False)
 except ImportError:
     DINGTALK_AVAILABLE = False
@@ -16,9 +16,9 @@ except ImportError:
 if not DINGTALK_AVAILABLE:
     pytest.skip("DingTalk dependencies not installed (dingtalk-stream)", allow_module_level=True)
 
-import hczkbot.channels.dingtalk as dingtalk_module
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.dingtalk import DingTalkChannel, DingTalkConfig, HczkbotDingTalkHandler
+import biscuitbot.channels.dingtalk as dingtalk_module
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.dingtalk import DingTalkChannel, DingTalkConfig, BiscuitbotDingTalkHandler
 
 
 class _FakeResponse:
@@ -157,7 +157,7 @@ async def test_group_send_uses_group_messages_api() -> None:
         "token",
         "group:conv123",
         "sampleMarkdown",
-        {"text": "hello", "title": "Hczkbot Reply"},
+        {"text": "hello", "title": "Biscuitbot Reply"},
     )
 
     assert ok is True
@@ -174,7 +174,7 @@ async def test_handler_uses_voice_recognition_text_when_text_is_empty(monkeypatc
         DingTalkConfig(client_id="app", client_secret="secret", allow_from=["user1"]),
         bus,
     )
-    handler = HczkbotDingTalkHandler(channel)
+    handler = BiscuitbotDingTalkHandler(channel)
 
     class _FakeChatbotMessage:
         text = None
@@ -218,7 +218,7 @@ async def test_handler_processes_file_message(monkeypatch) -> None:
         DingTalkConfig(client_id="app", client_secret="secret", allow_from=["user1"]),
         bus,
     )
-    handler = HczkbotDingTalkHandler(channel)
+    handler = BiscuitbotDingTalkHandler(channel)
 
     class _FakeFileChatbotMessage:
         text = None
@@ -235,7 +235,7 @@ async def test_handler_processes_file_message(monkeypatch) -> None:
             return _FakeFileChatbotMessage()
 
     async def fake_download(download_code, filename, sender_id):
-        return f"/tmp/hczkbot_dingtalk/{sender_id}/{filename}"
+        return f"/tmp/biscuitbot_dingtalk/{sender_id}/{filename}"
 
     monkeypatch.setattr(dingtalk_module, "ChatbotMessage", _FakeFileChatbotMessage)
     monkeypatch.setattr(dingtalk_module, "AckMessage", SimpleNamespace(STATUS_OK="OK"))
@@ -256,7 +256,7 @@ async def test_handler_processes_file_message(monkeypatch) -> None:
 
     assert (status, body) == ("OK", "OK")
     assert "[File]" in msg.content
-    assert "/tmp/hczkbot_dingtalk/user1/report.xlsx" in msg.content
+    assert "/tmp/biscuitbot_dingtalk/user1/report.xlsx" in msg.content
 
 
 @pytest.mark.asyncio
@@ -283,7 +283,7 @@ async def test_download_dingtalk_file(tmp_path, monkeypatch) -> None:
 
     # Redirect media dir to tmp_path
     monkeypatch.setattr(
-        "hczkbot.config.paths.get_media_dir",
+        "biscuitbot.config.paths.get_media_dir",
         lambda channel_name=None: tmp_path / channel_name if channel_name else tmp_path,
     )
 
@@ -629,7 +629,7 @@ async def test_send_batch_message_propagates_transport_error() -> None:
             "token",
             "user123",
             "sampleMarkdown",
-            {"text": "hello", "title": "Hczkbot Reply"},
+            {"text": "hello", "title": "Biscuitbot Reply"},
         )
 
     # The POST was attempted exactly once

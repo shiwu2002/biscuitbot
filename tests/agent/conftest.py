@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.queue import MessageBus
-from hczkbot.providers.base import LLMProvider
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.providers.base import LLMProvider
 
 
 def make_provider(
@@ -77,9 +77,9 @@ def make_loop(
         kwargs["hooks"] = hooks
 
     if patch_deps:
-        with patch("hczkbot.agent.loop.ContextBuilder"), \
-             patch("hczkbot.agent.loop.SessionManager"), \
-             patch("hczkbot.agent.loop.SubagentManager") as MockSubMgr:
+        with patch("biscuitbot.agent.loop.ContextBuilder"), \
+             patch("biscuitbot.agent.loop.SessionManager"), \
+             patch("biscuitbot.agent.loop.SubagentManager") as MockSubMgr:
             MockSubMgr.return_value.cancel_by_session = AsyncMock(return_value=0)
             return AgentLoop(**kwargs)
     return AgentLoop(**kwargs)

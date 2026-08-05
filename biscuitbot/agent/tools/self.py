@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.context import ContextAware, RequestContext
-from hczkbot.agent.tools.runtime_state import RuntimeState
-from hczkbot.config_base import Base
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from biscuitbot.agent.tools.runtime_state import RuntimeState
+from biscuitbot.config_base import Base
 
 if TYPE_CHECKING:
-    from hczkbot.agent.subagent import SubagentStatus
+    from biscuitbot.agent.subagent import SubagentStatus
 
 
 class MyToolConfig(Base):
@@ -36,7 +36,7 @@ def _has_real_attr(obj: Any, key: str) -> bool:
 
 
 def _is_subagent_status(value: Any) -> bool:
-    from hczkbot.agent.subagent import SubagentStatus
+    from biscuitbot.agent.subagent import SubagentStatus
 
     return isinstance(value, SubagentStatus)
 

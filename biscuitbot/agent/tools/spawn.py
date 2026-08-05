@@ -5,13 +5,13 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.context import ContextAware, RequestContext
-from hczkbot.agent.tools.schema import NumberSchema, StringSchema, tool_parameters_schema
-from hczkbot.security.workspace_access import current_workspace_scope
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from biscuitbot.agent.tools.schema import NumberSchema, StringSchema, tool_parameters_schema
+from biscuitbot.security.workspace_access import current_workspace_scope
 
 if TYPE_CHECKING:
-    from hczkbot.agent.subagent import SubagentManager
+    from biscuitbot.agent.subagent import SubagentManager
 
 
 @tool_parameters(

@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
 
 @pytest.mark.asyncio
 async def test_runner_preserves_reasoning_fields_and_tool_results():
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     captured_second_call: list[dict] = []
@@ -74,7 +74,7 @@ async def test_runner_preserves_reasoning_fields_and_tool_results():
 
 @pytest.mark.asyncio
 async def test_runner_returns_max_iterations_fallback():
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
@@ -108,7 +108,7 @@ async def test_runner_returns_max_iterations_fallback():
 
 @pytest.mark.asyncio
 async def test_runner_uses_no_tools_finalization_after_max_iterations():
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     calls: list[dict] = []
@@ -160,7 +160,7 @@ async def test_runner_uses_no_tools_finalization_after_max_iterations():
 
 @pytest.mark.asyncio
 async def test_runner_times_out_hung_llm_request():
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
 
@@ -189,8 +189,8 @@ async def test_runner_times_out_hung_llm_request():
 
 @pytest.mark.asyncio
 async def test_runner_does_not_apply_outer_wall_timeout_to_streaming_requests():
-    from hczkbot.agent.hook import AgentHook, AgentHookContext
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.hook import AgentHook, AgentHookContext
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     streamed: list[str] = []
@@ -216,7 +216,7 @@ async def test_runner_does_not_apply_outer_wall_timeout_to_streaming_requests():
 
     runner = AgentRunner(provider)
     wait_for = AsyncMock(side_effect=AssertionError("streaming path must not use wait_for"))
-    with patch("hczkbot.agent.runner.asyncio.wait_for", wait_for):
+    with patch("biscuitbot.agent.runner.asyncio.wait_for", wait_for):
         result = await runner.run(AgentRunSpec(
             initial_messages=[{"role": "user", "content": "think for a while"}],
             tools=tools,
@@ -236,7 +236,7 @@ async def test_runner_does_not_apply_outer_wall_timeout_to_streaming_requests():
 
 @pytest.mark.asyncio
 async def test_runner_replaces_empty_tool_result_with_marker():
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     captured_second_call: list[dict] = []
@@ -275,7 +275,7 @@ async def test_runner_replaces_empty_tool_result_with_marker():
 @pytest.mark.asyncio
 async def test_runner_retries_empty_final_response_with_summary_prompt():
     """Empty responses get 2 silent retries before finalization kicks in."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     calls: list[dict] = []
@@ -320,8 +320,8 @@ async def test_runner_retries_empty_final_response_with_summary_prompt():
 @pytest.mark.asyncio
 async def test_runner_uses_specific_message_after_empty_finalization_retry():
     """After silent retries + finalization all return empty, stop_reason is empty_final_response."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.utils.runtime import EMPTY_FINAL_RESPONSE_MESSAGE
 
     provider = MagicMock(spec=LLMProvider)
 
@@ -352,7 +352,7 @@ async def test_runner_empty_response_does_not_break_tool_chain():
     Sequence: tool_call -> empty -> tool_call -> final text.
     The runner should recover via silent retry and complete normally.
     """
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     call_count = 0
@@ -409,7 +409,7 @@ async def test_runner_empty_response_does_not_break_tool_chain():
 async def test_runner_accumulates_usage_and_preserves_cached_tokens():
     """Runner should accumulate prompt/completion tokens across iterations
     and preserve cached_tokens from provider responses."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock(spec=LLMProvider)
     call_count = {"n": 0}
@@ -456,7 +456,7 @@ async def test_runner_binds_on_retry_wait_to_retry_callback_not_progress():
     internal retry diagnostics like "Model request failed, retry in 1s"
     to leak to end-user channels as normal progress updates.
     """
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     captured: dict = {}
 
@@ -498,7 +498,7 @@ async def test_runner_binds_on_retry_wait_to_retry_callback_not_progress():
 @pytest.mark.asyncio
 async def test_runner_passes_temperature_to_provider():
     """temperature from AgentRunSpec should reach provider.chat_with_retry."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     captured: dict = {}
 
@@ -527,7 +527,7 @@ async def test_runner_passes_temperature_to_provider():
 @pytest.mark.asyncio
 async def test_runner_passes_max_tokens_to_provider():
     """max_tokens from AgentRunSpec should reach provider.chat_with_retry."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     captured: dict = {}
 
@@ -556,7 +556,7 @@ async def test_runner_passes_max_tokens_to_provider():
 @pytest.mark.asyncio
 async def test_runner_passes_reasoning_effort_to_provider():
     """reasoning_effort from AgentRunSpec should reach provider.chat_with_retry."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     captured: dict = {}
 

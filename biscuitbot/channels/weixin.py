@@ -28,12 +28,12 @@ import httpx
 from loguru import logger
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_media_dir, get_runtime_subdir
-from hczkbot.config.schema import Base
-from hczkbot.utils.helpers import split_message
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_media_dir, get_runtime_subdir
+from biscuitbot.config.schema import Base
+from biscuitbot.utils.helpers import split_message
 
 # ---------------------------------------------------------------------------
 # Protocol constants (from openclaw-weixin types.ts)
@@ -127,7 +127,7 @@ class WeixinConfig(Base):
     cdn_base_url: str = "https://novac2c.cdn.weixin.qq.com/c2c"
     route_tag: str | int | None = None
     token: str = ""  # Manually set token, or obtained via QR login
-    state_dir: str = ""  # Default: ~/.hczkbot/weixin/
+    state_dir: str = ""  # Default: ~/.biscuitbot/weixin/
     poll_timeout: int = DEFAULT_LONG_POLL_TIMEOUT_S  # seconds for long-poll
 
 
@@ -482,7 +482,7 @@ class WeixinChannel(BaseChannel):
             self._token = self.config.token
         elif not self._load_state():
             if not await self._qr_login():
-                self.logger.error("login failed. Run 'hczkbot channels login weixin' to authenticate.")
+                self.logger.error("login failed. Run 'biscuitbot channels login weixin' to authenticate.")
                 self._running = False
                 return
 
@@ -1296,7 +1296,7 @@ class WeixinChannel(BaseChannel):
         context_token: str,
     ) -> None:
         """Send a text message matching the exact protocol from send.ts."""
-        client_id = f"hczkbot-{uuid.uuid4().hex[:12]}"
+        client_id = f"biscuitbot-{uuid.uuid4().hex[:12]}"
 
         item_list: list[dict] = []
         if text:
@@ -1451,7 +1451,7 @@ class WeixinChannel(BaseChannel):
             media_item["len"] = str(raw_size)
 
         # Send each media item as its own message (matching reference plugin)
-        client_id = f"hczkbot-{uuid.uuid4().hex[:12]}"
+        client_id = f"biscuitbot-{uuid.uuid4().hex[:12]}"
         item_list: list[dict] = [{"type": item_type, item_key: media_item}]
 
         weixin_msg: dict[str, Any] = {

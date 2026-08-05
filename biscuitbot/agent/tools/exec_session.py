@@ -9,9 +9,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.context import current_request_session_key
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.context import current_request_session_key
+from biscuitbot.agent.tools.schema import (
     BooleanSchema,
     IntegerSchema,
     StringSchema,
@@ -303,7 +303,7 @@ class ExecSessionManager:
         shell_program: str | None,
         login: bool,
     ) -> asyncio.subprocess.Process:
-        from hczkbot.agent.tools.shell import ExecTool
+        from biscuitbot.agent.tools.shell import ExecTool
 
         return await ExecTool._spawn(
             command, cwd, env, shell_program, login,
@@ -413,7 +413,7 @@ class WriteStdinTool(Tool):
 
     @classmethod
     def config_cls(cls):
-        from hczkbot.agent.tools.shell import ExecToolConfig
+        from biscuitbot.agent.tools.shell import ExecToolConfig
 
         return ExecToolConfig
 
@@ -558,7 +558,7 @@ class ListExecSessionsTool(Tool):
 
     @classmethod
     def config_cls(cls):
-        from hczkbot.agent.tools.shell import ExecToolConfig
+        from biscuitbot.agent.tools.shell import ExecToolConfig
 
         return ExecToolConfig
 

@@ -11,11 +11,11 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from hczkbot import __version__
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.command.router import CommandContext, CommandRouter
-from hczkbot.utils.helpers import build_status_content
-from hczkbot.utils.restart import set_restart_notice_to_env
+from biscuitbot import __version__
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.command.router import CommandContext, CommandRouter
+from biscuitbot.utils.helpers import build_status_content
+from biscuitbot.utils.restart import set_restart_notice_to_env
 
 # Maximum Dream batches per run (each batch processes up to 20 history entries).
 # Caps token consumption while still draining backlogs faster than one-batch-per-run.
@@ -25,7 +25,7 @@ _DREAM_MAX_BATCHES = 3
 # (network stall, provider outage, streaming idle-timeout failure) would
 # block the Dream loop indefinitely and — because Dream runs inside the
 # cron callback / command handler — freeze the whole agent.
-_DREAM_BATCH_TIMEOUT_S = float(os.environ.get("HCZKBOT_DREAM_BATCH_TIMEOUT_S", "180"))
+_DREAM_BATCH_TIMEOUT_S = float(os.environ.get("BISCUITBOT_DREAM_BATCH_TIMEOUT_S", "180"))
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ BUILTIN_COMMAND_SPECS: tuple[BuiltinCommandSpec, ...] = (
     ),
     BuiltinCommandSpec(
         "/restart",
-        "Restart hczkbot",
+        "Restart biscuitbot",
         "Restart the bot process in place.",
         "rotate-cw",
     ),
@@ -160,7 +160,7 @@ async def cmd_restart(ctx: CommandContext) -> OutboundMessage:
 
     async def _do_restart():
         await asyncio.sleep(1)
-        os.execv(sys.executable, [sys.executable, "-m", "hczkbot"] + sys.argv[1:])
+        os.execv(sys.executable, [sys.executable, "-m", "biscuitbot"] + sys.argv[1:])
 
     asyncio.create_task(_do_restart())
     return OutboundMessage(
@@ -183,7 +183,7 @@ async def cmd_status(ctx: CommandContext) -> OutboundMessage:
     search_usage_text: str | None = None
     # Never let usage fetch break /status
     with suppress(Exception):
-        from hczkbot.utils.searchusage import fetch_search_usage
+        from biscuitbot.utils.searchusage import fetch_search_usage
         web_cfg = getattr(loop, "web_config", None)
         search_cfg = getattr(web_cfg, "search", None) if web_cfg else None
         if search_cfg is not None:
@@ -323,7 +323,7 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
     msg = ctx.msg
 
     async def _run_dream():
-        from hczkbot.agent.memory import MemoryStore
+        from biscuitbot.agent.memory import MemoryStore
 
         dream_session_key = MemoryStore.dream_session_key
         build_dream_commit_message = MemoryStore.build_dream_commit_message
@@ -397,7 +397,7 @@ async def cmd_dream(ctx: CommandContext) -> OutboundMessage:
             elapsed = time.monotonic() - t0
             content = f"Dream failed after {elapsed:.1f}s: {e}"
         finally:
-            from hczkbot.webui.token_usage import record_response_token_usage
+            from biscuitbot.webui.token_usage import record_response_token_usage
 
             record_response_token_usage(
                 last_resp,
@@ -713,7 +713,7 @@ async def cmd_goal(ctx: CommandContext) -> OutboundMessage | None:
 
 async def cmd_pairing(ctx: CommandContext) -> OutboundMessage:
     """List, approve, deny or revoke pairing requests."""
-    from hczkbot.pairing import PAIRING_COMMAND_META_KEY, handle_pairing_command
+    from biscuitbot.pairing import PAIRING_COMMAND_META_KEY, handle_pairing_command
 
     reply = handle_pairing_command(ctx.msg.channel, ctx.args)
     return OutboundMessage(
@@ -755,7 +755,7 @@ async def cmd_help(ctx: CommandContext) -> OutboundMessage:
 
 def build_help_text() -> str:
     """Build canonical help text shared across channels."""
-    lines = ["🐺 hczkbot commands:"]
+    lines = ["🍪 biscuitbot commands:"]
     for spec in BUILTIN_COMMAND_SPECS:
         command = spec.command
         if spec.arg_hint:

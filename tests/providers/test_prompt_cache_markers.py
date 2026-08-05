@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def _openai_tools(*names: str) -> list[dict[str, Any]]:

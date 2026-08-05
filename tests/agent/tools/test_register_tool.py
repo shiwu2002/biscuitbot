@@ -13,10 +13,10 @@ from typing import Any
 
 import pytest
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.discover import DiscoverToolsTool
-from hczkbot.agent.tools.register_tool import RegisterToolTool, UnregisterToolTool
-from hczkbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.discover import DiscoverToolsTool
+from biscuitbot.agent.tools.register_tool import RegisterToolTool, UnregisterToolTool
+from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.base import Tool, tool_parameters
 
 
 @tool_parameters({"type": "object", "properties": {}})
@@ -194,7 +194,7 @@ async def test_register_fails_when_no_tool_subclass(tmp_path):
 async def test_register_fails_when_multiple_tool_subclasses(tmp_path):
     two_classes = (
         "from typing import Any\n"
-        "from hczkbot.agent.tools.base import Tool, tool_parameters\n"
+        "from biscuitbot.agent.tools.base import Tool, tool_parameters\n"
         "@tool_parameters({'type':'object','properties':{}})\n"
         "class A(Tool):\n"
         "    _capability='a'\n"
@@ -229,7 +229,7 @@ async def test_register_fails_when_multiple_tool_subclasses(tmp_path):
 async def test_register_fails_when_abstract_not_implemented(tmp_path):
     # Missing execute() — abstractmethods non-empty
     no_exec = (
-        "from hczkbot.agent.tools.base import Tool, tool_parameters\n"
+        "from biscuitbot.agent.tools.base import Tool, tool_parameters\n"
         "@tool_parameters({'type':'object','properties':{}})\n"
         "class HalfTool(Tool):\n"
         "    _capability='half'\n"
@@ -254,7 +254,7 @@ async def test_register_fails_when_abstract_not_implemented(tmp_path):
 async def test_register_fails_when_capability_missing(tmp_path):
     no_cap = (
         "from typing import Any\n"
-        "from hczkbot.agent.tools.base import Tool, tool_parameters\n"
+        "from biscuitbot.agent.tools.base import Tool, tool_parameters\n"
         "@tool_parameters({'type':'object','properties':{}})\n"
         "class NoCapTool(Tool):\n"
         "    _usage_md='docs/nocap.md'\n"
@@ -279,7 +279,7 @@ async def test_register_fails_when_capability_missing(tmp_path):
 async def test_register_fails_when_usage_md_missing(tmp_path):
     no_usage = (
         "from typing import Any\n"
-        "from hczkbot.agent.tools.base import Tool, tool_parameters\n"
+        "from biscuitbot.agent.tools.base import Tool, tool_parameters\n"
         "@tool_parameters({'type':'object','properties':{}})\n"
         "class NoUsageTool(Tool):\n"
         "    _capability='no usage'\n"

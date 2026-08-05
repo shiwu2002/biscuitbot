@@ -8,7 +8,7 @@ from typing import Any
 
 import pydantic
 
-from hczkbot.config.schema import Config, _resolve_tool_config_refs
+from biscuitbot.config.schema import Config, _resolve_tool_config_refs
 
 # Global variable to store current config path (for multi-instance support)
 _current_config_path: Path | None = None
@@ -24,11 +24,11 @@ def set_config_path(path: Path) -> None:
 def get_config_path() -> Path:
     """Get the configuration file path.
 
-    优先级：已设置的路径 > ~/.hczkbot/config.json
+    优先级：已设置的路径 > ~/.biscuitbot/config.json
     """
     if _current_config_path:
         return _current_config_path
-    return Path.home() / ".hczkbot" / "config.json"
+    return Path.home() / ".biscuitbot" / "config.json"
 
 
 def _load_config_file(path: Path) -> dict[str, Any]:
@@ -64,12 +64,12 @@ def _load_config_file(path: Path) -> dict[str, Any]:
 
 def _migrate_yaml_to_json() -> None:
     """Auto-migrate legacy YAML config to JSON if no JSON config exists."""
-    home_hczkbot = Path.home() / ".hczkbot"
-    json_path = home_hczkbot / "config.json"
+    home_biscuitbot = Path.home() / ".biscuitbot"
+    json_path = home_biscuitbot / "config.json"
     if json_path.exists():
         return
     for yaml_name in ("config.yaml", "config.yml"):
-        yaml_path = home_hczkbot / yaml_name
+        yaml_path = home_biscuitbot / yaml_name
         if yaml_path.exists():
             try:
                 import yaml as _yaml
@@ -122,7 +122,7 @@ def load_config(config_path: Path | None = None) -> Config:
 
 def _apply_ssrf_whitelist(config: Config) -> None:
     """Apply SSRF whitelist from config to the network security module."""
-    from hczkbot.security.network import configure_ssrf_whitelist
+    from biscuitbot.security.network import configure_ssrf_whitelist
 
     configure_ssrf_whitelist(config.tools.ssrf_whitelist)
 
@@ -265,7 +265,7 @@ def _migrate_config(data: dict) -> dict:
             tools.pop("mySet", None)
 
     # The platform integration module was removed. Silently drop any leftover
-    # `platform` key from legacy configs so existing ~/.hczkbot/config.json files
+    # `platform` key from legacy configs so existing ~/.biscuitbot/config.json files
     # keep loading instead of failing pydantic's extra-forbidden validation.
     if "platform" in data:
         data.pop("platform", None)

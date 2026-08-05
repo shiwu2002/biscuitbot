@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build hczkbot desktop application with PyInstaller.
+"""Build biscuitbot desktop application with PyInstaller.
 
 Usage::
 
-    python hczkbot/desktop/build.py           # 构建 WebUI + 打包
-    python hczkbot/desktop/build.py --skip-webui  # 跳过 WebUI 构建
-    python hczkbot/desktop/build.py --console     # 带控制台（调试用）
+    python biscuitbot/desktop/build.py           # 构建 WebUI + 打包
+    python biscuitbot/desktop/build.py --skip-webui  # 跳过 WebUI 构建
+    python biscuitbot/desktop/build.py --console     # 带控制台（调试用）
 """
 
 from __future__ import annotations
@@ -17,18 +17,18 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 WEBUI_DIR = PROJECT_ROOT / "webui"
-SPEC_FILE = PROJECT_ROOT / "hczkbot" / "desktop" / "hczkbot.spec"
+SPEC_FILE = PROJECT_ROOT / "biscuitbot" / "desktop" / "biscuitbot.spec"
 
 
 def build_webui() -> None:
-    """构建 WebUI 前端到 hczkbot/web/dist/"""
+    """构建 WebUI 前端到 biscuitbot/web/dist/"""
     print("[1/3] 正在构建 WebUI...")
     if not (WEBUI_DIR / "package.json").exists():
         print("  跳过：未找到 webui/package.json")
         return
     subprocess.run(["bun", "install"], cwd=WEBUI_DIR, check=True)
     subprocess.run(["bun", "run", "build"], cwd=WEBUI_DIR, check=True)
-    print("  WebUI 已构建至 hczkbot/web/dist/")
+    print("  WebUI 已构建至 biscuitbot/web/dist/")
 
 
 def ensure_pyinstaller() -> None:
@@ -63,13 +63,13 @@ def run_pyinstaller(*, console: bool = False) -> None:
     subprocess.run(cmd, cwd=PROJECT_ROOT, check=True)
 
     if sys.platform == "darwin":
-        print("\n完成！输出：dist/hczkbot.app")
+        print("\n完成！输出：dist/biscuitbot.app")
     else:
-        print("\n完成！输出：dist/hczkbot/")
+        print("\n完成！输出：dist/biscuitbot/")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="构建 hczkbot 桌面应用")
+    parser = argparse.ArgumentParser(description="构建 biscuitbot 桌面应用")
     parser.add_argument("--skip-webui", action="store_true", help="跳过 WebUI 构建")
     parser.add_argument("--console", action="store_true", help="带控制台构建（调试用）")
     args = parser.parse_args()

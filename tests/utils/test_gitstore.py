@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hczkbot.utils.gitstore import GitStore
+from biscuitbot.utils.gitstore import GitStore
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ class TestLineAges:
         git.auto_commit("initial")
 
         future_now = datetime.now(tz=timezone.utc) + timedelta(days=30)
-        with patch("hczkbot.utils.gitstore.datetime") as mock_dt:
+        with patch("biscuitbot.utils.gitstore.datetime") as mock_dt:
             mock_dt.now.return_value = future_now
             mock_dt.fromtimestamp = datetime.fromtimestamp
             ages = git.line_ages("MEMORY.md")
@@ -86,7 +86,7 @@ class TestLineAges:
         with patch("dulwich.worktree.time.time", return_value=now.timestamp()):
             git.auto_commit("commit2")
 
-        with patch("hczkbot.utils.gitstore.datetime") as mock_dt:
+        with patch("biscuitbot.utils.gitstore.datetime") as mock_dt:
             mock_dt.now.return_value = now
             mock_dt.fromtimestamp = datetime.fromtimestamp
             ages = git.line_ages("MEMORY.md")

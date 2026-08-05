@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.command.builtin import register_builtin_commands
-from hczkbot.command.router import CommandContext, CommandRouter
+from biscuitbot.command.builtin import register_builtin_commands
+from biscuitbot.command.router import CommandContext, CommandRouter
 
 
 class TestIsDispatchableCommand:
@@ -180,7 +180,7 @@ class TestPairingCommandDispatch:
         self, router: CommandRouter, fake_msg: MagicMock, monkeypatch,
     ) -> None:
         monkeypatch.setattr(
-            "hczkbot.pairing.store.list_pending",
+            "biscuitbot.pairing.store.list_pending",
             lambda: [
                 {
                     "code": "ABCD-EFGH",
@@ -204,7 +204,7 @@ class TestPairingCommandDispatch:
         self, router: CommandRouter, fake_msg: MagicMock, monkeypatch,
     ) -> None:
         monkeypatch.setattr(
-            "hczkbot.pairing.store.approve_code",
+            "biscuitbot.pairing.store.approve_code",
             lambda code: ("telegram", "123") if code == "ABCD-EFGH" else None,
         )
         fake_msg.content = "/pairing approve ABCD-EFGH"
@@ -226,7 +226,7 @@ class TestPairingCommandDispatch:
         self, router: CommandRouter, fake_msg: MagicMock, monkeypatch,
     ) -> None:
         monkeypatch.setattr(
-            "hczkbot.pairing.store.revoke",
+            "biscuitbot.pairing.store.revoke",
             lambda ch, sid: sid == "123",
         )
         fake_msg.content = "/pairing revoke 123"

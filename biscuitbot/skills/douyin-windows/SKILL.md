@@ -2,7 +2,7 @@
 name: douyin-windows
 tier: user
 description: 在 Windows 上通过浏览器自动化发布抖音图文/视频作品（Playwright MCP 优先，Python Playwright 备选）。
-metadata: {"hczkbot":{"requires":{"bins":["powershell"]}}}
+metadata: {"biscuitbot":{"requires":{"bins":["powershell"]}}}
 ---
 
 # 抖音发布（Windows）

@@ -6,8 +6,8 @@ import asyncio
 import dataclasses
 from collections.abc import Awaitable, Callable, Iterable
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.cron.session_turns import (
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.cron.session_turns import (
     cron_run_id,
     cron_trigger,
     defer_cron_until_session_idle,

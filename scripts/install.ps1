@@ -7,12 +7,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Package = "hczkbot-ai"
-$MainSource = "https://github.com/HKUDS/hczkbot/archive/refs/heads/main.zip"
+$Package = "biscuitbot-ai"
+$MainSource = "https://github.com/HKUDS/biscuitbot/archive/refs/heads/main.zip"
 $InstallTarget = $Package
 $InstallSource = "PyPI"
-$script:HczkbotRunner = $null
-$script:HczkbotPython = $null
+$script:BiscuitbotRunner = $null
+$script:BiscuitbotPython = $null
 $script:LastInstallSucceeded = $false
 
 function Write-Info {
@@ -26,21 +26,21 @@ function Fail {
 }
 
 function Show-InstallFailureHint {
-    [Console]::Error.WriteLine("Error: could not install hczkbot from $InstallSource.")
+    [Console]::Error.WriteLine("Error: could not install biscuitbot from $InstallSource.")
     [Console]::Error.WriteLine("If pip mentioned externally-managed-environment, use uv, pipx, or a virtual environment instead of system pip.")
     [Console]::Error.WriteLine("You can also run manually:")
     [Console]::Error.WriteLine("  uv tool install --force --upgrade $InstallTarget")
-    [Console]::Error.WriteLine("  $Python -m venv `$HOME\.hczkbot\venv")
-    [Console]::Error.WriteLine("  `$HOME\.hczkbot\venv\Scripts\python.exe -m pip install --upgrade $InstallTarget")
+    [Console]::Error.WriteLine("  $Python -m venv `$HOME\.biscuitbot\venv")
+    [Console]::Error.WriteLine("  `$HOME\.biscuitbot\venv\Scripts\python.exe -m pip install --upgrade $InstallTarget")
     [Console]::Error.WriteLine("Then start setup with:")
-    [Console]::Error.WriteLine("  hczkbot onboard --wizard")
-    throw "could not install hczkbot from $InstallSource"
+    [Console]::Error.WriteLine("  biscuitbot onboard --wizard")
+    throw "could not install biscuitbot from $InstallSource"
 }
 
 function Show-Usage {
     Write-Host "Usage: install.ps1 [-Dev|--dev] [-DryRun|--dry-run]"
     Write-Host ""
-    Write-Host "By default this installs or upgrades hczkbot-ai from PyPI."
+    Write-Host "By default this installs or upgrades biscuitbot-ai from PyPI."
     Write-Host "Use --dev to install from the current main branch on GitHub."
     Write-Host "Use --dry-run to print what would happen without installing or starting the wizard."
 }
@@ -105,31 +105,31 @@ function Ensure-Pip {
     }
 }
 
-function Invoke-Hczkbot {
-    param([string[]]$HczkbotArgs)
+function Invoke-Biscuitbot {
+    param([string[]]$BiscuitbotArgs)
 
-    switch ($script:HczkbotRunner) {
+    switch ($script:BiscuitbotRunner) {
         "uv" {
-            & uv tool run --from $InstallTarget hczkbot @HczkbotArgs
+            & uv tool run --from $InstallTarget biscuitbot @BiscuitbotArgs
         }
         "pipx" {
-            & pipx run --spec $InstallTarget hczkbot @HczkbotArgs
+            & pipx run --spec $InstallTarget biscuitbot @BiscuitbotArgs
         }
         "python" {
-            & $script:HczkbotPython -m hczkbot @HczkbotArgs
+            & $script:BiscuitbotPython -m biscuitbot @BiscuitbotArgs
         }
         default {
-            Fail "hczkbot was installed, but no runner was configured."
+            Fail "biscuitbot was installed, but no runner was configured."
         }
     }
 }
 
-function Get-HczkbotCommand {
-    switch ($script:HczkbotRunner) {
-        "uv" { return "uv tool run --from $InstallTarget hczkbot" }
-        "pipx" { return "pipx run --spec $InstallTarget hczkbot" }
-        "python" { return "$script:HczkbotPython -m hczkbot" }
-        default { return "hczkbot" }
+function Get-BiscuitbotCommand {
+    switch ($script:BiscuitbotRunner) {
+        "uv" { return "uv tool run --from $InstallTarget biscuitbot" }
+        "pipx" { return "pipx run --spec $InstallTarget biscuitbot" }
+        "python" { return "$script:BiscuitbotPython -m biscuitbot" }
+        default { return "biscuitbot" }
     }
 }
 
@@ -140,29 +140,29 @@ function Install-WithActivePython {
     if ($LASTEXITCODE -ne 0) {
         Show-InstallFailureHint
     }
-    $script:HczkbotRunner = "python"
-    $script:HczkbotPython = $Python
+    $script:BiscuitbotRunner = "python"
+    $script:BiscuitbotPython = $Python
 }
 
 function Install-WithUv {
     $script:LastInstallSucceeded = $false
-    Write-Info "Installing or upgrading hczkbot from $InstallSource with uv tool..."
+    Write-Info "Installing or upgrading biscuitbot from $InstallSource with uv tool..."
     & uv tool install --python $Python --force --upgrade $InstallTarget
     if ($LASTEXITCODE -ne 0) {
         return
     }
-    $script:HczkbotRunner = "uv"
+    $script:BiscuitbotRunner = "uv"
     $script:LastInstallSucceeded = $true
 }
 
 function Install-WithPipx {
     $script:LastInstallSucceeded = $false
-    Write-Info "Installing or upgrading hczkbot from $InstallSource with pipx..."
+    Write-Info "Installing or upgrading biscuitbot from $InstallSource with pipx..."
     & pipx install --python $Python --force $InstallTarget
     if ($LASTEXITCODE -ne 0) {
         return
     }
-    $script:HczkbotRunner = "pipx"
+    $script:BiscuitbotRunner = "pipx"
     $script:LastInstallSucceeded = $true
 }
 
@@ -172,7 +172,7 @@ function Install-WithManagedVenv {
         Fail "HOME is not set; cannot create a managed virtual environment."
     }
 
-    $VenvDir = if ($env:HCZKBOT_VENV) { $env:HCZKBOT_VENV } else { Join-Path $HomeDir ".hczkbot\venv" }
+    $VenvDir = if ($env:BISCUITBOT_VENV) { $env:BISCUITBOT_VENV } else { Join-Path $HomeDir ".biscuitbot\venv" }
     $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 
     if (-not (Test-Path $VenvPython)) {
@@ -188,18 +188,18 @@ function Install-WithManagedVenv {
     }
 
     if (-not (Test-Python $VenvPython)) {
-        Fail "The managed venv uses Python older than 3.11. Remove it or set HCZKBOT_VENV to a new path."
+        Fail "The managed venv uses Python older than 3.11. Remove it or set BISCUITBOT_VENV to a new path."
     }
 
-    Write-Info "Installing or upgrading hczkbot from $InstallSource in $VenvDir..."
+    Write-Info "Installing or upgrading biscuitbot from $InstallSource in $VenvDir..."
     Ensure-Pip $VenvPython
     & $VenvPython -m pip install --upgrade $InstallTarget
     if ($LASTEXITCODE -ne 0) {
         Show-InstallFailureHint
     }
 
-    $script:HczkbotRunner = "python"
-    $script:HczkbotPython = $VenvPython
+    $script:BiscuitbotRunner = "python"
+    $script:BiscuitbotPython = $VenvPython
 }
 
 foreach ($Arg in $RemainingArgs) {
@@ -234,25 +234,25 @@ $Version = & $Python --version
 Write-Info "Using Python: $Version"
 
 if ($DryRun) {
-    Write-Info "Dry run: would install or upgrade hczkbot from $InstallSource."
+    Write-Info "Dry run: would install or upgrade biscuitbot from $InstallSource."
     if (Test-VirtualEnv $Python) {
         Write-Info "Dry run: active virtual environment detected; would run: $Python -m pip install --upgrade $InstallTarget"
-        Write-Info "Dry run: would run hczkbot as: $Python -m hczkbot"
+        Write-Info "Dry run: would run biscuitbot as: $Python -m biscuitbot"
     } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
         Write-Info "Dry run: would run: uv tool install --python $Python --force --upgrade $InstallTarget"
-        Write-Info "Dry run: would run hczkbot as: uv tool run --from $InstallTarget hczkbot"
+        Write-Info "Dry run: would run biscuitbot as: uv tool run --from $InstallTarget biscuitbot"
     } elseif (Get-Command pipx -ErrorAction SilentlyContinue) {
         Write-Info "Dry run: would run: pipx install --python $Python --force $InstallTarget"
-        Write-Info "Dry run: would run hczkbot as: pipx run --spec $InstallTarget hczkbot"
+        Write-Info "Dry run: would run biscuitbot as: pipx run --spec $InstallTarget biscuitbot"
     } else {
         $HomeDir = if ($env:HOME) { $env:HOME } elseif ($env:USERPROFILE) { $env:USERPROFILE } else { "~" }
-        $VenvDir = if ($env:HCZKBOT_VENV) { $env:HCZKBOT_VENV } else { Join-Path $HomeDir ".hczkbot\venv" }
+        $VenvDir = if ($env:BISCUITBOT_VENV) { $env:BISCUITBOT_VENV } else { Join-Path $HomeDir ".biscuitbot\venv" }
         Write-Info "Dry run: would create or reuse a dedicated virtual environment: $VenvDir"
         Write-Info "Dry run: would run: $VenvDir\Scripts\python.exe -m pip install --upgrade $InstallTarget"
-        Write-Info "Dry run: would run hczkbot as: $VenvDir\Scripts\python.exe -m hczkbot"
+        Write-Info "Dry run: would run biscuitbot as: $VenvDir\Scripts\python.exe -m biscuitbot"
     }
-    if ($env:HCZKBOT_SKIP_WIZARD -eq "1") {
-        Write-Info "Dry run: would skip setup wizard because HCZKBOT_SKIP_WIZARD=1."
+    if ($env:BISCUITBOT_SKIP_WIZARD -eq "1") {
+        Write-Info "Dry run: would skip setup wizard because BISCUITBOT_SKIP_WIZARD=1."
     } else {
         Write-Info "Dry run: would run the setup wizard."
     }
@@ -287,22 +287,22 @@ if (Test-VirtualEnv $Python) {
     }
 }
 
-Write-Info "Installed hczkbot:"
-Invoke-Hczkbot @("--version")
+Write-Info "Installed biscuitbot:"
+Invoke-Biscuitbot @("--version")
 if ($LASTEXITCODE -ne 0) {
-    Fail "hczkbot was installed, but the command could not be started."
+    Fail "biscuitbot was installed, but the command could not be started."
 }
 
-if ($env:HCZKBOT_SKIP_WIZARD -eq "1") {
-    Write-Info "Skipping setup wizard because HCZKBOT_SKIP_WIZARD=1."
-    Write-Info "Run this later: $(Get-HczkbotCommand) onboard --wizard"
+if ($env:BISCUITBOT_SKIP_WIZARD -eq "1") {
+    Write-Info "Skipping setup wizard because BISCUITBOT_SKIP_WIZARD=1."
+    Write-Info "Run this later: $(Get-BiscuitbotCommand) onboard --wizard"
     return
 }
 
 Write-Info "Starting setup wizard..."
-Invoke-Hczkbot @("onboard", "--wizard")
+Invoke-Biscuitbot @("onboard", "--wizard")
 if ($LASTEXITCODE -ne 0) {
     Fail "Setup wizard did not complete."
 }
 
-Write-Info "Done. Try: $(Get-HczkbotCommand) agent -m `"Hello!`""
+Write-Info "Done. Try: $(Get-BiscuitbotCommand) agent -m `"Hello!`""

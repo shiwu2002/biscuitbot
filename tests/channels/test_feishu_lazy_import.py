@@ -14,7 +14,7 @@ def _run_import_probe(source: str) -> str:
 
 def test_feishu_module_import_does_not_import_lark_oapi():
     out = _run_import_probe(
-        "import sys; import hczkbot.channels.feishu; print('lark_oapi' in sys.modules)"
+        "import sys; import biscuitbot.channels.feishu; print('lark_oapi' in sys.modules)"
     )
 
     assert out == "False"
@@ -23,8 +23,8 @@ def test_feishu_module_import_does_not_import_lark_oapi():
 def test_feishu_channel_constructor_does_not_import_lark_oapi():
     out = _run_import_probe(
         "import sys; "
-        "from hczkbot.bus.queue import MessageBus; "
-        "from hczkbot.channels.feishu import FeishuChannel; "
+        "from biscuitbot.bus.queue import MessageBus; "
+        "from biscuitbot.channels.feishu import FeishuChannel; "
         "FeishuChannel({'enabled': True}, MessageBus()); "
         "print('lark_oapi' in sys.modules)"
     )
@@ -35,7 +35,7 @@ def test_feishu_channel_constructor_does_not_import_lark_oapi():
 def test_lark_runtime_thread_import_clears_sdk_import_loop():
     out = _run_import_probe(
         "import asyncio\n"
-        "from hczkbot.channels.feishu import _load_lark_runtime\n"
+        "from biscuitbot.channels.feishu import _load_lark_runtime\n"
         "async def main():\n"
         "    await asyncio.to_thread(_load_lark_runtime)\n"
         "    import lark_oapi.ws.client as ws\n"

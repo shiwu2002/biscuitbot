@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from hczkbot.providers.image_generation import (
+from biscuitbot.providers.image_generation import (
     GeminiImageGenerationClient,
     ImageGenerationError,
     OllamaImageGenerationClient,

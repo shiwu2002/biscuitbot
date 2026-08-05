@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from hczkbot.agent.tools.web import WebSearchConfig, WebSearchTool
+from biscuitbot.agent.tools.web import WebSearchConfig, WebSearchTool
 
 
 def _tool(
@@ -52,15 +52,15 @@ async def test_brave_search(monkeypatch):
     async def mock_get(self, url, **kw):
         assert "brave" in url
         assert kw["headers"]["X-Subscription-Token"] == "brave-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         return _response(json={
-            "web": {"results": [{"title": "Hczkbot", "url": "https://example.com", "description": "AI assistant"}]}
+            "web": {"results": [{"title": "Biscuitbot", "url": "https://example.com", "description": "AI assistant"}]}
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
-    tool = _tool(provider="brave", api_key="brave-key", user_agent="hczkbot-search-test")
-    result = await tool.execute(query="hczkbot", count=1)
-    assert "Hczkbot" in result
+    tool = _tool(provider="brave", api_key="brave-key", user_agent="biscuitbot-search-test")
+    result = await tool.execute(query="biscuitbot", count=1)
+    assert "Biscuitbot" in result
     assert "https://example.com" in result
 
 
@@ -80,11 +80,11 @@ async def test_brave_search_retries_rate_limit_once(monkeypatch):
             "web": {"results": [{"title": "Recovered", "url": "https://example.com", "description": "ok"}]}
         })
 
-    monkeypatch.setattr("hczkbot.agent.tools.web.asyncio.sleep", mock_sleep)
+    monkeypatch.setattr("biscuitbot.agent.tools.web.asyncio.sleep", mock_sleep)
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
 
     tool = _tool(provider="brave", api_key="brave-key")
-    result = await tool.execute(query="hczkbot", count=1)
+    result = await tool.execute(query="biscuitbot", count=1)
 
     assert calls["n"] == 2
     assert "Recovered" in result
@@ -102,11 +102,11 @@ async def test_brave_search_returns_clear_rate_limit_after_retries(monkeypatch):
         calls["n"] += 1
         return _response(status=429, json={"error": "rate limit"})
 
-    monkeypatch.setattr("hczkbot.agent.tools.web.asyncio.sleep", mock_sleep)
+    monkeypatch.setattr("biscuitbot.agent.tools.web.asyncio.sleep", mock_sleep)
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
 
     tool = _tool(provider="brave", api_key="brave-key")
-    result = await tool.execute(query="hczkbot", count=1)
+    result = await tool.execute(query="biscuitbot", count=1)
 
     assert calls["n"] == 2
     assert "Brave search rate limited" in result
@@ -118,13 +118,13 @@ async def test_tavily_search(monkeypatch):
     async def mock_post(self, url, **kw):
         assert "tavily" in url
         assert kw["headers"]["Authorization"] == "Bearer tavily-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         return _response(json={
             "results": [{"title": "OpenClaw", "url": "https://openclaw.io", "content": "Framework"}]
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    tool = _tool(provider="tavily", api_key="tavily-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="tavily", api_key="tavily-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="openclaw")
     assert "OpenClaw" in result
     assert "https://openclaw.io" in result
@@ -135,7 +135,7 @@ async def test_bocha_search(monkeypatch):
     async def mock_post(self, url, **kw):
         assert url == "https://api.bochaai.com/v1/web-search"
         assert kw["headers"]["Authorization"] == "Bearer bocha-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         assert kw["json"] == {
             "query": "MAI-THINKING-1 model",
             "freshness": "noLimit",
@@ -156,7 +156,7 @@ async def test_bocha_search(monkeypatch):
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    tool = _tool(provider="bocha", api_key="bocha-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="bocha", api_key="bocha-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="MAI-THINKING-1 model", count=2)
 
     assert "MAI-THINKING-1" in result
@@ -199,8 +199,8 @@ async def test_volcengine_search(monkeypatch):
     async def mock_post(self, url, **kw):
         assert url == "https://open.feedcoopapi.com/search_api/web_search"
         assert kw["headers"]["Authorization"] == "Bearer volc-key"
-        assert kw["headers"]["X-Traffic-Tag"] == "hczkbot"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["X-Traffic-Tag"] == "biscuitbot"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         assert kw["json"] == {
             "Query": "北京周边游",
             "SearchType": "web",
@@ -224,7 +224,7 @@ async def test_volcengine_search(monkeypatch):
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    tool = _tool(provider="volcengine", api_key="volc-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="volcengine", api_key="volc-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="北京周边游", count=2, timeRange="OneWeek", authLevel=1, queryRewrite=True)
 
     assert "北京周边游攻略" in result
@@ -263,13 +263,13 @@ async def test_volcengine_invalid_time_range_returns_error():
 async def test_searxng_search(monkeypatch):
     async def mock_get(self, url, **kw):
         assert "searx.example" in url
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         return _response(json={
             "results": [{"title": "Result", "url": "https://example.com", "content": "SearXNG result"}]
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
-    tool = _tool(provider="searxng", base_url="https://searx.example", user_agent="hczkbot-search-test")
+    tool = _tool(provider="searxng", base_url="https://searx.example", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="test")
     assert "Result" in result
 
@@ -283,8 +283,8 @@ async def test_duckduckgo_search(monkeypatch):
         def text(self, query, max_results=5, **kwargs):
             return [{"title": "DDG Result", "href": "https://ddg.example", "body": "From DuckDuckGo"}]
 
-    monkeypatch.setattr("hczkbot.agent.tools.web.DDGS", MockDDGS, raising=False)
-    import hczkbot.agent.tools.web as web_mod
+    monkeypatch.setattr("biscuitbot.agent.tools.web.DDGS", MockDDGS, raising=False)
+    import biscuitbot.agent.tools.web as web_mod
     monkeypatch.setattr(web_mod, "DDGS", MockDDGS, raising=False)
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
@@ -316,13 +316,13 @@ async def test_jina_search(monkeypatch):
     async def mock_get(self, url, **kw):
         assert "s.jina.ai" in str(url)
         assert kw["headers"]["Authorization"] == "Bearer jina-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         return _response(json={
             "data": [{"title": "Jina Result", "url": "https://jina.ai", "content": "AI search"}]
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
-    tool = _tool(provider="jina", api_key="jina-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="jina", api_key="jina-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="test")
     assert "Jina Result" in result
     assert "https://jina.ai" in result
@@ -333,7 +333,7 @@ async def test_kagi_search(monkeypatch):
     async def mock_post(self, url, **kw):
         assert "kagi.com/api/v1/search" in url
         assert kw["headers"]["Authorization"] == "Bearer kagi-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         assert kw["json"] == {"query": "test", "limit": 2}
         return _response(json={
             "data": {
@@ -347,7 +347,7 @@ async def test_kagi_search(monkeypatch):
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    tool = _tool(provider="kagi", api_key="kagi-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="kagi", api_key="kagi-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="test", count=2)
     assert "Kagi Result" in result
     assert "https://kagi.com" in result
@@ -359,7 +359,7 @@ async def test_exa_search(monkeypatch):
     async def mock_post(self, url, **kw):
         assert url == "https://api.exa.ai/search"
         assert kw["headers"]["x-api-key"] == "exa-key"
-        assert kw["headers"]["User-Agent"] == "hczkbot-search-test"
+        assert kw["headers"]["User-Agent"] == "biscuitbot-search-test"
         assert kw["json"] == {
             "query": "test",
             "numResults": 2,
@@ -376,7 +376,7 @@ async def test_exa_search(monkeypatch):
         })
 
     monkeypatch.setattr(httpx.AsyncClient, "post", mock_post)
-    tool = _tool(provider="exa", api_key="exa-key", user_agent="hczkbot-search-test")
+    tool = _tool(provider="exa", api_key="exa-key", user_agent="biscuitbot-search-test")
     result = await tool.execute(query="test", count=2)
 
     assert "Exa Result" in result

@@ -7,9 +7,9 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from hczkbot.session.manager import SessionManager
-from hczkbot.session.webui_turns import WEBUI_TITLE_METADATA_KEY, clean_generated_title
-from hczkbot.webui.transcript import (
+from biscuitbot.session.manager import SessionManager
+from biscuitbot.session.webui_turns import WEBUI_TITLE_METADATA_KEY, clean_generated_title
+from biscuitbot.webui.transcript import (
     append_fork_marker,
     delete_webui_transcript,
     fork_transcript_before_user_index,

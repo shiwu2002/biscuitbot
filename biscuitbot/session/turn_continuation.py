@@ -12,7 +12,7 @@ from typing import Any, Mapping, MutableMapping
 
 from loguru import logger
 
-from hczkbot.session.goal_state import (
+from biscuitbot.session.goal_state import (
     goal_state_runtime_lines,
     sustained_goal_active,
     sustained_goal_turn,

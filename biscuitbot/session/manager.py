@@ -13,8 +13,8 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.config.paths import get_legacy_sessions_dir
-from hczkbot.utils.helpers import (
+from biscuitbot.config.paths import get_legacy_sessions_dir
+from biscuitbot.utils.helpers import (
     ensure_dir,
     estimate_message_tokens,
     find_legal_message_start,
@@ -22,7 +22,7 @@ from hczkbot.utils.helpers import (
     safe_filename,
     strip_think,
 )
-from hczkbot.utils.subagent_channel_display import scrub_subagent_announce_body
+from biscuitbot.utils.subagent_channel_display import scrub_subagent_announce_body
 
 FILE_MAX_MESSAGES = 2000
 _MESSAGE_TIME_PREFIX_RE = re.compile(r"^\[Message Time: [^\]]+\]\n?")
@@ -423,7 +423,7 @@ class SessionManager:
         return self.sessions_dir / f"{self.safe_key(key)}.jsonl"
 
     def _get_legacy_session_path(self, key: str) -> Path:
-        """Legacy global session path (~/.hczkbot/sessions/)."""
+        """Legacy global session path (~/.biscuitbot/sessions/)."""
         return self.legacy_sessions_dir / f"{self.safe_key(key)}.jsonl"
 
     def get_or_create(self, key: str) -> Session:

@@ -5,10 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from hczkbot.config.schema import Config, InlineFallbackConfig, ModelPresetConfig
-from hczkbot.providers.base import LLMProvider
-from hczkbot.providers.fallback_provider import FallbackProvider
-from hczkbot.providers.registry import create_dynamic_spec, find_by_name
+from biscuitbot.config.schema import Config, InlineFallbackConfig, ModelPresetConfig
+from biscuitbot.providers.base import LLMProvider
+from biscuitbot.providers.fallback_provider import FallbackProvider
+from biscuitbot.providers.registry import create_dynamic_spec, find_by_name
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ def _make_provider_core(
             raise ValueError(f"No API key configured for provider '{provider_name}'.")
 
     if backend == "anthropic":
-        from hczkbot.providers.anthropic_provider import AnthropicProvider
+        from biscuitbot.providers.anthropic_provider import AnthropicProvider
 
         provider = AnthropicProvider(
             api_key=p.api_key if p else None,
@@ -65,7 +65,7 @@ def _make_provider_core(
             extra_headers=p.extra_headers if p else None,
         )
     else:
-        from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+        from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
         provider = OpenAICompatProvider(
             api_key=p.api_key if p else None,
@@ -235,7 +235,7 @@ def build_vision_provider(
         return _make_provider_core(config, preset=preset)
 
     # Not a preset — treat as a provider name (e.g. "openai", "anthropic").
-    from hczkbot.config.schema import ModelPresetConfig
+    from biscuitbot.config.schema import ModelPresetConfig
 
     provider_config = getattr(config.providers, name, None)
     if provider_config is None:
@@ -252,7 +252,7 @@ def load_provider_snapshot(
     *,
     preset_name: str | None = None,
 ) -> ProviderSnapshot:
-    from hczkbot.config.loader import load_config, resolve_config_env_vars
+    from biscuitbot.config.loader import load_config, resolve_config_env_vars
 
     return build_provider_snapshot(
         resolve_config_env_vars(load_config(config_path)),

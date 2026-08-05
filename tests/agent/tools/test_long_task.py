@@ -7,17 +7,17 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.agent.tools.context import RequestContext
-from hczkbot.agent.tools.long_task import (
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.agent.tools.context import RequestContext
+from biscuitbot.agent.tools.long_task import (
     CompleteGoalTool,
     LongTaskTool,
 )
-from hczkbot.bus.queue import MessageBus
-from hczkbot.bus.runtime_events import RuntimeEventBus
-from hczkbot.session.goal_state import GOAL_STATE_KEY
-from hczkbot.session.manager import SessionManager
-from hczkbot.session.webui_turns import WebuiTurnCoordinator
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.bus.runtime_events import RuntimeEventBus
+from biscuitbot.session.goal_state import GOAL_STATE_KEY
+from biscuitbot.session.manager import SessionManager
+from biscuitbot.session.webui_turns import WebuiTurnCoordinator
 
 
 def _tools(sm: SessionManager) -> tuple[LongTaskTool, CompleteGoalTool]:

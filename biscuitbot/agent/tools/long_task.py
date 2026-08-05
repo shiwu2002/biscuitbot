@@ -6,7 +6,7 @@ from the skills listing (path shown there) before composing ``long_task.goal`` t
 
 ``long_task`` registers an objective on the session (JSON-serializable metadata).
 Active objectives are mirrored each turn into the Runtime Context block (see
-``hczkbot.session.goal_state.goal_state_runtime_lines``) so compaction cannot hide them.
+``biscuitbot.session.goal_state.goal_state_runtime_lines``) so compaction cannot hide them.
 Work proceeds in ordinary agent turns (same runner, compaction as configured).
 Call ``complete_goal`` when the sustained objective should stop being tracked:
 finished successfully, or cancelled / superseded / redirected—in every case the recap should match reality.
@@ -20,11 +20,11 @@ from contextvars import ContextVar
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.context import ContextAware, RequestContext
-from hczkbot.agent.tools.schema import StringSchema, tool_parameters_schema
-from hczkbot.bus.runtime_events import GoalStateChanged, RuntimeEventBus, RuntimeEventContext
-from hczkbot.session.goal_state import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from biscuitbot.agent.tools.schema import StringSchema, tool_parameters_schema
+from biscuitbot.bus.runtime_events import GoalStateChanged, RuntimeEventBus, RuntimeEventContext
+from biscuitbot.session.goal_state import (
     GOAL_STATE_KEY,
     discard_legacy_goal_state_key,
     goal_state_raw,
@@ -32,7 +32,7 @@ from hczkbot.session.goal_state import (
 )
 
 if TYPE_CHECKING:
-    from hczkbot.session.manager import SessionManager
+    from biscuitbot.session.manager import SessionManager
 
 
 def _iso_now() -> str:

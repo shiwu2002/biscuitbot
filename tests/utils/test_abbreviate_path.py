@@ -1,7 +1,7 @@
 """Tests for abbreviate_path utility."""
 
 import os
-from hczkbot.utils.path import abbreviate_path
+from biscuitbot.utils.path import abbreviate_path
 
 
 class TestAbbreviatePathShort:
@@ -53,14 +53,14 @@ class TestAbbreviatePathLong:
 
 class TestAbbreviatePathWindows:
     def test_windows_drive_path(self):
-        path = "D:\\Documents\\GitHub\\hczkbot\\src\\utils\\helpers.py"
+        path = "D:\\Documents\\GitHub\\biscuitbot\\src\\utils\\helpers.py"
         result = abbreviate_path(path, max_len=40)
         assert result.endswith("helpers.py")
-        assert "hczkbot" in result
+        assert "biscuitbot" in result
 
     def test_windows_home(self):
         home = os.path.expanduser("~")
-        path = os.path.join(home, ".hczkbot", "workspace", "log.txt")
+        path = os.path.join(home, ".biscuitbot", "workspace", "log.txt")
         result = abbreviate_path(path)
         assert result.startswith("~/")
         assert "log.txt" in result

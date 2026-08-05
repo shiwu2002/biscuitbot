@@ -1,4 +1,4 @@
-"""MCP client: connects to MCP servers and wraps their tools as native hczkbot tools."""
+"""MCP client: connects to MCP servers and wraps their tools as native biscuitbot tools."""
 
 import asyncio
 import os
@@ -13,15 +13,15 @@ from weakref import WeakKeyDictionary
 import httpx
 from loguru import logger
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.bus.events import (
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.bus.events import (
     INBOUND_META_RUNTIME_CONTROL,
     RUNTIME_CONTROL_ACK,
     RUNTIME_CONTROL_MCP_RELOAD,
     InboundMessage,
 )
-from hczkbot.security.network import validate_url_target
+from biscuitbot.security.network import validate_url_target
 
 # Transient connection errors that warrant a single retry.
 # These typically happen when an MCP server restarts or a network
@@ -314,7 +314,7 @@ class _MCPWrapperBase(Tool):
 
 
 class MCPToolWrapper(_MCPWrapperBase):
-    """Wraps a single MCP server tool as a hczkbot Tool."""
+    """Wraps a single MCP server tool as a biscuitbot Tool."""
 
     _plugin_discoverable = False
 
@@ -412,7 +412,7 @@ class MCPToolWrapper(_MCPWrapperBase):
 
 
 class MCPResourceWrapper(_MCPWrapperBase):
-    """Wraps an MCP resource URI as a read-only hczkbot Tool."""
+    """Wraps an MCP resource URI as a read-only biscuitbot Tool."""
 
     _plugin_discoverable = False
 
@@ -516,7 +516,7 @@ class MCPResourceWrapper(_MCPWrapperBase):
 
 
 class MCPPromptWrapper(_MCPWrapperBase):
-    """Wraps an MCP prompt as a read-only hczkbot Tool."""
+    """Wraps an MCP prompt as a read-only biscuitbot Tool."""
 
     _plugin_discoverable = False
 
@@ -939,7 +939,7 @@ def runtime_lines(
                 f"@{raw_name} ({display}; transport={transport}) is configured in WebUI Settings, "
                 "but this gateway has not loaded the latest MCP settings yet. "
                 f"Tools with prefix `{prefix}` may not be available yet; if they are missing, "
-                "tell the user to restart hczkbot."
+                "tell the user to restart biscuitbot."
             )
             continue
         if connected_server_names is not None and raw_name not in connected_server_names:
@@ -948,7 +948,7 @@ def runtime_lines(
                 f"@{raw_name} ({display}; transport={transport}) is configured, "
                 "but its MCP connection is not currently live. "
                 f"Tools with prefix `{prefix}` may be unavailable; tell the user to open Settings, "
-                "run the preset test, and restart hczkbot only if hot reload is unavailable."
+                "run the preset test, and restart biscuitbot only if hot reload is unavailable."
             )
             continue
         lines.append(
@@ -991,7 +991,7 @@ async def reload_servers(state: Any, registry: ToolRegistry) -> dict[str, Any]:
     """Reconcile live MCP connections with the current config file."""
     async with _reload_lock(state):
         try:
-            from hczkbot.config.loader import load_config, resolve_config_env_vars
+            from biscuitbot.config.loader import load_config, resolve_config_env_vars
 
             config = resolve_config_env_vars(load_config())
             next_servers = dict(config.tools.mcp_servers)
@@ -999,7 +999,7 @@ async def reload_servers(state: Any, registry: ToolRegistry) -> dict[str, Any]:
             logger.warning("MCP hot reload could not read config: {}", exc)
             return {
                 "ok": False,
-                "message": "Could not reload MCP config. Restart hczkbot to pick up changes.",
+                "message": "Could not reload MCP config. Restart biscuitbot to pick up changes.",
                 "requires_restart": True,
                 "error": str(exc),
             }
@@ -1043,9 +1043,9 @@ async def reload_servers(state: Any, registry: ToolRegistry) -> dict[str, Any]:
         elif unchanged:
             message = "MCP config is already live."
         elif retry_missing and not added and not changed and not removed:
-            message = "MCP connections refreshed without restarting hczkbot."
+            message = "MCP connections refreshed without restarting biscuitbot."
         else:
-            message = "MCP config reloaded without restarting hczkbot."
+            message = "MCP config reloaded without restarting biscuitbot."
 
         logger.info(
             "MCP hot reload: added={} changed={} removed={} retried={} connected={} failed={} tools_removed={}",
@@ -1093,7 +1093,7 @@ async def request_mcp_reload(bus: Any, *, timeout: float = 15.0) -> dict[str, An
     except asyncio.TimeoutError:
         return {
             "ok": False,
-            "message": "MCP hot reload timed out. Restart hczkbot to pick up changes.",
+            "message": "MCP hot reload timed out. Restart biscuitbot to pick up changes.",
             "requires_restart": True,
         }
     return result if isinstance(result, dict) else {
@@ -1116,7 +1116,7 @@ async def handle_runtime_control(state: Any, msg: InboundMessage, registry: Tool
         logger.exception("MCP hot reload failed")
         result = {
             "ok": False,
-            "message": "MCP hot reload failed. Restart hczkbot to pick up changes.",
+            "message": "MCP hot reload failed. Restart biscuitbot to pick up changes.",
             "requires_restart": True,
             "error": str(exc),
         }

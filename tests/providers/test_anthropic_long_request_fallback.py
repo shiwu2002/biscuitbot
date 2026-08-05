@@ -13,8 +13,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.base import LLMResponse
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.base import LLMResponse
 
 _LONG_REQUEST_MESSAGE = (
     "Streaming is required for operations that may take longer than 10 minutes. "

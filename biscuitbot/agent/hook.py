@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
 
 @dataclass(slots=True)

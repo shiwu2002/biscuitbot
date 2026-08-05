@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from hczkbot.api.server import (
+from biscuitbot.api.server import (
     _FileSizeExceeded,
     _parse_json_content,
     _save_base64_data_url,
     create_app,
 )
-from hczkbot.utils.document import extract_documents
+from biscuitbot.utils.document import extract_documents
 
 try:
     from aiohttp.test_utils import TestClient, TestServer
@@ -373,7 +373,7 @@ async def test_json_base64_image_upload(aiohttp_client, mock_agent, tmp_path) ->
 
 
 # ---------------------------------------------------------------------------
-# extract_documents tests (now in hczkbot.utils.document)
+# extract_documents tests (now in biscuitbot.utils.document)
 # ---------------------------------------------------------------------------
 
 def test_extract_documents_separates_images_from_docs(tmp_path) -> None:
@@ -400,7 +400,7 @@ def test_extract_documents_skips_extraction_errors(tmp_path, monkeypatch) -> Non
     bad_file = tmp_path / "broken.docx"
     bad_file.write_text("not a docx", encoding="utf-8")
 
-    import hczkbot.utils.document as _doc
+    import biscuitbot.utils.document as _doc
     monkeypatch.setattr(
         _doc, "extract_text",
         lambda _path: "[error: failed to extract DOCX: boom]",

@@ -2,22 +2,22 @@
 
 ## 1. 概述
 
-hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核心理念：不把所有工具的完整 JSON Schema 一次性塞给模型，而是只默认下发少量"常驻"工具的 schema，其余工具通过 `INDEX.md` 目录索引暴露名称与一句话能力描述，由模型按需通过 `discover_tools` 元工具加载完整 schema 后再调用。
+biscuitbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核心理念：不把所有工具的完整 JSON Schema 一次性塞给模型，而是只默认下发少量"常驻"工具的 schema，其余工具通过 `INDEX.md` 目录索引暴露名称与一句话能力描述，由模型按需通过 `discover_tools` 元工具加载完整 schema 后再调用。
 
 该设计在工具数量增长时仍能控制系统提示词体积，同时保留可发现性。围绕这一理念，系统还提供：冷门仓库（长期未调用工具的轮转与自动恢复）、夜间维护（文档一致性 / 重复检测 / 冷门轮转三合一 cron）、运行时自定义工具注册等能力。
 
-核心入口：[registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/registry.py) 中的 `ToolRegistry`。
+核心入口：[registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/registry.py) 中的 `ToolRegistry`。
 
 ## 2. 工具注册与自动发现
 
-[loader.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/loader.py) 中的 `ToolLoader` 提供两条发现路径：
+[loader.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/loader.py) 中的 `ToolLoader` 提供两条发现路径：
 
-1. **pkgutil 包扫描**：遍历 `hczkbot.agent.tools` 包下所有模块（跳过 `base`、`schema`、`registry`、`context`、`loader`、`config`、`file_state`、`sandbox`、`mcp`、`__init__`、`runtime_state` 以及以 `_` 开头的模块），收集非抽象 `Tool` 子类。受 `_plugin_discoverable` 与 `_scopes` 控制。
-2. **entry_points 插件**：通过 `entry_points(group="hczkbot.tools")` 加载外部插件，内置工具同名时优先保留内置。
+1. **pkgutil 包扫描**：遍历 `biscuitbot.agent.tools` 包下所有模块（跳过 `base`、`schema`、`registry`、`context`、`loader`、`config`、`file_state`、`sandbox`、`mcp`、`__init__`、`runtime_state` 以及以 `_` 开头的模块），收集非抽象 `Tool` 子类。受 `_plugin_discoverable` 与 `_scopes` 控制。
+2. **entry_points 插件**：通过 `entry_points(group="biscuitbot.tools")` 加载外部插件，内置工具同名时优先保留内置。
 
 `load()` 时按 `tool_cls.enabled(ctx)` 过滤、`tool_cls.create(ctx)` 实例化、`registry.register(tool)` 注册，内置优先于插件。
 
-[base.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/base.py) 中 `Tool` 基类的关键属性：
+[base.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/base.py) 中 `Tool` 基类的关键属性：
 
 | 属性 | 含义 |
 |------|------|
@@ -32,7 +32,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ### 3.1 INDEX.md 生成
 
-[registry.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/registry.py) 的 `generate_index()` 负责生成注入系统提示词的 `INDEX.md`，逻辑要点：
+[registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/registry.py) 的 `generate_index()` 负责生成注入系统提示词的 `INDEX.md`，逻辑要点：
 
 - **排除 `_always_include` 工具**：其完整 schema 已通过 `tools` 参数下发，列入索引会冗余。
 - **排除冷门工具**：`self._usage_stats.is_cold(name)` 为 `True` 的工具已被轮转到冷门仓库，需通过 `cold_storage` 搜索。
@@ -42,7 +42,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ### 3.2 discover_tools 元工具
 
-[discover.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/discover.py) 中的 `DiscoverToolsTool`（`_always_include=True`）接收 `query` 与可选 `limit`（默认 5，上限 10），调用 `registry.fuzzy_search(query, limit)`：
+[discover.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/discover.py) 中的 `DiscoverToolsTool`（`_always_include=True`）接收 `query` 与可选 `limit`（默认 5，上限 10），调用 `registry.fuzzy_search(query, limit)`：
 
 - 名称精确匹配 +100 分、子串匹配 +20 分；
 - 名称 + capability 的 token 重叠数 ×4 分，全命中再 +5 分；
@@ -64,7 +64,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ### 4.1 调用热度追踪
 
-[usage_stats.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/usage_stats.py) 中的 `UsageStats` 记录每个工具的 `call_count` 与 `last_called_at`，持久化到工作目录 `.agent_tools/` 下的 `usage_stats.json` 与 `cold_storage.json`。`ToolRegistry.execute` 每次成功调用后通过 `self._usage_stats.record_call(name)` 记录。
+[usage_stats.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/usage_stats.py) 中的 `UsageStats` 记录每个工具的 `call_count` 与 `last_called_at`，持久化到工作目录 `.agent_tools/` 下的 `usage_stats.json` 与 `cold_storage.json`。`ToolRegistry.execute` 每次成功调用后通过 `self._usage_stats.record_call(name)` 记录。
 
 ### 4.2 冷门轮转
 
@@ -78,7 +78,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ### 4.3 冷门搜索工具
 
-[cold_storage.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/cold_storage.py) 中的 `ColdStorageTool`（`_always_include=True`，名称 `cold_storage`）搜索冷门仓库：`search_cold(query, limit)` 先按 token 重叠评分，回退到子串匹配；`query` 为 `list all` / `全部` / `所有` 时返回全部冷门条目。返回每个条目的 `name / capability / usage_md / source_file` 与"调用后自动恢复"提示。
+[cold_storage.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/cold_storage.py) 中的 `ColdStorageTool`（`_always_include=True`，名称 `cold_storage`）搜索冷门仓库：`search_cold(query, limit)` 先按 token 重叠评分，回退到子串匹配；`query` 为 `list all` / `全部` / `所有` 时返回全部冷门条目。返回每个条目的 `name / capability / usage_md / source_file` 与"调用后自动恢复"提示。
 
 ### 4.4 自动恢复
 
@@ -86,11 +86,11 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ### 4.5 配置
 
-`cold_storage_days`（默认 **14**，`0` 表示禁用冷门轮转），定义于 [schema.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py) 的 `ToolsConfig`。
+`cold_storage_days`（默认 **14**，`0` 表示禁用冷门轮转），定义于 [schema.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/schema.py) 的 `ToolsConfig`。
 
 ## 5. 夜间维护
 
-[commands.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/cli/commands.py) 中注册的系统 cron 任务 `nightly_maintenance`，调度 `0 23 * * *`（每天 23:00，时区取 `config.agents.defaults.timezone`）。任务处理逻辑为三合一：
+[commands.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/cli/commands.py) 中注册的系统 cron 任务 `nightly_maintenance`，调度 `0 23 * * *`（每天 23:00，时区取 `config.agents.defaults.timezone`）。任务处理逻辑为三合一：
 
 1. **文档一致性检查**：`check_docs_consistency(agent.tools, agent.workspace)` 发现不匹配时，`build_repair_task(mismatches)` 构造修复任务 prompt，通过 `agent.subagents.spawn(..., label="docs-repair", ...)` 派生修复 subagent 自动重写 stale md。
 2. **重复检测**：以 `tools_config.duplicate_similarity_threshold` 为阈值调用 `check_duplicates`，发现重复时 `build_duplicate_report` 生成报告并 `logger.warning`（仅报告，不自动合并）。
@@ -100,7 +100,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ## 6. 重复检测
 
-[duplicate_check.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/duplicate_check.py) 通过 **Jaccard token 重叠率** 检测功能相似的工具或技能：
+[duplicate_check.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/duplicate_check.py) 通过 **Jaccard token 重叠率** 检测功能相似的工具或技能：
 
 - `_tokenize` 对 `name + capability` 小写化、按非字母数字切分，过滤停用词与长度 < 3 的 token；
 - `_jaccard(a, b)` 返回 `|交集| / |并集|`，两空集视为 0；
@@ -111,7 +111,7 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 ## 7. 文档一致性检查
 
-[docs_consistency.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/docs_consistency.py) 的 `check_docs_consistency(registry, workspace)` 对每个带 `_usage_md` 的工具检查 4 项匹配：
+[docs_consistency.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/docs_consistency.py) 的 `check_docs_consistency(registry, workspace)` 对每个带 `_usage_md` 的工具检查 4 项匹配：
 
 1. **md 文件存在**：`_resolve_md_path` 依次尝试绝对路径、tools 包相对、workspace 相对。
 2. **标题匹配**：md 中需出现 `# {tool.name}`。
@@ -124,37 +124,37 @@ hczkbot 的工具系统采用 **渐进式发现（Progressive Discovery）** 核
 
 | 名称 | 文件 | 能力 | always_include |
 |------|------|------|:---:|
-| apply_patch | [apply_patch.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/apply_patch.py) | 应用统一 diff 补丁修改文件 | 否 |
-| cold_storage | [cold_storage.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/cold_storage.py) | 搜索冷门仓库中被轮转的工具 | 是 |
-| complete_goal | [long_task.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/long_task.py) | 完成长任务目标 | 否 |
-| cron | [cron.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/cron.py) | 管理 cron 定时任务 | 否 |
-| discover_tools | [discover.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/discover.py) | 按需加载工具完整 schema | 是 |
-| edit_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/filesystem.py) | 精确字符串替换编辑文件 | 否 |
-| exec | [shell.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/shell.py) | 执行 shell 命令 | 是 |
-| find_files | [search.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/search.py) | 按文件名 glob 模式查找 | 否 |
-| generate_image | [image_generation.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/image_generation.py) | 生成图像 | 否 |
-| grep | [search.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/search.py) | 正则搜索文件内容 | 否 |
-| list_dir | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/filesystem.py) | 列出目录条目 | 否 |
-| list_exec_sessions | [exec_session.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/exec_session.py) | 列出运行中的 exec 会话 | 否 |
-| long_task | [long_task.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/long_task.py) | 启动长任务 | 否 |
-| message | [message.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/message.py) | 发送消息到通道 | 是 |
-| my | [self.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/self.py) | 自我描述与配置查询 | 否 |
-| read_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/filesystem.py) | 读取文件内容 | 是 |
-| register_tool | [register_tool.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/register_tool.py) | 注册运行时自定义工具 | 是 |
-| run_cli_app | [cli_apps.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/cli_apps.py) | 运行 CLI 应用 | 否 |
-| screenshot | [screenshot.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/screenshot.py) | 截屏 | 否 |
-| spawn | [spawn.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/spawn.py) | 派生子代理 | 否 |
-| unregister_tool | [register_tool.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/register_tool.py) | 卸载自定义工具 | 是 |
-| web_fetch | [web.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/web.py) | 抓取 URL 并转 markdown | 否 |
-| web_search | [web.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/web.py) | 网页搜索 | 是 |
-| write_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/filesystem.py) | 写入或覆盖文件 | 否 |
-| write_stdin | [exec_session.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/exec_session.py) | 向 exec 会话写入 stdin | 否 |
+| apply_patch | [apply_patch.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/apply_patch.py) | 应用统一 diff 补丁修改文件 | 否 |
+| cold_storage | [cold_storage.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/cold_storage.py) | 搜索冷门仓库中被轮转的工具 | 是 |
+| complete_goal | [long_task.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/long_task.py) | 完成长任务目标 | 否 |
+| cron | [cron.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/cron.py) | 管理 cron 定时任务 | 否 |
+| discover_tools | [discover.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/discover.py) | 按需加载工具完整 schema | 是 |
+| edit_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/filesystem.py) | 精确字符串替换编辑文件 | 否 |
+| exec | [shell.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/shell.py) | 执行 shell 命令 | 是 |
+| find_files | [search.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/search.py) | 按文件名 glob 模式查找 | 否 |
+| generate_image | [image_generation.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/image_generation.py) | 生成图像 | 否 |
+| grep | [search.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/search.py) | 正则搜索文件内容 | 否 |
+| list_dir | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/filesystem.py) | 列出目录条目 | 否 |
+| list_exec_sessions | [exec_session.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/exec_session.py) | 列出运行中的 exec 会话 | 否 |
+| long_task | [long_task.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/long_task.py) | 启动长任务 | 否 |
+| message | [message.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/message.py) | 发送消息到通道 | 是 |
+| my | [self.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/self.py) | 自我描述与配置查询 | 否 |
+| read_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/filesystem.py) | 读取文件内容 | 是 |
+| register_tool | [register_tool.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/register_tool.py) | 注册运行时自定义工具 | 是 |
+| run_cli_app | [cli_apps.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/cli_apps.py) | 运行 CLI 应用 | 否 |
+| screenshot | [screenshot.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/screenshot.py) | 截屏 | 否 |
+| spawn | [spawn.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/spawn.py) | 派生子代理 | 否 |
+| unregister_tool | [register_tool.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/register_tool.py) | 卸载自定义工具 | 是 |
+| web_fetch | [web.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/web.py) | 抓取 URL 并转 markdown | 否 |
+| web_search | [web.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/web.py) | 网页搜索 | 是 |
+| write_file | [filesystem.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/filesystem.py) | 写入或覆盖文件 | 否 |
+| write_stdin | [exec_session.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/exec_session.py) | 向 exec 会话写入 stdin | 否 |
 
-> MCP 工具（`mcp_` 前缀）由 [mcp.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/agent/tools/mcp.py) 动态生成，名称来自远端 server，未列入上表。
+> MCP 工具（`mcp_` 前缀）由 [mcp.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/agent/tools/mcp.py) 动态生成，名称来自远端 server，未列入上表。
 
 ## 9. 配置项
 
-`ToolsConfig`（[schema.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py) 第 300–346 行）配置项：
+`ToolsConfig`（[schema.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/schema.py) 第 300–346 行）配置项：
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|

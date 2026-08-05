@@ -14,11 +14,11 @@ from urllib.parse import unquote, urljoin, urlparse
 import httpx
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.schema import Base
-from hczkbot.security.network import validate_resolved_url, validate_url_target
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.schema import Base
+from biscuitbot.security.network import validate_resolved_url, validate_url_target
 
 DINGTALK_MAX_REMOTE_MEDIA_BYTES = 20 * 1024 * 1024
 DINGTALK_MAX_REMOTE_MEDIA_REDIRECTS = 3
@@ -43,10 +43,10 @@ except ImportError:
     ChatbotMessage = None  # type: ignore[assignment,misc]
 
 
-class HczkbotDingTalkHandler(CallbackHandler):
+class BiscuitbotDingTalkHandler(CallbackHandler):
     """
     Standard DingTalk Stream SDK Callback Handler.
-    Parses incoming messages and forwards them to the Hczkbot channel.
+    Parses incoming messages and forwards them to the Biscuitbot channel.
     """
 
     def __init__(self, channel: "DingTalkChannel"):
@@ -129,7 +129,7 @@ class HczkbotDingTalkHandler(CallbackHandler):
 
             self.channel.logger.info("Received message from {} ({}): {}", sender_name, sender_id, content)
 
-            # Forward to Hczkbot via _on_message (non-blocking).
+            # Forward to Biscuitbot via _on_message (non-blocking).
             # Store reference to prevent GC before task completes.
             task = asyncio.create_task(
                 self.channel._on_message(
@@ -224,7 +224,7 @@ class DingTalkChannel(BaseChannel):
             self._client = DingTalkStreamClient(credential)
 
             # Register standard handler
-            handler = HczkbotDingTalkHandler(self)
+            handler = BiscuitbotDingTalkHandler(self)
             self._client.register_callback_handler(ChatbotMessage.TOPIC, handler)
 
             self.logger.info("bot started with Stream Mode")
@@ -592,7 +592,7 @@ class DingTalkChannel(BaseChannel):
             token,
             chat_id,
             "sampleMarkdown",
-            {"text": content, "title": "Hczkbot Reply"},
+            {"text": content, "title": "Biscuitbot Reply"},
         )
 
     async def _send_media_ref(self, token: str, chat_id: str, media_ref: str) -> bool:
@@ -685,7 +685,7 @@ class DingTalkChannel(BaseChannel):
         conversation_type: str | None = None,
         conversation_id: str | None = None,
     ) -> None:
-        """Handle incoming message (called by HczkbotDingTalkHandler).
+        """Handle incoming message (called by BiscuitbotDingTalkHandler).
 
         Delegates to BaseChannel._handle_message() which enforces allow_from
         permission checks before publishing to the bus.
@@ -718,7 +718,7 @@ class DingTalkChannel(BaseChannel):
         sender_id: str,
     ) -> str | None:
         """Download a DingTalk file to the media directory, return local path."""
-        from hczkbot.config.paths import get_media_dir
+        from biscuitbot.config.paths import get_media_dir
 
         try:
             token = await self._get_access_token()

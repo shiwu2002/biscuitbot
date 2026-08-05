@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING, Any, Literal
 from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
-from hczkbot.config_base import Base
-from hczkbot.cron.types import CronSchedule
+from biscuitbot.config_base import Base
+from biscuitbot.cron.types import CronSchedule
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.cli_apps import CliAppsToolConfig
-    from hczkbot.agent.tools.filesystem import FileToolsConfig
-    from hczkbot.agent.tools.image_generation import ImageGenerationToolConfig
-    from hczkbot.agent.tools.screenshot import ScreenshotToolConfig
-    from hczkbot.agent.tools.self import MyToolConfig
-    from hczkbot.agent.tools.shell import ExecToolConfig
-    from hczkbot.agent.tools.system_io import SystemIoToolConfig
-    from hczkbot.agent.tools.web import WebToolsConfig
+    from biscuitbot.agent.tools.cli_apps import CliAppsToolConfig
+    from biscuitbot.agent.tools.filesystem import FileToolsConfig
+    from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
+    from biscuitbot.agent.tools.screenshot import ScreenshotToolConfig
+    from biscuitbot.agent.tools.self import MyToolConfig
+    from biscuitbot.agent.tools.shell import ExecToolConfig
+    from biscuitbot.agent.tools.system_io import SystemIoToolConfig
+    from biscuitbot.agent.tools.web import WebToolsConfig
 
 
 class ChannelsConfig(Base):
@@ -44,7 +44,7 @@ class TranscriptionConfig(Base):
     """Cross-channel audio transcription configuration."""
 
     enabled: bool = True
-    provider: str | None = None  # Validated by hczkbot.audio.transcription_registry.
+    provider: str | None = None  # Validated by biscuitbot.audio.transcription_registry.
     model: str | None = None
     language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")
     max_duration_sec: int = Field(default=120, ge=1, le=600)
@@ -104,7 +104,7 @@ class ModelPresetConfig(Base):
     reasoning_effort: str | None = None
 
     def to_generation_settings(self) -> Any:
-        from hczkbot.providers.base import GenerationSettings
+        from biscuitbot.providers.base import GenerationSettings
         return GenerationSettings(
             temperature=self.temperature,
             max_tokens=self.max_tokens,
@@ -115,7 +115,7 @@ class ModelPresetConfig(Base):
 class AgentDefaults(Base):
     """Default agent configuration."""
 
-    workspace: str = "~/.hczkbot/workspace"
+    workspace: str = "~/.biscuitbot/workspace"
     model_preset: str | None = None  # Active preset name — takes precedence over fields below
     model: str = "deepseek/deepseek-v4-pro"
     provider: str = (
@@ -139,8 +139,8 @@ class AgentDefaults(Base):
     )  # Max characters for tool hint display (e.g. "$ cd …/project && npm test")
     reasoning_effort: str | None = None  # low / medium / high / adaptive / none — LLM thinking effort; None preserves the provider default
     timezone: str = "UTC"  # IANA timezone, e.g. "Asia/Shanghai", "America/New_York"
-    bot_name: str = "hczkbot"  # Display name shown in CLI prompts (e.g. "{name} is thinking...")
-    bot_icon: str = "🐺"  # Short icon (emoji or text) shown next to the bot name in CLI; "" to omit
+    bot_name: str = "biscuitbot"  # Display name shown in CLI prompts (e.g. "{name} is thinking...")
+    bot_icon: str = "🍪"  # Short icon (emoji or text) shown next to the bot name in CLI; "" to omit
     unified_session: bool = False  # Share one session across all channels (single-user multi-device)
     disabled_skills: list[str] = Field(default_factory=list)  # Skill names to exclude from loading (e.g. ["summarize", "skill-creator"])
     session_ttl_minutes: int = Field(
@@ -225,7 +225,7 @@ class ProvidersConfig(Base):
     def convert_extra_providers(self):
         """Convert extra fields (custom providers) to ProviderConfig objects."""
         if self.model_extra:
-            from hczkbot.providers.registry import find_by_name
+            from biscuitbot.providers.registry import find_by_name
 
             for key, value in self.model_extra.items():
                 if spec := find_by_name(key):
@@ -304,19 +304,19 @@ class ToolsConfig(Base):
     tool implementations.
     """
 
-    web: WebToolsConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.web", "WebToolsConfig"))
-    exec: ExecToolConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.shell", "ExecToolConfig"))
-    file: FileToolsConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.filesystem", "FileToolsConfig"))
-    cli_apps: CliAppsToolConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.cli_apps", "CliAppsToolConfig"))
-    my: MyToolConfig = Field(default_factory=lambda: _lazy_default("hczkbot.agent.tools.self", "MyToolConfig"))
+    web: WebToolsConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.web", "WebToolsConfig"))
+    exec: ExecToolConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.shell", "ExecToolConfig"))
+    file: FileToolsConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.filesystem", "FileToolsConfig"))
+    cli_apps: CliAppsToolConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.cli_apps", "CliAppsToolConfig"))
+    my: MyToolConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.self", "MyToolConfig"))
     image_generation: ImageGenerationToolConfig = Field(
-        default_factory=lambda: _lazy_default("hczkbot.agent.tools.image_generation", "ImageGenerationToolConfig"),
+        default_factory=lambda: _lazy_default("biscuitbot.agent.tools.image_generation", "ImageGenerationToolConfig"),
     )
     screenshot: ScreenshotToolConfig = Field(
-        default_factory=lambda: _lazy_default("hczkbot.agent.tools.screenshot", "ScreenshotToolConfig"),
+        default_factory=lambda: _lazy_default("biscuitbot.agent.tools.screenshot", "ScreenshotToolConfig"),
     )
     system_io: SystemIoToolConfig = Field(
-        default_factory=lambda: _lazy_default("hczkbot.agent.tools.system_io", "SystemIoToolConfig"),
+        default_factory=lambda: _lazy_default("biscuitbot.agent.tools.system_io", "SystemIoToolConfig"),
     )
     restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
     guard_level: str = Field(
@@ -351,7 +351,7 @@ class ToolsConfig(Base):
     @classmethod
     def _normalize_guard_level(cls, value: Any) -> Any:
         """Lowercase and validate guard_level; fall back to 'standard' on unknown values."""
-        from hczkbot.security.guard_level import normalize_guard_level
+        from biscuitbot.security.guard_level import normalize_guard_level
 
         if isinstance(value, str):
             return normalize_guard_level(value)
@@ -359,7 +359,7 @@ class ToolsConfig(Base):
 
 
 class Config(BaseSettings):
-    """Root configuration for hczkbot."""
+    """Root configuration for biscuitbot."""
 
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
@@ -419,7 +419,7 @@ class Config(BaseSettings):
         preset: ModelPresetConfig | None = None,
     ) -> tuple["ProviderConfig | None", str | None]:
         """Match provider config and its registry name. Returns (config, spec_name)."""
-        from hczkbot.providers.registry import (
+        from biscuitbot.providers.registry import (
             PROVIDERS,
             find_by_name,
         )
@@ -553,7 +553,7 @@ class Config(BaseSettings):
         preset: ModelPresetConfig | None = None,
     ) -> str | None:
         """Get API base URL for the given model, falling back to the provider default when present."""
-        from hczkbot.providers.registry import find_by_name
+        from biscuitbot.providers.registry import find_by_name
 
         p, name = self._match_provider(model, preset=preset)
         if p and p.api_base:
@@ -564,7 +564,7 @@ class Config(BaseSettings):
                 return spec.default_api_base
         return None
 
-    model_config = ConfigDict(env_prefix="HCZKBOT_", env_nested_delimiter="__")
+    model_config = ConfigDict(env_prefix="BISCUITBOT_", env_nested_delimiter="__")
 
 
 def _resolve_tool_config_refs() -> None:
@@ -572,18 +572,18 @@ def _resolve_tool_config_refs() -> None:
 
     Must be called after all modules are loaded (breaks circular imports).
     Re-exports the classes into this module's namespace so existing imports
-    like ``from hczkbot.config.schema import ExecToolConfig`` continue to work.
+    like ``from biscuitbot.config.schema import ExecToolConfig`` continue to work.
     """
     import sys
 
-    from hczkbot.agent.tools.cli_apps import CliAppsToolConfig
-    from hczkbot.agent.tools.filesystem import FileToolsConfig
-    from hczkbot.agent.tools.image_generation import ImageGenerationToolConfig
-    from hczkbot.agent.tools.screenshot import ScreenshotToolConfig
-    from hczkbot.agent.tools.self import MyToolConfig
-    from hczkbot.agent.tools.shell import ExecToolConfig
-    from hczkbot.agent.tools.system_io import SystemIoToolConfig
-    from hczkbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
+    from biscuitbot.agent.tools.cli_apps import CliAppsToolConfig
+    from biscuitbot.agent.tools.filesystem import FileToolsConfig
+    from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
+    from biscuitbot.agent.tools.screenshot import ScreenshotToolConfig
+    from biscuitbot.agent.tools.self import MyToolConfig
+    from biscuitbot.agent.tools.shell import ExecToolConfig
+    from biscuitbot.agent.tools.system_io import SystemIoToolConfig
+    from biscuitbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
 
     # Re-export into this module's namespace
     mod = sys.modules[__name__]

@@ -1,6 +1,6 @@
 """Pairing module for DM sender approval."""
 
-from hczkbot.pairing.store import (
+from biscuitbot.pairing.store import (
     approve_code,
     deny_code,
     format_expiry,

@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Callable, Coroutine
 
 from loguru import logger
 
-from hczkbot.session.manager import Session, SessionManager
+from biscuitbot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from hczkbot.agent.memory import Consolidator
+    from biscuitbot.agent.memory import Consolidator
 
 
 class AutoCompact:

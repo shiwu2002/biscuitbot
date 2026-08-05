@@ -8,7 +8,7 @@ from typing import Any
 
 from loguru import logger
 
-from hczkbot.utils.helpers import stringify_text_blocks
+from biscuitbot.utils.helpers import stringify_text_blocks
 
 _MAX_REPEAT_EXTERNAL_LOOKUPS = 2
 

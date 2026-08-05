@@ -23,77 +23,77 @@ from loguru import logger
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
-from hczkbot.command.builtin import builtin_command_palette
-from hczkbot.cron.session_turns import is_bound_cron_job
-from hczkbot.cron.types import CronJob, CronSchedule
-from hczkbot.utils.subagent_channel_display import scrub_subagent_messages_for_channel
-from hczkbot.webui.file_preview import WebUIFilePreviewError, file_preview_payload
-from hczkbot.webui.gateway_tokens import GatewayTokenStore, token_response_payload
-from hczkbot.webui.http_utils import (
+from biscuitbot.command.builtin import builtin_command_palette
+from biscuitbot.cron.session_turns import is_bound_cron_job
+from biscuitbot.cron.types import CronJob, CronSchedule
+from biscuitbot.utils.subagent_channel_display import scrub_subagent_messages_for_channel
+from biscuitbot.webui.file_preview import WebUIFilePreviewError, file_preview_payload
+from biscuitbot.webui.gateway_tokens import GatewayTokenStore, token_response_payload
+from biscuitbot.webui.http_utils import (
     case_insensitive_header as _case_insensitive_header,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     host_for_url as _host_for_url,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     http_error as _http_error,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     http_json_response as _http_json_response,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     http_response as _http_response,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     is_localhost as _is_localhost,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     issue_route_secret_matches as _issue_route_secret_matches,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     normalize_config_path as _normalize_config_path,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     parse_query as _parse_query,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     parse_request_path as _parse_request_path,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     query_first as _query_first,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     safe_host_header as _safe_host_header,
 )
-from hczkbot.webui.media_gateway import WebUIMediaGateway
-from hczkbot.webui.session_automations import (
+from biscuitbot.webui.media_gateway import WebUIMediaGateway
+from biscuitbot.webui.session_automations import (
     all_automations_payload,
     serialize_automation_jobs,
     session_automation_jobs,
     session_automations_payload,
 )
-from hczkbot.webui.session_list_index import list_webui_sessions
-from hczkbot.webui.sidebar_state import (
+from biscuitbot.webui.session_list_index import list_webui_sessions
+from biscuitbot.webui.sidebar_state import (
     read_webui_sidebar_state,
     write_webui_sidebar_state,
 )
-from hczkbot.webui.skills_api import (
+from biscuitbot.webui.skills_api import (
     SkillDeletionError,
     delete_workspace_skill,
     webui_skill_detail_payload,
     webui_skills_payload,
 )
-from hczkbot.webui.thread_disk import delete_webui_thread
-from hczkbot.webui.transcript import build_webui_thread_response
-from hczkbot.webui.workspaces import WebUIWorkspaceController
+from biscuitbot.webui.thread_disk import delete_webui_thread
+from biscuitbot.webui.transcript import build_webui_thread_response
+from biscuitbot.webui.workspaces import WebUIWorkspaceController
 
 _SLOW_WEBUI_HTTP_LOG_MS = 1_000
-_AUTOMATION_VALUES_HEADER = "X-Hczkbot-Automation-Values"
+_AUTOMATION_VALUES_HEADER = "X-Biscuitbot-Automation-Values"
 
 if TYPE_CHECKING:
-    from hczkbot.bus.queue import MessageBus
-    from hczkbot.cron.service import CronService
-    from hczkbot.session.manager import SessionManager
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.cron.service import CronService
+    from biscuitbot.session.manager import SessionManager
 
 
 def _decode_api_key(raw_key: str) -> str | None:
@@ -106,7 +106,7 @@ def _decode_api_key(raw_key: str) -> str | None:
 
 def _default_model_name_from_config() -> str | None:
     try:
-        from hczkbot.config.loader import load_config
+        from biscuitbot.config.loader import load_config
         model = load_config().resolve_preset().model.strip()
         return model or None
     except Exception as e:
@@ -176,8 +176,8 @@ class GatewayHTTPHandler:
         self._log = log
         self._runtime_surface = runtime_surface
 
-        from hczkbot.webui.settings_api import runtime_capabilities as _rc
-        from hczkbot.webui.settings_routes import WebUISettingsRouter
+        from biscuitbot.webui.settings_api import runtime_capabilities as _rc
+        from biscuitbot.webui.settings_routes import WebUISettingsRouter
 
         self._capabilities = _rc(runtime_surface, runtime_capabilities_overrides or {})
         self.settings_routes = WebUISettingsRouter(
@@ -388,7 +388,7 @@ class GatewayHTTPHandler:
     def _sessions_list_payload(self) -> dict[str, Any]:
         assert self.session_manager is not None
         sessions = list_webui_sessions(self.session_manager)
-        from hczkbot.session.webui_turns import websocket_turn_wall_started_at
+        from biscuitbot.session.webui_turns import websocket_turn_wall_started_at
 
         cleaned = []
         for s in sessions:

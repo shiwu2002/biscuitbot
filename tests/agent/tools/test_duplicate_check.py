@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.duplicate_check import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.duplicate_check import (
     SKILL_DUPLICATE,
     TOOL_DUPLICATE,
     DuplicatePair,
@@ -15,7 +15,7 @@ from hczkbot.agent.tools.duplicate_check import (
     check_duplicates,
     check_skill_duplicates,
 )
-from hczkbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

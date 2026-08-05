@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from hczkbot.providers.anthropic_provider import AnthropicProvider
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 def test_openai_compat_error_captures_retry_after_from_headers() -> None:

@@ -61,6 +61,6 @@ Tool signatures are provided automatically via function calling. This section do
 
 ## Scheduling and Background Work
 
-- Use `cron` for scheduled reminders or recurring jobs; do not run `hczkbot cron` through `exec`.
+- Use `cron` for scheduled reminders or recurring jobs; do not run `biscuitbot cron` through `exec`.
 - For heartbeat tasks, update `HEARTBEAT.md`; the default gateway heartbeat cron job handles periodic checks when enabled.
 - Do not write reminders only to memory files when the user expects an actual notification.

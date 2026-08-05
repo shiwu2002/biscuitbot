@@ -9,16 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.session.keys import UNIFIED_SESSION_KEY
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.session.keys import UNIFIED_SESSION_KEY
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
 
 def _make_loop(*, tools_config=None):
     """Create a minimal AgentLoop with mocked dependencies."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -26,9 +26,9 @@ def _make_loop(*, tools_config=None):
     workspace = MagicMock()
     workspace.__truediv__ = MagicMock(return_value=MagicMock())
 
-    with patch("hczkbot.agent.loop.ContextBuilder"), \
-         patch("hczkbot.agent.loop.SessionManager"), \
-         patch("hczkbot.agent.loop.SubagentManager") as mock_sub_mgr:
+    with patch("biscuitbot.agent.loop.ContextBuilder"), \
+         patch("biscuitbot.agent.loop.SessionManager"), \
+         patch("biscuitbot.agent.loop.SubagentManager") as mock_sub_mgr:
         mock_sub_mgr.return_value.cancel_by_session = AsyncMock(return_value=0)
         loop = AgentLoop(bus=bus, provider=provider, workspace=workspace, tools_config=tools_config)
     return loop, bus
@@ -37,9 +37,9 @@ def _make_loop(*, tools_config=None):
 class TestHandleStop:
     @pytest.mark.asyncio
     async def test_stop_no_active_task(self):
-        from hczkbot.bus.events import InboundMessage
-        from hczkbot.command.builtin import cmd_stop
-        from hczkbot.command.router import CommandContext
+        from biscuitbot.bus.events import InboundMessage
+        from biscuitbot.command.builtin import cmd_stop
+        from biscuitbot.command.router import CommandContext
 
         loop, bus = _make_loop()
         msg = InboundMessage(channel="test", sender_id="u1", chat_id="c1", content="/stop")
@@ -49,9 +49,9 @@ class TestHandleStop:
 
     @pytest.mark.asyncio
     async def test_stop_cancels_active_task(self):
-        from hczkbot.bus.events import InboundMessage
-        from hczkbot.command.builtin import cmd_stop
-        from hczkbot.command.router import CommandContext
+        from biscuitbot.bus.events import InboundMessage
+        from biscuitbot.command.builtin import cmd_stop
+        from biscuitbot.command.router import CommandContext
 
         loop, bus = _make_loop()
         cancelled = asyncio.Event()
@@ -76,9 +76,9 @@ class TestHandleStop:
 
     @pytest.mark.asyncio
     async def test_stop_cancels_multiple_tasks(self):
-        from hczkbot.bus.events import InboundMessage
-        from hczkbot.command.builtin import cmd_stop
-        from hczkbot.command.router import CommandContext
+        from biscuitbot.bus.events import InboundMessage
+        from biscuitbot.command.builtin import cmd_stop
+        from biscuitbot.command.router import CommandContext
 
         loop, bus = _make_loop()
         events = [asyncio.Event(), asyncio.Event()]
@@ -104,8 +104,8 @@ class TestHandleStop:
 
 class TestDispatch:
     def test_exec_tool_not_registered_when_disabled(self):
-        from hczkbot.agent.tools.shell import ExecToolConfig
-        from hczkbot.config.schema import ToolsConfig
+        from biscuitbot.agent.tools.shell import ExecToolConfig
+        from biscuitbot.config.schema import ToolsConfig
 
         loop, _bus = _make_loop(tools_config=ToolsConfig(exec=ExecToolConfig(enable=False)))
 
@@ -113,7 +113,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_processes_and_publishes(self):
-        from hczkbot.bus.events import InboundMessage, OutboundMessage
+        from biscuitbot.bus.events import InboundMessage, OutboundMessage
 
         loop, bus = _make_loop()
         msg = InboundMessage(channel="test", sender_id="u1", chat_id="c1", content="hello")
@@ -126,7 +126,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_dispatch_streaming_preserves_message_metadata(self):
-        from hczkbot.bus.events import InboundMessage
+        from biscuitbot.bus.events import InboundMessage
 
         loop, bus = _make_loop()
         msg = InboundMessage(
@@ -163,7 +163,7 @@ class TestDispatch:
 
     @pytest.mark.asyncio
     async def test_processing_lock_serializes(self):
-        from hczkbot.bus.events import InboundMessage, OutboundMessage
+        from biscuitbot.bus.events import InboundMessage, OutboundMessage
 
         loop, bus = _make_loop()
         order = []
@@ -196,8 +196,8 @@ class TestDispatch:
 class TestSubagentCancellation:
     @pytest.mark.asyncio
     async def test_cancel_by_session(self):
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.bus.queue import MessageBus
 
         bus = MessageBus()
         provider = MagicMock()
@@ -229,8 +229,8 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_cancel_by_session_no_tasks(self):
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.bus.queue import MessageBus
 
         bus = MessageBus()
         provider = MagicMock()
@@ -245,9 +245,9 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_subagent_preserves_reasoning_fields_in_tool_turn(self, monkeypatch, tmp_path):
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.bus.queue import MessageBus
-        from hczkbot.providers.base import LLMResponse, ToolCallRequest
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.bus.queue import MessageBus
+        from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
         bus = MessageBus()
         provider = MagicMock()
@@ -279,9 +279,9 @@ class TestSubagentCancellation:
         async def fake_execute(self, **kwargs):
             return "tool result"
 
-        monkeypatch.setattr("hczkbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
+        monkeypatch.setattr("biscuitbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
 
-        from hczkbot.agent.subagent import SubagentStatus
+        from biscuitbot.agent.subagent import SubagentStatus
         status = SubagentStatus(task_id="sub-1", label="label", task_description="do task", started_at=time.monotonic())
         await mgr._run_subagent("sub-1", "do task", "label", {"channel": "test", "chat_id": "c1"}, status)
 
@@ -295,10 +295,10 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_subagent_exec_tool_not_registered_when_disabled(self, tmp_path):
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.agent.tools.shell import ExecToolConfig
-        from hczkbot.bus.queue import MessageBus
-        from hczkbot.config.schema import ToolsConfig
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.agent.tools.shell import ExecToolConfig
+        from biscuitbot.bus.queue import MessageBus
+        from biscuitbot.config.schema import ToolsConfig
 
         bus = MessageBus()
         provider = MagicMock()
@@ -323,7 +323,7 @@ class TestSubagentCancellation:
 
         mgr.runner.run = AsyncMock(side_effect=fake_run)
 
-        from hczkbot.agent.subagent import SubagentStatus
+        from biscuitbot.agent.subagent import SubagentStatus
         status = SubagentStatus(task_id="sub-1", label="label", task_description="do task", started_at=time.monotonic())
         await mgr._run_subagent("sub-1", "do task", "label", {"channel": "test", "chat_id": "c1"}, status)
 
@@ -332,9 +332,9 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_subagent_announces_error_when_tool_execution_fails(self, monkeypatch, tmp_path):
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.bus.queue import MessageBus
-        from hczkbot.providers.base import LLMResponse, ToolCallRequest
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.bus.queue import MessageBus
+        from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
         bus = MessageBus()
         provider = MagicMock()
@@ -359,9 +359,9 @@ class TestSubagentCancellation:
                 return "first result"
             raise RuntimeError("boom")
 
-        monkeypatch.setattr("hczkbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
+        monkeypatch.setattr("biscuitbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
 
-        from hczkbot.agent.subagent import SubagentStatus
+        from biscuitbot.agent.subagent import SubagentStatus
         status = SubagentStatus(task_id="sub-1", label="label", task_description="do task", started_at=time.monotonic())
         await mgr._run_subagent("sub-1", "do task", "label", {"channel": "test", "chat_id": "c1"}, status)
 
@@ -375,9 +375,9 @@ class TestSubagentCancellation:
 
     @pytest.mark.asyncio
     async def test_cancel_by_session_cancels_running_subagent_tool(self, monkeypatch, tmp_path):
-        from hczkbot.agent.subagent import SubagentManager, SubagentStatus
-        from hczkbot.bus.queue import MessageBus
-        from hczkbot.providers.base import LLMResponse, ToolCallRequest
+        from biscuitbot.agent.subagent import SubagentManager, SubagentStatus
+        from biscuitbot.bus.queue import MessageBus
+        from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
         bus = MessageBus()
         provider = MagicMock()
@@ -405,7 +405,7 @@ class TestSubagentCancellation:
                 cancelled.set()
                 raise
 
-        monkeypatch.setattr("hczkbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
+        monkeypatch.setattr("biscuitbot.agent.tools.filesystem.ListDirTool.execute", fake_execute)
 
         task = asyncio.create_task(
             mgr._run_subagent(
@@ -431,8 +431,8 @@ class TestSubagentAnnounceSessionKey:
 
     def _make_mgr(self):
         """Create a SubagentManager with mocked deps and its bus."""
-        from hczkbot.agent.subagent import SubagentManager
-        from hczkbot.bus.queue import MessageBus
+        from biscuitbot.agent.subagent import SubagentManager
+        from biscuitbot.bus.queue import MessageBus
 
         bus = MessageBus()
         provider = MagicMock()
@@ -486,7 +486,7 @@ class TestSubagentAnnounceSessionKey:
     @pytest.mark.asyncio
     async def test_session_key_flows_through_run_subagent(self):
         """Verify session_key in origin propagates from _run_subagent to _announce_result."""
-        from hczkbot.agent.subagent import SubagentStatus
+        from biscuitbot.agent.subagent import SubagentStatus
 
         mgr, bus = self._make_mgr()
 

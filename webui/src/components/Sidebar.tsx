@@ -115,7 +115,7 @@ export function Sidebar(props: SidebarProps) {
           )}
         >
           <img
-            src="/brand/hczkbot_icon.png"
+            src="/brand/biscuitbot_icon.png"
             alt=""
             className="h-8 w-8 select-none object-contain"
             draggable={false}

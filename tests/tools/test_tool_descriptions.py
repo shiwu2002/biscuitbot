@@ -1,8 +1,8 @@
-from hczkbot.agent.tools.apply_patch import ApplyPatchTool
-from hczkbot.agent.tools.exec_session import ListExecSessionsTool, WriteStdinTool
-from hczkbot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
-from hczkbot.agent.tools.search import FindFilesTool, GrepTool
-from hczkbot.agent.tools.shell import ExecTool
+from biscuitbot.agent.tools.apply_patch import ApplyPatchTool
+from biscuitbot.agent.tools.exec_session import ListExecSessionsTool, WriteStdinTool
+from biscuitbot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
+from biscuitbot.agent.tools.search import FindFilesTool, GrepTool
+from biscuitbot.agent.tools.shell import ExecTool
 
 
 def test_coding_tool_descriptions_steer_editing_priority() -> None:

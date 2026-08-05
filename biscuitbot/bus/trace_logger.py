@@ -4,7 +4,7 @@
 以彩色缩进树形格式输出到终端，便于在纯后端端口查看执行步骤。
 
 启用方式：
-    from hczkbot.bus.trace_logger import install_trace_logger
+    from biscuitbot.bus.trace_logger import install_trace_logger
     install_trace_logger(runtime_events_bus)
 
 或在 CLI 启动时自动安装（见 cli/commands.py）。
@@ -15,7 +15,7 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from hczkbot.bus.runtime_events import AgentTraceEvent, RuntimeEventBus
+from biscuitbot.bus.runtime_events import AgentTraceEvent, RuntimeEventBus
 
 
 # ANSI 颜色码

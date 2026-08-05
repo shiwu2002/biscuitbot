@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.loader import ToolLoader
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.loader import ToolLoader
 
 
 def test_loader_discovers_entry_point_tools():
@@ -39,7 +39,7 @@ def test_loader_discovers_entry_point_tools():
 
     mock_ep.load.return_value = _FakeTool
 
-    with patch("hczkbot.agent.tools.loader.entry_points", return_value=[mock_ep]):
+    with patch("biscuitbot.agent.tools.loader.entry_points", return_value=[mock_ep]):
         loader = ToolLoader()
         discovered = loader._discover_plugins()
 
@@ -69,7 +69,7 @@ def test_loader_skips_abstract_entry_point_tools():
 
     mock_ep.load.return_value = _AbstractTool
 
-    with patch("hczkbot.agent.tools.loader.entry_points", return_value=[mock_ep]):
+    with patch("biscuitbot.agent.tools.loader.entry_points", return_value=[mock_ep]):
         loader = ToolLoader()
         discovered = loader._discover_plugins()
 

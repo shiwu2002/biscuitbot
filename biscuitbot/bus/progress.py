@@ -2,7 +2,7 @@
 
 These helpers convert agent progress callbacks into outbound chat messages.
 Runtime state notifications such as turn lifecycle and model changes live in
-``hczkbot.bus.runtime_events``.
+``biscuitbot.bus.runtime_events``.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from hczkbot.bus.events import InboundMessage, OutboundMessage
-from hczkbot.bus.queue import MessageBus
+from biscuitbot.bus.events import InboundMessage, OutboundMessage
+from biscuitbot.bus.queue import MessageBus
 
 
 def build_bus_progress_callback(

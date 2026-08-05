@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from hczkbot.agent.tools.base import Tool
-from hczkbot.agent.tools.registry import ToolRegistry
+from biscuitbot.agent.tools.base import Tool
+from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 class _FakeTool(Tool):

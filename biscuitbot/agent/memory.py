@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator
 
 from loguru import logger
 
-from hczkbot.session.manager import Session
-from hczkbot.utils.gitstore import GitStore
-from hczkbot.utils.helpers import (
+from biscuitbot.session.manager import Session
+from biscuitbot.utils.gitstore import GitStore
+from biscuitbot.utils.helpers import (
     atomic_write_text,
     ensure_dir,
     estimate_message_tokens,
@@ -27,11 +27,11 @@ from hczkbot.utils.helpers import (
     truncate_text,
     truncate_text_to_tokens,
 )
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.utils.prompt_templates import render_template
 
 if TYPE_CHECKING:
-    from hczkbot.providers.base import LLMProvider
-    from hczkbot.session.manager import SessionManager
+    from biscuitbot.providers.base import LLMProvider
+    from biscuitbot.session.manager import SessionManager
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +521,7 @@ class MemoryStore:
 
         Returns ``(prompt, last_cursor)`` or ``None`` if nothing to process.
         """
-        from hczkbot.agent.skills import BUILTIN_SKILLS_DIR
+        from biscuitbot.agent.skills import BUILTIN_SKILLS_DIR
 
         last_cursor = self.get_last_dream_cursor()
         entries = self.read_unprocessed_history(since_cursor=last_cursor)
@@ -547,11 +547,11 @@ class MemoryStore:
 
     def build_dream_tools(self):
         """Build the restricted tool registry used by Dream runs."""
-        from hczkbot.agent.skills import BUILTIN_SKILLS_DIR
-        from hczkbot.agent.tools.apply_patch import ApplyPatchTool
-        from hczkbot.agent.tools.file_state import FileStates
-        from hczkbot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
-        from hczkbot.agent.tools.registry import ToolRegistry
+        from biscuitbot.agent.skills import BUILTIN_SKILLS_DIR
+        from biscuitbot.agent.tools.apply_patch import ApplyPatchTool
+        from biscuitbot.agent.tools.file_state import FileStates
+        from biscuitbot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
+        from biscuitbot.agent.tools.registry import ToolRegistry
 
         tools = ToolRegistry()
         file_states = FileStates()

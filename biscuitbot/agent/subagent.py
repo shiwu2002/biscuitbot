@@ -10,23 +10,23 @@ from typing import Any, Callable
 
 from loguru import logger
 
-from hczkbot.agent.hook import AgentHook, AgentHookContext
-from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-from hczkbot.agent.tools.context import ToolContext
-from hczkbot.agent.tools.file_state import FileStates
-from hczkbot.agent.tools.loader import ToolLoader
-from hczkbot.agent.tools.registry import ToolRegistry
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.schema import AgentDefaults, ToolsConfig
-from hczkbot.providers.base import LLMProvider
-from hczkbot.security.workspace_access import (
+from biscuitbot.agent.hook import AgentHook, AgentHookContext
+from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+from biscuitbot.agent.tools.context import ToolContext
+from biscuitbot.agent.tools.file_state import FileStates
+from biscuitbot.agent.tools.loader import ToolLoader
+from biscuitbot.agent.tools.registry import ToolRegistry
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.schema import AgentDefaults, ToolsConfig
+from biscuitbot.providers.base import LLMProvider
+from biscuitbot.security.workspace_access import (
     WorkspaceScope,
     bind_workspace_scope,
     reset_workspace_scope,
     workspace_sandbox_status,
 )
-from hczkbot.utils.prompt_templates import render_template
+from biscuitbot.utils.prompt_templates import render_template
 
 
 @dataclass(slots=True)
@@ -355,8 +355,8 @@ class SubagentManager:
 
     def _build_subagent_prompt(self, workspace: Path | None = None) -> str:
         """Build a focused system prompt for the subagent."""
-        from hczkbot.agent.context import ContextBuilder
-        from hczkbot.agent.skills import SkillsLoader
+        from biscuitbot.agent.context import ContextBuilder
+        from biscuitbot.agent.skills import SkillsLoader
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)
         root = workspace or self.workspace

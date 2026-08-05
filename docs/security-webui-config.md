@@ -1,19 +1,19 @@
 # 安全机制、WebUI 与配置系统文档
 
-本文档涵盖 hczkbot 的安全防护机制、WebUI 后端服务与配置系统实现。所有路径策略与 SSRF 防护为结构性边界，不随防护等级关闭。
+本文档涵盖 biscuitbot 的安全防护机制、WebUI 后端服务与配置系统实现。所有路径策略与 SSRF 防护为结构性边界，不随防护等级关闭。
 
 ## 1. 安全机制概览
 
-hczkbot 的安全机制分为两层：
+biscuitbot 的安全机制分为两层：
 
 - **结构性边界**（始终启用）：SSRF 网络隔离、工作区路径边界、环境变量白名单、子代理隔离、运行时上下文标记。这些不是提示注入防线，关闭会造成与注入无关的严重损害。
-- **可配置防护等级**（`guard_level`）：针对提示注入与 Shell 拦截的分级策略，由 [guard_level.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/security/guard_level.py) 统一管理。
+- **可配置防护等级**（`guard_level`）：针对提示注入与 Shell 拦截的分级策略，由 [guard_level.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/security/guard_level.py) 统一管理。
 
 此外包含配对审批、凭据保护等运行时机制。
 
 ## 2. SSRF 防护
 
-实现于 [network.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/security/network.py)。
+实现于 [network.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/security/network.py)。
 
 ### 2.1 封锁的网络段
 
@@ -45,7 +45,7 @@ hczkbot 的安全机制分为两层：
 
 ## 3. 工作区边界
 
-实现于 [workspace_policy.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/security/workspace_policy.py) 与 [workspace_access.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/security/workspace_access.py)。
+实现于 [workspace_policy.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/security/workspace_policy.py) 与 [workspace_access.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/security/workspace_access.py)。
 
 ### 3.1 路径校验
 
@@ -60,7 +60,7 @@ hczkbot 的安全机制分为两层：
 
 ## 4. 防护等级
 
-实现于 [guard_level.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/security/guard_level.py)。`GuardPolicy` 为 `frozen dataclass`，由 `ToolsConfig.guard_level` 构造。
+实现于 [guard_level.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/security/guard_level.py)。`GuardPolicy` 为 `frozen dataclass`，由 `ToolsConfig.guard_level` 构造。
 
 ### 4.1 等级枚举
 
@@ -85,7 +85,7 @@ hczkbot 的安全机制分为两层：
 
 ## 5. 配对审批
 
-实现于 [pairing/store.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/pairing/store.py)。持久化于 `~/.hczkbot/pairing.json`，按 channel 维护 `approved` 与 `pending` 两个集合。
+实现于 [pairing/store.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/pairing/store.py)。持久化于 `~/.biscuitbot/pairing.json`，按 channel 维护 `approved` 与 `pending` 两个集合。
 
 ### 5.1 配对码生成与审批流程
 
@@ -100,24 +100,24 @@ hczkbot 的安全机制分为两层：
 
 ## 6. 凭据保护
 
-- **配置文件权限**：加载配置时尽力 `chmod 0o600`（Windows 上为 no-op）。涉及 [loader.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/loader.py)（line 149）、[websocket.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/websocket.py)（line 484）及 whatsapp/weixin/matrix 等渠道状态文件。
-- **HTTP token 仅限 Authorization 头**：[gateway_tokens.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/gateway_tokens.py) 中 `check_api_token` 仅从 `Authorization` 头读取 token，query-param token 仅保留给 WebSocket 握手（浏览器限制）。token 形如 `nbwt_<secrets.token_urlsafe(32)>`。
-- **无 secret 时 localhost-only**：[websocket.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/channels/websocket.py) 的 `wildcard_host_requires_auth` 校验——当 `host` 为 `0.0.0.0` 或 `::`（全接口）时，必须设置 `token` 或 `token_issue_secret`，否则启动报错，防止未认证暴露。
+- **配置文件权限**：加载配置时尽力 `chmod 0o600`（Windows 上为 no-op）。涉及 [loader.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/loader.py)（line 149）、[websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py)（line 484）及 whatsapp/weixin/matrix 等渠道状态文件。
+- **HTTP token 仅限 Authorization 头**：[gateway_tokens.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/gateway_tokens.py) 中 `check_api_token` 仅从 `Authorization` 头读取 token，query-param token 仅保留给 WebSocket 握手（浏览器限制）。token 形如 `nbwt_<secrets.token_urlsafe(32)>`。
+- **无 secret 时 localhost-only**：[websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py) 的 `wildcard_host_requires_auth` 校验——当 `host` 为 `0.0.0.0` 或 `::`（全接口）时，必须设置 `token` 或 `token_issue_secret`，否则启动报错，防止未认证暴露。
 
 ## 7. 配置系统
 
 ### 7.1 配置加载
 
-实现于 [loader.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/loader.py)。
+实现于 [loader.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/loader.py)。
 
 - **双格式**：JSON 为主，YAML 为遗留格式。`_migrate_yaml_to_json` 在无 `config.json` 时自动将 `config.yaml`/`config.yml` 迁移为 JSON。
-- **查找顺序**：`get_config_path()` 优先返回 `set_config_path` 设置的路径（多实例支持），否则回退 `~/.hczkbot/config.json`。
+- **查找顺序**：`get_config_path()` 优先返回 `set_config_path` 设置的路径（多实例支持），否则回退 `~/.biscuitbot/config.json`。
 - **环境变量引用**：`${VAR}` 模式在纯字符串/字典/列表中递归解析（`os.environ.get`），未定义变量解析为空。
 - **遗留迁移**：YAML → JSON 自动迁移，保留原 YAML。
 
 ### 7.2 核心 Schema
 
-实现于 [schema.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/schema.py)，基于 pydantic `BaseSettings`。
+实现于 [schema.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/schema.py)，基于 pydantic `BaseSettings`。
 
 #### Config（根配置）
 
@@ -147,7 +147,7 @@ hczkbot 的安全机制分为两层：
 
 ### 7.3 运行时路径
 
-实现于 [paths.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/config/paths.py)，全部基于 `get_config_path().parent` 派生实例级数据目录。
+实现于 [paths.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/paths.py)，全部基于 `get_config_path().parent` 派生实例级数据目录。
 
 | 函数 | 用途 |
 |------|------|
@@ -156,17 +156,17 @@ hczkbot 的安全机制分为两层：
 | `get_runtime_subdir(name)` | 命名子目录 |
 | `get_media_dir(channel)` | 媒体目录（可按 channel 命名空间） |
 | `get_cron_dir` / `get_logs_dir` / `get_webui_dir` | cron / 日志 / WebUI 持久化线程 |
-| `get_workspace_path(workspace)` | 代理工作区（默认 `~/.hczkbot/workspace`） |
+| `get_workspace_path(workspace)` | 代理工作区（默认 `~/.biscuitbot/workspace`） |
 
 ## 8. WebUI 后端
 
 ### 8.1 GatewayServices
 
-实现于 [gateway_services.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/gateway_services.py)。`GatewayServices` 为 `frozen dataclass`，显式声明 WebSocket 传输与 HTTP 路由共享的依赖：`http`、`tokens`、`media`、`transcripts`、`workspaces`、`session_manager`、`cron_service`、`cron_pending_job_ids`。`build_gateway_services` 组装 `GatewayTokenStore`、`WebUIMediaGateway`、`WebUITranscriptRecorder`、`WebUIWorkspaceController`、`GatewayHTTPHandler`。
+实现于 [gateway_services.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/gateway_services.py)。`GatewayServices` 为 `frozen dataclass`，显式声明 WebSocket 传输与 HTTP 路由共享的依赖：`http`、`tokens`、`media`、`transcripts`、`workspaces`、`session_manager`、`cron_service`、`cron_pending_job_ids`。`build_gateway_services` 组装 `GatewayTokenStore`、`WebUIMediaGateway`、`WebUITranscriptRecorder`、`WebUIWorkspaceController`、`GatewayHTTPHandler`。
 
 ### 8.2 设置 API
 
-实现于 [settings_api.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/settings_api.py)。`advanced` 设置载荷包含：`restrict_to_workspace`、`workspace_sandbox`、`webui_allow_local_service_access`、`webui_default_access_mode`、`private_service_protection_enabled`、`ssrf_whitelist_count`、`guard_level`、`cold_storage_days`、`duplicate_similarity_threshold`、`mcp_server_count`、`exec_enabled`、`exec_sandbox`。
+实现于 [settings_api.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/settings_api.py)。`advanced` 设置载荷包含：`restrict_to_workspace`、`workspace_sandbox`、`webui_allow_local_service_access`、`webui_default_access_mode`、`private_service_protection_enabled`、`ssrf_whitelist_count`、`guard_level`、`cold_storage_days`、`duplicate_similarity_threshold`、`mcp_server_count`、`exec_enabled`、`exec_sandbox`。
 
 更新校验（`_query_first_alias` 同时支持 snake/camel）：
 
@@ -177,10 +177,33 @@ hczkbot 的安全机制分为两层：
 
 ### 8.3 其他后端服务
 
-- [skills_api.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/skills_api.py)：技能目录与启用/禁用。
-- [mcp_presets_api.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/mcp_presets_api.py)：MCP 服务器预设管理。
-- [media_api.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/media_api.py)：媒体文件上传/预览。
-- [session_automations.py](file:///Volumes/data/hczkAgent/nanobot/hczkbot/webui/session_automations.py)：会话自动化任务调度。
+- [skills_api.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/skills_api.py)：技能目录与启用/禁用。
+- [mcp_presets_api.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/mcp_presets_api.py)：MCP 服务器预设管理。
+- [media_api.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/media_api.py)：媒体文件上传/预览。
+- [session_automations.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/session_automations.py)：会话自动化任务调度。
+
+### 8.4 版本检查与自更新
+
+#### 版本检查
+
+实现于 [version_check.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/version_check.py)。`check_for_update()` 请求 PyPI API（`https://pypi.org/pypi/biscuitbot/json`）获取最新版本号，与当前 `__version__` 比对。使用 5 分钟缓存（`_CACHE_TTL_S = 300`）避免频繁请求。
+
+API 端点：`GET /api/settings/version-check`，返回 `{ updateAvailable: { currentVersion, latestVersion, pypiUrl } | null }`。
+
+#### 一键自更新
+
+实现于 [settings_routes.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/settings_routes.py) 的 `_handle_settings_self_update`。
+
+API 端点：`GET /api/settings/self-update`（使用 GET 因 websockets 服务器不支持 POST 方法）。
+
+执行流程：
+1. 调用 `subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "biscuitbot"])`，超时 120 秒
+2. 解析 pip 输出提取新版本号
+3. 返回 `{ selfUpdate: { success, newVersion, output }, requires_restart: true }`
+
+前端在设置页面显示「检查更新」按钮，检测到新版本后显示「立即更新」按钮，点击后调用自更新 API，更新成功后提示重启应用。
+
+> **安全考虑**：自更新端点需通过 API token 认证（`_authorized` 检查），且仅执行 `pip install --upgrade biscuitbot`，不接受任意包名或命令参数。
 
 ## 9. WebUI 前端
 
@@ -190,7 +213,7 @@ hczkbot 的安全机制分为两层：
 
 - `components/`：`settings/`（设置视图、技能目录、token 用量热图）、`thread/`（会话主界面：消息流、Composer、PromptRail、活动集群、工作区控制）、`ui/`（Radix 基础组件）及顶层组件（`Sidebar`、`ChatList`、`MessageBubble`、`MarkdownText`、`CodeBlock`、`FilePreviewPanel` 等）。
 - `hooks/`：会话、流式、附件、剪贴板、技能、主题、语音录制等 React hooks。
-- `lib/`：`api.ts`、`hczkbot-client.ts`、`http.ts`、`workspace.ts`、`tool-traces.ts`、`bootstrap.ts` 等业务逻辑。
+- `lib/`：`api.ts`、`biscuitbot-client.ts`、`http.ts`、`workspace.ts`、`tool-traces.ts`、`bootstrap.ts` 等业务逻辑。
 - `providers/ClientProvider.tsx`：客户端上下文。
 - `i18n/locales/`：多语言资源。
 - `workers/imageEncode.worker.ts`：图片编码 Web Worker。

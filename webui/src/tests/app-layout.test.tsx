@@ -58,7 +58,7 @@ function baseSettingsPayload() {
       temperature: 0.1,
       reasoning_effort: null,
       timezone: "UTC",
-      bot_name: "hczkbot",
+      bot_name: "biscuitbot",
       bot_icon: "nb",
       tool_hint_max_length: 40,
     },
@@ -186,7 +186,7 @@ vi.mock("@/lib/bootstrap", () => ({
   clearSavedSecret: vi.fn(),
 }));
 
-vi.mock("@/lib/hczkbot-client", () => {
+vi.mock("@/lib/biscuitbot-client", () => {
   class MockClient {
     status = "idle" as const;
     defaultChatId: string | null = null;
@@ -212,7 +212,7 @@ vi.mock("@/lib/hczkbot-client", () => {
     updateUrl = updateUrlSpy;
   }
 
-  return { HczkbotClient: MockClient };
+  return { BiscuitbotClient: MockClient };
 });
 
 import { deriveWsUrl, fetchBootstrap } from "@/lib/bootstrap";
@@ -234,9 +234,9 @@ describe("App layout", () => {
     sessionUpdateHandlers.clear();
     window.history.replaceState(null, "", "/");
     setNavigatorPlatform("Linux x86_64");
-    localStorage.removeItem("hczkbot-webui.sidebar");
-    localStorage.removeItem("hczkbot-webui.sidebar.completed-runs.v1");
-    localStorage.removeItem("hczkbot-webui.sidebar.session-updates.v1");
+    localStorage.removeItem("biscuitbot-webui.sidebar");
+    localStorage.removeItem("biscuitbot-webui.sidebar.completed-runs.v1");
+    localStorage.removeItem("biscuitbot-webui.sidebar.session-updates.v1");
     vi.mocked(fetchBootstrap).mockReset().mockResolvedValue({
       token: "tok",
       ws_path: "/",
@@ -339,7 +339,7 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("Skills · hczkbot");
+    expect(document.title).toBe("Skills · biscuitbot");
 
     fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
     expect(await screen.findByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
@@ -451,7 +451,7 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("Automations · hczkbot");
+    expect(document.title).toBe("Automations · biscuitbot");
 
     const searchInput = within(automationsMain as HTMLElement).getByPlaceholderText(
       "Search task, message, linked chat, or schedule",
@@ -537,7 +537,7 @@ describe("App layout", () => {
     );
     expect(updateCall).toBeTruthy();
     const headers = updateCall?.[1]?.headers as Record<string, string>;
-    expect(JSON.parse(decodeURIComponent(headers["X-Hczkbot-Automation-Values"]))).toEqual({
+    expect(JSON.parse(decodeURIComponent(headers["X-Biscuitbot-Automation-Values"]))).toEqual({
       name: "Past one-shot",
       message: "Updated one-shot message",
     });
@@ -679,7 +679,7 @@ describe("App layout", () => {
     expect(screen.queryByText("近期无问题")).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace automations")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(document.title).toBe("自动任务 · hczkbot");
+    expect(document.title).toBe("自动任务 · biscuitbot");
   });
 
   it("fully collapses the native host sidebar and previews it on hover", async () => {
@@ -1007,7 +1007,7 @@ describe("App layout", () => {
         chatId: "new",
         createdAt: "2026-04-15T12:00:00Z",
         updatedAt: "2026-04-15T12:00:00Z",
-        preview: "hi hczkbot",
+        preview: "hi biscuitbot",
       },
       {
         key: "websocket:alpha",
@@ -1224,7 +1224,7 @@ describe("App layout", () => {
       },
     ];
     localStorage.setItem(
-      "hczkbot-webui.sidebar.session-updates.v1",
+      "biscuitbot-webui.sidebar.session-updates.v1",
       JSON.stringify(["chat-b"]),
     );
 
@@ -1267,7 +1267,7 @@ describe("App layout", () => {
     render(<App />);
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
-    await waitFor(() => expect(document.title).toBe("Active after reload · hczkbot"));
+    await waitFor(() => expect(document.title).toBe("Active after reload · biscuitbot"));
     const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
     expect(
       within(sidebar).getByRole("button", { name: /^Active after reload$/ }),
@@ -1322,7 +1322,7 @@ describe("App layout", () => {
                 temperature: 0.1,
                 reasoning_effort: null,
                 timezone: "UTC",
-                bot_name: "hczkbot",
+                bot_name: "biscuitbot",
                 bot_icon: "nb",
                 tool_hint_max_length: 40,
               },
@@ -1509,12 +1509,12 @@ describe("App layout", () => {
     fireEvent.click(within(sidebar).getByRole("button", { name: "Settings" }));
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(document.title).toBe("Settings · hczkbot");
+    expect(document.title).toBe("Settings · biscuitbot");
     expect(screen.getByTestId("overview-logo-openai")).toBeInTheDocument();
     expect(screen.getByTestId("overview-logo-brave")).toBeInTheDocument();
     expect(screen.getByTestId("overview-logo-openrouter")).toBeInTheDocument();
-    expect(screen.queryByTestId("overview-logo-hczkbot-gateway")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("overview-logo-hczkbot-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("overview-logo-biscuitbot-gateway")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("overview-logo-biscuitbot-workspace")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "Sidebar navigation" })).not.toBeInTheDocument();
     const settingsNav = screen.getByRole("navigation", { name: "Settings sections" });
     expect(settingsNav.className).toContain("overflow-x-auto");
@@ -1693,7 +1693,7 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("Apps · hczkbot");
+    expect(document.title).toBe("Apps · biscuitbot");
   });
 
   it("returns from settings to the blank start page when no session was active", async () => {
@@ -1734,7 +1734,7 @@ describe("App layout", () => {
                 temperature: 0.1,
                 reasoning_effort: null,
                 timezone: "UTC",
-                bot_name: "hczkbot",
+                bot_name: "biscuitbot",
                 bot_icon: "nb",
                 tool_hint_max_length: 40,
               },
@@ -1831,13 +1831,13 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "Sidebar navigation" });
     fireEvent.click(within(sidebar).getByRole("button", { name: "New chat" }));
-    await waitFor(() => expect(document.title).toBe("hczkbot"));
+    await waitFor(() => expect(document.title).toBe("biscuitbot"));
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Settings" }));
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Back to chat" }));
 
-    await waitFor(() => expect(document.title).toBe("hczkbot"));
+    await waitFor(() => expect(document.title).toBe("biscuitbot"));
     expect(screen.getByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
   });
 

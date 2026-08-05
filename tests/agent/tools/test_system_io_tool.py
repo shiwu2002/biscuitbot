@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-from hczkbot.agent.tools.system_io import (
+from biscuitbot.agent.tools.system_io import (
     _ALL_ACTIONS,
     SystemIoTool,
     SystemIoToolConfig,
@@ -95,7 +95,7 @@ class TestSystemIoToolMetadata:
 
     def test_docs_file_exists(self):
         # docs_consistency check requires the usage doc to exist on disk.
-        docs_path = Path(__file__).resolve().parents[3] / "hczkbot" / "agent" / "tools" / "docs" / "system_io.md"
+        docs_path = Path(__file__).resolve().parents[3] / "biscuitbot" / "agent" / "tools" / "docs" / "system_io.md"
         assert docs_path.is_file(), f"missing usage doc: {docs_path}"
 
 
@@ -259,7 +259,7 @@ class TestSystemIoToolHappyPaths:
         monkeypatch.setattr(tool, "_keyboard_backend", lambda: "xdotool")
         monkeypatch.setattr(tool, "_run", _fake_run(0, b"", b""))
         # Force the Linux branch even on macOS test host.
-        import hczkbot.agent.tools.system_io as mod
+        import biscuitbot.agent.tools.system_io as mod
         monkeypatch.setattr(mod, "_IS_LINUX", True)
         monkeypatch.setattr(mod, "_IS_MACOS", False)
         result = await tool.execute(action="key_tap", keys="ctrl+c")
@@ -345,14 +345,14 @@ class TestSystemIoToolTimeoutAndErrors:
 
 class TestSystemIoConfigIntegration:
     def test_tools_config_has_system_io_field(self):
-        from hczkbot.config.schema import ToolsConfig
+        from biscuitbot.config.schema import ToolsConfig
         cfg = ToolsConfig()
         assert hasattr(cfg, "system_io")
         assert cfg.system_io.enable is False
         assert cfg.system_io.allow_actions == []
 
     def test_tools_config_loads_from_camel_case(self):
-        from hczkbot.config.schema import ToolsConfig
+        from biscuitbot.config.schema import ToolsConfig
         cfg = ToolsConfig.model_validate({
             "systemIo": {"enable": True, "allowActions": ["clipboard_read"]},
         })
@@ -360,7 +360,7 @@ class TestSystemIoConfigIntegration:
         assert cfg.system_io.allow_actions == ["clipboard_read"]
 
     def test_system_io_config_reexported_from_schema(self):
-        from hczkbot.config.schema import SystemIoToolConfig as Reexported
+        from biscuitbot.config.schema import SystemIoToolConfig as Reexported
         assert Reexported is SystemIoToolConfig
 
 
@@ -371,22 +371,22 @@ class TestSystemIoConfigIntegration:
 
 class TestSystemIoToolDiscovery:
     def test_loader_discovers_system_io_class(self):
-        from hczkbot.agent.tools.loader import ToolLoader
+        from biscuitbot.agent.tools.loader import ToolLoader
         classes = ToolLoader().discover()
         names = [cls.__name__ for cls in classes]
         assert "SystemIoTool" in names
 
     def test_not_loaded_when_disabled(self):
-        from hczkbot.agent.tools.loader import ToolLoader
-        from hczkbot.agent.tools.registry import ToolRegistry
+        from biscuitbot.agent.tools.loader import ToolLoader
+        from biscuitbot.agent.tools.registry import ToolRegistry
         ctx = _ctx(enable=False)
         registry = ToolRegistry()
         ToolLoader().load(ctx, registry)
         assert not registry.has("system_io")
 
     def test_loaded_when_enabled(self):
-        from hczkbot.agent.tools.loader import ToolLoader
-        from hczkbot.agent.tools.registry import ToolRegistry
+        from biscuitbot.agent.tools.loader import ToolLoader
+        from biscuitbot.agent.tools.registry import ToolRegistry
         ctx = _ctx(enable=True)
         registry = ToolRegistry()
         ToolLoader().load(ctx, registry)
@@ -396,8 +396,8 @@ class TestSystemIoToolDiscovery:
         assert tool.config.enable is True
 
     def test_registry_executes_via_dispatch(self):
-        from hczkbot.agent.tools.loader import ToolLoader
-        from hczkbot.agent.tools.registry import ToolRegistry
+        from biscuitbot.agent.tools.loader import ToolLoader
+        from biscuitbot.agent.tools.registry import ToolRegistry
         ctx = _ctx(enable=True)
         registry = ToolRegistry()
         ToolLoader().load(ctx, registry)

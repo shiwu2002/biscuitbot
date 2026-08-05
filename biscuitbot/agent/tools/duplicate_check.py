@@ -20,8 +20,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.base import Tool
-    from hczkbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.base import Tool
+    from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 # Duplicate-pair categories.  TOOL_DUPLICATE means two registered tools

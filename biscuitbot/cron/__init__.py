@@ -1,6 +1,6 @@
 """Cron service for scheduled agent tasks."""
 
-from hczkbot.cron.types import CronJob, CronSchedule
+from biscuitbot.cron.types import CronJob, CronSchedule
 
 __all__ = ["CronService", "CronJob", "CronSchedule"]
 

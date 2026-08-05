@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from hczkbot.webui import mcp_presets_runtime
+from biscuitbot.webui import mcp_presets_runtime
 
 
 def test_mcp_preset_runtime_lines_describe_tool_prefix() -> None:

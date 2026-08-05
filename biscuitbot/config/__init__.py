@@ -1,7 +1,7 @@
-"""Configuration module for hczkbot."""
+"""Configuration module for biscuitbot."""
 
-from hczkbot.config.loader import get_config_path, load_config
-from hczkbot.config.paths import (
+from biscuitbot.config.loader import get_config_path, load_config
+from biscuitbot.config.paths import (
     get_bridge_install_dir,
     get_cli_history_path,
     get_cron_dir,
@@ -14,7 +14,7 @@ from hczkbot.config.paths import (
     get_webui_dir,
     get_workspace_path,
 )
-from hczkbot.config.schema import Config
+from biscuitbot.config.schema import Config
 
 __all__ = [
     "Config",

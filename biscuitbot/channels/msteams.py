@@ -34,11 +34,11 @@ except ImportError:  # pragma: no cover
 import httpx
 from pydantic import Field
 
-from hczkbot.bus.events import OutboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.channels.base import BaseChannel
-from hczkbot.config.paths import get_workspace_path
-from hczkbot.config.schema import Base
+from biscuitbot.bus.events import OutboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.channels.base import BaseChannel
+from biscuitbot.config.paths import get_workspace_path
+from biscuitbot.config.schema import Base
 
 MSTEAMS_AVAILABLE = (
     importlib.util.find_spec("jwt") is not None
@@ -142,7 +142,7 @@ class MSTeamsChannel(BaseChannel):
     async def start(self) -> None:
         """Start the Teams webhook listener."""
         if not MSTEAMS_AVAILABLE:
-            self.logger.error("PyJWT not installed. Run: pip install hczkbot[msteams]")
+            self.logger.error("PyJWT not installed. Run: pip install biscuitbot[msteams]")
             return
 
         if not self.config.app_id or not self.config.app_password:
@@ -214,7 +214,7 @@ class MSTeamsChannel(BaseChannel):
         self._server = ThreadingHTTPServer((self.config.host, self.config.port), Handler)
         self._server_thread = threading.Thread(
             target=self._server.serve_forever,
-            name="hczkbot-msteams",
+            name="biscuitbot-msteams",
             daemon=True,
         )
         self._server_thread.start()
@@ -458,7 +458,7 @@ class MSTeamsChannel(BaseChannel):
     async def _validate_inbound_auth(self, auth_header: str, activity: dict[str, Any]) -> None:
         """Validate inbound Bot Framework bearer token."""
         if not MSTEAMS_AVAILABLE:
-            raise RuntimeError("PyJWT not installed. Run: pip install hczkbot[msteams]")
+            raise RuntimeError("PyJWT not installed. Run: pip install biscuitbot[msteams]")
 
         if not auth_header.lower().startswith("bearer "):
             raise ValueError("missing bearer token")

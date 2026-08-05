@@ -23,7 +23,7 @@ export interface HostRuntimeInfo {
   engine_transport?: "unix_socket";
 }
 
-export interface HczkbotHostApi {
+export interface BiscuitbotHostApi {
   getRuntimeInfo(): Promise<HostRuntimeInfo>;
   restartEngine(): Promise<void>;
   pickFolder(): Promise<string | null>;
@@ -47,7 +47,7 @@ export type HostSocketEvent =
   | { code?: number; id: string; reason?: string; type: "close" };
 
 type HostSocketBridge = Required<Pick<
-  HczkbotHostApi,
+  BiscuitbotHostApi,
   "closeSocket" | "onSocketEvent" | "openSocket" | "sendSocket"
 >>;
 
@@ -58,13 +58,13 @@ const HOST_WS_CLOSED = 3;
 
 declare global {
   interface Window {
-    hczkbotHost?: HczkbotHostApi;
+    biscuitbotHost?: BiscuitbotHostApi;
   }
 }
 
-export function getHostApi(): HczkbotHostApi | null {
+export function getHostApi(): BiscuitbotHostApi | null {
   if (typeof window === "undefined") return null;
-  return window.hczkbotHost ?? null;
+  return window.biscuitbotHost ?? null;
 }
 
 export function toRuntimeSurface(surface: string | null | undefined): RuntimeSurface {

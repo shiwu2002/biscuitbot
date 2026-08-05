@@ -244,7 +244,7 @@ interface CustomMcpForm {
   toolTimeout: string;
 }
 
-const LOCAL_PREFS_STORAGE_KEY = "hczkbot-webui.settings-preferences";
+const LOCAL_PREFS_STORAGE_KEY = "biscuitbot-webui.settings-preferences";
 
 const DEFAULT_LOCAL_PREFS: LocalPreferences = {
   density: "comfortable",
@@ -370,7 +370,7 @@ const DEFAULT_AGENT_SETTINGS_DRAFT: AgentSettingsDraft = {
   presetLabel: "Default",
   contextWindowTokens: 65_536,
   timezone: "UTC",
-  botName: "hczkbot",
+  botName: "biscuitbot",
   botIcon: "",
   toolHintMaxLength: 40,
 };
@@ -2276,7 +2276,7 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
           {tx("settings.about.version", "Version")}
         </div>
         <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
-          {currentVersion ? `v${currentVersion}` : "hczkbot"}
+          {currentVersion ? `v${currentVersion}` : "biscuitbot"}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
@@ -4106,7 +4106,7 @@ function AutomationsSettings({
             <div className="mx-auto mt-2 max-w-[28rem] text-[12px] leading-5">
               {tx(
                 "settings.automations.emptyHint",
-                "Create one from where it should run so hczkbot keeps the right context.",
+                "Create one from where it should run so biscuitbot keeps the right context.",
               )}
             </div>
           ) : null}
@@ -5388,7 +5388,7 @@ function AppsCatalogSettings({
           <p className="max-w-[680px] text-[13px] leading-5 text-muted-foreground">
             {tx(
               "settings.apps.description",
-              "Add local app adapters and connected tool servers that hczkbot can use from chat.",
+              "Add local app adapters and connected tool servers that biscuitbot can use from chat.",
             )}
           </p>
           <span className="text-[12px] font-medium text-muted-foreground">{caption}</span>
@@ -5444,7 +5444,7 @@ function AppsCatalogSettings({
 
       {requiresRestartPending ? (
         <div className="flex flex-col gap-3 rounded-[12px] border border-amber-500/20 bg-amber-500/8 px-4 py-3 text-[12.5px] text-amber-800 dark:text-amber-200 sm:flex-row sm:items-center sm:justify-between">
-          <span>{tx("settings.mcp.restartRequired", "Restart hczkbot to connect updated MCP tools.")}</span>
+          <span>{tx("settings.mcp.restartRequired", "Restart biscuitbot to connect updated MCP tools.")}</span>
           {onRestart ? (
             <Button
               type="button"
@@ -6448,7 +6448,7 @@ function RuntimeSettings({
       <section>
         <SettingsSectionTitle>{tx("settings.sections.identity", "Identity")}</SettingsSectionTitle>
         <SettingsGroup>
-          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever hczkbot uses a display name.")}>
+          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever biscuitbot uses a display name.")}>
             <Input
               value={form.botName}
               onChange={(event) => setForm((prev) => ({ ...prev, botName: event.target.value }))}
@@ -6474,7 +6474,7 @@ function RuntimeSettings({
             pendingRestart={requiresRestartPending}
             dirtyMessage={
               isNativeHost
-                ? tx("settings.status.hostRestartAfterSaving", "Save changes and hczkbot will restart its engine.")
+                ? tx("settings.status.hostRestartAfterSaving", "Save changes and biscuitbot will restart its engine.")
                 : tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")
             }
             pendingMessage={

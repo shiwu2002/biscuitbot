@@ -15,10 +15,10 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.base import Tool, tool_parameters
 
 if TYPE_CHECKING:
-    from hczkbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 @tool_parameters({

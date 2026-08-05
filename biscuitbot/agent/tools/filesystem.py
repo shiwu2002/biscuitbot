@@ -7,18 +7,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from hczkbot.agent.tools.base import Tool, tool_parameters
-from hczkbot.agent.tools.file_state import FileStates, _hash_file, current_file_states
-from hczkbot.agent.tools.path_utils import resolve_workspace_path
-from hczkbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.file_state import FileStates, _hash_file, current_file_states
+from biscuitbot.agent.tools.path_utils import resolve_workspace_path
+from biscuitbot.agent.tools.schema import (
     BooleanSchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from hczkbot.config_base import Base
-from hczkbot.security.workspace_access import current_tool_workspace
-from hczkbot.utils.helpers import build_image_content_blocks, detect_image_mime
+from biscuitbot.config_base import Base
+from biscuitbot.security.workspace_access import current_tool_workspace
+from biscuitbot.utils.helpers import build_image_content_blocks, detect_image_mime
 
 
 class FileToolsConfig(Base):
@@ -66,7 +66,7 @@ class _FsTool(Tool):
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
-        from hczkbot.agent.skills import BUILTIN_SKILLS_DIR
+        from biscuitbot.agent.skills import BUILTIN_SKILLS_DIR
 
         restrict = (
             ctx.config.restrict_to_workspace
@@ -389,7 +389,7 @@ class ReadFileTool(_FsTool):
         return result
 
     def _read_office_doc(self, fp: Path) -> str:
-        from hczkbot.utils.document import extract_text
+        from biscuitbot.utils.document import extract_text
 
         result = extract_text(fp)
 

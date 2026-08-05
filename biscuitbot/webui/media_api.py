@@ -17,15 +17,15 @@ from typing import Any
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
-from hczkbot.config.paths import get_media_dir
-from hczkbot.utils.helpers import safe_filename
-from hczkbot.webui.http_utils import (
+from biscuitbot.config.paths import get_media_dir
+from biscuitbot.utils.helpers import safe_filename
+from biscuitbot.webui.http_utils import (
     case_insensitive_header as _case_insensitive_header,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     http_error as _http_error,
 )
-from hczkbot.webui.http_utils import (
+from biscuitbot.webui.http_utils import (
     http_response as _http_response,
 )
 

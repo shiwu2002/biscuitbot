@@ -4,8 +4,8 @@ import path from "node:path";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const target = env.HCZKBOT_API_URL ?? "http://127.0.0.1:8765";
-  const hmrPath = "/__hczkbot_vite_hmr";
+  const target = env.BISCUITBOT_API_URL ?? "http://127.0.0.1:8765";
+  const hmrPath = "/__biscuitbot_vite_hmr";
 
   return {
     plugins: [react()],
@@ -22,7 +22,7 @@ export default defineConfig(({ mode }) => {
       exclude: ["@radix-ui/react-dialog"],
     },
     build: {
-      outDir: path.resolve(__dirname, "../hczkbot/web/dist"),
+      outDir: path.resolve(__dirname, "../biscuitbot/web/dist"),
       emptyOutDir: true,
       sourcemap: false,
       rollupOptions: {
@@ -60,7 +60,7 @@ export default defineConfig(({ mode }) => {
       host: "127.0.0.1",
       port: 5199,
       strictPort: true,
-      // Keep Vite's HMR socket on a dedicated path. Hczkbot's app WebSocket is
+      // Keep Vite's HMR socket on a dedicated path. Biscuitbot's app WebSocket is
       // opened directly from the browser to the gateway, so the dev server
       // should never proxy WebSocket upgrades.
       hmr: {

@@ -3,11 +3,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.agent.tools.self import MyTool
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.schema import ModelPresetConfig
-from hczkbot.providers.factory import ProviderSnapshot
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.agent.tools.self import MyTool
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.schema import ModelPresetConfig
+from biscuitbot.providers.factory import ProviderSnapshot
 
 
 def _provider(default_model: str, max_tokens: int = 123) -> MagicMock:
@@ -262,12 +262,12 @@ def test_self_tool_set_model_clears_active_preset(tmp_path) -> None:
 def test_from_config_injects_default_preset(tmp_path) -> None:
     from unittest.mock import patch
 
-    from hczkbot.config.schema import Config
+    from biscuitbot.config.schema import Config
     config = Config.model_validate({
         "agents": {"defaults": {"model": "openai/gpt-4.1", "workspace": str(tmp_path)}},
     })
     fake_provider = _provider("openai/gpt-4.1")
-    with patch("hczkbot.providers.factory.make_provider", return_value=fake_provider):
+    with patch("biscuitbot.providers.factory.make_provider", return_value=fake_provider):
         loop = AgentLoop.from_config(config)
     assert loop.model == "openai/gpt-4.1"
     assert loop.model_preset is None
@@ -278,13 +278,13 @@ def test_from_config_injects_default_preset(tmp_path) -> None:
 def test_from_config_static_preset_loader_does_not_enable_hot_reload(tmp_path) -> None:
     from unittest.mock import patch
 
-    from hczkbot.config.schema import Config
+    from biscuitbot.config.schema import Config
     config = Config.model_validate({
         "agents": {"defaults": {"model": "openai/gpt-4.1", "workspace": str(tmp_path)}},
         "model_presets": {"fast": {"model": "openai/gpt-4.1-mini"}},
     })
     fake_provider = _provider("openai/gpt-4.1")
-    with patch("hczkbot.providers.factory.make_provider", return_value=fake_provider):
+    with patch("biscuitbot.providers.factory.make_provider", return_value=fake_provider):
         loop = AgentLoop.from_config(config)
     assert loop._provider_snapshot_loader is None
     assert loop._preset_snapshot_loader is not None

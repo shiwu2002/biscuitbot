@@ -1,4 +1,4 @@
-"""Tests for ``hczkbot.utils.media_decode``."""
+"""Tests for ``biscuitbot.utils.media_decode``."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import base64
 
 import pytest
 
-from hczkbot.utils.media_decode import (
+from biscuitbot.utils.media_decode import (
     DEFAULT_MAX_BYTES,
     MAX_FILE_SIZE,
     FileSizeExceeded,
@@ -92,8 +92,8 @@ def test_saved_file_lives_under_media_dir(tmp_path) -> None:
 
 def test_legacy_symbols_reexported_from_api_server() -> None:
     """Existing tests import ``_save_base64_data_url`` / ``_FileSizeExceeded``
-    from ``hczkbot.api.server`` — keep the aliases working."""
-    from hczkbot.api import server
+    from ``biscuitbot.api.server`` — keep the aliases working."""
+    from biscuitbot.api import server
 
     assert server._save_base64_data_url is save_base64_data_url
     assert server._FileSizeExceeded is FileSizeExceeded

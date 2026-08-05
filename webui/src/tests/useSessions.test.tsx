@@ -46,7 +46,7 @@ function wrap(client: ReturnType<typeof fakeClient>) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <ClientProvider
-        client={client as unknown as import("@/lib/hczkbot-client").HczkbotClient}
+        client={client as unknown as import("@/lib/biscuitbot-client").BiscuitbotClient}
         token="tok"
       >
         {children}

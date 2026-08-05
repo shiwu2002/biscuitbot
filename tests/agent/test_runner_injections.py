@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from hczkbot.config.schema import AgentDefaults
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.config.schema import AgentDefaults
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 
@@ -25,16 +25,16 @@ def _make_injection_callback(queue: asyncio.Queue):
 
 
 def _make_loop(tmp_path):
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
 
-    with patch("hczkbot.agent.loop.ContextBuilder"), \
-         patch("hczkbot.agent.loop.SessionManager"), \
-         patch("hczkbot.agent.loop.SubagentManager") as mock_sub_mgr:
+    with patch("biscuitbot.agent.loop.ContextBuilder"), \
+         patch("biscuitbot.agent.loop.SessionManager"), \
+         patch("biscuitbot.agent.loop.SubagentManager") as mock_sub_mgr:
         mock_sub_mgr.return_value.cancel_by_session = AsyncMock(return_value=0)
         loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path)
     return loop
@@ -42,7 +42,7 @@ def _make_loop(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_injections_returns_empty_when_no_callback():
     """No injection_callback → empty list."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -60,8 +60,8 @@ async def test_drain_injections_returns_empty_when_no_callback():
 @pytest.mark.asyncio
 async def test_drain_injections_extracts_content_from_inbound_messages():
     """Should extract .content from InboundMessage objects."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -91,8 +91,8 @@ async def test_drain_injections_extracts_content_from_inbound_messages():
 @pytest.mark.asyncio
 async def test_drain_injections_passes_limit_to_callback_when_supported():
     """Limit-aware callbacks can preserve overflow in their own queue."""
-    from hczkbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -126,8 +126,8 @@ async def test_drain_injections_passes_limit_to_callback_when_supported():
 @pytest.mark.asyncio
 async def test_drain_injections_skips_empty_content():
     """Messages with blank content should be filtered out."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -155,7 +155,7 @@ async def test_drain_injections_skips_empty_content():
 @pytest.mark.asyncio
 async def test_drain_injections_filters_empty_dict_payloads():
     """Pre-normalized dict injections should obey the same empty-content guard."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -193,7 +193,7 @@ async def test_drain_injections_skips_objects_with_none_content():
     """Objects exposing content=None should be skipped rather than stringified."""
     from types import SimpleNamespace
 
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -219,7 +219,7 @@ async def test_drain_injections_skips_objects_with_none_content():
 @pytest.mark.asyncio
 async def test_drain_injections_handles_callback_exception():
     """If the callback raises, return empty list (error is logged)."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     runner = AgentRunner(provider)
@@ -241,8 +241,8 @@ async def test_drain_injections_handles_callback_exception():
 @pytest.mark.asyncio
 async def test_checkpoint1_injects_after_tool_execution():
     """Follow-up messages are injected after tool execution, before next LLM call."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -294,9 +294,9 @@ async def test_checkpoint1_injects_after_tool_execution():
 @pytest.mark.asyncio
 async def test_checkpoint2_injects_after_final_response_with_resuming_stream():
     """After final response, if injections exist, stream_end should get resuming=True."""
-    from hczkbot.agent.hook import AgentHook, AgentHookContext
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.hook import AgentHook, AgentHookContext
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -353,8 +353,8 @@ async def test_checkpoint2_injects_after_final_response_with_resuming_stream():
 @pytest.mark.asyncio
 async def test_checkpoint2_preserves_final_response_in_history_before_followup():
     """A follow-up injected after a final answer must still see that answer in history."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -408,9 +408,9 @@ async def test_checkpoint2_preserves_final_response_in_history_before_followup()
 @pytest.mark.asyncio
 async def test_loop_injected_followup_preserves_image_media(tmp_path):
     """Mid-turn follow-ups with images should keep multimodal content."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.bus.events import InboundMessage
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.bus.events import InboundMessage
+    from biscuitbot.bus.queue import MessageBus
 
     image_path = tmp_path / "followup.png"
     image_path.write_bytes(base64.b64decode(
@@ -468,7 +468,7 @@ async def test_loop_injected_followup_preserves_image_media(tmp_path):
 @pytest.mark.asyncio
 async def test_runner_merges_multiple_injected_user_messages_without_losing_media():
     """Multiple injected follow-ups should not create lossy consecutive user messages."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -531,8 +531,8 @@ async def test_runner_merges_multiple_injected_user_messages_without_losing_medi
 @pytest.mark.asyncio
 async def test_injection_cycles_capped_at_max():
     """Injection cycles should be capped at _MAX_INJECTION_CYCLES."""
-    from hczkbot.agent.runner import _MAX_INJECTION_CYCLES, AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import _MAX_INJECTION_CYCLES, AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -572,7 +572,7 @@ async def test_injection_cycles_capped_at_max():
 @pytest.mark.asyncio
 async def test_no_injections_flag_is_false_by_default():
     """had_injections should be False when no injection callback or no messages."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
 
     provider = MagicMock()
 
@@ -605,7 +605,7 @@ async def test_pending_queue_cleanup_on_dispatch(tmp_path):
 
     loop.provider.chat_with_retry = chat_with_retry
 
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.bus.events import InboundMessage
 
     msg = InboundMessage(channel="cli", sender_id="u", chat_id="c", content="hello")
     # The queue should not exist before dispatch
@@ -620,7 +620,7 @@ async def test_pending_queue_cleanup_on_dispatch(tmp_path):
 @pytest.mark.asyncio
 async def test_waiting_dispatch_does_not_replace_active_pending_queue(tmp_path):
     """A queued dispatch must not steal the active task's injection queue."""
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.bus.events import InboundMessage
 
     loop = _make_loop(tmp_path)
     session_key = "cli:c"
@@ -656,8 +656,8 @@ async def test_waiting_dispatch_does_not_replace_active_pending_queue(tmp_path):
 @pytest.mark.asyncio
 async def test_followup_routed_to_pending_queue(tmp_path):
     """Unified-session follow-ups should route into the active pending queue."""
-    from hczkbot.bus.events import InboundMessage
-    from hczkbot.session.keys import UNIFIED_SESSION_KEY
+    from biscuitbot.bus.events import InboundMessage
+    from biscuitbot.session.keys import UNIFIED_SESSION_KEY
 
     loop = _make_loop(tmp_path)
     loop._unified_session = True
@@ -683,8 +683,8 @@ async def test_followup_routed_to_pending_queue(tmp_path):
 @pytest.mark.asyncio
 async def test_cron_turn_deferred_while_session_active(tmp_path):
     """Cron turns wait for the active session instead of becoming injections."""
-    from hczkbot.bus.events import InboundMessage
-    from hczkbot.cron.session_turns import (
+    from biscuitbot.bus.events import InboundMessage
+    from biscuitbot.cron.session_turns import (
         CRON_DEFER_UNTIL_IDLE_META,
         CRON_TRIGGER_META,
     )
@@ -733,8 +733,8 @@ async def test_cron_turn_deferred_while_session_active(tmp_path):
 @pytest.mark.asyncio
 async def test_submitted_cron_turn_reports_pending_until_completed(tmp_path):
     """Bound cron jobs remain marked pending while their session turn is in flight."""
-    from hczkbot.bus.events import InboundMessage, OutboundMessage
-    from hczkbot.cron.session_turns import CRON_TRIGGER_META
+    from biscuitbot.bus.events import InboundMessage, OutboundMessage
+    from biscuitbot.cron.session_turns import CRON_TRIGGER_META
 
     loop = _make_loop(tmp_path)
     loop._running = True
@@ -769,10 +769,10 @@ async def test_submitted_cron_turn_reports_pending_until_completed(tmp_path):
 @pytest.mark.asyncio
 async def test_pending_queue_preserves_overflow_for_next_injection_cycle(tmp_path):
     """Pending queue should leave overflow messages queued for later drains."""
-    from hczkbot.agent.loop import AgentLoop
-    from hczkbot.agent.runner import _MAX_INJECTIONS_PER_TURN
-    from hczkbot.bus.events import InboundMessage
-    from hczkbot.bus.queue import MessageBus
+    from biscuitbot.agent.loop import AgentLoop
+    from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN
+    from biscuitbot.bus.events import InboundMessage
+    from biscuitbot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -822,7 +822,7 @@ async def test_pending_queue_preserves_overflow_for_next_injection_cycle(tmp_pat
 @pytest.mark.asyncio
 async def test_pending_queue_full_falls_back_to_queued_task(tmp_path):
     """QueueFull should preserve the message by dispatching a queued task."""
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.bus.events import InboundMessage
 
     loop = _make_loop(tmp_path)
     dispatched = asyncio.Event()
@@ -859,7 +859,7 @@ async def test_dispatch_republishes_leftover_queue_messages(tmp_path):
     the runner exits early (e.g., max_iterations, tool_error) with messages
     still in the queue.
     """
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.bus.events import InboundMessage
 
     loop = _make_loop(tmp_path)
     bus = loop.bus
@@ -898,8 +898,8 @@ async def test_dispatch_republishes_leftover_queue_messages(tmp_path):
 @pytest.mark.asyncio
 async def test_drain_injections_on_fatal_tool_error():
     """Pending injections should be drained even when a fatal tool error occurs."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -951,8 +951,8 @@ async def test_drain_injections_on_fatal_tool_error():
 @pytest.mark.asyncio
 async def test_drain_injections_on_llm_error():
     """Pending injections should be drained when the LLM returns an error finish_reason."""
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -1006,8 +1006,8 @@ async def test_drain_injections_on_llm_error():
 @pytest.mark.asyncio
 async def test_drain_injections_on_empty_final_response():
     """Pending injections should be drained when the runner exits due to empty response."""
-    from hczkbot.agent.runner import _MAX_EMPTY_RETRIES, AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import _MAX_EMPTY_RETRIES, AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -1061,8 +1061,8 @@ async def test_drain_injections_on_max_iterations():
     injections are appended to messages but not processed by the LLM.
     The key point is they are consumed from the queue to prevent re-publish.
     """
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -1112,9 +1112,9 @@ async def test_drain_injections_on_max_iterations():
 @pytest.mark.asyncio
 async def test_drain_injections_set_flag_when_followup_arrives_after_last_iteration():
     """Late follow-ups drained in max_iterations should still flip had_injections."""
-    from hczkbot.agent.hook import AgentHook
-    from hczkbot.agent.runner import AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.hook import AgentHook
+    from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}
@@ -1175,8 +1175,8 @@ async def test_drain_injections_set_flag_when_followup_arrives_after_last_iterat
 @pytest.mark.asyncio
 async def test_injection_cycle_cap_on_error_path():
     """Injection cycles should be capped even when every iteration hits an LLM error."""
-    from hczkbot.agent.runner import _MAX_INJECTION_CYCLES, AgentRunner, AgentRunSpec
-    from hczkbot.bus.events import InboundMessage
+    from biscuitbot.agent.runner import _MAX_INJECTION_CYCLES, AgentRunner, AgentRunSpec
+    from biscuitbot.bus.events import InboundMessage
 
     provider = MagicMock()
     call_count = {"n": 0}

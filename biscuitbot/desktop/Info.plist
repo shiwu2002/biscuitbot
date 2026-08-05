@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>hczkbot</string>
+    <string>biscuitbot</string>
     <key>CFBundleDisplayName</key>
-    <string>hczkbot</string>
+    <string>biscuitbot</string>
     <key>CFBundleIdentifier</key>
-    <string>com.hczkbot.desktop</string>
+    <string>com.biscuitbot.desktop</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>CFBundleShortVersionString</key>
@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>hczkbot</string>
+    <string>biscuitbot</string>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSUIElement</key>
@@ -24,10 +24,10 @@
     <true/>
     <!-- AppleScript 自动化（system_io 键盘模拟回退、douyin 技能） -->
     <key>NSAppleEventsUsageDescription</key>
-    <string>hczkbot needs AppleScript control to automate keyboard input and Safari interactions.</string>
+    <string>biscuitbot needs AppleScript control to automate keyboard input and Safari interactions.</string>
     <!-- 屏幕截图（screenshot 工具） -->
     <key>NSScreenCaptureUsageDescription</key>
-    <string>hczkbot needs screen capture access to take screenshots for visual understanding.</string>
+    <string>biscuitbot needs screen capture access to take screenshots for visual understanding.</string>
     <!-- 辅助功能（pynput 键盘/鼠标模拟）通过 TCC 管理，无需 plist key，但此处声明用途 -->
     <key>NSHumanReadableCopyright</key>
     <string>MIT License</string>

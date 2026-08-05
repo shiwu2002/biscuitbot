@@ -19,14 +19,14 @@ def test_source_checkout_import_uses_pyproject_version_without_metadata() -> Non
         import types
 
         sys.path.insert(0, {str(repo_root)!r})
-        fake = types.ModuleType("hczkbot.hczkbot")
-        fake.Hczkbot = object
+        fake = types.ModuleType("biscuitbot.biscuitbot")
+        fake.Biscuitbot = object
         fake.RunResult = object
-        sys.modules["hczkbot.hczkbot"] = fake
+        sys.modules["biscuitbot.biscuitbot"] = fake
 
-        import hczkbot
+        import biscuitbot
 
-        print(hczkbot.__version__)
+        print(biscuitbot.__version__)
         """
     )
 

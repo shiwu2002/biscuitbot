@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from hczkbot.config.loader import load_config
+from biscuitbot.config.loader import load_config
 
 
 def test_load_config_missing_file_uses_defaults(tmp_path) -> None:

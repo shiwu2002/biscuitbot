@@ -3,10 +3,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop
-from hczkbot.bus.queue import MessageBus
-from hczkbot.providers.base import LLMResponse, ToolCallRequest
-from hczkbot.agent.tools.context import RequestContext
+from biscuitbot.agent.loop import AgentLoop
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.providers.base import LLMResponse, ToolCallRequest
+from biscuitbot.agent.tools.context import RequestContext
 
 
 class _ContextRecordingTool:

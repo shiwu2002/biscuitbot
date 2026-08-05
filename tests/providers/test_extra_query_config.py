@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from hczkbot.config.schema import Config, ProviderConfig
-from hczkbot.providers.factory import provider_signature
-from hczkbot.providers.openai_compat_provider import OpenAICompatProvider
+from biscuitbot.config.schema import Config, ProviderConfig
+from biscuitbot.providers.factory import provider_signature
+from biscuitbot.providers.openai_compat_provider import OpenAICompatProvider
 
 
 class TestExtraQuerySchema:
@@ -44,7 +44,7 @@ class TestExtraQueryBuildClient:
     def test_build_client_passes_default_query(self) -> None:
         mock_client = MagicMock()
         with patch(
-            "hczkbot.providers.openai_compat_provider.AsyncOpenAI",
+            "biscuitbot.providers.openai_compat_provider.AsyncOpenAI",
             return_value=mock_client,
         ) as mock_async_openai:
             provider = OpenAICompatProvider(
@@ -59,7 +59,7 @@ class TestExtraQueryBuildClient:
     def test_build_client_passes_no_default_query_when_empty(self) -> None:
         mock_client = MagicMock()
         with patch(
-            "hczkbot.providers.openai_compat_provider.AsyncOpenAI",
+            "biscuitbot.providers.openai_compat_provider.AsyncOpenAI",
             return_value=mock_client,
         ) as mock_async_openai:
             provider = OpenAICompatProvider(api_key="test")

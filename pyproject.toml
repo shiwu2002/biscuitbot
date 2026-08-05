@@ -1,13 +1,13 @@
 [project]
-name = "hczkbot"
-version = "0.2.7"
+name = "biscuitbot"
+version = "0.3.0"
 description = "A lightweight personal AI assistant framework"
 readme = { file = "docs/PROJECT_GUIDE.md", content-type = "text/markdown" }
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Xubin Ren"},
-    {name = "the hczkbot contributors"}
+    {name = "the biscuitbot contributors"}
 ]
 keywords = ["ai", "agent", "chatbot"]
 classifiers = [
@@ -111,11 +111,11 @@ dev = [
 ]
 
 [project.scripts]
-hczkbot = "hczkbot.cli.commands:app"
+biscuitbot = "biscuitbot.cli.commands:app"
 
 # Third-party tool plugins register here.  Built-in tools are discovered
 # automatically via pkgutil scanning in ToolLoader.discover().
-# [project.entry-points."hczkbot.tools"]
+# [project.entry-points."biscuitbot.tools"]
 # my_plugin = "my_package.plugins:MyTool"
 
 [build-system]
@@ -130,32 +130,32 @@ allow-direct-references = true
 
 [tool.hatch.build]
 include = [
-    "hczkbot/**/*.py",
-    "hczkbot/templates/**/*.md",
-    "hczkbot/skills/**/*.md",
-    "hczkbot/skills/**/*.sh",
-    "hczkbot/web/dist/**/*",
+    "biscuitbot/**/*.py",
+    "biscuitbot/templates/**/*.md",
+    "biscuitbot/skills/**/*.md",
+    "biscuitbot/skills/**/*.sh",
+    "biscuitbot/web/dist/**/*",
 ]
-# hczkbot/web/dist/ is produced by `cd webui && bun run build` and is
+# biscuitbot/web/dist/ is produced by `cd webui && bun run build` and is
 # git-ignored. List it as an artifact so hatch ships it in both wheel and
 # sdist even though VCS does not track it.
 artifacts = [
-    "hczkbot/web/dist/**/*",
+    "biscuitbot/web/dist/**/*",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["hczkbot"]
+packages = ["biscuitbot"]
 
 [tool.hatch.build.targets.wheel.sources]
-"hczkbot" = "hczkbot"
+"biscuitbot" = "biscuitbot"
 
 [tool.hatch.build.targets.wheel.force-include]
-"bridge" = "hczkbot/bridge"
+"bridge" = "biscuitbot/bridge"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "hczkbot/",
-    "hczkbot/web/dist/",
+    "biscuitbot/",
+    "biscuitbot/web/dist/",
     "bridge/",
     "hatch_build.py",
     "README.md",
@@ -176,7 +176,7 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["hczkbot"]
+source = ["biscuitbot"]
 omit = ["tests/*", "**/tests/*"]
 
 [tool.coverage.report]

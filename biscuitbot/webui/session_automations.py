@@ -5,9 +5,9 @@ from __future__ import annotations
 from collections.abc import Collection
 from typing import Any, Protocol
 
-from hczkbot.cron.session_turns import CRON_HISTORY_META
-from hczkbot.cron.types import CronJob
-from hczkbot.session.manager import _message_preview_text
+from biscuitbot.cron.session_turns import CRON_HISTORY_META
+from biscuitbot.cron.types import CronJob
+from biscuitbot.session.manager import _message_preview_text
 
 
 class _CronServiceLike(Protocol):

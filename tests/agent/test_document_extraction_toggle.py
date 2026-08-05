@@ -5,12 +5,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from hczkbot.agent.loop import AgentLoop, TurnContext, TurnState
-from hczkbot.bus.events import InboundMessage
-from hczkbot.bus.queue import MessageBus
-from hczkbot.config.schema import ChannelsConfig
-from hczkbot.providers.base import LLMResponse
-from hczkbot.utils.document import reference_non_image_attachments
+from biscuitbot.agent.loop import AgentLoop, TurnContext, TurnState
+from biscuitbot.bus.events import InboundMessage
+from biscuitbot.bus.queue import MessageBus
+from biscuitbot.config.schema import ChannelsConfig
+from biscuitbot.providers.base import LLMResponse
+from biscuitbot.utils.document import reference_non_image_attachments
 
 
 def _make_loop(tmp_path: Path, channels_config: ChannelsConfig | None = None) -> AgentLoop:
@@ -40,7 +40,7 @@ async def test_state_restore_extracts_documents_by_default(
         calls.append((content, media))
         return f"{content}\n\n[File: report.txt]\nQuarterly revenue is $5M", []
 
-    monkeypatch.setattr("hczkbot.agent.loop.extract_documents", fake_extract_documents)
+    monkeypatch.setattr("biscuitbot.agent.loop.extract_documents", fake_extract_documents)
 
     ctx = TurnContext(
         msg=InboundMessage(
@@ -74,7 +74,7 @@ async def test_state_restore_references_documents_when_extraction_disabled(
     def fail_extract_documents(content: str, media: list[str]) -> tuple[str, list[str]]:
         raise AssertionError("document extraction should be disabled")
 
-    monkeypatch.setattr("hczkbot.agent.loop.extract_documents", fail_extract_documents)
+    monkeypatch.setattr("biscuitbot.agent.loop.extract_documents", fail_extract_documents)
 
     ctx = TurnContext(
         msg=InboundMessage(
@@ -118,7 +118,7 @@ async def test_pending_followup_references_documents_when_extraction_disabled(
     def fail_extract_documents(content: str, media: list[str]) -> tuple[str, list[str]]:
         raise AssertionError("document extraction should be disabled")
 
-    monkeypatch.setattr("hczkbot.agent.loop.extract_documents", fail_extract_documents)
+    monkeypatch.setattr("biscuitbot.agent.loop.extract_documents", fail_extract_documents)
 
     pending_queue: asyncio.Queue[InboundMessage] = asyncio.Queue()
     await pending_queue.put(

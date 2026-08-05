@@ -9,7 +9,7 @@ import string
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from hczkbot.providers.base import (
+from biscuitbot.providers.base import (
     LLMProvider,
     LLMResponse,
     ToolCallRequest,

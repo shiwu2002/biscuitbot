@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from hczkbot.api.server import (
+from biscuitbot.api.server import (
     _SSE_DONE,
     _sse_chunk,
     create_app,

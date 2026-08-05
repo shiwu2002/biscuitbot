@@ -1,13 +1,13 @@
 import importlib
 
-from hczkbot.session import webui_turns
-from hczkbot.webui import thread_disk, transcript
+from biscuitbot.session import webui_turns
+from biscuitbot.webui import thread_disk, transcript
 
 
 def test_legacy_webui_utils_imports_resolve_to_new_modules() -> None:
-    legacy_thread_disk = importlib.import_module("hczkbot.utils.webui_thread_disk")
-    legacy_transcript = importlib.import_module("hczkbot.utils.webui_transcript")
-    legacy_turn_helpers = importlib.import_module("hczkbot.utils.webui_turn_helpers")
+    legacy_thread_disk = importlib.import_module("biscuitbot.utils.webui_thread_disk")
+    legacy_transcript = importlib.import_module("biscuitbot.utils.webui_transcript")
+    legacy_turn_helpers = importlib.import_module("biscuitbot.utils.webui_turn_helpers")
 
     assert legacy_thread_disk.delete_webui_thread is thread_disk.delete_webui_thread
     assert legacy_transcript.append_transcript_object is transcript.append_transcript_object
