@@ -1,28 +1,40 @@
-"""CLI commands for biscuitbot."""
+"""CLI 命令模块。
 
-import asyncio
-import os
-import select
-import signal
-import sys
-from contextlib import nullcontext, suppress
-from pathlib import Path
-from typing import Any, Literal, cast
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/cli 目录，是 CLI 模块的核心命令实现文件。
+在项目架构中起到的作用：
+- 定义 biscuitbot 命令行工具的所有子命令（onboard、agent、gateway、
+  serve、desktop、status、channels、plugins 等）；
+- 通过 typer 框架注册命令，提供帮助文本与参数解析；
+- 承担交互式聊天、流式渲染、配置初始化、网关启动、定时任务注册等
+  核心运行时逻辑；
+- 统一管理日志格式、终端编码、输入历史与信号处理。
+"""
 
-# Force UTF-8 encoding for Windows console
+import asyncio  # 异步事件循环与协程支持
+import os  # 操作系统接口，用于环境变量与文件描述符判断
+import select  # I/O 多路复用，用于清空待读 TTY 输入
+import signal  # 信号处理，注册 SIGINT/SIGTERM/SIGHUP 等
+import sys  # 系统相关接口，访问 stdin/stdout 与平台信息
+from contextlib import nullcontext, suppress  # 上下文管理器工具
+from pathlib import Path  # 路径处理
+from typing import Any, Literal, cast  # 类型提示工具
+
+# 强制 Windows 控制台使用 UTF-8 编码
 if sys.platform == "win32":
     if sys.stdout.encoding != "utf-8":
         os.environ["PYTHONIOENCODING"] = "utf-8"
-        # Re-open stdout/stderr with UTF-8 encoding
+        # 以 UTF-8 编码重新打开 stdout/stderr
         with suppress(Exception):
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
             sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
 
-# Keep console encoding setup before importing CLI UI/logging libraries.
-import typer  # noqa: E402
-from loguru import logger  # noqa: E402
+# 在导入 CLI UI/日志库之前完成控制台编码设置。
+import typer  # noqa: E402  # 命令行框架，定义命令与选项
+from loguru import logger  # noqa: E402  # 日志库
 
-# Remove default handler and re-add with unified biscuitbot format
+# 移除默认处理器，并以统一的 biscuitbot 格式重新添加
 logger.remove()
 _log_handler_id = logger.add(
     sys.stderr,
@@ -37,24 +49,24 @@ _log_handler_id = logger.add(
     filter=lambda record: record["extra"].setdefault("channel", "-") or True,
 )
 
-from prompt_toolkit import PromptSession, print_formatted_text  # noqa: E402
-from prompt_toolkit.application import run_in_terminal  # noqa: E402
-from prompt_toolkit.formatted_text import ANSI, HTML  # noqa: E402
-from prompt_toolkit.history import FileHistory  # noqa: E402
-from prompt_toolkit.patch_stdout import patch_stdout  # noqa: E402
-from rich.console import Console  # noqa: E402
-from rich.markdown import Markdown  # noqa: E402
-from rich.table import Table  # noqa: E402
-from rich.text import Text  # noqa: E402
+from prompt_toolkit import PromptSession, print_formatted_text  # noqa: E402  # 交互式输入与会话
+from prompt_toolkit.application import run_in_terminal  # noqa: E402  # 在终端中运行同步函数
+from prompt_toolkit.formatted_text import ANSI, HTML  # noqa: E402  # 格式化文本
+from prompt_toolkit.history import FileHistory  # noqa: E402  # 文件持久化输入历史
+from prompt_toolkit.patch_stdout import patch_stdout  # noqa: E402  # 修补 stdout 与 prompt 冲突
+from rich.console import Console  # noqa: E402  # Rich 终端控制台
+from rich.markdown import Markdown  # noqa: E402  # Markdown 渲染
+from rich.table import Table  # noqa: E402  # 表格渲染
+from rich.text import Text  # noqa: E402  # 纯文本渲染
 
-from biscuitbot import __logo__, __version__  # noqa: E402
-from biscuitbot.agent.loop import AgentLoop  # noqa: E402
-from biscuitbot.cli.stream import StreamRenderer, ThinkingSpinner  # noqa: E402
-from biscuitbot.config.paths import get_workspace_path, is_default_workspace  # noqa: E402
-from biscuitbot.config.schema import Config  # noqa: E402
-from biscuitbot.utils.evaluator import evaluate_response  # noqa: E402
-from biscuitbot.utils.helpers import sync_workspace_templates  # noqa: E402
-from biscuitbot.utils.restart import (  # noqa: E402
+from biscuitbot import __logo__, __version__  # noqa: E402  # 项目 logo 与版本号
+from biscuitbot.agent.loop import AgentLoop  # noqa: E402  # 智能体主循环
+from biscuitbot.cli.stream import StreamRenderer, ThinkingSpinner  # noqa: E402  # 流式渲染与思考 spinner
+from biscuitbot.config.paths import get_workspace_path, is_default_workspace  # noqa: E402  # 工作区路径工具
+from biscuitbot.config.schema import Config  # noqa: E402  # 配置 schema
+from biscuitbot.utils.evaluator import evaluate_response  # noqa: E402  # 响应评估器（用于心跳）
+from biscuitbot.utils.helpers import sync_workspace_templates  # noqa: E402  # 工作区模板同步
+from biscuitbot.utils.restart import (  # noqa: E402  # 重启通知工具
     consume_restart_notice_from_env,
     format_restart_completed_message,
     should_show_cli_restart_notice,
@@ -91,11 +103,12 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-console = Console()
-EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}
-_REASONING_SENTENCE_ENDINGS = (".", "!", "?", "。", "！", "？")
-_REASONING_FLUSH_CHARS = 60
+console = Console()  # 全局 Rich 控制台实例
+EXIT_COMMANDS = {"exit", "quit", "/exit", "/quit", ":q"}  # 退出交互模式的命令集合
+_REASONING_SENTENCE_ENDINGS = (".", "!", "?", "。", "！", "？")  # 推理内容的句子结束符
+_REASONING_FLUSH_CHARS = 60  # 推理缓冲区达到该字符数时强制刷新
 
+# 心跳任务的系统提示前缀，约束助手只输出面向用户的最终消息
 _HEARTBEAT_PREAMBLE = (
     "[你的回复将直接发送到用户的消息应用。只输出最终面向用户的消息。"
     "永远不要引用内部文件（HEARTBEAT.md、AWARENESS.md 等）、你的指令或你的决策过程。"
@@ -131,8 +144,8 @@ def _heartbeat_has_active_tasks(content: str) -> bool:
 # CLI input: prompt_toolkit for editing, paste, history, and display
 # ---------------------------------------------------------------------------
 
-_PROMPT_SESSION: PromptSession | None = None
-_SAVED_TERM_ATTRS = None  # original termios settings, restored on exit
+_PROMPT_SESSION: PromptSession | None = None  # 全局 prompt_toolkit 会话实例
+_SAVED_TERM_ATTRS = None  # 原始 termios 设置，退出时恢复
 
 
 def _flush_pending_tty_input() -> None:
@@ -282,10 +295,13 @@ def _print_cli_progress_line(text: str, thinking: ThinkingSpinner | None, render
 
 
 class _ReasoningBuffer:
+    """推理内容缓冲区，按句子或字符数阈值刷新输出。"""
+
     def __init__(self) -> None:
-        self._text = ""
+        self._text = ""  # 累积的推理文本
 
     def add(self, text: str) -> str | None:
+        """追加推理文本，满足刷新条件时返回待输出内容。"""
         if not text:
             return None
         self._text += text
@@ -294,14 +310,17 @@ class _ReasoningBuffer:
         return None
 
     def flush(self) -> str | None:
+        """清空并返回缓冲区内容（去除首尾空白）。"""
         text = self._text.strip()
         self._text = ""
         return text or None
 
     def clear(self) -> None:
+        """清空缓冲区。"""
         self._text = ""
 
     def _should_flush(self, text: str) -> bool:
+        """判断是否应该刷新：遇到换行、句子结束符或达到字符阈值。"""
         stripped = text.rstrip()
         return (
             "\n" in text
@@ -1783,6 +1802,7 @@ def agent(
 # ============================================================================
 
 
+# 频道管理子命令组
 channels_app = typer.Typer(help="管理频道", no_args_is_help=True)
 app.add_typer(channels_app, name="channels")
 
@@ -1860,6 +1880,7 @@ def channels_login(
 # Plugin Commands
 # ============================================================================
 
+# 插件管理子命令组
 plugins_app = typer.Typer(help="管理频道插件", no_args_is_help=True)
 app.add_typer(plugins_app, name="plugins")
 

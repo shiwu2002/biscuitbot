@@ -1,41 +1,62 @@
-"""Feishu/Lark channel implementation using lark-oapi SDK with WebSocket long connection."""
+"""飞书（Feishu/Lark）渠道实现，基于 lark-oapi SDK 的 WebSocket 长连接。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的飞书平台组件。
+在项目架构中起到的作用：将飞书/Lark 的消息收发能力接入 biscuitbot 消息总线，
+使飞书用户可与机器人进行多模态对话。
+
+平台特点与接入方式
+------------------
+- 接入方式：使用 WebSocket 长连接接收事件，无需公网 IP 或 Webhook 配置。
+- 鉴权：通过飞书开放平台的 App ID 和 App Secret 进行身份认证。
+- 事件订阅：需在开放平台启用 ``im.message.receive_v1`` 事件，以及消息读取、
+  表情回应、机器人进群等可选事件。
+- 消息格式：支持纯文本、富文本（post）、交互卡片（interactive）三种格式，
+  并根据内容自动选择最优格式（``_detect_msg_format``）。
+- 流式输出：通过 CardKit 流式卡片 API 实现增量更新，支持打字机效果。
+- 媒体处理：支持图片、音频、文件的下载与上传，语音消息以 opus/ogg 格式存储。
+- 群聊策略：支持 open（全部响应）和 mention（仅响应 @机器人）两种模式。
+- 话题隔离：群聊中每个话题（thread）可拥有独立会话，实现上下文隔离。
+- 域名切换：支持飞书（feishu 域名）和国际版 Lark（lark 域名）。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import importlib.util
-import json
-import os
-import re
-import threading
-import time
-import uuid
-from collections import OrderedDict
-from contextlib import suppress
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+import asyncio  # 异步事件循环与并发原语
+import importlib.util  # 运行时检测 SDK 是否安装
+import json  # JSON 序列化/反序列化（消息内容解析）
+import os  # 文件路径与扩展名处理
+import re  # 正则表达式（@占位符替换、Markdown 解析）
+import threading  # WebSocket 客户端运行于独立线程
+import time  # 重连退避与节流控制
+import uuid  # 生成媒体文件唯一标识
+from collections import OrderedDict  # 有序去重缓存（消息 ID 去重）
+from contextlib import suppress  # 上下文管理器，抑制指定异常
+from dataclasses import dataclass  # 数据类装饰器（流式缓冲区等）
+from typing import TYPE_CHECKING, Any, Literal  # 类型注解支持
 
-from pydantic import Field
+from pydantic import Field  # Pydantic 模型字段定义
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.paths import get_media_dir
-from biscuitbot.config.schema import Base
-from biscuitbot.utils.helpers import safe_filename
-from biscuitbot.utils.logging_bridge import redirect_lib_logging
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
+from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.utils.helpers import safe_filename  # 文件名安全化工具
+from biscuitbot.utils.logging_bridge import redirect_lib_logging  # 第三方库日志桥接
 
 if TYPE_CHECKING:
-    from lark_oapi.api.im.v1.model import MentionEvent, P2ImMessageReceiveV1
+    from lark_oapi.api.im.v1.model import MentionEvent, P2ImMessageReceiveV1  # 飞书事件类型（仅类型检查时导入）
 
-FEISHU_AVAILABLE = importlib.util.find_spec("lark_oapi") is not None
+FEISHU_AVAILABLE = importlib.util.find_spec("lark_oapi") is not None  # 检测 lark_oapi SDK 是否已安装
 
 
 def _load_lark_runtime() -> tuple[Any, str, str]:
-    """Import the heavy Feishu SDK lazily.
+    """延迟导入重量级飞书 SDK。
 
-    lark_oapi imports a large generated API surface at module import time, so
-    keep it out of channel discovery and constructor paths.
+    lark_oapi 在模块导入时会加载大量生成的 API 接口，因此将其排除在
+    渠道发现和构造函数路径之外，仅在真正启动时才导入。
     """
     import sys
 
@@ -61,7 +82,7 @@ def _load_lark_runtime() -> tuple[Any, str, str]:
 
     return lark, FEISHU_DOMAIN, LARK_DOMAIN
 
-# Message type display mapping
+# 消息类型到展示文本的映射（非文本消息在入站时转换为占位符文本）
 MSG_TYPE_MAP = {
     "image": "[image]",
     "audio": "[audio]",
@@ -71,7 +92,7 @@ MSG_TYPE_MAP = {
 
 
 def _extract_share_card_content(content_json: dict, msg_type: str) -> str:
-    """Extract text representation from share cards and interactive messages."""
+    """从分享卡片和交互消息中提取文本表示。"""
     parts = []
 
     if msg_type == "share_chat":
@@ -91,7 +112,7 @@ def _extract_share_card_content(content_json: dict, msg_type: str) -> str:
 
 
 def _extract_interactive_content(content: dict) -> list[str]:
-    """Recursively extract text and links from interactive card content."""
+    """递归地从交互卡片内容中提取文本和链接。"""
     parts = []
 
     if isinstance(content, str):
@@ -134,7 +155,7 @@ def _extract_interactive_content(content: dict) -> list[str]:
 
 
 def _extract_element_content(element: dict) -> list[str]:
-    """Extract content from a single card element."""
+    """从单个卡片元素中提取内容。"""
     parts = []
 
     if not isinstance(element, dict):
@@ -207,12 +228,12 @@ def _extract_element_content(element: dict) -> list[str]:
 
 
 def _extract_post_content(content_json: dict) -> tuple[str, list[str]]:
-    """Extract text and image keys from Feishu post (rich text) message.
+    """从飞书富文本（post）消息中提取文本和图片 key。
 
-    Handles three payload shapes:
-    - Direct:    {"title": "...", "content": [[...]]}
-    - Localized: {"zh_cn": {"title": "...", "content": [...]}}
-    - Wrapped:   {"post": {"zh_cn": {"title": "...", "content": [...]}}}
+    处理三种载荷格式：
+    - 直接格式：  {"title": "...", "content": [[...]]}
+    - 本地化格式：{"zh_cn": {"title": "...", "content": [...]}}
+    - 包装格式：  {"post": {"zh_cn": {"title": "...", "content": [...]}}}
     """
 
     def _parse_block(block: dict) -> tuple[str | None, list[str]]:
@@ -269,65 +290,65 @@ def _extract_post_content(content_json: dict) -> tuple[str, list[str]]:
 
 
 def _extract_post_text(content_json: dict) -> str:
-    """Extract plain text from Feishu post (rich text) message content.
+    """从飞书富文本（post）消息内容中提取纯文本。
 
-    Legacy wrapper for _extract_post_content, returns only text.
+    _extract_post_content 的遗留包装函数，仅返回文本部分。
     """
     text, _ = _extract_post_content(content_json)
     return text
 
 
 class FeishuConfig(Base):
-    """Feishu/Lark channel configuration using WebSocket long connection."""
+    """飞书/Lark 渠道配置（WebSocket 长连接模式）。"""
 
     enabled: bool = False
-    app_id: str = ""
-    app_secret: str = ""
-    encrypt_key: str = ""
-    verification_token: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    react_emoji: str = "THUMBSUP"
-    done_emoji: str | None = None  # Emoji to show when task is completed (e.g., "DONE", "OK")
-    tool_hint_prefix: str = "\U0001f527"  # Prefix for inline tool hints (default: 🔧)
-    group_policy: Literal["open", "mention"] = "mention"
-    reply_to_message: bool = False  # If True, bot replies quote the user's original message
-    streaming: bool = True
-    domain: Literal["feishu", "lark"] = "feishu"  # Set to "lark" for international Lark
-    topic_isolation: bool = True  # If True, each topic in group chat gets its own session (isolation)
+    app_id: str = ""  # 飞书开放平台应用 ID
+    app_secret: str = ""  # 飞书开放平台应用密钥
+    encrypt_key: str = ""  # 事件加密密钥（开放平台配置）
+    verification_token: str = ""  # 事件验证令牌（开放平台配置）
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单（open_id）
+    react_emoji: str = "THUMBSUP"  # 处理中使用的表情回应（默认点赞）
+    done_emoji: str | None = None  # 任务完成时显示的表情（如 "DONE"、"OK"）
+    tool_hint_prefix: str = "\U0001f527"  # 内联工具提示前缀（默认：🔧）
+    group_policy: Literal["open", "mention"] = "mention"  # 群聊策略：open=全部响应，mention=仅@时响应
+    reply_to_message: bool = False  # 是否引用回复用户原始消息
+    streaming: bool = True  # 是否启用流式输出
+    domain: Literal["feishu", "lark"] = "feishu"  # 域名选择：feishu=国内，lark=国际版
+    topic_isolation: bool = True  # 群聊话题隔离：每个 topic 拥有独立会话
 
 
-_STREAM_ELEMENT_ID = "streaming_md"
+_STREAM_ELEMENT_ID = "streaming_md"  # 流式卡片中 Markdown 元素的 ID
 
 
 @dataclass
 class _FeishuStreamBuf:
-    """Per-chat streaming accumulator using CardKit streaming API."""
+    """基于 CardKit 流式 API 的每会话流式累加缓冲区。"""
 
-    text: str = ""
-    card_id: str | None = None
-    sequence: int = 0
-    last_edit: float = 0.0
+    text: str = ""  # 已累加的文本内容
+    card_id: str | None = None  # 流式卡片的 ID
+    sequence: int = 0  # 更新序列号
+    last_edit: float = 0.0  # 上次编辑时间戳（用于节流）
 
 
 class FeishuChannel(BaseChannel):
-    """
-    Feishu/Lark channel using WebSocket long connection.
+    """飞书/Lark 渠道，使用 WebSocket 长连接。
 
-    Uses WebSocket to receive events - no public IP or webhook required.
+    通过 WebSocket 接收事件 —— 无需公网 IP 或 Webhook。
 
-    Requires:
-    - App ID and App Secret from Feishu Open Platform
-    - Bot capability enabled
-    - Event subscription enabled (im.message.receive_v1)
+    前置条件：
+    - 飞书开放平台的 App ID 和 App Secret
+    - 已启用机器人能力
+    - 已订阅事件（im.message.receive_v1）
     """
 
     name = "feishu"
     display_name = "Feishu"
 
-    _STREAM_EDIT_INTERVAL = 0.5  # throttle between CardKit streaming updates
+    _STREAM_EDIT_INTERVAL = 0.5  # CardKit 流式更新之间的节流间隔（秒）
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return FeishuConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -335,24 +356,24 @@ class FeishuChannel(BaseChannel):
             config = FeishuConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: FeishuConfig = config
-        self._client: Any = None
-        self._ws_client: Any = None
-        self._ws_thread: threading.Thread | None = None
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # Ordered dedup cache
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._stream_bufs: dict[str, _FeishuStreamBuf] = {}
-        self._bot_open_id: str | None = None
-        self._background_tasks: set[asyncio.Task] = set()
-        self._reaction_ids: dict[str, str] = {}  # message_id → reaction_id
+        self._client: Any = None  # lark-oapi 客户端（用于发送消息）
+        self._ws_client: Any = None  # WebSocket 客户端（用于接收事件）
+        self._ws_thread: threading.Thread | None = None  # WebSocket 运行线程
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # 有序去重缓存（消息 ID）
+        self._loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
+        self._stream_bufs: dict[str, _FeishuStreamBuf] = {}  # 各会话的流式缓冲区
+        self._bot_open_id: str | None = None  # 机器人自身的 open_id（用于 @匹配）
+        self._background_tasks: set[asyncio.Task] = set()  # 后台任务集合（如表情回应）
+        self._reaction_ids: dict[str, str] = {}  # message_id → reaction_id 映射（用于清理表情）
 
     @staticmethod
     def _register_optional_event(builder: Any, method_name: str, handler: Any) -> Any:
-        """Register an event handler only when the SDK supports it."""
+        """仅在 SDK 支持时注册事件处理器（兼容不同 SDK 版本）。"""
         method = getattr(builder, method_name, None)
         return method(handler) if callable(method) else builder
 
     async def start(self) -> None:
-        """Start the Feishu bot with WebSocket long connection."""
+        """启动飞书机器人，建立 WebSocket 长连接。"""
         if not FEISHU_AVAILABLE:
             self.logger.error("SDK not installed. Run: pip install lark-oapi")
             return
@@ -469,18 +490,17 @@ class FeishuChannel(BaseChannel):
             await asyncio.sleep(1)
 
     async def stop(self) -> None:
-        """
-        Stop the Feishu bot.
+        """停止飞书机器人。
 
-        Notice: lark.ws.Client does not expose stop method， simply exiting the program will close the client.
+        注意：lark.ws.Client 未暴露 stop 方法，直接退出程序即可关闭客户端。
 
-        Reference: https://github.com/larksuite/oapi-sdk-python/blob/v2_main/lark_oapi/ws/client.py#L86
+        参考：https://github.com/larksuite/oapi-sdk-python/blob/v2_main/lark_oapi/ws/client.py#L86
         """
         self._running = False
         self.logger.info("bot stopped")
 
     def _fetch_bot_open_id(self) -> str | None:
-        """Fetch the bot's own open_id via GET /open-apis/bot/v3/info."""
+        """通过 GET /open-apis/bot/v3/info 获取机器人自身的 open_id。"""
         try:
             import lark_oapi as lark
 
@@ -506,14 +526,14 @@ class FeishuChannel(BaseChannel):
 
     @staticmethod
     def _resolve_mentions(text: str, mentions: list[MentionEvent] | None) -> str:
-        """Replace @_user_n placeholders with actual user info from mentions.
+        """将 @_user_n 占位符替换为实际的 @用户信息。
 
         Args:
-            text: The message text containing @_user_n placeholders
-            mentions: List of mention objects from Feishu message
+            text: 包含 @_user_n 占位符的消息文本
+            mentions: 飞书消息中的 mention 对象列表
 
         Returns:
-            Text with placeholders replaced by @姓名 (open_id)
+            占位符被替换为 @姓名 (open_id) 格式的文本
         """
         if not mentions or not text:
             return text
@@ -549,6 +569,7 @@ class FeishuChannel(BaseChannel):
         return text
 
     def _is_bot_mention_event(self, mention: Any) -> bool:
+        """判断该 mention 是否指向本机器人。"""
         mid = getattr(mention, "id", None)
         if not mid:
             return False
@@ -564,7 +585,7 @@ class FeishuChannel(BaseChannel):
     def _strip_leading_bot_mention(
         self, text: str, mentions: list[MentionEvent] | None
     ) -> str:
-        """Remove a required leading bot mention before slash command routing."""
+        """在斜杠命令路由前，移除消息开头的必要 @机器人 提及。"""
         if not mentions or not text:
             return text
 
@@ -582,7 +603,7 @@ class FeishuChannel(BaseChannel):
         return text
 
     def _is_bot_mentioned(self, message: Any) -> bool:
-        """Check if the bot is @mentioned in the message."""
+        """检查消息中是否 @了本机器人。"""
         raw_content = message.content or ""
         if "@_all" in raw_content:
             return True
@@ -593,13 +614,13 @@ class FeishuChannel(BaseChannel):
         return False
 
     def _is_group_message_for_bot(self, message: Any) -> bool:
-        """Allow group messages when policy is open or bot is @mentioned."""
+        """判断群消息是否应响应：open 策略全部响应，mention 策略仅响应 @机器人。"""
         if self.config.group_policy == "open":
             return True
         return self._is_bot_mentioned(message)
 
     def _add_reaction_sync(self, message_id: str, emoji_type: str) -> str | None:
-        """Sync helper for adding reaction (runs in thread pool)."""
+        """添加表情回应的同步辅助方法（在线程池中运行）。"""
         from lark_oapi.api.im.v1 import (
             CreateMessageReactionRequest,
             CreateMessageReactionRequestBody,
@@ -633,13 +654,13 @@ class FeishuChannel(BaseChannel):
             return None
 
     async def _add_reaction(self, message_id: str, emoji_type: str = "THUMBSUP") -> str | None:
-        """Add a reaction emoji to a message.
+        """为消息添加表情回应。
 
-        Returns the reaction_id on success, None on failure.
-        When called via a tracked background task, the returned reaction_id
-        is stored in ``_reaction_ids`` for later cleanup by ``send_delta``.
+        成功时返回 reaction_id，失败时返回 None。
+        当通过追踪的后台任务调用时，返回的 reaction_id 会存储在
+        ``_reaction_ids`` 中，供后续 ``send_delta`` 清理使用。
 
-        Common emoji types: THUMBSUP, OK, EYES, DONE, OnIt, HEART
+        常用表情类型：THUMBSUP、OK、EYES、DONE、OnIt、HEART
         """
         if not self._client:
             return None
@@ -648,7 +669,7 @@ class FeishuChannel(BaseChannel):
         return await loop.run_in_executor(None, self._add_reaction_sync, message_id, emoji_type)
 
     def _remove_reaction_sync(self, message_id: str, reaction_id: str) -> None:
-        """Sync helper for removing reaction (runs in thread pool)."""
+        """移除表情回应的同步辅助方法（在线程池中运行）。"""
         from lark_oapi.api.im.v1 import DeleteMessageReactionRequest
 
         try:
@@ -670,10 +691,9 @@ class FeishuChannel(BaseChannel):
             self.logger.debug("Error removing reaction: {}", e)
 
     async def _remove_reaction(self, message_id: str, reaction_id: str) -> None:
-        """
-        Remove a reaction emoji from a message (non-blocking).
+        """从消息移除表情回应（非阻塞）。
 
-        Used to clear the "processing" indicator after bot replies.
+        用于在机器人回复后清除"处理中"指示器。
         """
         if not self._client or not reaction_id:
             return
@@ -682,7 +702,7 @@ class FeishuChannel(BaseChannel):
         await loop.run_in_executor(None, self._remove_reaction_sync, message_id, reaction_id)
 
     def _on_background_task_done(self, task: asyncio.Task) -> None:
-        """Callback: remove from tracking set and log unhandled exceptions."""
+        """回调：从追踪集合中移除任务并记录未处理异常。"""
         self._background_tasks.discard(task)
         if task.cancelled():
             return
@@ -692,7 +712,7 @@ class FeishuChannel(BaseChannel):
             self.logger.warning("Background task failed: {}", exc)
 
     def _on_reaction_added(self, message_id: str, task: asyncio.Task) -> None:
-        """Callback: store reaction_id after background add-reaction completes."""
+        """回调：后台添加表情回应完成后，存储 reaction_id。"""
         if task.cancelled():
             return
         # Failures already logged by _on_background_task_done.
@@ -706,33 +726,31 @@ class FeishuChannel(BaseChannel):
 
     @staticmethod
     def _stream_key(chat_id: str, metadata: dict[str, Any] | None = None) -> str:
-        """Scope streaming buffers to the inbound message when available."""
+        """将流式缓冲区作用域限定到入站消息（优先使用 message_id）。"""
         meta = metadata or {}
         return meta.get("message_id") or chat_id
 
-    # Regex to match markdown tables (header + separator + data rows)
+    # 匹配 Markdown 表格的正则（表头 + 分隔行 + 数据行）
     _TABLE_RE = re.compile(
         r"((?:^[ \t]*\|.+\|[ \t]*\n)(?:^[ \t]*\|[-:\s|]+\|[ \t]*\n)(?:^[ \t]*\|.+\|[ \t]*\n?)+)",
         re.MULTILINE,
     )
 
-    _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+    _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)  # Markdown 标题正则
 
-    _CODE_BLOCK_RE = re.compile(r"(```[\s\S]*?```)", re.MULTILINE)
+    _CODE_BLOCK_RE = re.compile(r"(```[\s\S]*?```)", re.MULTILINE)  # 代码块正则
 
-    # Markdown formatting patterns that should be stripped from plain-text
-    # surfaces like table cells and heading text.
-    _MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
-    _MD_BOLD_UNDERSCORE_RE = re.compile(r"__(.+?)__")
-    _MD_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")
-    _MD_STRIKE_RE = re.compile(r"~~(.+?)~~")
+    # 需要从表格单元格、标题等纯文本展示区域剥离的 Markdown 格式标记
+    _MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*")  # **粗体**
+    _MD_BOLD_UNDERSCORE_RE = re.compile(r"__(.+?)__")  # __粗体__
+    _MD_ITALIC_RE = re.compile(r"(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)")  # *斜体*
+    _MD_STRIKE_RE = re.compile(r"~~(.+?)~~")  # ~~删除线~~
 
     @classmethod
     def _strip_md_formatting(cls, text: str) -> str:
-        """Strip markdown formatting markers from text for plain display.
+        """从文本中剥离 Markdown 格式标记，用于纯文本展示。
 
-        Feishu table cells do not support markdown rendering, so we remove
-        the formatting markers to keep the text readable.
+        飞书表格单元格不支持 Markdown 渲染，因此移除格式标记以保持可读性。
         """
         # Remove bold markers
         text = cls._MD_BOLD_RE.sub(r"\1", text)
@@ -745,7 +763,7 @@ class FeishuChannel(BaseChannel):
 
     @classmethod
     def _parse_md_table(cls, table_text: str) -> dict | None:
-        """Parse a markdown table into a Feishu table element."""
+        """将 Markdown 表格解析为飞书表格元素。"""
         lines = [_line.strip() for _line in table_text.strip().split("\n") if _line.strip()]
         if len(lines) < 3:
             return None
@@ -769,7 +787,7 @@ class FeishuChannel(BaseChannel):
         }
 
     def _build_card_elements(self, content: str) -> list[dict]:
-        """Split content into div/markdown + table elements for Feishu card."""
+        """将内容拆分为 div/markdown + 表格元素，用于飞书卡片渲染。"""
         elements, last_end = [], 0
         for m in self._TABLE_RE.finditer(content):
             before = content[last_end : m.start()]
@@ -788,11 +806,11 @@ class FeishuChannel(BaseChannel):
     def _split_elements_by_table_limit(
         elements: list[dict], max_tables: int = 1
     ) -> list[list[dict]]:
-        """Split card elements into groups with at most *max_tables* table elements each.
+        """将卡片元素按表格数量上限分组，每组最多 *max_tables* 个表格元素。
 
-        Feishu cards have a hard limit of one table per card (API error 11310).
-        When the rendered content contains multiple markdown tables each table is
-        placed in a separate card message so every table reaches the user.
+        飞书卡片有每张卡片仅允许一个表格的硬限制（API 错误码 11310）。
+        当渲染内容包含多个 Markdown 表格时，每个表格会被放入单独的
+        卡片消息中，以确保所有表格都能送达用户。
         """
         if not elements:
             return [[]]
@@ -815,7 +833,7 @@ class FeishuChannel(BaseChannel):
         return groups or [[]]
 
     def _split_headings(self, content: str) -> list[dict]:
-        """Split content by headings, converting headings to div elements."""
+        """按标题拆分内容，将标题转换为 div 元素。"""
         protected = content
         code_blocks = []
         for m in self._CODE_BLOCK_RE.finditer(content):
@@ -851,47 +869,47 @@ class FeishuChannel(BaseChannel):
 
         return elements or [{"tag": "markdown", "content": content}]
 
-    # ── Smart format detection ──────────────────────────────────────────
-    # Patterns that indicate "complex" markdown needing card rendering
+    # ── 智能格式检测 ──────────────────────────────────────────
+    # 指示"复杂" Markdown（需要卡片渲染）的正则模式
     _COMPLEX_MD_RE = re.compile(
-        r"```"  # fenced code block
-        r"|^\|.+\|.*\n\s*\|[-:\s|]+\|"  # markdown table (header + separator)
-        r"|^#{1,6}\s+",  # headings
+        r"```"  # 围栏代码块
+        r"|^\|.+\|.*\n\s*\|[-:\s|]+\|"  # Markdown 表格（表头 + 分隔行）
+        r"|^#{1,6}\s+",  # 标题
         re.MULTILINE,
     )
 
-    # Simple markdown patterns (bold, italic, strikethrough)
+    # 简单 Markdown 模式（粗体、斜体、删除线）
     _SIMPLE_MD_RE = re.compile(
-        r"\*\*.+?\*\*"  # **bold**
-        r"|__.+?__"  # __bold__
-        r"|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"  # *italic* (single *)
-        r"|~~.+?~~",  # ~~strikethrough~~
+        r"\*\*.+?\*\*"  # **粗体**
+        r"|__.+?__"  # __粗体__
+        r"|(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)"  # *斜体*（单星号）
+        r"|~~.+?~~",  # ~~删除线~~
         re.DOTALL,
     )
 
-    # Markdown link: [text](url)
+    # Markdown 链接：[文本](URL)
     _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\((https?://[^\)]+)\)")
 
-    # Unordered list items
+    # 无序列表项
     _LIST_RE = re.compile(r"^[\s]*[-*+]\s+", re.MULTILINE)
 
-    # Ordered list items
+    # 有序列表项
     _OLIST_RE = re.compile(r"^[\s]*\d+\.\s+", re.MULTILINE)
 
-    # Max length for plain text format
+    # 纯文本格式的最大长度
     _TEXT_MAX_LEN = 200
 
-    # Max length for post (rich text) format; beyond this, use card
+    # 富文本（post）格式的最大长度；超过此长度则使用卡片
     _POST_MAX_LEN = 2000
 
     @classmethod
     def _detect_msg_format(cls, content: str) -> str:
-        """Determine the optimal Feishu message format for *content*.
+        """为 *content* 确定最优的飞书消息格式。
 
-        Returns one of:
-        - ``"text"``        – plain text, short and no markdown
-        - ``"post"``        – rich text (links only, moderate length)
-        - ``"interactive"`` – card with full markdown rendering
+        返回以下之一：
+        - ``"text"``        – 纯文本，短且无 Markdown
+        - ``"post"``        – 富文本（仅链接，中等长度）
+        - ``"interactive"`` – 卡片，完整 Markdown 渲染
         """
         stripped = content.strip()
 
@@ -924,10 +942,10 @@ class FeishuChannel(BaseChannel):
 
     @classmethod
     def _markdown_to_post(cls, content: str) -> str:
-        """Convert markdown content to Feishu post message JSON.
+        """将 Markdown 内容转换为飞书富文本（post）消息 JSON。
 
-        Handles links ``[text](url)`` as ``a`` tags; everything else as ``text`` tags.
-        Each line becomes a paragraph (row) in the post body.
+        将链接 ``[文本](URL)`` 处理为 ``a`` 标签，其余内容作为 ``text`` 标签。
+        每一行成为富文本正文中的一个段落（行）。
         """
         lines = content.strip().split("\n")
         paragraphs: list[list[dict]] = []
@@ -968,10 +986,10 @@ class FeishuChannel(BaseChannel):
         }
         return json.dumps(post_body, ensure_ascii=False)
 
-    _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".tiff", ".tif"}
-    _AUDIO_EXTS = {".opus"}
-    _VIDEO_EXTS = {".mp4", ".mov", ".avi"}
-    _FILE_TYPE_MAP = {
+    _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico", ".tiff", ".tif"}  # 图片扩展名集合
+    _AUDIO_EXTS = {".opus"}  # 音频扩展名集合
+    _VIDEO_EXTS = {".mp4", ".mov", ".avi"}  # 视频扩展名集合
+    _FILE_TYPE_MAP = {  # 扩展名到飞书文件类型的映射
         ".opus": "opus",
         ".mp4": "mp4",
         ".pdf": "pdf",
@@ -984,7 +1002,7 @@ class FeishuChannel(BaseChannel):
     }
 
     def _upload_image_sync(self, file_path: str) -> str | None:
-        """Upload an image to Feishu and return the image_key."""
+        """上传图片到飞书并返回 image_key。"""
         from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
 
         try:
@@ -1011,7 +1029,7 @@ class FeishuChannel(BaseChannel):
             return None
 
     def _upload_file_sync(self, file_path: str) -> str | None:
-        """Upload a file to Feishu and return the file_key."""
+        """上传文件到飞书并返回 file_key。"""
         from lark_oapi.api.im.v1 import CreateFileRequest, CreateFileRequestBody
 
         ext = os.path.splitext(file_path)[1].lower()
@@ -1047,7 +1065,7 @@ class FeishuChannel(BaseChannel):
     def _download_image_sync(
         self, message_id: str, image_key: str
     ) -> tuple[bytes | None, str | None]:
-        """Download an image from Feishu message by message_id and image_key."""
+        """通过 message_id 和 image_key 从飞书消息下载图片。"""
         from lark_oapi.api.im.v1 import GetMessageResourceRequest
 
         try:
@@ -1077,7 +1095,7 @@ class FeishuChannel(BaseChannel):
     def _download_file_sync(
         self, message_id: str, file_key: str, resource_type: str = "file"
     ) -> tuple[bytes | None, str | None]:
-        """Download a file/audio/media from a Feishu message by message_id and file_key."""
+        """通过 message_id 和 file_key 从飞书消息下载文件/音频/视频等媒体。"""
         from lark_oapi.api.im.v1 import GetMessageResourceRequest
 
         # Feishu resource download API only accepts 'image' or 'file' as type.
@@ -1113,7 +1131,7 @@ class FeishuChannel(BaseChannel):
 
     @staticmethod
     def _safe_media_filename(filename: str | None, fallback: str) -> str:
-        """Return a local-only filename for downloaded Feishu media."""
+        """为下载的飞书媒体返回本地安全的文件名。"""
         candidate = filename or fallback
         # Feishu/Lark filenames come from message metadata. Treat both POSIX
         # and Windows separators as path boundaries before applying the shared
@@ -1127,11 +1145,10 @@ class FeishuChannel(BaseChannel):
     async def _download_and_save_media(
         self, msg_type: str, content_json: dict, message_id: str | None = None
     ) -> tuple[str | None, str]:
-        """
-        Download media from Feishu and save to local disk.
+        """从飞书下载媒体并保存到本地磁盘。
 
         Returns:
-            (file_path, content_text) - file_path is None if download failed
+            (file_path, content_text) - 下载失败时 file_path 为 None
         """
         loop = asyncio.get_running_loop()
         media_dir = get_media_dir("feishu")
@@ -1186,12 +1203,12 @@ class FeishuChannel(BaseChannel):
 
         return None, f"[{msg_type}: download failed]"
 
-    _REPLY_CONTEXT_MAX_LEN = 200
+    _REPLY_CONTEXT_MAX_LEN = 200  # 回复上下文的最大字符长度
 
     def _get_message_content_sync(self, message_id: str) -> str | None:
-        """Fetch the text content of a Feishu message by ID (synchronous).
+        """根据消息 ID 获取飞书消息的文本内容（同步方法）。
 
-        Returns a "[Reply to: ...]" context string, or None on failure.
+        返回 "[Reply to: ...]" 格式的上下文字符串，失败时返回 None。
         """
         from lark_oapi.api.im.v1 import GetMessageRequest
 
@@ -1236,11 +1253,10 @@ class FeishuChannel(BaseChannel):
             return None
 
     def _reply_message_sync(self, parent_message_id: str, msg_type: str, content: str, *, reply_in_thread: bool = False) -> bool:
-        """Reply to an existing Feishu message using the Reply API (synchronous).
+        """使用 Reply API 回复已存在的飞书消息（同步方法）。
 
         Args:
-            reply_in_thread: If True, reply as a thread/topic message
-                in the Feishu client.
+            reply_in_thread: 为 True 时，在飞书客户端中作为话题/主题消息回复。
         """
         from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
 
@@ -1271,11 +1287,11 @@ class FeishuChannel(BaseChannel):
             return False
 
     def _should_use_reply_in_thread(self, metadata: dict[str, Any]) -> bool:
-        """Return whether a group reply should create a Feishu thread/topic."""
+        """判断群聊回复是否应创建飞书话题/主题。"""
         return metadata.get("chat_type", "group") == "group" and self.config.reply_to_message
 
     def _thread_reply_target(self, metadata: dict[str, Any]) -> str | None:
-        """Return the message_id that should receive a Reply API response."""
+        """返回应接收 Reply API 响应的 message_id。"""
         if metadata.get("chat_type", "group") != "group":
             return None
         message_id = metadata.get("message_id")
@@ -1288,7 +1304,7 @@ class FeishuChannel(BaseChannel):
     def _send_message_sync(
         self, receive_id_type: str, receive_id: str, msg_type: str, content: str
     ) -> str | None:
-        """Send a single message and return the message_id on success."""
+        """发送单条消息，成功时返回 message_id。"""
         from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
 
         try:
@@ -1329,12 +1345,11 @@ class FeishuChannel(BaseChannel):
         *,
         reply_in_thread: bool = False,
     ) -> str | None:
-        """Create a CardKit streaming card, send it to chat, return card_id.
+        """创建 CardKit 流式卡片，发送到会话，返回 card_id。
 
-        When *reply_message_id* is provided the card is delivered via the
-        reply API. *reply_in_thread* controls whether Feishu creates a
-        thread/topic for that reply. Otherwise the plain create-message API is
-        used.
+        当提供 *reply_message_id* 时，卡片通过 Reply API 投递。
+        *reply_in_thread* 控制飞书是否为该回复创建话题/主题。
+        否则使用普通的创建消息 API。
         """
         from lark_oapi.api.cardkit.v1 import CreateCardRequest, CreateCardRequestBody
 
@@ -1387,7 +1402,7 @@ class FeishuChannel(BaseChannel):
             return None
 
     def _stream_update_text_sync(self, card_id: str, content: str, sequence: int) -> bool:
-        """Stream-update the markdown element on a CardKit card (typewriter effect)."""
+        """流式更新 CardKit 卡片上的 Markdown 元素（打字机效果）。"""
         from lark_oapi.api.cardkit.v1 import (
             ContentCardElementRequest,
             ContentCardElementRequestBody,
@@ -1421,11 +1436,11 @@ class FeishuChannel(BaseChannel):
             return False
 
     def _close_streaming_mode_sync(self, card_id: str, sequence: int) -> bool:
-        """Turn off CardKit streaming_mode so the chat list preview exits the streaming placeholder.
+        """关闭 CardKit 的 streaming_mode，使会话列表预览退出流式占位状态。
 
-        Per Feishu docs, streaming cards keep a generating-style summary in the session list until
-        streaming_mode is set to false via card settings (after final content update).
-        Sequence must strictly exceed the previous card OpenAPI operation on this entity.
+        根据飞书文档，流式卡片在会话列表中会保持"生成中"样式的摘要，
+        直到通过卡片设置将 streaming_mode 设为 false（在最终内容更新后）。
+        sequence 必须严格大于此前对该实体的上一次 OpenAPI 操作。
         """
         from lark_oapi.api.cardkit.v1 import SettingsCardRequest, SettingsCardRequestBody
 
@@ -1581,7 +1596,7 @@ class FeishuChannel(BaseChannel):
             buf.last_edit = now
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through Feishu, including media (images/files) if present."""
+        """通过飞书发送消息，包括媒体（图片/文件）附件（如有）。"""
         if not self._client:
             self.logger.warning("client not initialized")
             return
@@ -1745,7 +1760,7 @@ class FeishuChannel(BaseChannel):
             asyncio.run_coroutine_threadsafe(self._on_message(data), self._loop)
 
     async def _on_message(self, data: P2ImMessageReceiveV1) -> None:
-        """Handle incoming message from Feishu."""
+        """处理来自飞书的入站消息。"""
         try:
             event = data.event
             message = event.message
@@ -1977,7 +1992,7 @@ class FeishuChannel(BaseChannel):
         return "\n".join(part for part in parts if part)
 
     def _format_tool_hint_delta(self, tool_hint: str) -> str:
-        """Format a tool hint string with the 🔧 prefix for each line."""
+        """为工具提示字符串的每一行添加 🔧 前缀进行格式化。"""
         lines = self.__class__._format_tool_hint_lines(tool_hint).split("\n")
         return "\n".join(
             f"{self.config.tool_hint_prefix} {ln}" for ln in lines if ln.strip()

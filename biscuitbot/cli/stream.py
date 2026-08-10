@@ -1,55 +1,57 @@
-"""Streaming renderer for CLI output.
+"""CLI 流式输出渲染器。
 
-Uses Rich Live with ``transient=True`` for in-place markdown updates during
-streaming.  After the live display stops, a final clean render is printed
-so the content persists on screen.  ``transient=True`` ensures the live
-area is erased before ``stop()`` returns, avoiding the duplication bug
-that plagued earlier approaches.
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/cli 目录，提供 CLI 终端流式输出的渲染能力。
+在项目架构中起到的作用：
+- 使用 Rich Live（``transient=True``）实现流式过程中的就地 Markdown 更新；
+- 流式结束后打印最终干净渲染结果，使内容持久保留在屏幕上；
+- ``transient=True`` 确保 Live 区域在 ``stop()`` 返回前被擦除，
+  避免早期实现中出现的重复显示问题。
 """
 
 from __future__ import annotations
 
-import sys
-from contextlib import contextmanager, nullcontext
+import sys  # 访问标准输出流，判断是否为 TTY 终端
+from contextlib import contextmanager, nullcontext  # 上下文管理器工具，用于暂停/恢复 spinner
 
-from rich.console import Console
-from rich.live import Live
-from rich.markdown import Markdown
-from rich.text import Text
+from rich.console import Console  # Rich 终端控制台，负责输出渲染
+from rich.live import Live  # Rich 就地刷新渲染容器
+from rich.markdown import Markdown  # Markdown 渲染器
+from rich.text import Text  # 纯文本渲染器
 
 
 def _clear_current_line(console: Console) -> None:
-    """Erase a transient status line before printing persistent output."""
+    """在打印持久输出前擦除瞬态状态行。"""
     file = console.file
     isatty = getattr(file, "isatty", lambda: False)
     if not isatty():
         return
-    file.write("\r\x1b[2K")
+    file.write("\r\x1b[2K")  # 回车并清除整行
     file.flush()
 
 
 def _make_console() -> Console:
-    """Create a Console that emits plain text when stdout is not a TTY.
+    """创建 Console：当 stdout 不是 TTY 时输出纯文本。
 
-    Rich's spinner, Live render, and cursor-visibility escape codes all
-    key off ``Console.is_terminal``. Forcing ``force_terminal=True`` overrode
-    the ``isatty()`` check and caused control sequences (``\\x1b[?25l``,
-    braille spinner frames) to pollute programmatic consumers such as
-    ``docker exec -i`` or pipes, even with ``NO_COLOR`` or ``TERM=dumb``.
-    Deferring to ``isatty()`` keeps Rich output in interactive terminals
-    and plain text everywhere else (#3265).
+    Rich 的 spinner、Live 渲染与光标可见性转义码都依赖于
+    ``Console.is_terminal``。强制 ``force_terminal=True`` 会覆盖
+    ``isatty()`` 检查，导致控制序列（``\\x1b[?25l``、点阵 spinner 帧）
+    污染 ``docker exec -i`` 或管道等程序化消费者，即使设置了
+    ``NO_COLOR`` 或 ``TERM=dumb`` 也无效。改用 ``isatty()`` 判断，
+    在交互终端保留 Rich 输出，其它场合退化为纯文本 (#3265)。
     """
     return Console(file=sys.stdout, force_terminal=sys.stdout.isatty())
 
 
 class ThinkingSpinner:
-    """Spinner that shows '<bot_name> is thinking...' with pause support."""
+    """显示 '<bot_name> is thinking...' 的 spinner，支持暂停。"""
 
     def __init__(self, console: Console | None = None, bot_name: str = "biscuitbot"):
         c = console or _make_console()
         self._console = c
         self._spinner = c.status(f"[dim]{bot_name} is thinking...[/dim]", spinner="dots")
-        self._active = False
+        self._active = False  # 标记 spinner 当前是否处于活动状态
 
     def __enter__(self):
         self._spinner.start()
@@ -63,7 +65,7 @@ class ThinkingSpinner:
         return False
 
     def pause(self):
-        """Context manager: temporarily stop spinner for clean output."""
+        """上下文管理器：临时停止 spinner 以输出干净内容。"""
         from contextlib import contextmanager
 
         @contextmanager
@@ -81,14 +83,14 @@ class ThinkingSpinner:
 
 
 class StreamRenderer:
-    """Streaming renderer with Rich Live for in-place updates.
+    """基于 Rich Live 的流式渲染器，支持就地更新。
 
-    During streaming: updates content in-place via Rich Live.
-    On end: stops Live (transient=True erases it), then prints final render.
+    流式过程中：通过 Rich Live 就地更新内容。
+    结束时：停止 Live（transient=True 会擦除它），然后打印最终渲染结果。
 
-    Flow per round:
-      spinner -> first delta -> header + Live updates ->
-      on_end -> stop Live + final render
+    每轮流程：
+      spinner -> 首个 delta -> 头部 + Live 更新 ->
+      on_end -> 停止 Live + 最终渲染
     """
 
     def __init__(
@@ -98,55 +100,56 @@ class StreamRenderer:
         bot_name: str = "biscuitbot",
         bot_icon: str = "🍪",
     ):
-        self._md = render_markdown
-        self._show_spinner = show_spinner
-        self._bot_name = bot_name
-        self._bot_icon = bot_icon
-        self._buf = ""
-        self.streamed = False
+        self._md = render_markdown  # 是否以 Markdown 渲染
+        self._show_spinner = show_spinner  # 是否显示思考 spinner
+        self._bot_name = bot_name  # 机器人名称
+        self._bot_icon = bot_icon  # 机器人图标
+        self._buf = ""  # 流式内容缓冲区
+        self.streamed = False  # 标记本轮是否发生过流式输出
         self._console = _make_console()
-        self._live: Live | None = None
-        self._spinner: ThinkingSpinner | None = None
-        self._header_printed = False
+        self._live: Live | None = None  # Rich Live 实例
+        self._spinner: ThinkingSpinner | None = None  # 思考 spinner 实例
+        self._header_printed = False  # 标记本轮是否已打印助手头部
         self._start_spinner()
 
     def _renderable(self):
-        """Create a renderable from the current buffer."""
+        """根据当前缓冲区创建可渲染对象。"""
         if self._md and self._buf:
             return Markdown(self._buf)
         return Text(self._buf or "")
 
     def _render_str(self) -> str:
-        """Render current buffer to a plain string via Rich."""
+        """通过 Rich 将当前缓冲区渲染为纯字符串。"""
         with self._console.capture() as cap:
             self._console.print(self._renderable())
         return cap.get()
 
     def _start_spinner(self) -> None:
+        """启动思考 spinner（若启用）。"""
         if self._show_spinner:
             self._spinner = ThinkingSpinner(bot_name=self._bot_name)
             self._spinner.__enter__()
 
     def _stop_spinner(self) -> None:
+        """停止思考 spinner。"""
         if self._spinner:
             self._spinner.__exit__(None, None, None)
             self._spinner = None
 
     @property
     def console(self) -> Console:
-        """Expose the Live's console so external print functions can use it."""
+        """暴露 Live 的 console，供外部打印函数使用。"""
         return self._console
 
     @property
     def header_printed(self) -> bool:
-        """Whether this turn has already opened the assistant output block."""
+        """标记本轮是否已开启助手输出块。"""
         return self._header_printed
 
     def ensure_header(self) -> None:
-        """Stop transient status and print the assistant header once."""
-        # A turn can print trace rows before the final answer, then restart the
-        # spinner while tools run. The next answer delta still needs to stop
-        # that spinner even though the header was already printed.
+        """停止瞬态状态并打印一次助手头部。"""
+        # 一轮对话可能在最终答案前先打印追踪行，然后在工具运行期间重启 spinner。
+        # 即使头部已打印，下一个答案 delta 仍需停止该 spinner。
         self._stop_spinner()
         if self._header_printed:
             return
@@ -156,27 +159,26 @@ class StreamRenderer:
         self._header_printed = True
 
     def pause_spinner(self):
-        """Context manager: temporarily stop transient output for clean trace lines."""
+        """上下文管理器：临时停止瞬态输出以打印干净的追踪行。"""
         @contextmanager
         def _pause():
             live_was_active = self._live is not None
             if self._live:
-                # Trace/reasoning can arrive after answer streaming has started.
-                # Stop the transient Live view first so it does not leak a raw
-                # partial markdown frame before the trace line.
+                # 追踪/推理可能在答案流式开始后到达。
+                # 先停止瞬态 Live 视图，避免在追踪行前泄漏原始的部分 Markdown 帧。
                 self._live.stop()
                 self._live = None
             with self._spinner.pause() if self._spinner else nullcontext():
                 yield
-            # If more answer deltas arrive after the trace, on_delta() will
-            # create a fresh Live using the existing buffer. If no deltas arrive,
-            # on_end() prints the final buffered answer once.
+            # 如果追踪之后还有更多答案 delta，on_delta() 会用现有缓冲区创建新的 Live。
+            # 如果没有 delta，on_end() 会一次性打印最终缓冲的答案。
             if live_was_active:
                 return
 
         return _pause()
 
     async def on_delta(self, delta: str) -> None:
+        """处理流式增量内容：追加到缓冲区并刷新 Live 显示。"""
         self.streamed = True
         self._buf += delta
         if self._live is None:
@@ -187,7 +189,7 @@ class StreamRenderer:
                 self._renderable(),
                 console=self._console,
                 auto_refresh=False,
-                transient=True,
+                transient=True,  # 停止时擦除 Live 区域，避免重复显示
             )
             self._live.start()
         else:
@@ -195,8 +197,9 @@ class StreamRenderer:
         self._live.refresh()
 
     async def on_end(self, *, resuming: bool = False) -> None:
+        """处理流式结束：停止 Live 并打印最终渲染结果。"""
         if self._live:
-            # Double-refresh to sync _shape before stop() calls refresh().
+            # 双重刷新以在 stop() 调用 refresh() 前同步 _shape。
             self._live.refresh()
             self._live.update(self._renderable())
             self._live.refresh()
@@ -204,7 +207,7 @@ class StreamRenderer:
             self._live = None
         self._stop_spinner()
         if self._buf.strip():
-            # Print final rendered content (persists after Live is gone).
+            # 打印最终渲染内容（在 Live 消失后持久保留）。
             out = sys.stdout
             out.write(self._render_str())
             out.flush()
@@ -213,17 +216,17 @@ class StreamRenderer:
             self._start_spinner()
 
     def stop_for_input(self) -> None:
-        """Stop spinner before user input to avoid prompt_toolkit conflicts."""
+        """在等待用户输入前停止 spinner，避免与 prompt_toolkit 冲突。"""
         self._stop_spinner()
 
     def pause(self):
-        """Context manager: pause spinner for external output. No-op once streaming has started."""
+        """上下文管理器：为外部输出暂停 spinner。流式开始后为空操作。"""
         if self._spinner:
             return self._spinner.pause()
         return nullcontext()
 
     async def close(self) -> None:
-        """Stop spinner/live without rendering a final streamed round."""
+        """停止 spinner/live，但不渲染最终的流式轮次。"""
         if self._live:
             self._live.stop()
             self._live = None

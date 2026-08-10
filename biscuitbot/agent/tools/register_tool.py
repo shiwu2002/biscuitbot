@@ -1,24 +1,26 @@
-"""Meta-tools: agent self-extension via runtime tool registration.
+"""元工具：通过运行时工具注册实现 agent 自我扩展。
 
-These meta-tools let the agent create, install, and uninstall custom
-tools at runtime.  A custom tool is a Python file that inherits from
-``Tool`` plus a ``docs/<name>.md`` usage doc.  The registry validates
-both files before installation — if validation fails the error message
-explains **why** so the agent can fix the problem and retry.
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统的"元工具"组件。它让
+agent 能够在运行时创建、安装和卸载自定义工具。一个自定义工具由一个继承
+``Tool`` 的 Python 文件加一个 ``docs/<name>.md`` 使用文档组成。注册表在
+安装前会校验这两个文件——若校验失败，错误信息会说明**原因**，便于 agent
+修复后重试。
 
-Custom tools are persisted to ``workspace/.agent_tools/manifest.json``
-so they survive restarts.
+自定义工具会持久化到 ``workspace/.agent_tools/manifest.json``，重启后仍可
+恢复。
 """
 
 from __future__ import annotations
 
-import json
-from typing import TYPE_CHECKING
+import json  # JSON 序列化，用于返回结构化结果
+from typing import TYPE_CHECKING  # 仅类型检查时导入
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
+from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
 
-if TYPE_CHECKING:
-    from biscuitbot.agent.tools.registry import ToolRegistry
+if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
+    from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表
 
 
 @tool_parameters({
@@ -48,28 +50,35 @@ if TYPE_CHECKING:
     "required": ["file_path", "docs_md_path"],
 })
 class RegisterToolTool(Tool):
-    """Let the agent install a custom tool at runtime."""
+    """让 agent 在运行时安装自定义工具。
+
+    职责：校验并注册由 agent 创建的自定义工具（Python 文件 + 使用文档 md）。
+    成功后该工具立即可通过 ``discover_tools`` 发现并调用。
+    """
 
     _capability = (
         "Register a custom tool (Python file + usage md) so it becomes "
         "discoverable and callable via discover_tools."
     )
-    _always_include = True
-    _usage_md = "docs/register_tool.md"
-    _scopes = {"core"}
+    _always_include = True  # 该工具的完整 schema 始终发送给模型
+    _usage_md = "docs/register_tool.md"  # 工具使用说明文档路径
+    _scopes = {"core"}  # 工具可用作用域
 
     def __init__(self) -> None:
-        self._registry: "ToolRegistry | None" = None
+        self._registry: "ToolRegistry | None" = None  # 工具注册表，初始为空
 
     def bind_registry(self, registry: "ToolRegistry") -> None:
+        """绑定工具注册表实例。"""
         self._registry = registry
 
     @property
     def name(self) -> str:
+        """工具名称。"""
         return "register_tool"
 
     @property
     def description(self) -> str:
+        """工具描述。"""
         return (
             "Register a custom tool from a Python file and its usage-doc md. "
             "The tool must inherit from Tool, implement name/description/"
@@ -78,6 +87,15 @@ class RegisterToolTool(Tool):
         )
 
     async def execute(self, file_path: str, docs_md_path: str) -> str:
+        """执行工具注册。
+
+        参数:
+            file_path: 工具 Python 文件路径。
+            docs_md_path: 使用文档 md 路径。
+
+        返回:
+            JSON 字符串，包含 ok 标志与消息；若注册表未绑定返回错误。
+        """
         if self._registry is None:
             return json.dumps(
                 {"error": "tool registry not bound to register_tool"},
@@ -103,31 +121,46 @@ class RegisterToolTool(Tool):
     "required": ["name"],
 })
 class UnregisterToolTool(Tool):
-    """Let the agent uninstall a previously-registered custom tool."""
+    """让 agent 卸载之前注册的自定义工具。
+
+    职责：按名称卸载由 ``register_tool`` 注册的自定义工具。内置工具无法
+    卸载。
+    """
 
     _capability = "Uninstall a custom tool that was registered via register_tool."
-    _always_include = True
-    _usage_md = "docs/unregister_tool.md"
-    _scopes = {"core"}
+    _always_include = True  # 该工具的完整 schema 始终发送给模型
+    _usage_md = "docs/unregister_tool.md"  # 工具使用说明文档路径
+    _scopes = {"core"}  # 工具可用作用域
 
     def __init__(self) -> None:
-        self._registry: "ToolRegistry | None" = None
+        self._registry: "ToolRegistry | None" = None  # 工具注册表，初始为空
 
     def bind_registry(self, registry: "ToolRegistry") -> None:
+        """绑定工具注册表实例。"""
         self._registry = registry
 
     @property
     def name(self) -> str:
+        """工具名称。"""
         return "unregister_tool"
 
     @property
     def description(self) -> str:
+        """工具描述。"""
         return (
             "Uninstall a custom tool registered via register_tool. "
             "Built-in tools cannot be uninstalled."
         )
 
     async def execute(self, name: str) -> str:
+        """执行工具卸载。
+
+        参数:
+            name: 要卸载的自定义工具名称。
+
+        返回:
+            JSON 字符串，包含 ok 标志与消息；若注册表未绑定返回错误。
+        """
         if self._registry is None:
             return json.dumps(
                 {"error": "tool registry not bound to unregister_tool"},

@@ -1,16 +1,16 @@
-"""Duplicate detection for tools and skills.
+"""工具与技能的重复检测模块。
 
-All tools are exposed to the model via the INDEX.md directory index.
-This module detects functionally similar tools (or skills that overlap
-with tools) so redundant entries can be merged before they confuse
-retrieval and tool selection.
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统的重复检测组件。
+在项目架构中起到的作用：所有工具通过 INDEX.md 目录索引暴露给模型，
+本模块检测功能相似的工具（或与工具重叠的技能），以便在冗余条目干扰
+检索与工具选择之前进行合并。
 
-Similarity is the Jaccard coefficient over tokens extracted from each
-entry's ``name`` + ``capability`` text.  Tokens are lowercased, split on
-non-alphanumeric characters, and filtered against a stopword list and a
-minimum length of 3.  Including the name in the token set means two
-tools with similar names (even if the capability wording differs) are
-also treated as duplicate candidates.
+相似度基于各条目 ``name`` + ``capability`` 文本提取的 token 的 Jaccard
+系数。token 经小写化、按非字母数字字符切分，并过滤停用词与长度小于 3
+的词。将名称纳入 token 集意味着名称相似的两个工具（即使能力描述措辞
+不同）也会被视为重复候选。
 """
 
 from __future__ import annotations
@@ -20,32 +20,35 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from biscuitbot.agent.tools.base import Tool
-    from biscuitbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.base import Tool  # 工具基类，仅用于类型提示
+    from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表，仅用于类型提示
 
 
-# Duplicate-pair categories.  TOOL_DUPLICATE means two registered tools
-# overlap; SKILL_DUPLICATE means a skill entry overlaps with a tool.
+# 重复对类别。TOOL_DUPLICATE 表示两个已注册工具重叠；
+# SKILL_DUPLICATE 表示某个技能条目与工具重叠。
 TOOL_DUPLICATE = "TOOL_DUPLICATE"
 SKILL_DUPLICATE = "SKILL_DUPLICATE"
 
 
 @dataclass
 class DuplicatePair:
-    """A pair of tools (or skill-vs-tool) whose capabilities overlap."""
+    """A pair of tools (or skill-vs-tool) whose capabilities overlap.
 
-    tool_a: str  # name
-    tool_b: str  # name
-    similarity: float  # 0.0-1.0
-    shared_tokens: list[str] = field(default_factory=list)
-    # Discriminator used by build_duplicate_report to pick the right
-    # merge suggestion.  Defaults to TOOL_DUPLICATE so positional
-    # construction of a tool-tool pair still works.
+    中文说明：一对能力重叠的工具（或技能-工具对）的记录。
+    """
+
+    tool_a: str  # 名称 A
+    tool_b: str  # 名称 B
+    similarity: float  # 相似度 0.0-1.0
+    shared_tokens: list[str] = field(default_factory=list)  # 共享的 token 列表
+    # 区分类型，供 build_duplicate_report 选择合适的合并建议。
+    # 默认为 TOOL_DUPLICATE，使位置式构造工具-工具对仍可工作。
     kind: str = TOOL_DUPLICATE
 
 
 # Stopwords filtered out during tokenization.  Intentionally small and
 # English-only since capabilities are written in English.
+# 中文说明：分词时过滤的停用词集合。故意保持较小且仅含英文，因为能力描述以英文编写。
 _STOPWORDS = frozenset({
     "the", "and", "for", "with", "from", "into", "that", "this", "its",
     "are", "was", "were", "has", "have", "not", "but", "via", "can",
@@ -60,7 +63,10 @@ _TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
 
 
 def _tokenize(text: str) -> set[str]:
-    """Lowercase, split on non-alphanumerics, drop stopwords and tokens shorter than 3."""
+    """Lowercase, split on non-alphanumerics, drop stopwords and tokens shorter than 3.
+
+    中文说明：小写化、按非字母数字字符切分，过滤停用词与长度小于 3 的 token。
+    """
     tokens = _TOKEN_SPLIT.split((text or "").lower())
     return {t for t in tokens if len(t) >= 3 and t not in _STOPWORDS}
 
@@ -70,6 +76,9 @@ def _jaccard(a: set[str], b: set[str]) -> tuple[float, set[str]]:
 
     Two empty sets are treated as having zero similarity (no signal to
     compare), avoiding a division-by-zero.
+
+    中文说明：返回两个 token 集合的 ``(Jaccard 相似度, 交集)``。
+    两个空集视为相似度为零（无比较信号），避免除零错误。
     """
     if not a and not b:
         return 0.0, set()
@@ -81,7 +90,10 @@ def _jaccard(a: set[str], b: set[str]) -> tuple[float, set[str]]:
 
 
 def _tool_tokens(tool: "Tool") -> set[str]:
-    """Tokens from a tool's name + capability (name included so similarly-named tools count)."""
+    """Tokens from a tool's name + capability (name included so similarly-named tools count).
+
+    中文说明：从工具的 name + capability 提取 token（纳入名称使得名称相似的工具也会被计入）。
+    """
     return _tokenize(f"{tool.name} {tool.capability}")
 
 
@@ -95,6 +107,10 @@ def check_duplicates(
     tokens extracted from each tool's ``name`` + ``capability``.  Pairs
     whose similarity is at least *threshold* are returned, sorted by
     descending similarity (ties broken by name for stable output).
+
+    中文说明：检测 *registry* 中工具与工具之间的重复。通过比较每个已注册工具
+    从 ``name`` + ``capability`` 提取的 token 的 Jaccard 重叠度，返回相似度
+    不低于 *threshold* 的工具对，按相似度降序排列（相同相似度按名称排序以保证稳定输出）。
     """
     names = sorted(registry.tool_names)
     entries: list[tuple[str, set[str]]] = []
@@ -138,6 +154,13 @@ def check_skill_duplicates(
 
     The skill name is placed in ``tool_a`` and the tool name in
     ``tool_b``; ``kind`` is :data:`SKILL_DUPLICATE`.
+
+    中文说明：检测技能与工具之间的重复。``skills_entries`` 是
+    ``{"name", "capability", "usage_md"}`` 字典列表（与
+    :meth:`ToolRegistry.generate_index` 传入的形状相同）。将每个技能的
+    ``name`` + ``capability`` token 与所有已注册工具的 token 进行比较，
+    返回相似度不低于 *threshold* 的对，按相似度降序排列。技能名置于
+    ``tool_a``，工具名置于 ``tool_b``，``kind`` 为 :data:`SKILL_DUPLICATE`。
     """
     skill_entries: list[tuple[str, set[str]]] = []
     for skill in skills_entries:
@@ -170,7 +193,10 @@ def check_skill_duplicates(
 
 
 def _suggestion(d: DuplicatePair) -> str:
-    """Merge direction for one duplicate pair, based on its kind."""
+    """Merge direction for one duplicate pair, based on its kind.
+
+    中文说明：根据重复对的类型，给出单个重复对的合并方向建议。
+    """
     if d.kind == SKILL_DUPLICATE:
         return (
             f"将 skill '{d.tool_a}' 的内容合并到工具 '{d.tool_b}' 中，"

@@ -1,96 +1,107 @@
-"""Microsoft Teams channel MVP using a tiny built-in HTTP webhook server.
+"""Microsoft Teams 渠道 MVP 实现，使用内置的小型 HTTP webhook 服务器。
 
-Scope:
-- DM-focused MVP
-- text inbound/outbound
-- conversation reference persistence
-- sender allowlist support
-- optional inbound Bot Framework bearer-token validation
-- no attachments/cards/polls yet
+所属模块与项目作用
+====================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 Microsoft Teams 平台组件。
+在项目架构中起到的作用：通过内置 HTTP webhook 服务器接收 Bot Framework 活动事件，
+将 Teams 的消息收发能力接入 biscuitbot 消息总线。
+
+平台特点与接入方式
+------------------
+- 接入方式：内置 ThreadingHTTPServer 监听 Bot Framework webhook（默认 /api/messages）。
+- 鉴权：可选校验入站 Bot Framework bearer token（JWT，通过 JWKS 验证签名）；
+  出站使用 client_credentials 流获取 access_token 调用 Bot Framework REST API。
+- 会话引用持久化：ConversationRef 存储 service_url/conversation_id 等，持久化到工作区 state 目录，
+  支持跨进程文件锁、TTL 过期清理、原子写入。
+- 当前范围（MVP）：聚焦 DM（个人会话），文本入站/出站，暂不支持附件/卡片/投票。
+- 安全：trusted_service_url_hosts 白名单防止 SSRF；可选裁剪 webchat 和非 personal 会话引用。
+- 线程回复：支持 reply_in_thread，回复时携带 replyToId 形成话题线程。
+- 文本归一化：剥离 <at> mention 标记，归一化 Teams 引用回复引用块。
 """
 
 from __future__ import annotations
 
-import asyncio
-import html
-import importlib.util
-import json
-import os
-import re
-import tempfile
-import threading
-import time
-from contextlib import contextmanager, suppress
-from dataclasses import dataclass
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import TYPE_CHECKING, Any
-from urllib.parse import urlparse
+import asyncio  # 异步事件循环与跨线程调度
+import html  # HTML 实体反转义（Teams 文本归一化）
+import importlib.util  # 运行时检测可选依赖
+import json  # JSON 序列化/反序列化
+import os  # 文件描述符与原子替换
+import re  # 正则表达式（mention 剥离、空白归一化）
+import tempfile  # 临时文件（原子写入）
+import threading  # 线程（HTTP 服务器、文件锁）
+import time  # 时间戳（TTL、token 过期）
+from contextlib import contextmanager, suppress  # 上下文管理器与异常抑制
+from dataclasses import dataclass  # 数据类装饰器
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # 内置 HTTP 服务器
+from typing import TYPE_CHECKING, Any  # 类型注解支持
+from urllib.parse import urlparse  # URL 解析（service_url 校验）
 
 try:  # pragma: no cover - Windows fallback path
-    import fcntl
+    import fcntl  # Unix 文件锁（Windows 无此模块）
 except ImportError:  # pragma: no cover
     fcntl = None
 
-import httpx
-from pydantic import Field
+import httpx  # 异步 HTTP 客户端
+from pydantic import Field  # Pydantic 模型字段定义
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.paths import get_workspace_path
-from biscuitbot.config.schema import Base
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.paths import get_workspace_path  # 工作区路径
+from biscuitbot.config.schema import Base  # 配置模型基类
 
+# 检测 PyJWT 和 cryptography 是否安装（用于入站 token 校验）
 MSTEAMS_AVAILABLE = (
     importlib.util.find_spec("jwt") is not None
     and importlib.util.find_spec("cryptography") is not None
 )
 
 if TYPE_CHECKING:
-    import jwt
+    import jwt  # 仅类型检查时导入
 
 if MSTEAMS_AVAILABLE:
     import jwt
 
-MSTEAMS_REF_TTL_DAYS = 30
-MSTEAMS_WEBCHAT_HOST = "webchat.botframework.com"
-MSTEAMS_DEFAULT_TRUSTED_SERVICE_URL_HOSTS = [
+MSTEAMS_REF_TTL_DAYS = 30  # 会话引用默认 TTL（天）
+MSTEAMS_WEBCHAT_HOST = "webchat.botframework.com"  # Web Chat 主机名（不支持，默认裁剪）
+MSTEAMS_DEFAULT_TRUSTED_SERVICE_URL_HOSTS = [  # 默认受信 service_url 主机白名单（防 SSRF）
     "smba.trafficmanager.net",
     "smba.infra.gcc.teams.microsoft.com",
     "smba.infra.gov.teams.microsoft.us",
     "smba.infra.dod.teams.microsoft.us",
     "*.botframework.com",
 ]
-MSTEAMS_REF_META_FILENAME = "msteams_conversations_meta.json"
-MSTEAMS_REF_LOCK_FILENAME = "msteams_conversations.lock"
-MSTEAMS_REF_TOUCH_INTERVAL_S = 300
+MSTEAMS_REF_META_FILENAME = "msteams_conversations_meta.json"  # 会话引用元数据文件名（存储 updated_at）
+MSTEAMS_REF_LOCK_FILENAME = "msteams_conversations.lock"  # 跨进程文件锁文件名
+MSTEAMS_REF_TOUCH_INTERVAL_S = 300  # 会话引用活跃刷新最小间隔（秒）
 
 
 class MSTeamsConfig(Base):
-    """Microsoft Teams channel configuration."""
+    """Microsoft Teams 渠道配置。"""
 
     enabled: bool = False
-    app_id: str = ""
-    app_password: str = ""
-    tenant_id: str = ""
-    host: str = "0.0.0.0"
-    port: int = 3978
-    path: str = "/api/messages"
-    allow_from: list[str] = Field(default_factory=list)
-    reply_in_thread: bool = True
-    mention_only_response: str = "Hi — what can I help with?"
-    validate_inbound_auth: bool = True
-    ref_ttl_days: int = Field(default=MSTEAMS_REF_TTL_DAYS, ge=1)
-    prune_web_chat_refs: bool = True
-    prune_non_personal_refs: bool = True
-    ref_touch_interval_s: int = Field(default=MSTEAMS_REF_TOUCH_INTERVAL_S, ge=0)
+    app_id: str = ""  # Azure Bot 应用 ID
+    app_password: str = ""  # Azure Bot 应用密码
+    tenant_id: str = ""  # 租户 ID（为空时使用 botframework.com）
+    host: str = "0.0.0.0"  # webhook 监听地址
+    port: int = 3978  # webhook 监听端口
+    path: str = "/api/messages"  # webhook 路径
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    reply_in_thread: bool = True  # 是否以线程回复形式发送
+    mention_only_response: str = "Hi — what can I help with?"  # 仅@无文本时的默认回复
+    validate_inbound_auth: bool = True  # 是否校验入站 bearer token
+    ref_ttl_days: int = Field(default=MSTEAMS_REF_TTL_DAYS, ge=1)  # 会话引用 TTL（天）
+    prune_web_chat_refs: bool = True  # 是否裁剪 Web Chat 会话引用
+    prune_non_personal_refs: bool = True  # 是否裁剪非 personal 会话引用
+    ref_touch_interval_s: int = Field(default=MSTEAMS_REF_TOUCH_INTERVAL_S, ge=0)  # 引用活跃刷新间隔
     trusted_service_url_hosts: list[str] = Field(
         default_factory=lambda: MSTEAMS_DEFAULT_TRUSTED_SERVICE_URL_HOSTS.copy()
-    )
+    )  # 受信 service_url 主机白名单
 
 
 @dataclass
 class ConversationRef:
-    """Minimal stored conversation reference for replies."""
+    """用于回复的最小化会话引用存储。"""
 
     service_url: str
     conversation_id: str
@@ -102,13 +113,14 @@ class ConversationRef:
 
 
 class MSTeamsChannel(BaseChannel):
-    """Microsoft Teams channel (DM-first MVP)."""
+    """Microsoft Teams 渠道（DM 优先 MVP）。"""
 
     name = "msteams"
     display_name = "Microsoft Teams"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return MSTeamsConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -116,31 +128,32 @@ class MSTeamsChannel(BaseChannel):
             config = MSTeamsConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: MSTeamsConfig = config
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._server: ThreadingHTTPServer | None = None
-        self._server_thread: threading.Thread | None = None
-        self._http: httpx.AsyncClient | None = None
-        self._token: str | None = None
-        self._token_expires_at: float = 0.0
+        self._loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用（跨线程调度用）
+        self._server: ThreadingHTTPServer | None = None  # HTTP webhook 服务器
+        self._server_thread: threading.Thread | None = None  # 服务器线程
+        self._http: httpx.AsyncClient | None = None  # 出站 HTTP 客户端
+        self._token: str | None = None  # Bot Framework access_token 缓存
+        self._token_expires_at: float = 0.0  # access_token 过期时间
         self._botframework_openid_config_url = (
             "https://login.botframework.com/v1/.well-known/openidconfiguration"
-        )
-        self._botframework_openid_config: dict[str, Any] | None = None
-        self._botframework_openid_config_expires_at: float = 0.0
-        self._botframework_jwks: dict[str, Any] | None = None
-        self._botframework_jwks_expires_at: float = 0.0
-        self._refs_path = get_workspace_path() / "state" / "msteams_conversations.json"
+        )  # Bot Framework OpenID 配置 URL
+        self._botframework_openid_config: dict[str, Any] | None = None  # OpenID 配置缓存
+        self._botframework_openid_config_expires_at: float = 0.0  # OpenID 配置过期时间
+        self._botframework_jwks: dict[str, Any] | None = None  # JWKS（签名密钥）缓存
+        self._botframework_jwks_expires_at: float = 0.0  # JWKS 过期时间
+        self._refs_path = get_workspace_path() / "state" / "msteams_conversations.json"  # 会话引用存储路径
         self._refs_path.parent.mkdir(parents=True, exist_ok=True)
-        self._refs_meta_path = self._refs_path.parent / MSTEAMS_REF_META_FILENAME
-        self._refs_lock_path = self._refs_path.parent / MSTEAMS_REF_LOCK_FILENAME
-        self._refs_guard = threading.RLock()
-        self._conversation_refs: dict[str, ConversationRef] = self._load_refs()
+        self._refs_meta_path = self._refs_path.parent / MSTEAMS_REF_META_FILENAME  # 元数据路径
+        self._refs_lock_path = self._refs_path.parent / MSTEAMS_REF_LOCK_FILENAME  # 文件锁路径
+        self._refs_guard = threading.RLock()  # 进程内会话引用读写锁
+        self._conversation_refs: dict[str, ConversationRef] = self._load_refs()  # 会话引用字典
+        # 初始化时清理过期引用
         with self._refs_guard:
             if self._prune_conversation_refs():
                 self._save_refs_locked(prune=True)
 
     async def start(self) -> None:
-        """Start the Teams webhook listener."""
+        """启动 Teams webhook 监听服务器。"""
         if not MSTEAMS_AVAILABLE:
             self.logger.error("PyJWT not installed. Run: pip install biscuitbot[msteams]")
             return
@@ -164,11 +177,13 @@ class MSTeamsChannel(BaseChannel):
 
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:
+                # 路径不匹配返回 404
                 if self.path != channel.config.path:
                     self.send_response(404)
                     self.end_headers()
                     return
 
+                # 解析请求体
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
                     raw = self.rfile.read(length) if length > 0 else b"{}"
@@ -179,6 +194,7 @@ class MSTeamsChannel(BaseChannel):
                     self.end_headers()
                     return
 
+                # 校验入站 bearer token（可选）
                 auth_header = self.headers.get("Authorization", "")
                 if channel.config.validate_inbound_auth:
                     try:
@@ -194,6 +210,7 @@ class MSTeamsChannel(BaseChannel):
                         self.end_headers()
                         self.wfile.write(b'{"error":"unauthorized"}')
                         return
+                # 处理活动事件（跨线程调度到主事件循环）
                 try:
                     fut = asyncio.run_coroutine_threadsafe(
                         channel._handle_activity(payload),
@@ -209,6 +226,7 @@ class MSTeamsChannel(BaseChannel):
                 self.wfile.write(b"{}")
 
             def log_message(self, format: str, *args: Any) -> None:
+                # 抑制默认的 HTTP 访问日志
                 return
 
         self._server = ThreadingHTTPServer((self.config.host, self.config.port), Handler)
@@ -230,7 +248,7 @@ class MSTeamsChannel(BaseChannel):
             await asyncio.sleep(1)
 
     async def stop(self) -> None:
-        """Stop the channel."""
+        """停止渠道，关闭 webhook 服务器和 HTTP 客户端。"""
         self._running = False
         if self._server:
             self._server.shutdown()
@@ -244,7 +262,7 @@ class MSTeamsChannel(BaseChannel):
             self._http = None
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a plain text reply into an existing Teams conversation."""
+        """向已存在的 Teams 会话发送纯文本回复。"""
         if not self._http:
             raise RuntimeError("MSTeams HTTP client not initialized")
 
@@ -252,6 +270,7 @@ class MSTeamsChannel(BaseChannel):
         if not ref:
             raise RuntimeError(f"MSTeams conversation ref not found for chat_id={msg.chat_id}")
 
+        # 安全校验：service_url 必须在白名单内，防止 SSRF
         if not self._is_trusted_service_url(ref.service_url):
             raise RuntimeError(
                 f"MSTeams conversation ref has untrusted service_url for chat_id={msg.chat_id}"
@@ -268,6 +287,7 @@ class MSTeamsChannel(BaseChannel):
             "type": "message",
             "text": msg.content or " ",
         }
+        # 线程回复：携带 replyToId
         if use_thread_reply:
             payload["replyToId"] = ref.activity_id
 
@@ -275,13 +295,14 @@ class MSTeamsChannel(BaseChannel):
             resp = await self._http.post(base_url, headers=headers, json=payload)
             resp.raise_for_status()
             self.logger.info("Message sent to {}", ref.conversation_id)
+            # 刷新会话引用活跃时间，避免 TTL 过期
             self._touch_conversation_ref(str(msg.chat_id), persist=True)
         except Exception:
             self.logger.exception("Send failed")
             raise
 
     async def _handle_activity(self, activity: dict[str, Any]) -> None:
-        """Handle inbound Teams/Bot Framework activity."""
+        """处理入站 Teams/Bot Framework 活动。"""
         if activity.get("type") != "message":
             return
 
@@ -299,6 +320,7 @@ class MSTeamsChannel(BaseChannel):
         if not sender_id or not conversation_id or not service_url:
             return
 
+        # 安全校验：service_url 主机必须受信
         if not self._is_trusted_service_url(service_url):
             self.logger.warning(
                 "Ignoring MSTeams activity with untrusted serviceUrl host: {}",
@@ -306,15 +328,17 @@ class MSTeamsChannel(BaseChannel):
             )
             return
 
+        # 跳过机器人自身发的消息
         if recipient.get("id") and from_user.get("id") == recipient.get("id"):
             return
 
-        # DM-only MVP: ignore group/channel traffic for now
+        # DM-only MVP：忽略群组/频道消息
         if conversation_type and conversation_type not in ("personal", ""):
             self.logger.debug("Ignoring non-DM conversation {}", conversation_type)
             return
 
         text = self._sanitize_inbound_text(activity)
+        # 无文本时使用默认回复（如仅@机器人）
         if not text:
             text = self.config.mention_only_response.strip()
             if not text:
@@ -329,6 +353,7 @@ class MSTeamsChannel(BaseChannel):
             )
             return
 
+        # 保存会话引用，用于后续回复
         with self._refs_guard:
             self._conversation_refs[conversation_id] = ConversationRef(
                 service_url=service_url,
@@ -356,7 +381,7 @@ class MSTeamsChannel(BaseChannel):
         )
 
     def _sanitize_inbound_text(self, activity: dict[str, Any]) -> str:
-        """Extract the user-authored text from a Teams activity."""
+        """从 Teams 活动中提取用户编写的文本（剥离 mention 和引用块）。"""
         text = str(activity.get("text") or "")
         text = self._strip_possible_bot_mention(text)
         text = self._normalize_html_whitespace(text)
@@ -372,26 +397,33 @@ class MSTeamsChannel(BaseChannel):
         first_line = preview_lines[0] if preview_lines else ""
         looks_like_quote_wrapper = first_line.lower().startswith("replying to ") or first_line.startswith("Reply wrapper")
 
+        # 若为回复消息，归一化引用块
         if reply_to_id or channel_data.get("messageType") == "reply" or looks_like_quote_wrapper:
             text = self._normalize_teams_reply_quote(text)
 
         return text.strip()
 
     def _strip_possible_bot_mention(self, text: str) -> str:
-        """Remove simple Teams mention markup from message text."""
+        """从消息文本中移除简单的 Teams mention 标记（<at>...</at>）。"""
         cleaned = re.sub(r"<at\b[^>]*>.*?</at>", " ", text, flags=re.IGNORECASE | re.DOTALL)
         cleaned = re.sub(r"[^\S\r\n]+", " ", cleaned)
         cleaned = re.sub(r"(?:\r?\n){3,}", "\n\n", cleaned)
         return cleaned.strip()
 
     def _normalize_html_whitespace(self, text: str) -> str:
-        """Normalize common HTML whitespace/entities from Teams into plain text spacing."""
+        """将 Teams 常见的 HTML 空白/实体归一化为纯文本空格。"""
         normalized = html.unescape(text).replace("&rsquo", "’")
         normalized = normalized.replace("\xa0", " ")
         return normalized
 
     def _normalize_teams_reply_quote(self, text: str) -> str:
-        """Normalize Teams quoted replies into a compact structured form."""
+        """将 Teams 引用回复归一化为紧凑的结构化形式。
+
+        处理多种观察到的回复包装格式：
+        - "Replying to <name>\n<reply>" 原生格式
+        - "Reply wrapper" 头 + 引用块 + 回复
+        - 紧凑单行回退格式
+        """
         cleaned = self._normalize_html_whitespace(text).strip()
         if not cleaned:
             return ""
@@ -401,20 +433,17 @@ class MSTeamsChannel(BaseChannel):
         while lines and not lines[0]:
             lines.pop(0)
 
-        # Observed native Teams reply wrapper:
-        #   Replying to Bob Smith
-        #   actual reply text
+        # 原生 Teams 回复包装：首行 "Replying to <name>"，后续为实际回复
         if len(lines) >= 2 and lines[0].lower().startswith("replying to "):
             quoted = lines[0][len("replying to ") :].strip(" :")
             reply = "\n".join(lines[1:]).strip()
             return self._format_reply_with_quote(quoted, reply)
 
-        # Observed reply wrapper where the quoted content is surfaced after a
-        # synthetic "Reply wrapper" header, sometimes with a blank line separating quote
-        # and reply, and sometimes as a compact line-based fallback shape.
+        # "Reply wrapper" 头格式：引用内容在头之后，可能含空行分隔
         if lines and lines[0].strip().startswith("Reply wrapper"):
             body = normalized_newlines.split("\n", 1)[1] if "\n" in normalized_newlines else ""
             body = body.lstrip()
+            # 尝试按空行分隔引用与回复
             parts = re.split(r"\n\s*\n", body, maxsplit=1)
             if len(parts) == 2:
                 quoted = re.sub(r"\s+", " ", parts[0]).strip()
@@ -422,6 +451,7 @@ class MSTeamsChannel(BaseChannel):
                 if quoted or reply:
                     return self._format_reply_with_quote(quoted, reply)
 
+            # 回退：最后一行为回复，其余为引用
             body_lines = [line.strip() for line in body.split("\n") if line.strip()]
             if body_lines:
                 quoted = " ".join(body_lines[:-1]).strip()
@@ -429,11 +459,11 @@ class MSTeamsChannel(BaseChannel):
                 if quoted and reply:
                     return self._format_reply_with_quote(quoted, reply)
 
-        # Observed compact fallback where the relay flattens quote and reply into
-        # a single line after the synthetic Reply wrapper prefix.
+        # 紧凑单行回退：引用与回复被压平到一行
         compact = re.sub(r"\s+", " ", normalized_newlines).strip()
         if compact.startswith("Reply wrapper "):
             compact = compact[len("Reply wrapper ") :].strip()
+            # 按句末标点切分引用与回复
             for boundary in (". ", "! ", "? ", "… "):
                 idx = compact.rfind(boundary)
                 if idx == -1:
@@ -446,7 +476,7 @@ class MSTeamsChannel(BaseChannel):
         return cleaned
 
     def _format_reply_with_quote(self, quoted: str, reply: str) -> str:
-        """Format a reply-with-context message for the model without Teams wrapper noise."""
+        """格式化带上下文的回复消息（去除 Teams 包装噪声，供模型理解）。"""
         quoted = quoted.strip()
         reply = reply.strip()
         if quoted and reply:
@@ -456,7 +486,7 @@ class MSTeamsChannel(BaseChannel):
         return quoted
 
     async def _validate_inbound_auth(self, auth_header: str, activity: dict[str, Any]) -> None:
-        """Validate inbound Bot Framework bearer token."""
+        """校验入站 Bot Framework bearer token（JWT）。"""
         if not MSTEAMS_AVAILABLE:
             raise RuntimeError("PyJWT not installed. Run: pip install biscuitbot[msteams]")
 
@@ -467,6 +497,7 @@ class MSTeamsChannel(BaseChannel):
         if not token:
             raise ValueError("empty bearer token")
 
+        # 从 token 头取 kid，匹配 JWKS 中的签名密钥
         header = jwt.get_unverified_header(token)
         kid = str(header.get("kid") or "").strip()
         if not kid:
@@ -490,6 +521,7 @@ class MSTeamsChannel(BaseChannel):
             },
         )
 
+        # 校验 serviceUrl 声明与活动一致
         claim_service_url = str(
             claims.get("serviceurl") or claims.get("serviceUrl") or "",
         ).strip()
@@ -498,7 +530,7 @@ class MSTeamsChannel(BaseChannel):
             raise ValueError("serviceUrl claim mismatch")
 
     async def _get_botframework_openid_config(self) -> dict[str, Any]:
-        """Fetch and cache Bot Framework OpenID configuration."""
+        """获取并缓存 Bot Framework OpenID 配置。"""
 
         now = time.time()
         if self._botframework_openid_config and now < self._botframework_openid_config_expires_at:
@@ -510,11 +542,11 @@ class MSTeamsChannel(BaseChannel):
         resp = await self._http.get(self._botframework_openid_config_url)
         resp.raise_for_status()
         self._botframework_openid_config = resp.json()
-        self._botframework_openid_config_expires_at = now + 3600
+        self._botframework_openid_config_expires_at = now + 3600  # 缓存 1 小时
         return self._botframework_openid_config
 
     async def _get_botframework_jwks(self) -> dict[str, Any]:
-        """Fetch and cache Bot Framework JWKS."""
+        """获取并缓存 Bot Framework JWKS（JSON Web Key Set）。"""
 
         now = time.time()
         if self._botframework_jwks and now < self._botframework_jwks_expires_at:
@@ -531,11 +563,12 @@ class MSTeamsChannel(BaseChannel):
         resp = await self._http.get(jwks_uri)
         resp.raise_for_status()
         self._botframework_jwks = resp.json()
-        self._botframework_jwks_expires_at = now + 3600
+        self._botframework_jwks_expires_at = now + 3600  # 缓存 1 小时
         return self._botframework_jwks
 
     @staticmethod
     def _safe_float(value: Any) -> float | None:
+        """安全转换为正浮点数，失败返回 None。"""
         try:
             out = float(value)
             if out > 0:
@@ -545,7 +578,7 @@ class MSTeamsChannel(BaseChannel):
         return None
 
     def _normalize_ref_record(self, value: Any) -> ConversationRef | None:
-        """Normalize a stored ref record from legacy/current schema."""
+        """将存储的 ref 记录从旧/新 schema 归一化为 ConversationRef。"""
         if not isinstance(value, dict):
             return None
         service_url = str(value.get("service_url") or "").strip()
@@ -563,7 +596,7 @@ class MSTeamsChannel(BaseChannel):
         )
 
     def _load_refs_raw(self) -> tuple[dict[str, Any], dict[str, Any], bool]:
-        """Load raw refs/main+meta JSON payloads."""
+        """加载原始 refs 主数据 + 元数据 JSON payload。"""
         main_data: dict[str, Any] = {}
         meta_data: dict[str, Any] = {}
         meta_exists = self._refs_meta_path.exists()
@@ -587,7 +620,7 @@ class MSTeamsChannel(BaseChannel):
         return main_data, meta_data, meta_exists
 
     def _load_refs_from_disk(self) -> dict[str, ConversationRef]:
-        """Load refs from disk with compatibility fallback for legacy layouts."""
+        """从磁盘加载 refs，兼容旧版布局。"""
         main_data, meta_data, meta_exists = self._load_refs_raw()
         if not main_data:
             return {}
@@ -599,6 +632,7 @@ class MSTeamsChannel(BaseChannel):
             if not ref:
                 continue
 
+            # 元数据中可能存有更精确的 updated_at
             meta_entry = meta_data.get(key) if isinstance(meta_data, dict) else None
             meta_ts = None
             if isinstance(meta_entry, dict):
@@ -609,8 +643,8 @@ class MSTeamsChannel(BaseChannel):
             if meta_ts is not None:
                 ref.updated_at = meta_ts
             elif not meta_exists:
-                # First run after introducing meta sidecar: keep legacy refs alive
-                # by initializing timestamps to "now" instead of purging immediately.
+                # 首次引入元数据 sidecar 后：用 "now" 初始化旧 ref 的时间戳，
+                # 避免立即被清理。
                 ref.updated_at = now
             elif ref.updated_at is None:
                 ref.updated_at = now
@@ -619,12 +653,12 @@ class MSTeamsChannel(BaseChannel):
         return out
 
     def _load_refs(self) -> dict[str, ConversationRef]:
-        """Load stored conversation references."""
+        """加载已存储的会话引用。"""
         return self._load_refs_from_disk()
 
     @contextmanager
     def _refs_file_lock(self):
-        """Cross-process lock while merging and writing refs state."""
+        """跨进程文件锁（合并并写入 refs 状态时使用）。"""
         self._refs_path.parent.mkdir(parents=True, exist_ok=True)
         lock_fp = self._refs_lock_path.open("a+", encoding="utf-8")
         try:
@@ -639,7 +673,7 @@ class MSTeamsChannel(BaseChannel):
                 lock_fp.close()
 
     def _is_webchat_service_url(self, service_url: str) -> bool:
-        """Return True when service URL points to unsupported Bot Framework Web Chat."""
+        """判断 service_url 是否指向不支持的 Bot Framework Web Chat。"""
         normalized = service_url.strip()
         if not normalized:
             return False
@@ -649,7 +683,10 @@ class MSTeamsChannel(BaseChannel):
         return MSTEAMS_WEBCHAT_HOST in normalized.lower()
 
     def _is_trusted_service_url(self, service_url: str) -> bool:
-        """Return True for HTTPS Bot Framework service URLs trusted for bearer replies."""
+        """判断是否为受信的 HTTPS Bot Framework service_url（允许 bearer 回复）。
+
+        支持通配符模式（如 *.botframework.com）。
+        """
         parsed = urlparse(service_url.strip())
         if parsed.scheme.lower() != "https":
             return False
@@ -662,6 +699,7 @@ class MSTeamsChannel(BaseChannel):
             trusted_host = str(pattern or "").strip().lower().rstrip(".")
             if not trusted_host:
                 continue
+            # 通配符 *.example.com 匹配子域
             if trusted_host.startswith("*."):
                 suffix = trusted_host[1:]
                 if host.endswith(suffix) and host != suffix.lstrip("."):
@@ -672,7 +710,7 @@ class MSTeamsChannel(BaseChannel):
         return False
 
     def _prune_conversation_refs(self, *, now: float | None = None) -> bool:
-        """Remove stale and unsupported conversation refs from memory."""
+        """从内存中移除过期和不支持的会话引用。"""
         if not self._conversation_refs:
             return False
 
@@ -682,19 +720,23 @@ class MSTeamsChannel(BaseChannel):
         keys_to_drop: list[str] = []
 
         for key, ref in self._conversation_refs.items():
+            # 不受信的 service_url 直接清理
             if not self._is_trusted_service_url(ref.service_url):
                 keys_to_drop.append(key)
                 continue
 
+            # Web Chat 引用按配置清理
             if self.config.prune_web_chat_refs and self._is_webchat_service_url(ref.service_url):
                 keys_to_drop.append(key)
                 continue
 
+            # 非 personal 会话引用按配置清理
             conv_type = str(ref.conversation_type or "").strip().lower()
             if self.config.prune_non_personal_refs and conv_type and conv_type != "personal":
                 keys_to_drop.append(key)
                 continue
 
+            # TTL 过期清理
             try:
                 updated_at = float(ref.updated_at) if ref.updated_at is not None else 0.0
             except (TypeError, ValueError):
@@ -715,20 +757,21 @@ class MSTeamsChannel(BaseChannel):
         return True
 
     def _merge_refs_from_disk_locked(self) -> None:
-        """Merge disk refs into memory to reduce lost updates across processes."""
+        """将磁盘 refs 合并到内存，减少跨进程更新丢失。"""
         disk_refs = self._load_refs_from_disk()
         for key, disk_ref in disk_refs.items():
             mem_ref = self._conversation_refs.get(key)
             if mem_ref is None:
                 self._conversation_refs[key] = disk_ref
                 continue
+            # 以 updated_at 较新者为准
             disk_ts = self._safe_float(disk_ref.updated_at) or 0.0
             mem_ts = self._safe_float(mem_ref.updated_at) or 0.0
             if disk_ts > mem_ts:
                 self._conversation_refs[key] = disk_ref
 
     def _touch_conversation_ref(self, chat_id: str, *, persist: bool = False) -> None:
-        """Refresh updated_at for an active ref to keep it from expiring while used."""
+        """刷新活跃 ref 的 updated_at，避免使用中过期。"""
         with self._refs_guard:
             ref = self._conversation_refs.get(str(chat_id))
             if not ref:
@@ -736,6 +779,7 @@ class MSTeamsChannel(BaseChannel):
             now = time.time()
             prev = self._safe_float(ref.updated_at) or 0.0
             min_interval = max(0, int(self.config.ref_touch_interval_s))
+            # 限流：距离上次刷新不足间隔则跳过
             if min_interval > 0 and prev > 0 and now - prev < min_interval:
                 return
             ref.updated_at = now
@@ -743,10 +787,11 @@ class MSTeamsChannel(BaseChannel):
                 self._save_refs_locked()
 
     def _write_json_atomically(self, path, data: dict[str, Any]) -> None:
-        """Write refs JSON atomically to reduce corruption risk during crashes."""
+        """原子写入 refs JSON，降低崩溃导致损坏的风险。"""
         payload = json.dumps(data, indent=2)
         tmp_path: str | None = None
         try:
+            # 写入临时文件后原子替换
             fd, tmp_path = tempfile.mkstemp(
                 dir=str(path.parent),
                 prefix=f"{path.name}.",
@@ -763,9 +808,10 @@ class MSTeamsChannel(BaseChannel):
                     os.unlink(tmp_path)
 
     def _save_refs_locked(self, *, prune: bool = True) -> None:
-        """Persist conversation references (caller must hold _refs_guard)."""
+        """持久化会话引用（调用方必须持有 _refs_guard）。"""
         try:
             with self._refs_file_lock():
+                # 合并磁盘最新内容，避免覆盖其他进程的更新
                 self._merge_refs_from_disk_locked()
                 if prune:
                     self._prune_conversation_refs()
@@ -780,6 +826,7 @@ class MSTeamsChannel(BaseChannel):
                     }
                     for key, ref in self._conversation_refs.items()
                 }
+                # 元数据单独存储（updated_at），与主数据分离
                 refs_meta = {
                     key: {
                         "updated_at": self._safe_float(ref.updated_at),
@@ -792,14 +839,15 @@ class MSTeamsChannel(BaseChannel):
             self.logger.warning("Failed to save conversation refs: {}", e)
 
     def _save_refs(self, *, prune: bool = True) -> None:
-        """Persist conversation references."""
+        """持久化会话引用。"""
         with self._refs_guard:
             self._save_refs_locked(prune=prune)
 
     async def _get_access_token(self) -> str:
-        """Fetch an access token for Bot Framework / Azure Bot auth."""
+        """通过 client_credentials 流获取 Bot Framework / Azure Bot 的 access_token。"""
 
         now = time.time()
+        # 缓存有效（提前 60 秒刷新）
         if self._token and now < self._token_expires_at - 60:
             return self._token
 

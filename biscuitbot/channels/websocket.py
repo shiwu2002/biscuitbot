@@ -1,73 +1,91 @@
-"""WebSocket server channel: biscuitbot acts as a WebSocket server and serves connected clients."""
+"""WebSocket 服务端渠道：biscuitbot 作为 WebSocket 服务端，为已连接的客户端提供服务。
 
-from __future__ import annotations
+所属模块与项目作用
+==================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 WebSocket 平台组件。
+在项目架构中起到的作用：作为 WebSocket 服务端运行，将 Web UI 及其他 WebSocket 客户端的消息收发能力接入 biscuitbot 消息总线。
 
-import asyncio
-import hmac
-import json
-import re
-import ssl
-import uuid
-from collections.abc import Callable
-from contextlib import suppress
-from pathlib import Path
-from typing import Any, Self, TypeGuard
+平台特点与接入方式
+------------------
+- 接入方式：biscuitbot 自身作为 WebSocket 服务端，客户端通过 ws:// 或 wss:// 连接。
+- 鉴权：支持静态 token、动态签发令牌（token_issue_path）以及 client_id 白名单三种方式。
+- 监听方式：支持 TCP 监听（host:port）和 Unix 域套接字（unix_socket_path）两种模式。
+- TLS 支持：可选配置 SSL 证书启用 WSS（安全 WebSocket）。
+- 多会话管理：每个连接拥有独立会话（chat_id），支持订阅/取消订阅多个会话。
+- 流式响应：支持渐进式消息推送（delta、stream_end、reasoning_delta 等）。
+- 媒体处理：支持 base64 data URL 解码保存、图片/视频上传限制与 MIME 白名单校验。
+- 信封协议：支持新式 JSON 信封（new_chat/attach/message/fork_chat 等）与旧式纯文本帧。
+- 工作区作用域：支持多工作区隔离，按会话维度管理工作区配置。
+- 转录与追踪：支持对话转录、全链路追踪事件推送。
+"""
 
-from pydantic import Field, field_validator, model_validator
-from websockets.asyncio.server import ServerConnection, serve, unix_serve
-from websockets.exceptions import ConnectionClosed
-from websockets.http11 import Request as WsRequest
+from __future__ import annotations  # 延迟注解求值，允许类型注解引用尚未定义的类型
 
-from biscuitbot.bus.events import OUTBOUND_META_AGENT_UI, OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.paths import get_media_dir
-from biscuitbot.config.schema import Base
-from biscuitbot.security.workspace_access import (
-    WORKSPACE_SCOPE_METADATA_KEY,
-    WorkspaceScopeError,
+import asyncio  # 异步事件循环与并发原语
+import hmac  # HMAC 安全比较（token 校验）
+import json  # JSON 序列化/反序列化（消息帧解析）
+import re  # 正则表达式（chat_id 格式校验、data URL 解析）
+import ssl  # SSL/TLS 上下文（WSS 安全连接）
+import uuid  # UUID 生成（会话 ID、匿名客户端 ID）
+from collections.abc import Callable  # 可调用对象类型
+from contextlib import suppress  # 上下文管理器：忽略指定异常
+from pathlib import Path  # 路径处理（Unix 套接字、媒体文件）
+from typing import Any, Self, TypeGuard  # 类型注解支持
+
+from pydantic import Field, field_validator, model_validator  # Pydantic 模型字段与校验器
+from websockets.asyncio.server import ServerConnection, serve, unix_serve  # WebSocket 服务端（异步）
+from websockets.exceptions import ConnectionClosed  # 连接关闭异常
+from websockets.http11 import Request as WsRequest  # HTTP/1.1 请求（WS 升级检测）
+
+from biscuitbot.bus.events import OUTBOUND_META_AGENT_UI, OutboundMessage  # 出站消息事件及 Agent UI 元数据键
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.paths import get_media_dir  # 媒体目录获取
+from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.security.workspace_access import (  # 工作区访问控制
+    WORKSPACE_SCOPE_METADATA_KEY,  # 工作区作用域元数据键
+    WorkspaceScopeError,  # 工作区作用域错误
 )
-from biscuitbot.session.goal_state import goal_state_ws_blob
-from biscuitbot.session.webui_turns import websocket_turn_wall_started_at
-from biscuitbot.utils.media_decode import (
-    FileSizeExceeded,
-    save_base64_data_url,
+from biscuitbot.session.goal_state import goal_state_ws_blob  # 目标状态 WebSocket 数据块
+from biscuitbot.session.webui_turns import websocket_turn_wall_started_at  # WebUI 轮次启动时间
+from biscuitbot.utils.media_decode import (  # 媒体解码工具
+    FileSizeExceeded,  # 文件大小超限异常
+    save_base64_data_url,  # 保存 base64 data URL 为文件
 )
-from biscuitbot.webui.cli_apps_api import normalize_cli_app_mentions
-from biscuitbot.webui.forking import handle_webui_fork_chat
-from biscuitbot.webui.gateway_services import GatewayServices
+from biscuitbot.webui.cli_apps_api import normalize_cli_app_mentions  # CLI 应用提及归一化
+from biscuitbot.webui.forking import handle_webui_fork_chat  # 会话分叉处理
+from biscuitbot.webui.gateway_services import GatewayServices  # 网关服务集合
+from biscuitbot.webui.http_utils import (  # HTTP 工具函数
+    normalize_config_path as _normalize_config_path,  # 配置路径归一化
+)
 from biscuitbot.webui.http_utils import (
-    normalize_config_path as _normalize_config_path,
+    parse_request_path as _parse_request_path,  # 请求路径解析
 )
 from biscuitbot.webui.http_utils import (
-    parse_request_path as _parse_request_path,
+    query_first as _query_first,  # 查询参数取首值
 )
-from biscuitbot.webui.http_utils import (
-    query_first as _query_first,
-)
-from biscuitbot.webui.mcp_presets_api import normalize_mcp_preset_mentions
-from biscuitbot.webui.transcription_ws import webui_transcription_event
-from biscuitbot.webui.websocket_logging import websockets_server_logger
+from biscuitbot.webui.mcp_presets_api import normalize_mcp_preset_mentions  # MCP 预设提及归一化
+from biscuitbot.webui.transcription_ws import webui_transcription_event  # 转录 WebSocket 事件
+from biscuitbot.webui.websocket_logging import websockets_server_logger  # WebSocket 服务端日志器
 
 
 class WebSocketConfig(Base):
-    """WebSocket server channel configuration.
+    """WebSocket 服务端渠道配置。
 
-    Clients connect with URLs like ``ws://{host}:{port}{path}?client_id=...&token=...``.
-    - ``client_id``: Used for ``allow_from`` authorization; if omitted, a value is generated and logged.
-    - ``token``: If non-empty, the ``token`` query param may match this static secret; short-lived tokens
-      from ``token_issue_path`` are also accepted.
-    - ``token_issue_path``: If non-empty, **GET** (HTTP/1.1) to this path returns JSON
-      ``{"token": "...", "expires_in": <seconds>}``; use ``?token=...`` when opening the WebSocket.
-      Must differ from ``path`` (the WS upgrade path). If the client runs in the **same process** as
-      biscuitbot and shares the asyncio loop, use a thread or async HTTP client for GET—do not call
-      blocking ``urllib`` or synchronous ``httpx`` from inside a coroutine.
-    - ``token_issue_secret``: If non-empty, token requests must send ``Authorization: Bearer <secret>`` or
-      ``X-Biscuitbot-Auth: <secret>``.
-    - ``websocket_requires_token``: If True, the handshake must include a valid token (static or issued and not expired).
-    - Each connection has its own session: a unique ``chat_id`` maps to the agent session internally.
-    - ``media`` field in outbound messages contains local filesystem paths; remote clients need a
-      shared filesystem or an HTTP file server to access these files.
+    客户端通过形如 ``ws://{host}:{port}{path}?client_id=...&token=...`` 的 URL 连接。
+    - ``client_id``：用于 ``allow_from`` 授权；若省略，将生成一个值并记录到日志。
+    - ``token``：若非空，``token`` 查询参数可匹配此静态密钥；来自 ``token_issue_path`` 的短期令牌也被接受。
+    - ``token_issue_path``：若非空，对该路径的 **GET**（HTTP/1.1）请求返回 JSON
+      ``{"token": "...", "expires_in": <秒>}``；打开 WebSocket 时使用 ``?token=...``。
+      必须与 ``path``（WS 升级路径）不同。若客户端与 biscuitbot 运行在 **同一进程**
+      且共享 asyncio 循环，请使用线程或异步 HTTP 客户端执行 GET——不要在协程中
+      调用阻塞的 ``urllib`` 或同步 ``httpx``。
+    - ``token_issue_secret``：若非空，令牌请求必须发送 ``Authorization: Bearer <secret>`` 或
+      ``X-Biscuitbot-Auth: <secret>``。
+    - ``websocket_requires_token``：若为 True，握手必须包含有效令牌（静态或已签发且未过期）。
+    - 每个连接拥有自己的会话：唯一的 ``chat_id`` 内部映射到代理会话。
+    - 出站消息中的 ``media`` 字段包含本地文件系统路径；远程客户端需要
+      共享文件系统或 HTTP 文件服务器才能访问这些文件。
     """
 
     enabled: bool = False
@@ -82,10 +100,9 @@ class WebSocketConfig(Base):
     websocket_requires_token: bool = True
     allow_from: list[str] = Field(default_factory=lambda: ["*"])
     streaming: bool = True
-    # Default 36 MB, upper 40 MB: supports up to 4 images at ~6 MB each after
-    # client-side Worker normalization (see webui Composer). 4 × 6 MB × 1.37
-    # (base64 overhead) + envelope framing stays under 36 MB; the 40 MB ceiling
-    # leaves a small margin for sender slop without opening a DoS avenue.
+    # 默认 36 MB，上限 40 MB：支持最多 4 张约 6 MB 的图片（经客户端
+    # Worker 归一化后，见 webui Composer）。4 × 6 MB × 1.37（base64 开销）
+    # + 信封帧仍低于 36 MB；40 MB 上限为发送方留出少量余量，且不会引入 DoS 风险。
     max_message_bytes: int = Field(default=37_748_736, ge=1024, le=41_943_040)
     ping_interval_s: float = Field(default=20.0, ge=5.0, le=300.0)
     ping_timeout_s: float = Field(default=20.0, ge=5.0, le=300.0)
@@ -147,7 +164,7 @@ def publish_runtime_model_update(
     model: str,
     model_preset: str | None,
 ) -> None:
-    """Enqueue a runtime model snapshot for websocket subscribers (fan-out in-channel)."""
+    """将运行时模型快照入队，供 WebSocket 订阅者接收（渠道内扇出）。"""
     bus.outbound.put_nowait(OutboundMessage(
         channel="websocket",
         chat_id="*",
@@ -161,7 +178,7 @@ def publish_runtime_model_update(
 
 
 def _parse_inbound_payload(raw: str) -> str | None:
-    """Parse a client frame into text; return None for empty or unrecognized content."""
+    """将客户端帧解析为文本；对空内容或无法识别的内容返回 None。"""
     text = raw.strip()
     if not text:
         return None
@@ -180,8 +197,8 @@ def _parse_inbound_payload(raw: str) -> str | None:
     return text
 
 
-# Accept UUIDs and short scoped keys like "unified:default". Keeps the capability
-# namespace small enough to rule out path traversal / quote injection tricks.
+# 接受 UUID 和短作用域键（如 "unified:default"）。保持能力命名空间足够小，
+# 以排除路径遍历/引号注入攻击。
 _CHAT_ID_RE = re.compile(r"^[A-Za-z0-9_:-]{1,64}$")
 
 
@@ -190,11 +207,11 @@ def _is_valid_chat_id(value: Any) -> TypeGuard[str]:
 
 
 def _parse_envelope(raw: str) -> dict[str, Any] | None:
-    """Return a typed envelope dict if the frame is a new-style JSON envelope, else None.
+    """若帧为新式 JSON 信封则返回类型化字典，否则返回 None。
 
-    A frame qualifies when it parses as a JSON object with a string ``type`` field.
-    Legacy frames (plain text, or ``{"content": ...}`` without ``type``) return None;
-    callers should fall back to :func:`_parse_inbound_payload` for those.
+    当帧解析为带有字符串 ``type`` 字段的 JSON 对象时，视为合格信封。
+    旧式帧（纯文本，或不含 ``type`` 的 ``{"content": ...}``）返回 None；
+    调用方应回退到 :func:`_parse_inbound_payload` 处理这些帧。
     """
     text = raw.strip()
     if not text.startswith("{"):
@@ -211,17 +228,16 @@ def _parse_envelope(raw: str) -> dict[str, Any] | None:
     return data
 
 
-# Per-message media limits. The server-side guard is a touch looser than the
-# client's ``Worker`` normalization target (6 MB) — tolerate client slop, but
-# still cap total ingress at ``_MAX_IMAGES_PER_MESSAGE * _MAX_IMAGE_BYTES``
-# which fits comfortably inside ``max_message_bytes``.
+# 单消息媒体限制。服务端限制略宽于客户端 ``Worker`` 归一化目标（6 MB）——
+# 容忍客户端冗余，但仍将总入口量限制在 ``_MAX_IMAGES_PER_MESSAGE * _MAX_IMAGE_BYTES``，
+# 该值完全在 ``max_message_bytes`` 范围内。
 _MAX_IMAGES_PER_MESSAGE = 4
 _MAX_IMAGE_BYTES = 8 * 1024 * 1024
 _MAX_VIDEOS_PER_MESSAGE = 1
 _MAX_VIDEO_BYTES = 20 * 1024 * 1024
 
-# Image MIME whitelist — matches the Composer's ``accept`` list. SVG is
-# explicitly excluded to avoid the XSS surface inside embedded scripts.
+# 图片 MIME 白名单——与 Composer 的 ``accept`` 列表一致。显式排除 SVG
+# 以避免嵌入脚本的 XSS 攻击面。
 _IMAGE_MIME_ALLOWED: frozenset[str] = frozenset({
     "image/png",
     "image/jpeg",
@@ -241,7 +257,7 @@ _DATA_URL_MIME_RE = re.compile(r"^data:([^;,]+)(?:;[^,]*)*;base64,", re.DOTALL)
 
 
 def _extract_data_url_mime(url: str) -> str | None:
-    """Return the MIME type of a ``data:<mime>;base64,...`` URL, else ``None``."""
+    """返回 ``data:<mime>;base64,...`` URL 的 MIME 类型，否则返回 ``None``。"""
     if not isinstance(url, str):
         return None
     m = _DATA_URL_MIME_RE.match(url)
@@ -251,7 +267,7 @@ def _extract_data_url_mime(url: str) -> str | None:
 
 
 def _is_websocket_upgrade(request: WsRequest) -> bool:
-    """Detect an actual WS upgrade; plain HTTP GETs to the same path should fall through."""
+    """检测真正的 WS 升级请求；对同一路径的普通 HTTP GET 应直接放行。"""
     upgrade = request.headers.get("Upgrade") or request.headers.get("upgrade")
     connection = request.headers.get("Connection") or request.headers.get("connection")
     if not upgrade or "websocket" not in upgrade.lower():
@@ -262,7 +278,7 @@ def _is_websocket_upgrade(request: WsRequest) -> bool:
 
 
 class WebSocketChannel(BaseChannel):
-    """Run a local WebSocket server; forward text/JSON messages to the message bus."""
+    """运行本地 WebSocket 服务端；将文本/JSON 消息转发到消息总线。"""
 
     name = "websocket"
     display_name = "WebSocket"
@@ -278,11 +294,11 @@ class WebSocketChannel(BaseChannel):
             config = WebSocketConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WebSocketConfig = config
-        # chat_id -> connections subscribed to it (fan-out target).
+        # chat_id -> 订阅该会话的连接集合（扇出目标）
         self._subs: dict[str, set[Any]] = {}
-        # connection -> chat_ids it is subscribed to (O(1) cleanup on disconnect).
+        # connection -> 该连接订阅的 chat_id 集合（断开时 O(1) 清理）
         self._conn_chats: dict[Any, set[str]] = {}
-        # connection -> default chat_id for legacy frames that omit routing.
+        # connection -> 旧式帧（省略路由）使用的默认 chat_id
         self._conn_default: dict[Any, str] = {}
         self._stop_event: asyncio.Event | None = None
         self._server_task: asyncio.Task[None] | None = None
@@ -296,18 +312,19 @@ class WebSocketChannel(BaseChannel):
 
         self._stream_text_buffers: dict[tuple[str, str], list[str]] = {}
 
-    # -- Subscription bookkeeping -------------------------------------------
+    # -- 订阅簿记 -----------------------------------------------------------
 
     def _workspace_controls_available(self, connection: Any) -> bool:
+        """检查当前连接是否允许使用工作区控制功能（如切换工作区）。"""
         return self._http_router.workspace_controls_available(connection)
 
     def _attach(self, connection: Any, chat_id: str) -> None:
-        """Idempotently subscribe *connection* to *chat_id*."""
+        """幂等地将 *connection* 订阅到 *chat_id*。"""
         self._subs.setdefault(chat_id, set()).add(connection)
         self._conn_chats.setdefault(connection, set()).add(chat_id)
 
     def _cleanup_connection(self, connection: Any) -> None:
-        """Remove *connection* from every subscription set; safe to call multiple times."""
+        """从所有订阅集合中移除 *connection*；可安全多次调用。"""
         chat_ids = self._conn_chats.pop(connection, set())
         for cid in chat_ids:
             subs = self._subs.get(cid)
@@ -319,11 +336,11 @@ class WebSocketChannel(BaseChannel):
         self._conn_default.pop(connection, None)
 
     async def _maybe_push_active_goal_state(self, chat_id: str) -> None:
-        """Replay an active sustained goal from session metadata after *chat_id* is subscribed.
+        """在 *chat_id* 被订阅后，从会话元数据重放活动的持续目标。
 
-        Goal metadata lives on the session JSONL and survives gateway restarts, but
-        connected clients normally see it via ``goal_state`` / ``turn_end`` frames.
-        Pushing here makes refresh + reconnect restore the strip without a new model turn.
+        目标元数据存储在会话 JSONL 中，在网关重启后依然存在，但
+        已连接的客户端通常通过 ``goal_state`` / ``turn_end`` 帧看到它。
+        在此处推送使刷新+重连能恢复进度条，无需新的模型轮次。
         """
         if self.gateway.session_manager is None:
             return
@@ -337,19 +354,19 @@ class WebSocketChannel(BaseChannel):
         await self.send_goal_state(chat_id, blob)
 
     async def _maybe_push_turn_run_wall_clock(self, chat_id: str) -> None:
-        """Replay ``goal_status: running`` when a turn is still active (same-process refresh)."""
+        """当轮次仍在活动时重放 ``goal_status: running``（同进程刷新）。"""
         t0 = websocket_turn_wall_started_at(chat_id)
         if t0 is None:
             return
         await self.send_goal_status(chat_id, "running", started_at=t0)
 
     async def _hydrate_after_subscribe(self, chat_id: str) -> None:
-        """Replay goal/run strip state after subscribe (same-process refresh)."""
+        """订阅后重放目标/运行进度条状态（同进程刷新）。"""
         await self._maybe_push_active_goal_state(chat_id)
         await self._maybe_push_turn_run_wall_clock(chat_id)
 
     async def _send_event(self, connection: Any, event: str, **fields: Any) -> None:
-        """Send a control event (attached, error, ...) to a single connection."""
+        """向单个连接发送控制事件（attached、error 等）。"""
         payload: dict[str, Any] = {"event": event}
         payload.update(fields)
         raw = json.dumps(payload, ensure_ascii=False)
@@ -362,12 +379,15 @@ class WebSocketChannel(BaseChannel):
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典，用于渠道注册时生成默认配置。"""
         return WebSocketConfig().model_dump(by_alias=True)
 
     def _expected_path(self) -> str:
+        """返回归一化后的 WebSocket 升级路径，用于路由匹配。"""
         return _normalize_config_path(self.config.path)
 
     def _build_ssl_context(self) -> ssl.SSLContext | None:
+        """构建 SSL 上下文以启用 WSS（安全 WebSocket）；未配置证书时返回 None。"""
         cert = self.config.ssl_certfile.strip()
         key = self.config.ssl_keyfile.strip()
         if not cert and not key:
@@ -381,13 +401,13 @@ class WebSocketChannel(BaseChannel):
         ctx.load_cert_chain(certfile=cert, keyfile=key)
         return ctx
 
-    # -- HTTP dispatch ------------------------------------------------------
+    # -- HTTP 分发 ----------------------------------------------------------
 
     async def _dispatch_http(self, connection: Any, request: WsRequest) -> Any:
-        """Route an inbound HTTP request to the HTTP handler or WS upgrade."""
+        """将入站 HTTP 请求路由到 HTTP 处理器或 WS 升级。"""
         got, query = _parse_request_path(request.path)
 
-        # WebSocket upgrade — channel handles this itself
+        # WebSocket 升级——由渠道自身处理
         expected_ws = self._expected_path()
         if got == expected_ws and _is_websocket_upgrade(request):
             client_id = _query_first(query, "client_id") or ""
@@ -397,10 +417,18 @@ class WebSocketChannel(BaseChannel):
                 return connection.respond(403, "Forbidden")
             return self._authorize_websocket_handshake(connection, query)
 
-        # Everything else goes to the HTTP handler
+        # 其余请求交给 HTTP 处理器
         return await self._http_router.dispatch(connection, request)
 
     def _authorize_websocket_handshake(self, connection: Any, query: dict[str, list[str]]) -> Any:
+        """校验 WebSocket 握手请求中的 token。
+
+        鉴权优先级：
+        1. 若配置了静态 ``token``，则查询参数 ``token`` 必须匹配静态密钥或有效的已签发令牌。
+        2. 若 ``websocket_requires_token`` 为 True（无静态 token 时），必须提供有效的已签发令牌。
+        3. 其他情况放行（但仍会消费已签发令牌以实现一次性使用）。
+        校验失败时返回 401 响应。
+        """
         supplied = _query_first(query, "token")
         static_token = self.config.token.strip()
 
@@ -420,9 +448,14 @@ class WebSocketChannel(BaseChannel):
             self._tokens.take_issued_token_if_valid(supplied)
         return None
 
-    # -- Server lifecycle and connection ingress ---------------------------
+    # -- 服务端生命周期与连接入口 -------------------------------------------
 
     async def start(self) -> None:
+        """启动 WebSocket 服务端。
+
+        支持 TCP（host:port）和 Unix 域套接字两种监听模式。
+        服务端运行直到 ``stop()`` 被调用；退出时关闭服务端并清理 Unix 套接字文件。
+        """
         from biscuitbot.utils.logging_bridge import redirect_lib_logging
 
         redirect_lib_logging("websockets", level="WARNING")
@@ -508,6 +541,11 @@ class WebSocketChannel(BaseChannel):
         await self._server_task
 
     async def _connection_loop(self, connection: Any) -> None:
+        """处理单个 WebSocket 连接的完整生命周期。
+
+        流程：发送 ``ready`` 事件 → 注册默认会话 → 循环接收帧 →
+        解析信封或纯文本 → 路由到消息总线。连接断开时清理订阅。
+        """
         request = connection.request
         path_part = request.path if request else "/"
         _, query = _parse_request_path(path_part)
@@ -532,7 +570,7 @@ class WebSocketChannel(BaseChannel):
                     ensure_ascii=False,
                 )
             )
-            # Register only after ready is successfully sent to avoid out-of-order sends
+            # 仅在 ready 成功发送后注册，避免乱序发送
             self._conn_default[connection] = default_chat_id
             self._attach(connection, default_chat_id)
             await self._hydrate_after_subscribe(default_chat_id)
@@ -553,9 +591,9 @@ class WebSocketChannel(BaseChannel):
                 content = _parse_inbound_payload(raw)
                 if content is None:
                     continue
-                # WebSocket already authenticates at handshake time (token),
-                # so pairing is not applicable. Treat as non-DM to avoid
-                # sending pairing codes to an already-authenticated client.
+                # WebSocket 在握手时已完成鉴权（token），
+                # 因此配对不适用。视为非 DM 以避免
+                # 向已鉴权客户端发送配对码。
                 await self._handle_message(
                     sender_id=client_id,
                     chat_id=default_chat_id,
@@ -568,22 +606,21 @@ class WebSocketChannel(BaseChannel):
         finally:
             self._cleanup_connection(connection)
 
-    # -- Inbound WebSocket envelopes ---------------------------------------
+    # -- 入站 WebSocket 信封 -----------------------------------------------
 
     def _save_envelope_media(
         self,
         media: list[Any],
     ) -> tuple[list[str], str | None]:
-        """Decode and persist ``media`` items from a ``message`` envelope.
+        """解码并持久化 ``message`` 信封中的 ``media`` 项。
 
-        Returns ``(paths, None)`` on success or ``([], reason)`` on the first
-        failure — the caller is expected to surface ``reason`` to the client
-        and skip publishing so no half-formed message ever reaches the agent.
-        On failure, any files already written to disk earlier in the same
-        call are unlinked so partial ingress doesn't leak orphan files.
-        ``reason`` is a short, stable token suitable for UI localization.
+        成功时返回 ``(paths, None)``，首次失败时返回 ``([], reason)``——
+        调用方应将 ``reason`` 反馈给客户端并跳过发布，确保不会有
+        半成形的消息到达代理。失败时，同一调用中先前已写入磁盘的
+        文件将被删除，避免部分入口泄露为孤儿文件。
+        ``reason`` 是适合 UI 本地化的简短稳定令牌。
 
-        Shape: ``list[{"data_url": str, "name"?: str | None}]``.
+        数据结构：``list[{"data_url": str, "name"?: str | None}]``。
         """
         image_count = 0
         video_count = 0
@@ -644,7 +681,7 @@ class WebSocketChannel(BaseChannel):
         client_id: str,
         envelope: dict[str, Any],
     ) -> None:
-        """Route one typed inbound envelope (``new_chat`` / ``attach`` / ``message``)."""
+        """路由一个类型化入站信封（``new_chat`` / ``attach`` / ``message``）。"""
         t = envelope.get("type")
         if t == "new_chat":
             new_id = str(uuid.uuid4())
@@ -738,7 +775,7 @@ class WebSocketChannel(BaseChannel):
                     )
                     return
 
-            # Allow image-only turns (content may be empty when media is attached).
+            # 允许纯图片轮次（附带媒体时 content 可能为空）
             if not content.strip() and not media_paths:
                 await self._send_event(connection, "error", detail="missing content")
                 return
@@ -755,7 +792,7 @@ class WebSocketChannel(BaseChannel):
             if scope is None:
                 return
 
-            # Auto-attach on first use so clients can one-shot without a separate attach.
+            # 首次使用时自动附加，使客户端无需单独 attach 即可一步发送
             self._attach(connection, cid)
             await self._hydrate_after_subscribe(cid)
             metadata: dict[str, Any] = {"remote": getattr(connection, "remote_address", None)}
@@ -804,6 +841,7 @@ class WebSocketChannel(BaseChannel):
         *,
         chat_id: str | None = None,
     ) -> Any | None:
+        """执行工作区作用域解析器，捕获 ``WorkspaceScopeError`` 并向客户端返回错误事件。"""
         try:
             return resolver()
         except WorkspaceScopeError as exc:
@@ -816,9 +854,10 @@ class WebSocketChannel(BaseChannel):
             )
             return None
 
-    # -- Outbound WebSocket events -----------------------------------------
+    # -- 出站 WebSocket 事件 -----------------------------------------------
 
     async def stop(self) -> None:
+        """停止 WebSocket 服务端，清理连接和令牌状态。"""
         if not self._running:
             return
         self._running = False
@@ -836,7 +875,7 @@ class WebSocketChannel(BaseChannel):
         self._tokens.clear()
 
     async def _safe_send_to(self, connection: Any, raw: str, *, label: str = "") -> None:
-        """Send a raw frame to one connection, cleaning up on ConnectionClosed."""
+        """向单个连接发送原始帧，在 ConnectionClosed 时清理。"""
         try:
             await connection.send(raw)
         except ConnectionClosed:
@@ -847,6 +886,17 @@ class WebSocketChannel(BaseChannel):
             raise
 
     async def send(self, msg: OutboundMessage) -> None:
+        """将出站消息推送给订阅了对应 ``chat_id`` 的所有 WebSocket 连接。
+
+        根据消息元数据分发不同事件类型：
+        - ``_runtime_model_updated``：广播运行时模型变更
+        - ``_agent_trace``：推送全链路追踪事件
+        - ``_goal_state_sync`` / ``_goal_status``：推送目标状态
+        - ``_turn_end``：推送轮次结束信号
+        - ``_session_updated``：推送会话更新通知
+        - ``_file_edit_events``：推送文件编辑事件
+        - 普通消息：推送 ``message`` 事件（含文本、媒体、工具事件等）
+        """
         if msg.metadata.get("_runtime_model_updated"):
             await self.send_runtime_model_updated(
                 model_name=msg.metadata.get("model"),
@@ -854,7 +904,7 @@ class WebSocketChannel(BaseChannel):
             )
             return
 
-        # Snapshot the subscriber set so ConnectionClosed cleanups mid-iteration are safe.
+        # 快照订阅者集合，确保迭代中 ConnectionClosed 清理是安全的
         conns = list(self._subs.get(msg.chat_id, ()))
 
         # 全链路追踪事件：直接推送给前端，不写入 transcript
@@ -903,7 +953,7 @@ class WebSocketChannel(BaseChannel):
                         started_at=float(started_raw) if isinstance(started_raw, int | float) else None,
                     )
             return
-        # Signal that the agent has fully finished processing the current turn.
+        # 信号：代理已完全完成当前轮次的处理
         if msg.metadata.get("_turn_end"):
             lat = msg.metadata.get("latency_ms")
             lat_i = int(lat) if isinstance(lat, (int, float)) else None
@@ -959,9 +1009,8 @@ class WebSocketChannel(BaseChannel):
         agent_ui = msg.metadata.get(OUTBOUND_META_AGENT_UI)
         if agent_ui is not None:
             payload["agent_ui"] = agent_ui
-        # Mark intermediate agent breadcrumbs (tool-call hints, generic
-        # progress strings) so WS clients can render them as subordinate
-        # trace rows rather than conversational replies.
+        # 标记中间代理面包屑（工具调用提示、通用进度字符串），
+        # 使 WS 客户端将其渲染为从属追踪行，而非对话回复。
         if msg.metadata.get("_tool_hint"):
             payload["kind"] = "tool_hint"
         elif msg.metadata.get("_progress"):
@@ -987,10 +1036,10 @@ class WebSocketChannel(BaseChannel):
         delta: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Push one chunk of model reasoning. Mirrors ``send_delta`` shape so
-        clients receive a stream that opens, updates in place, and closes —
-        rendered above the active assistant bubble with a shimmer header
-        until the matching ``reasoning_end`` arrives.
+        """推送一块模型推理内容。镜像 ``send_delta`` 结构，使客户端
+        接收到一个打开、原地更新、关闭的流——
+        在活动助手气泡上方渲染，带闪烁标题，
+        直到匹配的 ``reasoning_end`` 到达。
         """
         conns = list(self._subs.get(chat_id, ()))
         if not delta:
@@ -1021,7 +1070,7 @@ class WebSocketChannel(BaseChannel):
         chat_id: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Close the current reasoning stream segment for in-place renderers."""
+        """为原地渲染器关闭当前推理流片段。"""
         conns = list(self._subs.get(chat_id, ()))
         meta = metadata or {}
         body: dict[str, Any] = {
@@ -1049,6 +1098,7 @@ class WebSocketChannel(BaseChannel):
         edits: list[dict[str, Any]],
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        """推送文件编辑事件给订阅客户端，用于实时显示文件变更。"""
         conns = list(self._subs.get(chat_id, ()))
         payload: dict[str, Any] = {
             "event": "file_edit",
@@ -1073,6 +1123,11 @@ class WebSocketChannel(BaseChannel):
         delta: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
+        """推送流式增量文本（``delta``）或流结束信号（``stream_end``）。
+
+        流结束时，合并缓冲区中的完整文本，并重写本地 Markdown 图片链接，
+        确保远程客户端可访问媒体。
+        """
         conns = list(self._subs.get(chat_id, ()))
         meta = metadata or {}
         stream_key = (chat_id, str(meta.get("_stream_id") or ""))
@@ -1114,7 +1169,7 @@ class WebSocketChannel(BaseChannel):
         goal_state: dict[str, Any] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Signal that the agent has fully finished processing the current turn."""
+        """信号：代理已完全完成当前轮次的处理。"""
         conns = list(self._subs.get(chat_id, ()))
         body: dict[str, Any] = {"event": "turn_end", "chat_id": chat_id}
         if latency_ms is not None:
@@ -1134,7 +1189,7 @@ class WebSocketChannel(BaseChannel):
             await self._safe_send_to(connection, raw, label=" turn_end ")
 
     async def send_goal_state(self, chat_id: str, blob: dict[str, Any]) -> None:
-        """Push persisted goal-state snapshot for *chat_id* (multi-chat isolation)."""
+        """为 *chat_id* 推送已持久化的目标状态快照（多会话隔离）。"""
         conns = list(self._subs.get(chat_id, ()))
         if not conns:
             return
@@ -1150,7 +1205,7 @@ class WebSocketChannel(BaseChannel):
         *,
         started_at: float | None = None,
     ) -> None:
-        """Notify subscribed clients that a turn started or finished (wall-clock hint)."""
+        """通知已订阅客户端轮次已开始或结束（挂钟时间提示）。"""
         conns = list(self._subs.get(chat_id, ()))
         if not conns:
             return
@@ -1166,7 +1221,7 @@ class WebSocketChannel(BaseChannel):
             await self._safe_send_to(connection, raw, label=" goal_status ")
 
     async def send_session_updated(self, chat_id: str, *, scope: str | None = None) -> None:
-        """Notify WebUI clients that a session row should refresh."""
+        """通知 WebUI 客户端某会话行需要刷新。"""
         conns = list(self._conn_chats)
         if not conns:
             return
@@ -1183,7 +1238,7 @@ class WebSocketChannel(BaseChannel):
         model_name: Any,
         model_preset: Any = None,
     ) -> None:
-        """Broadcast runtime model changes to every open websocket connection."""
+        """向每个已打开的 WebSocket 连接广播运行时模型变更。"""
         conns = list(self._conn_chats)
         if not conns or not isinstance(model_name, str) or not model_name.strip():
             return

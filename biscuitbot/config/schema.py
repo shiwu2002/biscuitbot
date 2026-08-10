@@ -1,16 +1,25 @@
-"""Configuration schema using Pydantic."""
+"""基于 Pydantic 的配置数据模型。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/config 目录，定义 biscuitbot 全部配置的数据模型（schema）。
+在项目架构中起到的作用：以 Pydantic 模型形式描述渠道、提供商、智能体、工具、网关、
+定时任务等配置项，提供校验、别名兼容、字段迁移与默认值，并内置提供商匹配逻辑，
+是配置加载与运行时访问配置的权威数据结构来源。
+"""
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from pathlib import Path  # 跨平台路径处理
+from typing import TYPE_CHECKING, Any, Literal  # 类型标注工具
 
-from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator
-from pydantic_settings import BaseSettings
+from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator  # Pydantic 模型构建组件
+from pydantic_settings import BaseSettings  # 支持环境变量注入的设置基类
 
-from biscuitbot.config_base import Base
-from biscuitbot.cron.types import CronSchedule
+from biscuitbot.config_base import Base  # 项目内 Pydantic 模型基类
+from biscuitbot.cron.types import CronSchedule  # 定时任务调度类型
 
 if TYPE_CHECKING:
+    # 仅类型检查时导入的工具配置类型，避免运行时循环依赖
     from biscuitbot.agent.tools.cli_apps import CliAppsToolConfig
     from biscuitbot.agent.tools.filesystem import FileToolsConfig
     from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
@@ -22,29 +31,28 @@ if TYPE_CHECKING:
 
 
 class ChannelsConfig(Base):
-    """Configuration for chat channels.
+    """聊天渠道配置。
 
-    Built-in and plugin channel configs are stored as extra fields (dicts).
-    Each channel parses its own config in __init__.
-    Per-channel "streaming": true enables streaming output (requires send_delta impl).
+    内置与插件渠道配置以额外字段（dict）形式存储。每个渠道在自身 __init__ 中解析
+    自己的配置。渠道级 "streaming": true 启用流式输出（需实现 send_delta）。
     """
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow")  # 允许额外字段，便于扩展渠道配置
 
-    send_progress: bool = True  # stream agent's text progress to the channel
-    send_tool_hints: bool = False  # stream tool-call hints (e.g. read_file("…"))
-    show_reasoning: bool = True  # surface model reasoning when channel implements it
-    extract_document_text: bool = True  # extract text from document attachments before sending to the model
-    send_max_retries: int = Field(default=3, ge=0, le=10)  # Max delivery attempts (initial send included)
-    transcription_provider: str = "groq"  # Deprecated: use top-level transcription.provider
-    transcription_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")  # Deprecated: use top-level transcription.language
+    send_progress: bool = True  # 将智能体文本进度流式发送到渠道
+    send_tool_hints: bool = False  # 流式发送工具调用提示（如 read_file("…")）
+    show_reasoning: bool = True  # 当渠道实现时展示模型推理过程
+    extract_document_text: bool = True  # 发送给模型前从文档附件中提取文本
+    send_max_retries: int = Field(default=3, ge=0, le=10)  # 最大投递尝试次数（含首次发送）
+    transcription_provider: str = "groq"  # 已废弃：改用顶层 transcription.provider
+    transcription_language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")  # 已废弃：改用顶层 transcription.language
 
 
 class TranscriptionConfig(Base):
-    """Cross-channel audio transcription configuration."""
+    """跨渠道音频转写配置。"""
 
     enabled: bool = True
-    provider: str | None = None  # Validated by biscuitbot.audio.transcription_registry.
+    provider: str | None = None  # 由 biscuitbot.audio.transcription_registry 校验
     model: str | None = None
     language: str | None = Field(default=None, pattern=r"^[a-z]{2,3}$")
     max_duration_sec: int = Field(default=120, ge=1, le=600)
@@ -52,26 +60,26 @@ class TranscriptionConfig(Base):
 
 
 class DreamConfig(Base):
-    """Dream memory consolidation configuration."""
+    """Dream 记忆整合配置。"""
 
-    _HOUR_MS = 3_600_000
+    _HOUR_MS = 3_600_000  # 一小时对应的毫秒数
 
-    enabled: bool = True  # Register the periodic Dream consolidation job on startup
-    interval_h: int = Field(default=2, ge=1)  # Every 2 hours by default
-    cron: str | None = Field(default=None, exclude=True)  # Legacy cron expression override
+    enabled: bool = True  # 启动时注册周期性 Dream 整合任务
+    interval_h: int = Field(default=2, ge=1)  # 默认每 2 小时执行一次
+    cron: str | None = Field(default=None, exclude=True)  # 遗留 cron 表达式覆盖
     model_override: str | None = Field(
         default=None,
         validation_alias=AliasChoices("modelOverride", "model", "model_override"),
-    )  # Override model for Dream sessions (pending implementation)
+    )  # 覆盖 Dream 会话使用的模型（待实现）
 
     def build_schedule(self, timezone: str) -> CronSchedule:
-        """Build the runtime schedule, preferring the legacy cron override if present."""
+        """构建运行时调度，优先使用遗留 cron 覆盖。"""
         if self.cron:
             return CronSchedule(kind="cron", expr=self.cron, tz=timezone)
         return CronSchedule(kind="every", every_ms=self.interval_h * self._HOUR_MS)
 
     def describe_schedule(self) -> str:
-        """Return a human-readable summary for logs and startup output."""
+        """返回用于日志与启动输出的人类可读调度摘要。"""
         if self.cron:
             return f"cron {self.cron} (legacy)"
         hours = self.interval_h
@@ -79,7 +87,7 @@ class DreamConfig(Base):
 
 
 class InlineFallbackConfig(Base):
-    """One inline fallback model configuration."""
+    """单个内联回退模型配置。"""
 
     model: str
     provider: str
@@ -89,11 +97,12 @@ class InlineFallbackConfig(Base):
     reasoning_effort: str | None = None
 
 
+# 回退模型候选项：可以是预设名（字符串）或内联配置
 FallbackCandidate = str | InlineFallbackConfig
 
 
 class ModelPresetConfig(Base):
-    """A named set of model + generation parameters for quick switching."""
+    """命名的模型 + 生成参数集合，便于快速切换。"""
 
     label: str | None = None
     model: str
@@ -104,6 +113,7 @@ class ModelPresetConfig(Base):
     reasoning_effort: str | None = None
 
     def to_generation_settings(self) -> Any:
+        """转换为 GenerationSettings 对象。"""
         from biscuitbot.providers.base import GenerationSettings
         return GenerationSettings(
             temperature=self.temperature,
@@ -113,13 +123,13 @@ class ModelPresetConfig(Base):
 
 
 class AgentDefaults(Base):
-    """Default agent configuration."""
+    """智能体默认配置。"""
 
     workspace: str = "~/.biscuitbot/workspace"
-    model_preset: str | None = None  # Active preset name — takes precedence over fields below
+    model_preset: str | None = None  # 激活的预设名——优先级高于下方字段
     model: str = "deepseek/deepseek-v4-pro"
     provider: str = (
-        "auto"  # Provider name (e.g. "anthropic", "openrouter") or "auto" for auto-detection
+        "auto"  # 提供商名（如 "anthropic"、"openrouter"）或 "auto" 表示自动检测
     )
     max_tokens: int = 8192
     context_window_tokens: int = 65_536
@@ -136,58 +146,58 @@ class AgentDefaults(Base):
         le=500,
         validation_alias=AliasChoices("toolHintMaxLength"),
         serialization_alias="toolHintMaxLength",
-    )  # Max characters for tool hint display (e.g. "$ cd …/project && npm test")
-    reasoning_effort: str | None = None  # low / medium / high / adaptive / none — LLM thinking effort; None preserves the provider default
-    timezone: str = "UTC"  # IANA timezone, e.g. "Asia/Shanghai", "America/New_York"
-    bot_name: str = "biscuitbot"  # Display name shown in CLI prompts (e.g. "{name} is thinking...")
-    bot_icon: str = "🍪"  # Short icon (emoji or text) shown next to the bot name in CLI; "" to omit
-    unified_session: bool = False  # Share one session across all channels (single-user multi-device)
-    disabled_skills: list[str] = Field(default_factory=list)  # Skill names to exclude from loading (e.g. ["summarize", "skill-creator"])
+    )  # 工具提示显示的最大字符数（如 "$ cd …/project && npm test"）
+    reasoning_effort: str | None = None  # low / medium / high / adaptive / none — LLM 思考力度；None 保留提供商默认
+    timezone: str = "UTC"  # IANA 时区，如 "Asia/Shanghai"、"America/New_York"
+    bot_name: str = "biscuitbot"  # CLI 提示中显示的名称（如 "{name} is thinking..."）
+    bot_icon: str = "🍪"  # CLI 中显示在名称旁的短图标（emoji 或文本），"" 表示省略
+    unified_session: bool = False  # 跨所有渠道共享同一会话（单用户多设备）
+    disabled_skills: list[str] = Field(default_factory=list)  # 排除加载的技能名（如 ["summarize", "skill-creator"]）
     session_ttl_minutes: int = Field(
         default=15,
         ge=0,
         validation_alias=AliasChoices("idleCompactAfterMinutes", "sessionTtlMinutes"),
         serialization_alias="idleCompactAfterMinutes",
-    )  # Auto-compact idle threshold in minutes (0 = disabled)
+    )  # 空闲自动压缩阈值（分钟，0 = 禁用）
     max_messages: int = Field(
         default=120,
         ge=0,
-    )  # Max messages to replay from session history (0 = use default 120, respects token budget)
+    )  # 从会话历史回放的最大消息数（0 = 使用默认 120，受 token 预算约束）
     consolidation_ratio: float = Field(
         default=0.5,
         ge=0.1,
         le=0.95,
         validation_alias=AliasChoices("consolidationRatio"),
         serialization_alias="consolidationRatio",
-    )  # Consolidation target ratio (0.5 = 50% of budget retained after compression)
+    )  # 整合目标比例（0.5 = 压缩后保留 50% 预算）
     dream: DreamConfig = Field(default_factory=DreamConfig)
     vision_model: str | None = Field(
         default=None,
         validation_alias=AliasChoices("visionModel", "vision_model"),
         serialization_alias="visionModel",
-    )  # Vision model preset name (e.g. "qwen-vl") for screenshot understanding; None = disabled
+    )  # 截图理解用的视觉模型预设名（如 "qwen-vl"）；None = 禁用
     vision_model_override: str | None = Field(
         default=None,
         validation_alias=AliasChoices("visionModelOverride", "vision_model_override"),
         serialization_alias="visionModelOverride",
-    )  # Custom multimodal model name that overrides the preset's model (e.g. "gpt-4o", "qwen-vl-max"); None = use preset's model
+    )  # 覆盖预设模型的自定义多模态模型名（如 "gpt-4o"、"qwen-vl-max"）；None = 使用预设模型
 
 
 class AgentsConfig(Base):
-    """Agent configuration."""
+    """智能体配置。"""
 
     defaults: AgentDefaults = Field(default_factory=AgentDefaults)
 
 
 class ProviderConfig(Base):
-    """LLM provider configuration."""
+    """LLM 提供商配置。"""
 
-    api_key: str | None = Field(default=None, repr=False)
+    api_key: str | None = Field(default=None, repr=False)  # repr=False 避免日志泄露密钥
     api_base: str | None = None
-    api_type: Literal["auto", "chat_completions", "responses"] = "auto"  # Request API surface
-    extra_headers: dict[str, str] | None = None  # Custom headers (e.g. APP-Code for AiHubMix)
-    extra_body: dict[str, Any] | None = None  # Extra provider request fields; shape depends on provider/API surface
-    extra_query: dict[str, str] | None = None  # Extra query params (e.g. api-version for Azure-style gateways)
+    api_type: Literal["auto", "chat_completions", "responses"] = "auto"  # 请求 API 形态
+    extra_headers: dict[str, str] | None = None  # 自定义请求头（如 AiHubMix 的 APP-Code）
+    extra_body: dict[str, Any] | None = None  # 额外提供商请求字段；结构随提供商/API 形态变化
+    extra_query: dict[str, str] | None = None  # 额外查询参数（如 Azure 风格网关的 api-version）
 
 
 class ProvidersConfig(Base):
@@ -223,11 +233,12 @@ class ProvidersConfig(Base):
 
     @model_validator(mode="after")
     def convert_extra_providers(self):
-        """Convert extra fields (custom providers) to ProviderConfig objects."""
+        """将额外字段（自定义提供商）转换为 ProviderConfig 对象。"""
         if self.model_extra:
             from biscuitbot.providers.registry import find_by_name
 
             for key, value in self.model_extra.items():
+                # 与内置提供商名冲突则报错
                 if spec := find_by_name(key):
                     raise ValueError(
                         f"providers.{key} conflicts with built-in provider {spec.name!r}; "
@@ -239,6 +250,7 @@ class ProvidersConfig(Base):
 
     @model_validator(mode="after")
     def _validate_api_type_scope(self) -> "ProvidersConfig":
+        """校验 api_type 仅对 providers.openai 生效，其余提供商不允许显式指定。"""
         for name in self.__class__.model_fields:
             if name == "openai":
                 continue
@@ -252,56 +264,55 @@ class ProvidersConfig(Base):
 
 
 class HeartbeatConfig(Base):
-    """Heartbeat service configuration (now backed by cron)."""
+    """心跳服务配置（现由 cron 支持）。"""
 
     enabled: bool = True
-    interval_s: int = 30 * 60  # 30 minutes
+    interval_s: int = 30 * 60  # 30 分钟
     keep_recent_messages: int = 8
 
 
 class ApiConfig(Base):
-    """OpenAI-compatible API server configuration."""
+    """OpenAI 兼容 API 服务器配置。"""
 
-    host: str = "127.0.0.1"  # Safer default: local-only bind.
+    host: str = "127.0.0.1"  # 更安全的默认值：仅本地绑定
     port: int = 8900
-    timeout: float = 120.0  # Per-request timeout in seconds.
+    timeout: float = 120.0  # 单请求超时（秒）
 
 
 class GatewayConfig(Base):
-    """Gateway/server configuration."""
+    """网关/服务器配置。"""
 
-    host: str = "127.0.0.1"  # Safer default: local-only bind.
+    host: str = "127.0.0.1"  # 更安全的默认值：仅本地绑定
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
 
 
 class MCPServerConfig(Base):
-    """MCP server connection configuration (stdio or HTTP)."""
+    """MCP 服务器连接配置（stdio 或 HTTP）。"""
 
-    type: Literal["stdio", "sse", "streamableHttp"] | None = None  # auto-detected if omitted
-    command: str = ""  # Stdio: command to run (e.g. "npx")
-    args: list[str] = Field(default_factory=list)  # Stdio: command arguments
-    env: dict[str, str] = Field(default_factory=dict)  # Stdio: extra env vars
-    cwd: str = ""  # Stdio: working directory for MCP server runtime artifacts
-    url: str = ""  # HTTP/SSE: endpoint URL
-    headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE: custom headers
-    tool_timeout: int = 30  # seconds before a tool call is cancelled
-    enabled_tools: list[str] = Field(default_factory=lambda: ["*"])  # Only register these tools; accepts raw MCP names or wrapped mcp_<server>_<tool> names; ["*"] = all tools; [] = no tools
+    type: Literal["stdio", "sse", "streamableHttp"] | None = None  # 省略时自动检测
+    command: str = ""  # Stdio：要运行的命令（如 "npx"）
+    args: list[str] = Field(default_factory=list)  # Stdio：命令参数
+    env: dict[str, str] = Field(default_factory=dict)  # Stdio：额外环境变量
+    cwd: str = ""  # Stdio：MCP 服务器运行时工件的工作目录
+    url: str = ""  # HTTP/SSE：端点 URL
+    headers: dict[str, str] = Field(default_factory=dict)  # HTTP/SSE：自定义请求头
+    tool_timeout: int = 30  # 工具调用超时取消秒数
+    enabled_tools: list[str] = Field(default_factory=lambda: ["*"])  # 仅注册这些工具；接受原始 MCP 名或包装后的 mcp_<server>_<tool> 名；["*"] = 全部工具；[] = 无工具
 
 
 def _lazy_default(module_path: str, class_name: str) -> Any:
-    """Deferred import helper for ToolsConfig default factories."""
+    """ToolsConfig 默认工厂的延迟导入辅助函数。"""
     import importlib
     module = importlib.import_module(module_path)
     return getattr(module, class_name)()
 
 
 class ToolsConfig(Base):
-    """Tools configuration.
+    """工具配置。
 
-    Field types for tool-specific sub-configs are resolved via model_rebuild()
-    at the bottom of this file so tool config classes can stay next to their
-    tool implementations.
+    工具专属子配置的字段类型通过本文件底部的 model_rebuild() 解析，使工具配置类
+    可以保留在各自工具实现旁边，避免循环导入。
     """
 
     web: WebToolsConfig = Field(default_factory=lambda: _lazy_default("biscuitbot.agent.tools.web", "WebToolsConfig"))
@@ -318,13 +329,13 @@ class ToolsConfig(Base):
     system_io: SystemIoToolConfig = Field(
         default_factory=lambda: _lazy_default("biscuitbot.agent.tools.system_io", "SystemIoToolConfig"),
     )
-    restrict_to_workspace: bool = False  # policy intent: keep tool access inside workspace when possible
+    restrict_to_workspace: bool = False  # 策略意图：尽可能将工具访问限制在工作区内
     guard_level: str = Field(
         default="standard",
         validation_alias=AliasChoices("guardLevel", "guard_level"),
         description="Prompt-injection / shell-interception guard level: standard|minimal|off. "
         "standard=full deny-list + banners; minimal=catastrophic shell blocks only; off=no injection/shell interception.",
-    )  # configurable guard level; structural bounds (SSRF, workspace) stay on at all levels
+    )  # 可配置的防护级别；结构性约束（SSRF、工作区）在所有级别下始终开启
     webui_allow_local_service_access: bool = Field(
         default=True,
         validation_alias=AliasChoices(
@@ -333,9 +344,9 @@ class ToolsConfig(Base):
             "allowLocalPreviewAccess",
             "allow_local_preview_access",
         ),
-    )  # allow WebUI Full Access shell checks against localhost services; legacy allowLocalPreviewAccess still reads
+    )  # 允许 WebUI Full Access 的 shell 检查访问本地服务；遗留 allowLocalPreviewAccess 仍可读取
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
-    ssrf_whitelist: list[str] = Field(default_factory=list)  # CIDR ranges to exempt from SSRF blocking (e.g. ["100.64.0.0/10"] for Tailscale)
+    ssrf_whitelist: list[str] = Field(default_factory=list)  # 豁免 SSRF 拦截的 CIDR 范围（如 ["100.64.0.0/10"] 用于 Tailscale）
     cold_storage_days: int = Field(
         default=14,
         validation_alias=AliasChoices("coldStorageDays", "cold_storage_days"),
@@ -350,7 +361,7 @@ class ToolsConfig(Base):
     @field_validator("guard_level", mode="before")
     @classmethod
     def _normalize_guard_level(cls, value: Any) -> Any:
-        """Lowercase and validate guard_level; fall back to 'standard' on unknown values."""
+        """小写化并校验 guard_level；未知值回退为 'standard'。"""
         from biscuitbot.security.guard_level import normalize_guard_level
 
         if isinstance(value, str):
@@ -359,7 +370,7 @@ class ToolsConfig(Base):
 
 
 class Config(BaseSettings):
-    """Root configuration for biscuitbot."""
+    """biscuitbot 根配置。"""
 
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
@@ -374,24 +385,27 @@ class Config(BaseSettings):
     )
 
     def __init__(self, **values: Any) -> None:
+        # 若模型尚未完成（工具配置前置引用未解析），先触发解析
         if not type(self).__pydantic_complete__:
             _resolve_tool_config_refs()
         super().__init__(**values)
 
     @model_validator(mode="after")
     def _validate_model_preset(self) -> "Config":
+        """校验模型预设名：'default' 保留给 agents.defaults，引用的预设必须存在。"""
         if "default" in self.model_presets:
             raise ValueError("model_preset name 'default' is reserved for agents.defaults")
         name = self.agents.defaults.model_preset
         if name and name != "default" and name not in self.model_presets:
             raise ValueError(f"model_preset {name!r} not found in model_presets")
+        # 回退模型若为字符串，必须是已存在的预设名
         for fallback in self.agents.defaults.fallback_models:
             if isinstance(fallback, str) and fallback not in self.model_presets:
                 raise ValueError(f"fallback_models entry {fallback!r} not found in model_presets")
         return self
 
     def resolve_default_preset(self) -> ModelPresetConfig:
-        """Return the implicit `default` preset from agents.defaults fields."""
+        """从 agents.defaults 字段返回隐式 `default` 预设。"""
         d = self.agents.defaults
         return ModelPresetConfig(
             model=d.model, provider=d.provider, max_tokens=d.max_tokens,
@@ -400,7 +414,7 @@ class Config(BaseSettings):
         )
 
     def resolve_preset(self, name: str | None = None) -> ModelPresetConfig:
-        """Return effective model params from a named preset or the implicit default."""
+        """返回命名预设或隐式默认预设对应的有效模型参数。"""
         name = self.agents.defaults.model_preset if name is None else name
         if not name or name == "default":
             return self.resolve_default_preset()
@@ -410,7 +424,7 @@ class Config(BaseSettings):
 
     @property
     def workspace_path(self) -> Path:
-        """Get expanded workspace path."""
+        """获取展开后的工作区路径。"""
         return Path(self.agents.defaults.workspace).expanduser()
 
     def _match_provider(
@@ -418,7 +432,7 @@ class Config(BaseSettings):
         *,
         preset: ModelPresetConfig | None = None,
     ) -> tuple["ProviderConfig | None", str | None]:
-        """Match provider config and its registry name. Returns (config, spec_name)."""
+        """匹配提供商配置及其注册表名。返回 (config, spec_name)。"""
         from biscuitbot.providers.registry import (
             PROVIDERS,
             find_by_name,
@@ -428,6 +442,7 @@ class Config(BaseSettings):
         forced = resolved.provider
 
         def _custom_provider_by_name(name: str) -> tuple[ProviderConfig, str] | None:
+            """按名称在自定义提供商中查找，归一化连字符与大小写。"""
             normalized = name.replace("-", "_").lower()
             for attr_name, provider in (self.providers.model_extra or {}).items():
                 if not isinstance(provider, ProviderConfig):
@@ -436,6 +451,7 @@ class Config(BaseSettings):
                     return provider, attr_name
             return None
 
+        # 显式指定的提供商（非 auto）优先匹配
         if forced != "auto":
             spec = find_by_name(forced)
             if spec:
@@ -446,16 +462,18 @@ class Config(BaseSettings):
                 return custom
             return None, None
 
+        # 模型名预处理：小写化、归一化连字符、提取前缀
         model_lower = (model or resolved.model).lower()
         model_normalized = model_lower.replace("-", "_")
         model_prefix = model_lower.split("/", 1)[0] if "/" in model_lower else ""
         normalized_prefix = model_prefix.replace("-", "_")
 
         def _kw_matches(kw: str) -> bool:
+            """判断关键词是否匹配模型名。"""
             kw = kw.lower()
             return kw in model_lower or kw.replace("-", "_") in model_normalized
 
-        # Explicit provider prefix wins — prevents `github-copilot/...codex` matching openai_codex.
+        # 显式提供商前缀优先——防止 `github-copilot/...codex` 误匹配 openai_codex
         for spec in PROVIDERS:
             if spec.is_transcription_only:
                 continue
@@ -464,16 +482,15 @@ class Config(BaseSettings):
                 if spec.is_oauth or spec.is_local or spec.is_direct or p.api_key:
                     return p, spec.name
 
-        # Check for custom provider by prefix (e.g., "companyProxy/gpt-4").
-        # Return the matching provider even when apiBase is missing, so a
-        # malformed explicit prefix fails instead of falling through to a
-        # different custom provider.
+        # 按前缀查找自定义提供商（如 "companyProxy/gpt-4"）。
+        # 即使 apiBase 缺失也返回匹配的提供商，使格式错误的显式前缀直接失败，
+        # 而不是回落到其他自定义提供商。
         if model_prefix:
             custom = _custom_provider_by_name(normalized_prefix)
             if custom is not None:
                 return custom
 
-        # Match by keyword (order follows PROVIDERS registry)
+        # 按关键词匹配（顺序遵循 PROVIDERS 注册表）
         for spec in PROVIDERS:
             if spec.is_transcription_only:
                 continue
@@ -482,10 +499,10 @@ class Config(BaseSettings):
                 if spec.is_oauth or spec.is_local or spec.is_direct or p.api_key:
                     return p, spec.name
 
-        # Fallback: configured local providers can route models without
-        # provider-specific keywords (for example plain "llama3.2" on Ollama).
-        # Prefer providers whose detect_by_base_keyword matches the configured api_base
-        # (e.g. Ollama's "11434" in "http://localhost:11434") over plain registry order.
+        # 回退：已配置的本地提供商可路由无提供商关键词的模型
+        # （例如 Ollama 上的纯 "llama3.2"）。
+        # 优先选择 detect_by_base_keyword 匹配已配置 api_base 的提供商
+        # （如 Ollama 的 "11434" 出现在 "http://localhost:11434" 中），而非单纯注册表顺序。
         local_fallback: tuple[ProviderConfig, str] | None = None
         for spec in PROVIDERS:
             if not spec.is_local:
@@ -500,8 +517,8 @@ class Config(BaseSettings):
         if local_fallback:
             return local_fallback
 
-        # Fallback: gateways first, then others (follows registry order)
-        # OAuth providers are NOT valid fallbacks — they require explicit model selection
+        # 回退：先网关后其他（遵循注册表顺序）
+        # OAuth 提供商不是有效回退——它们要求显式模型选择
         for spec in PROVIDERS:
             if spec.is_oauth or spec.is_transcription_only:
                 continue
@@ -509,7 +526,7 @@ class Config(BaseSettings):
             if p and p.api_key:
                 return p, spec.name
 
-        # Final fallback: check for any configured custom provider
+        # 最终回退：检查任意已配置的自定义提供商
         for attr_name, p in (self.providers.model_extra or {}).items():
             if isinstance(p, ProviderConfig) and p.api_base:
                 return p, attr_name
@@ -522,7 +539,7 @@ class Config(BaseSettings):
         *,
         preset: ModelPresetConfig | None = None,
     ) -> ProviderConfig | None:
-        """Get matched provider config (api_key, api_base, extra_headers). Falls back to first available."""
+        """获取匹配的提供商配置（api_key、api_base、extra_headers），回退到首个可用。"""
         p, _ = self._match_provider(model, preset=preset)
         return p
 
@@ -532,7 +549,7 @@ class Config(BaseSettings):
         *,
         preset: ModelPresetConfig | None = None,
     ) -> str | None:
-        """Get the registry name of the matched provider (e.g. "deepseek", "openrouter")."""
+        """获取匹配提供商的注册表名（如 "deepseek"、"openrouter"）。"""
         _, name = self._match_provider(model, preset=preset)
         return name
 
@@ -542,7 +559,7 @@ class Config(BaseSettings):
         *,
         preset: ModelPresetConfig | None = None,
     ) -> str | None:
-        """Get API key for the given model. Falls back to first available key."""
+        """获取给定模型的 API Key，回退到首个可用 Key。"""
         p = self.get_provider(model, preset=preset)
         return p.api_key if p else None
 
@@ -552,7 +569,7 @@ class Config(BaseSettings):
         *,
         preset: ModelPresetConfig | None = None,
     ) -> str | None:
-        """Get API base URL for the given model, falling back to the provider default when present."""
+        """获取给定模型的 API base URL，缺失时回退到提供商默认值。"""
         from biscuitbot.providers.registry import find_by_name
 
         p, name = self._match_provider(model, preset=preset)
@@ -568,11 +585,11 @@ class Config(BaseSettings):
 
 
 def _resolve_tool_config_refs() -> None:
-    """Resolve forward references in ToolsConfig by importing tool config classes.
+    """通过导入工具配置类来解析 ToolsConfig 中的前置引用。
 
-    Must be called after all modules are loaded (breaks circular imports).
-    Re-exports the classes into this module's namespace so existing imports
-    like ``from biscuitbot.config.schema import ExecToolConfig`` continue to work.
+    必须在所有模块加载完成后调用（打破循环导入）。
+    将这些类重新导出到本模块命名空间，使既有导入
+    ``from biscuitbot.config.schema import ExecToolConfig`` 继续可用。
     """
     import sys
 
@@ -585,7 +602,7 @@ def _resolve_tool_config_refs() -> None:
     from biscuitbot.agent.tools.system_io import SystemIoToolConfig
     from biscuitbot.agent.tools.web import WebFetchConfig, WebSearchConfig, WebToolsConfig
 
-    # Re-export into this module's namespace
+    # 将工具配置类重新导出到本模块命名空间
     mod = sys.modules[__name__]
     mod.ExecToolConfig = ExecToolConfig  # type: ignore[attr-defined]
     mod.FileToolsConfig = FileToolsConfig  # type: ignore[attr-defined]
@@ -602,9 +619,8 @@ def _resolve_tool_config_refs() -> None:
     Config.model_rebuild()
 
 
-# Eagerly resolve when the import chain allows it (no circular deps at this
-# point).  If it fails (first import triggers a cycle), the rebuild will
-# happen lazily when Config/ToolsConfig is first used at runtime.
+# 当导入链允许时（此时无循环依赖）尽早解析。若失败（首次导入触发循环），
+# 则在运行时首次使用 Config/ToolsConfig 时惰性 rebuild。
 try:
     _resolve_tool_config_refs()
 except ImportError:

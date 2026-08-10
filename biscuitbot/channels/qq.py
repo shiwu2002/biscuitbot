@@ -1,54 +1,55 @@
-"""QQ channel implementation using botpy SDK.
+"""QQ 渠道实现，基于 botpy SDK。
 
-Inbound:
-- Parse QQ botpy messages (C2C / Group)
-- Download attachments to media dir using chunked streaming write (memory-safe)
-- Publish to Biscuitbot bus via BaseChannel._handle_message()
-- Content includes a clear, actionable "Received files:" list with local paths
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 QQ 官方机器人平台组件。
+在项目架构中起到的作用：通过 QQ botpy SDK 将 QQ 频道和群聊的消息收发能力接入 biscuitbot 消息总线。
 
-Outbound:
-- Send attachments (msg.media) first via QQ rich media API (base64 upload + msg_type=7)
-- Then send text (plain or markdown)
-- msg.media supports local paths, file:// paths, and http(s) URLs
-
-Notes:
-- QQ restricts many audio/video formats. We conservatively classify as image vs file.
-- Attachment structures differ across botpy versions; we try multiple field candidates.
+平台特点与接入方式
+------------------
+- 接入方式：使用 botpy SDK 的 WebSocket 连接接收事件，支持 C2C（私聊）和 Group（群聊）消息。
+- 鉴权：通过 QQ 开放平台的 App ID 和 Secret 进行身份认证。
+- 入站消息：解析 botpy 消息（C2C/Group），通过分块流式写入下载附件到媒体目录（内存安全），
+  内容包含清晰的"已接收文件"列表和本地路径。
+- 出站消息：先通过 QQ 富媒体 API 发送附件（base64 上传 + msg_type=7），再发送文本（纯文本或 Markdown）。
+  msg.media 支持本地路径、file:// 路径和 http(s) URL。
+- 注意事项：QQ 限制多种音视频格式，保守地分类为图片或文件。
+  附件结构在不同 botpy 版本间存在差异，尝试多种字段候选。
 """
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import mimetypes
-import os
-import re
-import time
-from collections import deque
-from contextlib import suppress
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
-from urllib.parse import unquote, urlparse
+import asyncio  # 异步事件循环与并发原语
+import base64  # base64 编码（媒体上传）
+import mimetypes  # MIME 类型猜测（媒体分类）
+import os  # 文件路径处理
+import re  # 正则表达式（文件名安全化）
+import time  # 时间戳生成（文件名）
+from collections import deque  # 固定长度去重队列（消息 ID）
+from contextlib import suppress  # 上下文管理器，抑制指定异常
+from pathlib import Path  # 路径处理
+from typing import TYPE_CHECKING, Any, Literal  # 类型注解支持
+from urllib.parse import unquote, urlparse  # URL 解析与解码
 
-import aiohttp
-from loguru import logger
-from pydantic import Field
+import aiohttp  # 异步 HTTP 客户端（附件下载）
+from loguru import logger  # 日志记录
+from pydantic import Field  # Pydantic 模型字段定义
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.schema import Base
-from biscuitbot.security.network import validate_url_target
-from biscuitbot.utils.logging_bridge import redirect_lib_logging
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.security.network import validate_url_target  # URL 安全校验
+from biscuitbot.utils.logging_bridge import redirect_lib_logging  # 第三方库日志桥接
 
 try:
-    from biscuitbot.config.paths import get_media_dir
+    from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
 except Exception:  # pragma: no cover
     get_media_dir = None  # type: ignore
 
 try:
-    import botpy
-    from botpy.http import Route
+    import botpy  # QQ 官方机器人 SDK
+    from botpy.http import Route  # botpy HTTP 路由
 
     QQ_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -57,16 +58,16 @@ except ImportError:  # pragma: no cover
     Route = None
 
 if TYPE_CHECKING:
-    from botpy.message import BaseMessage, C2CMessage, GroupMessage
-    from botpy.types.message import Media
+    from botpy.message import BaseMessage, C2CMessage, GroupMessage  # botpy 消息类型（仅类型检查时导入）
+    from botpy.types.message import Media  # botpy 媒体类型
 
 
-# QQ rich media file_type: 1=image, 4=file
-# (2=voice, 3=video are restricted; we only use image vs file)
+# QQ 富媒体 file_type：1=图片，4=文件
+# （2=语音、3=视频受限；我们仅使用图片和文件）
 QQ_FILE_TYPE_IMAGE = 1
 QQ_FILE_TYPE_FILE = 4
 
-_IMAGE_EXTS = {
+_IMAGE_EXTS = {  # 图片扩展名集合
     ".png",
     ".jpg",
     ".jpeg",
@@ -79,12 +80,12 @@ _IMAGE_EXTS = {
     ".svg",
 }
 
-# Replace unsafe characters with "_", keep Chinese and common safe punctuation.
+# 将不安全字符替换为 "_"，保留中文和常见安全标点
 _SAFE_NAME_RE = re.compile(r"[^\w.\-()\[\]（）【】\u4e00-\u9fff]+", re.UNICODE)
 
 
 def _sanitize_filename(name: str) -> str:
-    """Sanitize filename to avoid traversal and problematic chars."""
+    """安全化文件名，避免路径遍历和问题字符。"""
     name = (name or "").strip()
     name = Path(name).name
     name = _SAFE_NAME_RE.sub("_", name).strip("._ ")
@@ -92,11 +93,12 @@ def _sanitize_filename(name: str) -> str:
 
 
 def _is_image_name(name: str) -> bool:
+    """判断文件名是否为图片类型。"""
     return Path(name).suffix.lower() in _IMAGE_EXTS
 
 
 def _guess_send_file_type(filename: str) -> int:
-    """Conservative send type: images -> 1, else -> 4."""
+    """保守地判断发送类型：图片返回 1，其余返回 4。"""
     ext = Path(filename).suffix.lower()
     mime, _ = mimetypes.guess_type(filename)
     if ext in _IMAGE_EXTS or (mime and mime.startswith("image/")):
@@ -105,12 +107,12 @@ def _guess_send_file_type(filename: str) -> int:
 
 
 def _make_bot_class(channel: QQChannel) -> type[botpy.Client]:
-    """Create a botpy Client subclass bound to the given channel."""
+    """创建绑定到指定渠道的 botpy Client 子类。"""
     intents = botpy.Intents(public_messages=True, direct_message=True)
 
     class _Bot(botpy.Client):
         def __init__(self):
-            # Disable botpy's file log — biscuitbot uses loguru; default "botpy.log" fails on read-only fs
+            # 禁用 botpy 的文件日志 —— biscuitbot 使用 loguru；默认的 "botpy.log" 在只读文件系统上会失败
             super().__init__(intents=intents, ext_handlers=False)
 
         async def on_ready(self):
@@ -129,31 +131,32 @@ def _make_bot_class(channel: QQChannel) -> type[botpy.Client]:
 
 
 class QQConfig(Base):
-    """QQ channel configuration using botpy SDK."""
+    """QQ 渠道配置（基于 botpy SDK）。"""
 
     enabled: bool = False
-    app_id: str = ""
-    secret: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    msg_format: Literal["plain", "markdown"] = "plain"
-    ack_message: str = "⏳ Processing..."
+    app_id: str = ""  # QQ 开放平台应用 ID
+    secret: str = ""  # QQ 开放平台应用密钥
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    msg_format: Literal["plain", "markdown"] = "plain"  # 消息格式：纯文本或 Markdown
+    ack_message: str = "⏳ Processing..."  # 收到消息后的确认回复
 
-    # Optional: directory to save inbound attachments. If empty, use biscuitbot get_media_dir("qq").
+    # 可选：入站附件保存目录。为空时使用 biscuitbot 的 get_media_dir("qq")
     media_dir: str = ""
 
-    # Download tuning
-    download_chunk_size: int = 1024 * 256  # 256KB
-    download_max_bytes: int = 1024 * 1024 * 200  # 200MB safety limit
+    # 下载调优参数
+    download_chunk_size: int = 1024 * 256  # 256KB 分块大小
+    download_max_bytes: int = 1024 * 1024 * 200  # 200MB 安全上限
 
 
 class QQChannel(BaseChannel):
-    """QQ channel using botpy SDK with WebSocket connection."""
+    """QQ 渠道，使用 botpy SDK 的 WebSocket 连接。"""
 
     name = "qq"
     display_name = "QQ"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return QQConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -162,21 +165,21 @@ class QQChannel(BaseChannel):
         super().__init__(config, bus)
         self.config: QQConfig = config
 
-        self._client: botpy.Client | None = None
-        self._http: aiohttp.ClientSession | None = None
+        self._client: botpy.Client | None = None  # botpy 客户端实例
+        self._http: aiohttp.ClientSession | None = None  # HTTP 会话（附件下载）
 
-        self._processed_ids: deque[str] = deque(maxlen=1000)
-        self._msg_seq: int = 1  # used to avoid QQ API dedup
-        self._chat_type_cache: dict[str, str] = {}
+        self._processed_ids: deque[str] = deque(maxlen=1000)  # 已处理消息 ID 去重队列
+        self._msg_seq: int = 1  # 消息序列号（避免 QQ API 去重）
+        self._chat_type_cache: dict[str, str] = {}  # 会话类型缓存（chat_id → "c2c"/"group"）
 
-        self._media_root: Path = self._init_media_root()
+        self._media_root: Path = self._init_media_root()  # 媒体文件根目录
 
     # ---------------------------
-    # Lifecycle
+    # 生命周期管理
     # ---------------------------
 
     def _init_media_root(self) -> Path:
-        """Choose a directory for saving inbound attachments."""
+        """选择入站附件的保存目录。"""
         if self.config.media_dir:
             root = Path(self.config.media_dir).expanduser()
         elif get_media_dir:
@@ -192,7 +195,7 @@ class QQChannel(BaseChannel):
         return root
 
     async def start(self) -> None:
-        """Start the QQ bot with auto-reconnect loop."""
+        """启动 QQ 机器人，包含自动重连循环。"""
         redirect_lib_logging("botpy", level="WARNING")
         if not QQ_AVAILABLE:
             self.logger.error("SDK not installed. Run: pip install qq-botpy")
@@ -210,7 +213,7 @@ class QQChannel(BaseChannel):
         await self._run_bot()
 
     async def _run_bot(self) -> None:
-        """Run the bot connection with auto-reconnect."""
+        """运行机器人连接，包含自动重连。"""
         while self._running:
             try:
                 await self._client.start(appid=self.config.app_id, secret=self.config.secret)
@@ -221,7 +224,7 @@ class QQChannel(BaseChannel):
                 await asyncio.sleep(5)
 
     async def stop(self) -> None:
-        """Stop bot and cleanup resources."""
+        """停止机器人并清理资源。"""
         self._running = False
         if self._client:
             with suppress(Exception):
@@ -236,11 +239,11 @@ class QQChannel(BaseChannel):
         self.logger.info("bot stopped")
 
     # ---------------------------
-    # Outbound (send)
+    # 出站（发送）
     # ---------------------------
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send attachments first, then text."""
+        """先发送附件，再发送文本消息。"""
         try:
             if not self._client:
                 self.logger.warning("client not initialized")
@@ -292,7 +295,7 @@ class QQChannel(BaseChannel):
         msg_id: str | None,
         content: str,
     ) -> None:
-        """Send a plain/markdown text message."""
+        """发送纯文本或 Markdown 文本消息。"""
         if not self._client:
             return
 
@@ -320,7 +323,7 @@ class QQChannel(BaseChannel):
         msg_id: str | None,
         is_group: bool,
     ) -> bool:
-        """Read bytes -> base64 upload -> msg_type=7 send."""
+        """读取字节 → base64 上传 → msg_type=7 发送。"""
         if not self._client:
             return False
 
@@ -374,7 +377,7 @@ class QQChannel(BaseChannel):
             return False
 
     async def _read_media_bytes(self, media_ref: str) -> tuple[bytes | None, str | None]:
-        """Read bytes from http(s) or local file path; return (data, filename)."""
+        """从 http(s) 或本地文件路径读取字节；返回 (data, filename)。"""
         media_ref = (media_ref or "").strip()
         if not media_ref:
             return None, None
@@ -437,7 +440,7 @@ class QQChannel(BaseChannel):
         file_name: str | None = None,
         srv_send_msg: bool = False,
     ) -> Media:
-        """Upload base64-encoded file and return Media object."""
+        """上传 base64 编码的文件并返回 Media 对象。"""
         if not self._client:
             raise RuntimeError("QQ client not initialized")
 
@@ -470,11 +473,11 @@ class QQChannel(BaseChannel):
         return result
 
     # ---------------------------
-    # Inbound (receive)
+    # 入站（接收）
     # ---------------------------
 
     async def _on_message(self, data: C2CMessage | GroupMessage, is_group: bool = False) -> None:
-        """Parse inbound message, download attachments, and publish to the bus."""
+        """解析入站消息，下载附件，并发布到消息总线。"""
         try:
             if is_group:
                 chat_id = data.group_openid
@@ -557,7 +560,7 @@ class QQChannel(BaseChannel):
         self,
         attachments: list[BaseMessage._Attachments],
     ) -> tuple[list[str], list[str], list[dict[str, Any]]]:
-        """Extract, download (chunked), and format attachments for agent consumption."""
+        """提取、下载（分块）并格式化附件，供 agent 使用。"""
         media_paths: list[str] = []
         recv_lines: list[str] = []
         att_meta: list[dict[str, Any]] = []
@@ -597,11 +600,11 @@ class QQChannel(BaseChannel):
         url: str,
         filename_hint: str = "",
     ) -> str | None:
-        """Download an inbound attachment using streaming chunk write.
+        """使用流式分块写入下载入站附件。
 
-        Uses chunked streaming to avoid loading large files into memory.
-        Enforces a max download size and writes to a .part temp file
-        that is atomically renamed on success.
+        采用分块流式写入，避免将大文件加载到内存中。
+        强制最大下载大小限制，并写入 .part 临时文件，
+        成功后原子性重命名为最终文件。
         """
         # Handle protocol-relative URLs (e.g. "//multimedia.nt.qq.com/...")
         if url.startswith("//"):

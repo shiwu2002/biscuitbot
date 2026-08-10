@@ -1,16 +1,25 @@
-"""Base channel interface for chat platforms."""
+"""聊天渠道基类接口。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的抽象基类组件。
+在项目架构中起到的作用：定义所有聊天平台渠道（Telegram、Discord、飞书、钉钉等）必须
+实现的统一接口（``start``/``stop``/``send`` 等），并内置权限校验、配对码下发、流式输出、
+音频转写等通用能力。具体平台子类只需关注平台协议细节即可接入消息总线（MessageBus），
+从而实现「一处实现，多平台复用」的插件化架构。
+"""
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod  # ABC：抽象基类；abstractmethod：声明子类必须实现的方法
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
+from loguru import logger  # 日志库，用于记录渠道运行日志
 
-from biscuitbot.bus.events import InboundMessage, OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.pairing import (
+from biscuitbot.bus.events import InboundMessage, OutboundMessage  # 消息总线事件类型（入站/出站）
+from biscuitbot.bus.queue import MessageBus  # 消息总线，渠道与核心之间的通信通道
+from biscuitbot.pairing import (  # 配对码模块：未授权用户首次私聊时下发一次性配对码
     PAIRING_CODE_META_KEY,
     format_pairing_reply,
     generate_code,
@@ -19,34 +28,33 @@ from biscuitbot.pairing import (
 
 
 class BaseChannel(ABC):
-    """
-    Abstract base class for chat channel implementations.
+    """聊天渠道抽象基类。
 
-    Each channel (Telegram, Discord, etc.) should implement this interface
-    to integrate with the biscuitbot message bus.
+    每个具体渠道（Telegram、Discord 等）应实现该接口，以便接入 biscuitbot 的消息总线。
+    子类通过实现 ``start``/``stop``/``send`` 等抽象方法完成平台对接，通用逻辑（权限校验、
+    配对码、流式输出、音频转写）由本基类统一提供。
     """
 
-    name: str = "base"
-    display_name: str = "Base"
-    send_progress: bool = True
-    send_tool_hints: bool = False
-    show_reasoning: bool = True
+    name: str = "base"  # 渠道唯一标识名（小写），用于配置、日志与配对存储
+    display_name: str = "Base"  # 渠道展示名（用于 UI/日志展示）
+    send_progress: bool = True  # 是否在工具调用过程中向用户发送进度提示
+    send_tool_hints: bool = False  # 是否发送工具调用提示信息
+    show_reasoning: bool = True  # 是否展示模型推理/思考过程
 
     def __init__(self, config: Any, bus: MessageBus | None):
-        """
-        Initialize the channel.
+        """初始化渠道实例。
 
         Args:
-            config: Channel-specific configuration.
-            bus: The message bus for communication (None during standalone login flows).
+            config: 渠道专属配置（dict 或 pydantic 配置对象）。
+            bus: 用于通信的消息总线；在独立登录流程（如扫码登录）中可为 None。
         """
         self.config = config
-        self.logger = logger.bind(channel=self.name)
+        self.logger = logger.bind(channel=self.name)  # 绑定渠道名的日志器，便于按渠道过滤
         self.bus = bus
-        self._running = False
+        self._running = False  # 渠道运行状态标志
 
     async def transcribe_audio(self, file_path: str | Path) -> str:
-        """Transcribe an audio file via Whisper (OpenAI or Groq). Returns empty string on failure."""
+        """通过 Whisper（OpenAI 或 Groq）转写音频文件，失败时返回空字符串。"""
         try:
             from biscuitbot.audio.transcription import (
                 resolve_transcription_config,
@@ -60,84 +68,73 @@ class BaseChannel(ABC):
             return ""
 
     async def login(self, force: bool = False) -> bool:
-        """
-        Perform channel-specific interactive login (e.g. QR code scan).
+        """执行渠道专属的交互式登录（如扫码登录）。
 
         Args:
-            force: If True, ignore existing credentials and force re-authentication.
+            force: 为 True 时忽略已有凭证，强制重新认证。
 
-        Returns True if already authenticated or login succeeds.
-        Override in subclasses that support interactive login.
+        若已认证或登录成功则返回 True。支持交互式登录的子类应覆盖此方法。
         """
         return True
 
     @abstractmethod
     async def start(self) -> None:
-        """
-        Start the channel and begin listening for messages.
+        """启动渠道并开始监听消息。
 
-        This should be a long-running async task that:
-        1. Connects to the chat platform
-        2. Listens for incoming messages
-        3. Forwards messages to the bus via _handle_message()
+        该方法应为长时间运行的异步任务，完成以下工作：
+        1. 连接到聊天平台；
+        2. 监听入站消息；
+        3. 通过 ``_handle_message()`` 将消息转发至消息总线。
         """
         pass
 
     @abstractmethod
     async def stop(self) -> None:
-        """Stop the channel and clean up resources."""
+        """停止渠道并清理资源。"""
         pass
 
     @abstractmethod
     async def send(self, msg: OutboundMessage) -> None:
-        """
-        Send a message through this channel.
+        """通过本渠道发送一条消息。
 
         Args:
-            msg: The message to send.
+            msg: 待发送的出站消息。
 
-        Implementations should raise on delivery failure so the channel manager
-        can apply any retry policy in one place.
+        实现方在投递失败时应抛出异常，以便渠道管理器统一应用重试策略。
         """
         pass
 
     async def send_delta(self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None) -> None:
-        """Deliver a streaming text chunk.
+        """投递一个流式文本片段。
 
-        Override in subclasses to enable streaming. Implementations should
-        raise on delivery failure so the channel manager can retry.
+        子类可覆盖以启用流式输出。实现方在投递失败时应抛出异常，以便渠道管理器重试。
 
-        Streaming contract: ``_stream_delta`` is a chunk, ``_stream_end`` ends
-        the current segment, and stateful implementations must key buffers by
-        ``_stream_id`` rather than only by ``chat_id``.
+        流式协议约定：``_stream_delta`` 表示一个片段，``_stream_end`` 表示当前片段结束；
+        有状态的实现必须按 ``_stream_id``（而非仅按 ``chat_id``）为缓冲区建立索引。
         """
         pass
 
     async def send_reasoning_delta(
         self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None
     ) -> None:
-        """Stream a chunk of model reasoning/thinking content.
+        """流式投递一段模型推理/思考内容。
 
-        Default is no-op. Channels with a native low-emphasis primitive
-        (Slack context block, Telegram expandable blockquote, Discord
-        subtext, WebUI italic bubble, ...) override to render reasoning
-        as a subordinate trace that updates in place as the model thinks.
+        默认为空操作。具备原生「低强调」展示能力的渠道（Slack 上下文块、Telegram 可折叠
+        引用块、Discord 子文本、WebUI 斜体气泡等）可覆盖此方法，将推理渲染为可就地更新的
+        次级追踪轨迹，随模型思考过程实时刷新。
 
-        Streaming contract mirrors :meth:`send_delta`: ``_reasoning_delta``
-        is a chunk, ``_reasoning_end`` ends the current reasoning segment,
-        and stateful implementations should key buffers by ``_stream_id``
-        rather than only by ``chat_id``.
+        流式协议与 :meth:`send_delta` 一致：``_reasoning_delta`` 为片段，``_reasoning_end``
+        为当前推理段结束；有状态的实现应按 ``_stream_id`` 建立索引。
         """
         return
 
     async def send_reasoning_end(
         self, chat_id: str, metadata: dict[str, Any] | None = None
     ) -> None:
-        """Mark the end of a reasoning stream segment.
+        """标记一段推理流的结束。
 
-        Default is no-op. Channels that buffer ``send_reasoning_delta``
-        chunks for in-place updates use this signal to flush and freeze
-        the rendered group; one-shot channels can ignore it entirely.
+        默认为空操作。对 ``send_reasoning_delta`` 片段进行缓冲以实现就地更新的渠道，可在此
+        信号处刷新并冻结已渲染的内容；一次性投递的渠道可完全忽略此信号。
         """
         return
 
@@ -147,21 +144,19 @@ class BaseChannel(ABC):
         edits: list[dict[str, Any]],
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        """Deliver structured live file-edit events.
+        """投递结构化的实时文件编辑事件。
 
-        Default is no-op. Channels with a rich activity surface can override
-        this to render editing progress without receiving empty text messages.
+        默认为空操作。具备富活动展示面的渠道可覆盖此方法，在不接收空文本消息的前提下
+        渲染文件编辑进度。
         """
         return
 
     async def send_reasoning(self, msg: OutboundMessage) -> None:
-        """Deliver a complete reasoning block.
+        """投递一段完整的推理内容。
 
-        Default implementation reuses the streaming pair so plugins only
-        need to override the delta/end methods. Equivalent to one delta
-        with the full content followed immediately by an end marker —
-        keeps a single rendering path for both streamed and one-shot
-        reasoning (e.g. DeepSeek-R1's final-response ``reasoning_content``).
+        默认实现复用流式方法对（delta/end），使插件只需覆盖 delta/end 方法即可。
+        等价于一次包含完整内容的 delta 后紧跟一个 end 标记——从而为流式与一次性推理
+        （如 DeepSeek-R1 最终响应中的 ``reasoning_content``）保留单一渲染路径。
         """
         if not msg.content:
             return
@@ -175,23 +170,23 @@ class BaseChannel(ABC):
 
     @property
     def supports_streaming(self) -> bool:
-        """True when config enables streaming AND this subclass implements send_delta."""
+        """当配置启用了流式输出且本子类实现了 send_delta 时返回 True。"""
         cfg = self.config
         streaming = cfg.get("streaming", False) if isinstance(cfg, dict) else getattr(cfg, "streaming", False)
         return bool(streaming) and type(self).send_delta is not BaseChannel.send_delta
 
     def is_allowed(self, sender_id: str) -> bool:
-        """Check sender permission: star > allowlist > pairing store > deny."""
+        """校验发送者权限，优先级依次为：通配符 > 白名单 > 配对存储 > 拒绝。"""
         if isinstance(self.config, dict):
             allow_list = self.config.get("allow_from") or self.config.get("allowFrom") or []
         else:
             allow_list = getattr(self.config, "allow_from", None) or []
-        if "*" in allow_list:
+        if "*" in allow_list:  # 通配符 "*" 表示允许所有人
             return True
-        # allowFrom entries are opaque tokens — must match exactly.
+        # allowFrom 中的条目是不透明令牌，必须精确匹配
         if str(sender_id) in allow_list:
             return True
-        if is_approved(self.name, str(sender_id)):
+        if is_approved(self.name, str(sender_id)):  # 已通过配对码授权的用户
             return True
         return False
 
@@ -205,9 +200,10 @@ class BaseChannel(ABC):
         session_key: str | None = None,
         is_dm: bool = False,
     ) -> None:
-        """Handle an incoming message: check permissions, issue pairing codes in DMs, or forward to bus."""
+        """处理入站消息：校验权限，在私聊中下发配对码，或将消息转发至消息总线。"""
         if not self.is_allowed(sender_id):
             if is_dm:
+                # 未授权的私聊用户：生成一次性配对码并回复
                 code = generate_code(self.name, str(sender_id))
                 await self.send(
                     OutboundMessage(
@@ -222,6 +218,7 @@ class BaseChannel(ABC):
                     code, sender_id, chat_id,
                 )
             else:
+                # 群聊中未授权用户：仅记录警告，不下发配对码
                 self.logger.warning(
                     "Access denied for sender {}. "
                     "Add them to allowFrom list in config to grant access.",
@@ -231,7 +228,7 @@ class BaseChannel(ABC):
 
         meta = metadata or {}
         if self.supports_streaming:
-            meta = {**meta, "_wants_stream": True}
+            meta = {**meta, "_wants_stream": True}  # 标记希望以流式接收回复
 
         msg = InboundMessage(
             channel=self.name,
@@ -243,14 +240,14 @@ class BaseChannel(ABC):
             session_key_override=session_key,
         )
 
-        await self.bus.publish_inbound(msg)
+        await self.bus.publish_inbound(msg)  # 发布到消息总线，交由核心处理
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
-        """Return default config for onboard. Override in plugins to auto-populate config.json."""
+        """返回用于 onboarding 的默认配置。插件可覆盖以自动填充 config.json。"""
         return {"enabled": False}
 
     @property
     def is_running(self) -> bool:
-        """Check if the channel is running."""
+        """检查渠道是否正在运行。"""
         return self._running

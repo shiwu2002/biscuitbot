@@ -1,47 +1,63 @@
-"""WeCom (Enterprise WeChat) channel implementation using wecom_aibot_sdk."""
+"""企业微信（WeCom）渠道实现，基于 wecom_aibot_sdk 的 WebSocket 长连接。
 
-import asyncio
-import base64
-import hashlib
-import importlib.util
-import os
-import re
-from collections import OrderedDict
-from pathlib import Path
-from typing import Any
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的企业微信平台组件。
+在项目架构中起到的作用：将企业微信 AI 机器人的消息收发能力接入 biscuitbot 消息总线。
 
-from pydantic import Field
+平台特点与接入方式
+------------------
+- 接入方式：使用 WebSocket 长连接接收事件，无需公网 IP 或 Webhook 配置。
+- 鉴权：通过企业微信 AI 机器人平台的 Bot ID 和 Secret 进行身份认证。
+- 消息类型：支持文本、图片、语音、文件、混合内容五种消息类型。
+- 媒体处理：入站媒体通过 AES 解密下载，出站媒体通过 WebSocket 三步分块上传（base64）。
+- 语音消息：企业微信已内置语音转文字，直接使用转写内容。
+- 欢迎消息：支持用户进入聊天时自动发送欢迎语。
+- 无限重连：断线后自动重连，心跳间隔 30 秒。
+"""
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.paths import get_media_dir
-from biscuitbot.config.schema import Base
+import asyncio  # 异步事件循环与并发原语
+import base64  # base64 编码（媒体分块上传）
+import hashlib  # MD5 哈希（文件完整性校验）
+import importlib.util  # 运行时检测 SDK 是否安装
+import os  # 文件路径处理
+import re  # 正则表达式（文件名安全化）
+from collections import OrderedDict  # 有序去重缓存（消息 ID 去重）
+from pathlib import Path  # 路径处理
+from typing import Any  # 类型注解支持
 
-WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None
+from pydantic import Field  # Pydantic 模型字段定义
 
-# Upload safety limits (matching QQ channel defaults)
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
+from biscuitbot.config.schema import Base  # 配置模型基类
+
+WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None  # 检测 wecom_aibot_sdk 是否已安装
+
+# 上传安全限制（与 QQ 渠道默认值一致）
 WECOM_UPLOAD_MAX_BYTES = 1024 * 1024 * 200  # 200MB
 
-# Replace unsafe characters with "_", keep Chinese and common safe punctuation.
+# 将不安全字符替换为 "_"，保留中文和常见安全标点
 _SAFE_NAME_RE = re.compile(r"[^\w.\-()\[\]（）【】\u4e00-\u9fff]+", re.UNICODE)
 
 
 def _sanitize_filename(name: str) -> str:
-    """Sanitize filename to avoid traversal and problematic chars."""
+    """安全化文件名，避免路径遍历和问题字符。"""
     name = (name or "").strip()
     name = Path(name).name
     name = _SAFE_NAME_RE.sub("_", name).strip("._ ")
     return name
 
 
-_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
-_VIDEO_EXTS = {".mp4", ".avi", ".mov"}
-_AUDIO_EXTS = {".amr", ".mp3", ".wav", ".ogg"}
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}  # 图片扩展名集合
+_VIDEO_EXTS = {".mp4", ".avi", ".mov"}  # 视频扩展名集合
+_AUDIO_EXTS = {".amr", ".mp3", ".wav", ".ogg"}  # 音频扩展名集合
 
 
 def _guess_wecom_media_type(filename: str) -> str:
-    """Classify file extension as WeCom media_type string."""
+    """根据文件扩展名分类为企业微信的 media_type 字符串。"""
     ext = Path(filename).suffix.lower()
     if ext in _IMAGE_EXTS:
         return "image"
@@ -52,16 +68,16 @@ def _guess_wecom_media_type(filename: str) -> str:
     return "file"
 
 class WecomConfig(Base):
-    """WeCom (Enterprise WeChat) AI Bot channel configuration."""
+    """企业微信（WeCom）AI 机器人渠道配置。"""
 
     enabled: bool = False
-    bot_id: str = ""
-    secret: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    welcome_message: str = ""
+    bot_id: str = ""  # 企业微信 AI 机器人 ID
+    secret: str = ""  # 企业微信 AI 机器人密钥
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    welcome_message: str = ""  # 用户进入聊天时的欢迎消息
 
 
-# Message type display mapping
+# 消息类型到展示文本的映射（非文本消息在入站时转换为占位符文本）
 MSG_TYPE_MAP = {
     "image": "[image]",
     "voice": "[voice]",
@@ -71,13 +87,12 @@ MSG_TYPE_MAP = {
 
 
 class WecomChannel(BaseChannel):
-    """
-    WeCom (Enterprise WeChat) channel using WebSocket long connection.
+    """企业微信（WeCom）渠道，使用 WebSocket 长连接。
 
-    Uses WebSocket to receive events - no public IP or webhook required.
+    通过 WebSocket 接收事件 —— 无需公网 IP 或 Webhook。
 
-    Requires:
-    - Bot ID and Secret from WeCom AI Bot platform
+    前置条件：
+    - 企业微信 AI 机器人平台的 Bot ID 和 Secret
     """
 
     name = "wecom"
@@ -85,6 +100,7 @@ class WecomChannel(BaseChannel):
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return WecomConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -92,15 +108,15 @@ class WecomChannel(BaseChannel):
             config = WecomConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: WecomConfig = config
-        self._client: Any = None
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._generate_req_id = None
-        # Store frame headers for each chat to enable replies
+        self._client: Any = None  # wecom_aibot_sdk 客户端
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # 有序去重缓存（消息 ID）
+        self._loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
+        self._generate_req_id = None  # 请求 ID 生成函数
+        # 存储各会话的帧头信息，用于回复消息
         self._chat_frames: dict[str, Any] = {}
 
     async def start(self) -> None:
-        """Start the WeCom bot with WebSocket long connection."""
+        """启动企业微信机器人，建立 WebSocket 长连接。"""
         if not WECOM_AVAILABLE:
             self.logger.error("SDK not installed. Run: pip install biscuitbot[wecom]")
             return
@@ -115,16 +131,16 @@ class WecomChannel(BaseChannel):
         self._loop = asyncio.get_running_loop()
         self._generate_req_id = generate_req_id
 
-        # Create WebSocket client
+        # 创建 WebSocket 客户端
         self._client = WSClient({
             "bot_id": self.config.bot_id,
             "secret": self.config.secret,
             "reconnect_interval": 1000,
-            "max_reconnect_attempts": -1,  # Infinite reconnect
+            "max_reconnect_attempts": -1,  # 无限重连
             "heartbeat_interval": 30000,
         })
 
-        # Register event handlers
+        # 注册事件处理器
         self._client.on("connected", self._on_connected)
         self._client.on("authenticated", self._on_authenticated)
         self._client.on("disconnected", self._on_disconnected)
@@ -139,61 +155,61 @@ class WecomChannel(BaseChannel):
         self.logger.info("bot starting with WebSocket long connection")
         self.logger.info("No public IP required - using WebSocket to receive events")
 
-        # Connect
+        # 建立连接
         await self._client.connect_async()
 
-        # Keep running until stopped
+        # 保持运行直到被停止
         while self._running:
             await asyncio.sleep(1)
 
     async def stop(self) -> None:
-        """Stop the WeCom bot."""
+        """停止企业微信机器人。"""
         self._running = False
         if self._client:
             await self._client.disconnect()
         self.logger.info("bot stopped")
 
     async def _on_connected(self, frame: Any) -> None:
-        """Handle WebSocket connected event."""
+        """处理 WebSocket 连接成功事件。"""
         self.logger.info("WebSocket connected")
 
     async def _on_authenticated(self, frame: Any) -> None:
-        """Handle authentication success event."""
+        """处理认证成功事件。"""
         self.logger.info("authenticated successfully")
 
     async def _on_disconnected(self, frame: Any) -> None:
-        """Handle WebSocket disconnected event."""
+        """处理 WebSocket 断开事件。"""
         reason = frame.body if hasattr(frame, 'body') else str(frame)
         self.logger.warning("WebSocket disconnected: {}", reason)
 
     async def _on_error(self, frame: Any) -> None:
-        """Handle error event."""
+        """处理错误事件。"""
         self.logger.error("error: {}", frame)
 
     async def _on_text_message(self, frame: Any) -> None:
-        """Handle text message."""
+        """处理文本消息。"""
         await self._process_message(frame, "text")
 
     async def _on_image_message(self, frame: Any) -> None:
-        """Handle image message."""
+        """处理图片消息。"""
         await self._process_message(frame, "image")
 
     async def _on_voice_message(self, frame: Any) -> None:
-        """Handle voice message."""
+        """处理语音消息。"""
         await self._process_message(frame, "voice")
 
     async def _on_file_message(self, frame: Any) -> None:
-        """Handle file message."""
+        """处理文件消息。"""
         await self._process_message(frame, "file")
 
     async def _on_mixed_message(self, frame: Any) -> None:
-        """Handle mixed content message."""
+        """处理混合内容消息。"""
         await self._process_message(frame, "mixed")
 
     async def _on_enter_chat(self, frame: Any) -> None:
-        """Handle enter_chat event (user opens chat with bot)."""
+        """处理用户进入聊天事件（用户打开与机器人的对话）。"""
         try:
-            # Extract body from WsFrame dataclass or dict
+            # 从 WsFrame 数据类或字典中提取 body
             if hasattr(frame, 'body'):
                 body = frame.body or {}
             elif isinstance(frame, dict):
@@ -215,7 +231,7 @@ class WecomChannel(BaseChannel):
             self.logger.exception("Error handling enter_chat")
 
     async def _process_message(self, frame: Any, msg_type: str) -> None:
-        """Process incoming message and forward to bus."""
+        """处理入站消息并转发到消息总线。"""
         try:
             # Extract body from WsFrame dataclass or dict
             if hasattr(frame, 'body'):
@@ -360,11 +376,10 @@ class WecomChannel(BaseChannel):
         media_type: str,
         filename: str | None = None,
     ) -> str | None:
-        """
-        Download and decrypt media from WeCom.
+        """从企业微信下载并解密媒体文件。
 
         Returns:
-            file_path or None if download failed
+            file_path 或下载失败时返回 None
         """
         try:
             data, fname = await self._client.download_file(file_url, aes_key)
@@ -490,7 +505,7 @@ class WecomChannel(BaseChannel):
             return None, None
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through WeCom."""
+        """通过企业微信发送消息。"""
         if not self._client:
             self.logger.warning("client not initialized")
             return

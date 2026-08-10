@@ -1,4 +1,23 @@
-"""Discord channel implementation using discord.py."""
+"""Discord 渠道实现，基于 discord.py 库。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 Discord 平台组件。
+在项目架构中起到的作用：将 Discord 机器人的收发消息能力接入 biscuitbot 消息总线。
+
+平台特点与接入方式
+------------------
+- 接入方式：通过 ``discord.py`` 库以 WebSocket 网关长连接接入 Discord，收发均走网关，
+  无需公网回调地址。
+- 鉴权：使用 Bot Token 登录。
+- 群聊策略：通过 ``group_policy`` 配置为 ``mention``（仅在被 @ 时响应）或 ``open``（群内
+  所有消息都响应），支持频道白名单 ``allow_channels``。
+- 斜杠命令：注册了 ``/new``、``/stop``、``/model``、``/help`` 等应用命令。
+- 流式输出：支持流式渐进式编辑消息（先发送再多次 edit），并支持「正在输入」指示器与
+  表情回应（已读 👀 / 处理中 🔧）。
+- 线程支持：自动识别 Discord 线程，按「父频道 + 线程」维度建立会话隔离。
+- 代理：支持 HTTP/HTTPS 代理及代理认证。
+"""
 
 from __future__ import annotations
 
@@ -15,12 +34,12 @@ from pydantic import Field
 from biscuitbot.bus.events import OutboundMessage
 from biscuitbot.bus.queue import MessageBus
 from biscuitbot.channels.base import BaseChannel
-from biscuitbot.command.builtin import build_help_text
+from biscuitbot.command.builtin import build_help_text  # 构建帮助文本
 from biscuitbot.config.paths import get_media_dir
 from biscuitbot.config.schema import Base
-from biscuitbot.utils.helpers import safe_filename, split_message
+from biscuitbot.utils.helpers import safe_filename, split_message  # 文件名安全化、消息分片
 
-DISCORD_AVAILABLE = importlib.util.find_spec("discord") is not None
+DISCORD_AVAILABLE = importlib.util.find_spec("discord") is not None  # 是否安装了 discord.py
 if TYPE_CHECKING:
     import aiohttp
     import discord
@@ -32,43 +51,43 @@ if DISCORD_AVAILABLE:
     from discord import app_commands
     from discord.abc import Messageable
 
-MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 20MB
-MAX_MESSAGE_LEN = 2000  # Discord message character limit
-TYPING_INTERVAL_S = 8
+MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024  # 附件大小上限（20MB）
+MAX_MESSAGE_LEN = 2000  # Discord 单条消息字符数上限
+TYPING_INTERVAL_S = 8  # 「正在输入」指示器刷新间隔（秒）
 
 
 @dataclass
 class _StreamBuf:
-    """Per-chat streaming accumulator for progressive Discord message edits."""
+    """每个会话的流式缓冲区，用于 Discord 渐进式消息编辑。"""
 
-    text: str = ""
-    message: Any | None = None
-    last_edit: float = 0.0
-    stream_id: str | None = None
+    text: str = ""  # 已累积的文本
+    message: Any | None = None  # 已发送的消息对象（用于后续 edit）
+    last_edit: float = 0.0  # 上次 edit 的时间戳（用于节流）
+    stream_id: str | None = None  # 当前流标识，用于区分并发流
 
 
 class DiscordConfig(Base):
-    """Discord channel configuration."""
+    """Discord 渠道配置。"""
 
     enabled: bool = False
-    token: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    allow_channels: list[str] = Field(default_factory=list)  # Allowed channel IDs (empty = all)
-    intents: int = 37377
-    group_policy: Literal["mention", "open"] = "mention"
-    read_receipt_emoji: str = "👀"
-    working_emoji: str = "🔧"
-    working_emoji_delay: float = 2.0
-    streaming: bool = True
-    proxy: str | None = None
-    proxy_username: str | None = None
-    proxy_password: str | None = None
+    token: str = ""  # Discord Bot Token
+    allow_from: list[str] = Field(default_factory=list)  # 允许使用的用户白名单
+    allow_channels: list[str] = Field(default_factory=list)  # 允许的频道 ID（空表示全部）
+    intents: int = 37377  # 网关 intents 位掩码
+    group_policy: Literal["mention", "open"] = "mention"  # 群聊响应策略
+    read_receipt_emoji: str = "👀"  # 已读回执表情
+    working_emoji: str = "🔧"  # 处理中表情
+    working_emoji_delay: float = 2.0  # 处理中表情延迟显示时间（秒）
+    streaming: bool = True  # 是否启用流式输出
+    proxy: str | None = None  # 代理地址
+    proxy_username: str | None = None  # 代理认证用户名
+    proxy_password: str | None = None  # 代理认证密码
 
 
 if DISCORD_AVAILABLE:
 
     class DiscordBotClient(discord.Client):
-        """discord.py client that forwards events to the channel."""
+        """discord.py 客户端，将事件转发给渠道处理。"""
 
         def __init__(
             self,
@@ -78,12 +97,14 @@ if DISCORD_AVAILABLE:
             proxy: str | None = None,
             proxy_auth: aiohttp.BasicAuth | None = None,
         ) -> None:
+            """初始化客户端并注册应用命令树。"""
             super().__init__(intents=intents, proxy=proxy, proxy_auth=proxy_auth)
             self._channel = channel
-            self.tree = app_commands.CommandTree(self)
+            self.tree = app_commands.CommandTree(self)  # 应用命令树
             self._register_app_commands()
 
         async def on_ready(self) -> None:
+            """机器人就绪回调：记录身份并同步应用命令。"""
             self._channel._bot_user_id = str(self.user.id) if self.user else None
             self._channel.logger.info("bot connected as user {}", self._channel._bot_user_id)
             try:
@@ -93,19 +114,22 @@ if DISCORD_AVAILABLE:
                 self._channel.logger.warning("app command sync failed: {}", e)
 
         async def on_message(self, message: discord.Message) -> None:
+            """入站消息回调，转交渠道处理。"""
             await self._channel._handle_discord_message(message)
 
         async def on_thread_delete(self, thread: discord.Thread) -> None:
+            """线程被删除时清理缓存。"""
             self._channel._forget_channel(thread)
 
         async def on_thread_update(self, before: discord.Thread, after: discord.Thread) -> None:
+            """线程归档时清理缓存，否则重新记住。"""
             if getattr(after, "archived", False):
                 self._channel._forget_channel(after)
             else:
                 self._channel._remember_channel(after)
 
         async def _reply_ephemeral(self, interaction: discord.Interaction, text: str) -> bool:
-            """Send an ephemeral interaction response and report success."""
+            """发送仅对调用者可见的临时交互响应，返回是否成功。"""
             try:
                 await interaction.response.send_message(text, ephemeral=True)
                 return True
@@ -117,6 +141,7 @@ if DISCORD_AVAILABLE:
             self,
             interaction: discord.Interaction,
         ) -> Any | None:
+            """解析交互所在的频道对象（先缓存后网络拉取）。"""
             channel_id = interaction.channel_id
             if channel_id is None:
                 return None
@@ -135,6 +160,7 @@ if DISCORD_AVAILABLE:
             interaction: discord.Interaction,
             channel: Any | None,
         ) -> bool:
+            """判断交互所在频道是否在允许列表内。"""
             allow_channels = self._channel.config.allow_channels
             if not allow_channels:
                 return True
@@ -149,6 +175,7 @@ if DISCORD_AVAILABLE:
             interaction: discord.Interaction,
             command_text: str,
         ) -> None:
+            """将斜杠命令转发为普通入站消息处理。"""
             sender_id = str(interaction.user.id)
             channel_id = interaction.channel_id
 
@@ -190,6 +217,7 @@ if DISCORD_AVAILABLE:
             )
 
         def _register_app_commands(self) -> None:
+            """注册所有应用命令（/new、/stop、/restart、/status、/history、/model、/help）。"""
             commands = (
                 ("new", "Stop current task and start a new conversation", "/new"),
                 ("stop", "Stop the current task", "/stop"),
@@ -244,7 +272,7 @@ if DISCORD_AVAILABLE:
                 )
 
         async def send_outbound(self, msg: OutboundMessage) -> None:
-            """Send a biscuitbot outbound message using Discord transport rules."""
+            """按 Discord 投递规则发送一条出站消息。"""
             channel_id = int(msg.chat_id)
 
             channel = self._channel._known_channels.get(msg.chat_id) or self.get_channel(channel_id)
@@ -287,7 +315,7 @@ if DISCORD_AVAILABLE:
             reference: discord.PartialMessage | None,
             mention_settings: discord.AllowedMentions,
         ) -> bool:
-            """Send a file attachment via discord.py."""
+            """通过 discord.py 发送一个文件附件。"""
             path = Path(file_path)
             if not path.is_file():
                 self._channel.logger.warning("file not found, skipping: {}", file_path)
@@ -311,7 +339,7 @@ if DISCORD_AVAILABLE:
 
         @staticmethod
         def _build_chunks(content: str, failed_media: list[str], sent_media: bool) -> list[str]:
-            """Build outbound text chunks, including attachment-failure fallback text."""
+            """构建出站文本分片，包含附件失败时的回退文本。"""
             chunks = split_message(content, MAX_MESSAGE_LEN)
             if chunks or not failed_media or sent_media:
                 return chunks
@@ -323,7 +351,7 @@ if DISCORD_AVAILABLE:
             channel: Messageable,
             reply_to: str | None,
         ) -> tuple[discord.PartialMessage | None, discord.AllowedMentions]:
-            """Build reply context for outbound messages."""
+            """为出站消息构建回复上下文（引用目标消息）。"""
             mention_settings = discord.AllowedMentions(replied_user=False)
             if not reply_to:
                 return None, mention_settings
@@ -337,25 +365,26 @@ if DISCORD_AVAILABLE:
 
 
 class DiscordChannel(BaseChannel):
-    """Discord channel using discord.py."""
+    """Discord 渠道（基于 discord.py）。"""
 
     name = "discord"
     display_name = "Discord"
-    _STREAM_EDIT_INTERVAL = 0.8
+    _STREAM_EDIT_INTERVAL = 0.8  # 流式消息 edit 节流间隔（秒）
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置。"""
         return DiscordConfig().model_dump(by_alias=True)
 
     @staticmethod
     def _channel_key(channel_or_id: Any) -> str:
-        """Normalize channel-like objects and ids to a stable string key."""
+        """将频道对象或 ID 归一化为稳定的字符串键。"""
         channel_id = getattr(channel_or_id, "id", channel_or_id)
         return str(channel_id)
 
     @classmethod
     def _channel_allow_keys(cls, channel: Any) -> set[str]:
-        """Return channel IDs that can satisfy allow_channels for this channel."""
+        """返回可用于满足 allow_channels 校验的频道 ID 集合（含父频道）。"""
         keys = {cls._channel_key(channel)}
         if parent_key := cls._channel_parent_key(channel):
             keys.add(parent_key)
@@ -363,7 +392,7 @@ class DiscordChannel(BaseChannel):
 
     @classmethod
     def _channel_parent_key(cls, channel: Any) -> str | None:
-        """Return the parent channel key for a Discord thread-like channel."""
+        """返回线程类频道的父频道键。"""
         parent_id = getattr(channel, "parent_id", None)
         if parent_id is not None:
             return cls._channel_key(parent_id)
@@ -373,26 +402,29 @@ class DiscordChannel(BaseChannel):
         return None
 
     def __init__(self, config: Any, bus: MessageBus):
+        """初始化 Discord 渠道及各类运行时状态字典。"""
         if isinstance(config, dict):
             config = DiscordConfig.model_validate(config)
         super().__init__(config, bus)
         self.config: DiscordConfig = config
         self._client: DiscordBotClient | None = None
-        self._typing_tasks: dict[str, asyncio.Task[None]] = {}
-        self._bot_user_id: str | None = None
-        self._pending_reactions: dict[str, Any] = {}  # chat_id -> message object
-        self._working_emoji_tasks: dict[str, asyncio.Task[None]] = {}
-        self._stream_bufs: dict[str, _StreamBuf] = {}
-        self._known_channels: dict[str, Any] = {}
+        self._typing_tasks: dict[str, asyncio.Task[None]] = {}  # 各频道的「正在输入」任务
+        self._bot_user_id: str | None = None  # 本机器人用户 ID（用于自回环防护）
+        self._pending_reactions: dict[str, Any] = {}  # chat_id -> 待清理表情的消息对象
+        self._working_emoji_tasks: dict[str, asyncio.Task[None]] = {}  # 延迟处理中表情任务
+        self._stream_bufs: dict[str, _StreamBuf] = {}  # 各会话流式缓冲区
+        self._known_channels: dict[str, Any] = {}  # 已知频道缓存
 
     def _remember_channel(self, channel: Any) -> None:
+        """将频道加入缓存。"""
         self._known_channels[self._channel_key(channel)] = channel
 
     def _forget_channel(self, channel_or_id: Any) -> None:
+        """将频道从缓存移除。"""
         self._known_channels.pop(self._channel_key(channel_or_id), None)
 
     async def start(self) -> None:
-        """Start the Discord client."""
+        """启动 Discord 客户端。"""
         if not DISCORD_AVAILABLE:
             self.logger.error("discord.py not installed. Run: pip install biscuitbot[discord]")
             return
@@ -447,12 +479,12 @@ class DiscordChannel(BaseChannel):
             await self._reset_runtime_state(close_client=True)
 
     async def stop(self) -> None:
-        """Stop the Discord channel."""
+        """停止 Discord 渠道。"""
         self._running = False
         await self._reset_runtime_state(close_client=True)
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through Discord using discord.py."""
+        """通过 discord.py 发送一条消息。"""
         client = self._client
         if client is None or not client.is_ready():
             self.logger.warning("client not ready; dropping outbound message")
@@ -473,7 +505,7 @@ class DiscordChannel(BaseChannel):
     async def send_delta(
         self, chat_id: str, delta: str, metadata: dict[str, Any] | None = None
     ) -> None:
-        """Progressive Discord delivery: send once, then edit until the stream ends."""
+        """渐进式 Discord 投递：先发送一次，随后在流结束前不断 edit。"""
         client = self._client
         if client is None or not client.is_ready():
             self.logger.warning("client not ready; dropping stream delta")
@@ -530,13 +562,11 @@ class DiscordChannel(BaseChannel):
             raise
 
     async def _handle_discord_message(self, message: discord.Message) -> None:
-        """Handle incoming Discord messages from discord.py.
+        """处理来自 discord.py 的入站消息。
 
-        Self-loop guard: only drop messages from this bot's own account. Messages
-        from other bots are allowed through so multi-agent setups (one bot asking
-        another for help, a bot mentioning another by @name, etc.) can work.
-        Bot-from-bot loops are still prevented per-instance because each bot
-        still ignores its own outbound messages. (#3217)
+        自回环防护：仅丢弃本机器人自身账号发出的消息，允许其他机器人的消息通过，
+        以支持多智能体协作（一个机器人 @ 另一个机器人等）。机器人间循环仍按实例
+        防护（每个机器人忽略自己的出站消息）。(#3217)
         """
         if self._bot_user_id is not None and str(message.author.id) == self._bot_user_id:
             return
@@ -564,14 +594,14 @@ class DiscordChannel(BaseChannel):
 
         await self._start_typing(message.channel)
 
-        # Add read receipt reaction immediately, working emoji after delay
+        # 立即添加已读回执表情，处理中表情延迟显示
         try:
             await message.add_reaction(self.config.read_receipt_emoji)
             self._pending_reactions[channel_id] = message
         except Exception as e:
             self.logger.debug("Failed to add read receipt reaction: {}", e)
 
-        # Delayed working indicator (cosmetic — not tied to subagent lifecycle)
+        # 延迟的处理中指示器（仅为视觉提示，不与子代理生命周期绑定）
         async def _delayed_working_emoji() -> None:
             await asyncio.sleep(self.config.working_emoji_delay)
             with suppress(Exception):
@@ -595,11 +625,11 @@ class DiscordChannel(BaseChannel):
             raise
 
     async def _on_message(self, message: discord.Message) -> None:
-        """Backward-compatible alias for legacy tests/callers."""
+        """向后兼容的别名，供旧测试/调用方使用。"""
         await self._handle_discord_message(message)
 
     async def _resolve_channel(self, chat_id: str) -> Any | None:
-        """Resolve a Discord channel from cache first, then network fetch."""
+        """解析 Discord 频道：先查缓存，再网络拉取。"""
         client = self._client
         if client is None or not client.is_ready():
             return None
@@ -617,7 +647,7 @@ class DiscordChannel(BaseChannel):
             return None
 
     async def _finalize_stream(self, chat_id: str, buf: _StreamBuf) -> None:
-        """Commit the final streamed content and flush overflow chunks."""
+        """提交最终流式内容并刷新溢出分片。"""
         chunks = DiscordBotClient._build_chunks(buf.text, [], False)
         if not chunks:
             self._stream_bufs.pop(chat_id, None)
@@ -648,10 +678,10 @@ class DiscordChannel(BaseChannel):
         sender_id: str,
         content: str,
     ) -> bool:
-        """Check if inbound Discord message should be processed."""
+        """判断入站 Discord 消息是否应被处理。"""
         if not self.is_allowed(sender_id):
             return False
-        # Channel-based filtering: only respond in allowed channels
+        # 基于频道的过滤：仅在允许的频道中响应
         allow_channels = self.config.allow_channels
         if allow_channels:
             channel_ids = self._channel_allow_keys(message.channel)
@@ -665,7 +695,7 @@ class DiscordChannel(BaseChannel):
         self,
         attachments: list[discord.Attachment],
     ) -> tuple[list[str], list[str]]:
-        """Download supported attachments and return paths + display markers."""
+        """下载受支持的附件，返回本地路径列表与展示标记列表。"""
         media_paths: list[str] = []
         markers: list[str] = []
         media_dir = get_media_dir("discord")
@@ -690,20 +720,20 @@ class DiscordChannel(BaseChannel):
 
     @staticmethod
     def _compose_inbound_content(content: str, attachment_markers: list[str]) -> str:
-        """Combine message text with attachment markers."""
+        """将消息文本与附件标记组合为完整内容。"""
         content_parts = [content] if content else []
         content_parts.extend(attachment_markers)
         return "\n".join(part for part in content_parts if part) or "[empty message]"
 
     @staticmethod
     def _is_system_message(message: discord.Message) -> bool:
-        """Return True for Discord system messages that carry no user prompt."""
+        """判断是否为不携带用户提示的 Discord 系统消息。"""
         message_type = getattr(message, "type", discord.MessageType.default)
         return message_type not in {discord.MessageType.default, discord.MessageType.reply}
 
     @staticmethod
     def _build_inbound_metadata(message: discord.Message) -> dict[str, str | None]:
-        """Build metadata for inbound Discord messages."""
+        """为入站消息构建元数据。"""
         reply_to = (
             str(message.reference.message_id)
             if message.reference and message.reference.message_id
@@ -716,7 +746,7 @@ class DiscordChannel(BaseChannel):
         }
 
     def _should_respond_in_group(self, message: discord.Message, content: str) -> bool:
-        """Check if the bot should respond in a guild channel based on policy."""
+        """根据群聊策略判断是否在群频道中响应。"""
         if self.config.group_policy == "open":
             return True
 
@@ -746,7 +776,7 @@ class DiscordChannel(BaseChannel):
 
     @staticmethod
     def _references_bot_message(message: discord.Message, bot_user_id: str) -> bool:
-        """Return True when a Discord reply targets a message authored by this bot."""
+        """判断一条回复是否针对本机器人发出的消息。"""
         reference = getattr(message, "reference", None)
         if reference is None:
             return False
@@ -757,7 +787,7 @@ class DiscordChannel(BaseChannel):
         return str(getattr(author, "id", "")) == bot_user_id
 
     async def _start_typing(self, channel: Messageable) -> None:
-        """Start periodic typing indicator for a channel."""
+        """为频道启动周期性「正在输入」指示器。"""
         channel_id = self._channel_key(channel)
         await self._stop_typing(channel_id)
 
@@ -775,7 +805,7 @@ class DiscordChannel(BaseChannel):
         self._typing_tasks[channel_id] = asyncio.create_task(typing_loop())
 
     async def _stop_typing(self, channel_id: str) -> None:
-        """Stop typing indicator for a channel."""
+        """停止频道的「正在输入」指示器。"""
         task = self._typing_tasks.pop(self._channel_key(channel_id), None)
         if task is None:
             return
@@ -784,8 +814,8 @@ class DiscordChannel(BaseChannel):
             await task
 
     async def _clear_reactions(self, chat_id: str) -> None:
-        """Remove all pending reactions after bot replies."""
-        # Cancel delayed working emoji if it hasn't fired yet
+        """机器人回复后清除所有待处理表情。"""
+        # 若延迟处理中表情尚未触发，则取消之
         task = self._working_emoji_tasks.pop(chat_id, None)
         if task and not task.done():
             task.cancel()
@@ -799,13 +829,13 @@ class DiscordChannel(BaseChannel):
                 await msg_obj.remove_reaction(emoji, bot_user)
 
     async def _cancel_all_typing(self) -> None:
-        """Stop all typing tasks."""
+        """停止所有「正在输入」任务。"""
         channel_ids = list(self._typing_tasks)
         for channel_id in channel_ids:
             await self._stop_typing(channel_id)
 
     async def _reset_runtime_state(self, close_client: bool) -> None:
-        """Reset client and typing state."""
+        """重置客户端与输入状态。"""
         await self._cancel_all_typing()
         self._stream_bufs.clear()
         self._known_channels.clear()

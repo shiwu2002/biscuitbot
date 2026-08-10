@@ -1,20 +1,37 @@
-"""Auto-discovery for built-in channel modules and external plugins."""
+"""渠道自动发现模块，用于发现内置渠道模块和外部插件。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的发现组件。
+在项目架构中起到的作用：扫描并加载所有可用的渠道类，支持内置渠道模块的
+自动发现和通过 entry_points 注册的外部插件加载。
+
+平台特点与接入方式
+------------------
+- 内置渠道发现：通过 pkgutil.iter_modules 扫描 biscuitbot.channels 包下的模块，
+  零导入成本，仅返回模块名称列表。
+- 外部插件发现：通过 importlib.metadata.entry_points 加载 ``biscuitbot.channels``
+  组下注册的第三方渠道插件。
+- 按需导入：仅导入已启用的渠道模块，跳过未启用渠道的重量级第三方 SDK 导入。
+- 优先级：内置渠道优先于外部插件，外部插件不能覆盖同名内置渠道。
+"""
 from __future__ import annotations
 
-import importlib
-import pkgutil
-from typing import TYPE_CHECKING
+import importlib  # 动态模块导入
+import pkgutil  # 包模块迭代扫描
+from typing import TYPE_CHECKING  # 类型检查时导入支持
 
-from loguru import logger
+from loguru import logger  # 日志记录
 
 if TYPE_CHECKING:
-    from biscuitbot.channels.base import BaseChannel
+    from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类（仅类型检查时导入）
 
+# 内部模块集合（非渠道模块，发现时需排除）
 _INTERNAL = frozenset({"base", "manager", "registry"})
 
 
 def discover_channel_names() -> list[str]:
-    """Return all built-in channel module names by scanning the package (zero imports)."""
+    """通过扫描包返回所有内置渠道模块名称（零导入）。"""
     import biscuitbot.channels as pkg
 
     return [
@@ -25,7 +42,7 @@ def discover_channel_names() -> list[str]:
 
 
 def load_channel_class(module_name: str) -> type[BaseChannel]:
-    """Import *module_name* and return the first BaseChannel subclass found."""
+    """导入 *module_name* 并返回找到的第一个 BaseChannel 子类。"""
     from biscuitbot.channels.base import BaseChannel as _Base
 
     mod = importlib.import_module(f"biscuitbot.channels.{module_name}")
@@ -37,7 +54,7 @@ def load_channel_class(module_name: str) -> type[BaseChannel]:
 
 
 def discover_plugins(enabled_names: set[str] | None = None) -> dict[str, type[BaseChannel]]:
-    """Discover external channel plugins registered via entry_points."""
+    """发现通过 entry_points 注册的外部渠道插件。"""
     from importlib.metadata import entry_points
 
     plugins: dict[str, type[BaseChannel]] = {}
@@ -58,11 +75,10 @@ def discover_enabled(
     _names: list[str] | None = None,
     _include_all_external: bool = False,
 ) -> dict[str, type[BaseChannel]]:
-    """Return channels whose module names are in *enabled_names*.
+    """返回模块名称在 *enabled_names* 中的渠道。
 
-    Uses cheap ``pkgutil.iter_modules`` to list names, then imports only
-    those that match — skipping the heavy third-party SDK imports of
-    unneeded channels.
+    使用低成本的 ``pkgutil.iter_modules`` 列出名称，然后仅导入匹配的模块
+    —— 跳过未启用渠道的重量级第三方 SDK 导入。
     """
     names = _names if _names is not None else discover_channel_names()
     result: dict[str, type[BaseChannel]] = {}
@@ -87,9 +103,9 @@ def discover_enabled(
 
 
 def discover_all() -> dict[str, type[BaseChannel]]:
-    """Return all channels: built-in (pkgutil) merged with external (entry_points).
+    """返回所有渠道：内置（pkgutil）与外部（entry_points）合并。
 
-    Built-in channels take priority — an external plugin cannot shadow a built-in name.
+    内置渠道优先 —— 外部插件不能覆盖同名内置渠道。
     """
     names = discover_channel_names()
     return discover_enabled(set(names), _names=names, _include_all_external=True)

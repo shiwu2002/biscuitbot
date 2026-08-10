@@ -1,66 +1,83 @@
-"""Napcat (OneBot v11) channel for QQ, over WebSocket."""
+"""Napcat（OneBot v11）QQ 渠道实现，通过 WebSocket 接入。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 QQ（Napcat）平台组件。
+在项目架构中起到的作用：通过 OneBot v11 协议将 QQ 的消息收发能力接入 biscuitbot 消息总线。
+
+平台特点与接入方式
+------------------
+- 接入方式：通过 WebSocket 连接 Napcat（OneBot v11 实现）服务端，接收 QQ 消息事件。
+- 鉴权：通过 Bearer Token 进行 WebSocket 连接认证（可选）。
+- 消息格式：支持文本、图片、@提及、回复、表情等消息段（segment）。
+- 群聊策略：支持 mention（仅@/回复时响应）、open（全部响应）、概率响应三种模式，
+  支持按群 ID 覆盖全局策略。
+- 媒体处理：入站图片通过 HTTP 下载（支持大小限制），出站图片支持 URL 和 base64。
+- 自动重连：连接断开后自动重连，退避间隔 5s → 10s → 30s。
+- 请求-响应：通过 echo 字段实现 WebSocket 上的请求-响应模式。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import json
-import os
-import random
-import time
-import uuid
-from collections import deque
-from pathlib import Path
-from typing import Annotated, Any, Literal
+import asyncio  # 异步事件循环与 WebSocket 通信
+import base64  # base64 编码（本地图片上传）
+import json  # JSON 序列化/反序列化（OneBot 协议）
+import os  # 文件路径处理
+import random  # 概率群聊策略的随机数生成
+import time  # 时间戳生成（图片文件名）
+import uuid  # 生成请求 echo 标识
+from collections import deque  # 固定长度去重队列（消息 ID）
+from pathlib import Path  # 路径处理
+from typing import Annotated, Any, Literal  # 类型注解支持
 
-import aiohttp
-from loguru import logger
-from pydantic import Field
-from websockets.asyncio.client import ClientConnection
-from websockets.asyncio.client import connect as ws_connect
+import aiohttp  # 异步 HTTP 客户端（图片下载）
+from loguru import logger  # 日志记录
+from pydantic import Field  # Pydantic 模型字段定义
+from websockets.asyncio.client import ClientConnection  # WebSocket 客户端连接类型
+from websockets.asyncio.client import connect as ws_connect  # WebSocket 连接函数
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.paths import get_media_dir
-from biscuitbot.config.schema import Base
-from biscuitbot.security.network import validate_url_target
-from biscuitbot.utils.helpers import safe_filename
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
+from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.security.network import validate_url_target  # URL 安全校验
+from biscuitbot.utils.helpers import safe_filename  # 文件名安全化工具
 
-_DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=60)
-_ACTION_TIMEOUT = 20.0
+_DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=60)  # 图片下载超时时间（60秒）
+_ACTION_TIMEOUT = 20.0  # OneBot action 请求超时时间（20秒）
 
 
-# `"mention"` (only @mentions / replies) | `"open"` (every message) | float p
-# in [0, 1]: mentions/replies always reply; other messages reply with probability
-# p. 0.0 ≡ "mention", 1.0 ≡ "open".
+# `"mention"`（仅@/回复时响应）| `"open"`（每条消息都响应）| [0, 1] 浮点数：
+# @/回复始终响应；其他消息以概率 p 响应。0.0 等同于 "mention"，1.0 等同于 "open"。
 GroupPolicy = Literal["mention", "open"] | Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 class NapcatConfig(Base):
-    """Napcat (OneBot v11) channel configuration."""
+    """Napcat（OneBot v11）渠道配置。"""
 
     enabled: bool = False
-    ws_url: str = "ws://127.0.0.1:3001"
-    access_token: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    group_policy: GroupPolicy = "mention"
-    # Per-group overrides keyed by stringified group_id, e.g. {"123456": "open"}.
-    # Falls back to `group_policy` when a group_id isn't listed.
+    ws_url: str = "ws://127.0.0.1:3001"  # Napcat WebSocket 服务地址
+    access_token: str = ""  # WebSocket 连接认证令牌
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    group_policy: GroupPolicy = "mention"  # 群聊响应策略
+    # 按群 ID（字符串形式）覆盖的群聊策略，如 {"123456": "open"}。
+    # 群 ID 未列出时回退到 group_policy。
     group_policy_overrides: dict[str, GroupPolicy] = Field(default_factory=dict)
-    welcome_new_members: bool = True
-    # Hard cap for inbound image downloads. Bigger images are dropped.
+    welcome_new_members: bool = True  # 是否欢迎新入群成员
+    # 入站图片下载的硬上限。超过此大小的图片将被丢弃。
     max_image_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
 
 
 class NapcatChannel(BaseChannel):
-    """Napcat / OneBot v11 channel."""
+    """Napcat / OneBot v11 渠道。"""
 
     name = "napcat"
     display_name = "Napcat (QQ)"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return NapcatConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
@@ -69,20 +86,21 @@ class NapcatChannel(BaseChannel):
         super().__init__(config, bus)
         self.config: NapcatConfig = config
 
-        self._ws: ClientConnection | None = None
-        self._http: aiohttp.ClientSession | None = None
-        self._media_root: Path = get_media_dir("napcat")
-        self._self_id: int | None = None
-        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}
-        self._processed_ids: deque[int] = deque(maxlen=2000)
-        self._bot_outbound_ids: deque[int] = deque(maxlen=2000)
-        self._background_tasks: set[asyncio.Task[None]] = set()
+        self._ws: ClientConnection | None = None  # WebSocket 连接实例
+        self._http: aiohttp.ClientSession | None = None  # HTTP 会话（图片下载）
+        self._media_root: Path = get_media_dir("napcat")  # 媒体文件根目录
+        self._self_id: int | None = None  # 机器人自身的 QQ 号
+        self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}  # 待处理的 action 响应（echo → Future）
+        self._processed_ids: deque[int] = deque(maxlen=2000)  # 已处理消息 ID 去重队列
+        self._bot_outbound_ids: deque[int] = deque(maxlen=2000)  # 机器人发送的消息 ID 队列（用于回复检测）
+        self._background_tasks: set[asyncio.Task[None]] = set()  # 后台任务集合
 
     # ------------------------------------------------------------------
-    # Lifecycle
+    # 生命周期管理
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
+        """启动 Napcat 渠道，建立 WebSocket 连接并自动重连。"""
         if not self.config.ws_url:
             logger.error("napcat: ws_url not configured")
             return
@@ -103,6 +121,7 @@ class NapcatChannel(BaseChannel):
                 await asyncio.sleep(next(backoff, 30))
 
     async def _run_once(self) -> None:
+        """执行一次 WebSocket 连接会话（含登录验证和消息分发）。"""
         headers = []
         if self.config.access_token:
             headers.append(("Authorization", f"Bearer {self.config.access_token}"))
@@ -149,6 +168,7 @@ class NapcatChannel(BaseChannel):
                 self._fail_pending(RuntimeError("napcat: websocket disconnected"))
 
     async def stop(self) -> None:
+        """停止 Napcat 渠道，关闭连接并清理资源。"""
         self._running = False
         if self._ws is not None:
             try:
@@ -171,16 +191,18 @@ class NapcatChannel(BaseChannel):
         self._background_tasks.clear()
 
     def _fail_pending(self, err: BaseException) -> None:
+        """将所有待处理的 Future 标记为异常（连接断开时调用）。"""
         for fut in self._pending.values():
             if not fut.done():
                 fut.set_exception(err)
         self._pending.clear()
 
     # ------------------------------------------------------------------
-    # Frame dispatch
+    # 帧分发
     # ------------------------------------------------------------------
 
     async def _dispatch_frame(self, raw: str | bytes) -> None:
+        """分发 WebSocket 帧：action 响应或事件推送。"""
         # logger.debug("dispatch frame {}", raw)
         try:
             payload = json.loads(raw)
@@ -226,10 +248,11 @@ class NapcatChannel(BaseChannel):
         task.add_done_callback(_done)
 
     # ------------------------------------------------------------------
-    # Inbound: messages
+    # 入站：消息处理
     # ------------------------------------------------------------------
 
     async def _on_message(self, ev: dict[str, Any]) -> None:
+        """处理入站消息事件。"""
         msg_id = ev.get("message_id")
         if isinstance(msg_id, int):
             if msg_id in self._processed_ids:
@@ -295,6 +318,7 @@ class NapcatChannel(BaseChannel):
 
     @staticmethod
     def _normalize_segments(message: Any) -> list[dict[str, Any]]:
+        """将消息归一化为消息段列表。"""
         # Napcat defaults to array format. Treat raw strings as a single text
         # segment rather than parsing CQ codes — that path is fragile and
         # users can configure napcat to emit arrays.
@@ -307,6 +331,7 @@ class NapcatChannel(BaseChannel):
     def _parse_segments(
         self, segments: list[dict[str, Any]]
     ) -> tuple[str, list[dict[str, Any]], bool, int | None]:
+        """解析消息段列表，提取文本、图片、@标记和回复目标。"""
         parts: list[str] = []
         images: list[dict[str, Any]] = []
         mentioned_self = False
@@ -355,6 +380,7 @@ class NapcatChannel(BaseChannel):
     def _should_reply_in_group(
         self, *, group_id: Any, mentioned_self: bool, replying_to_bot: bool
     ) -> bool:
+        """根据群聊策略判断是否应响应该群消息。"""
         if mentioned_self or replying_to_bot:
             return True
         policy = self.config.group_policy_overrides.get(str(group_id), self.config.group_policy)
@@ -372,14 +398,16 @@ class NapcatChannel(BaseChannel):
         nickname: str,
         user_id: Any,
     ) -> str:
+        """格式化群消息内容，添加发送者标签。"""
         label = nickname or str(user_id)
         return f"{label}: {text}"
 
     # ------------------------------------------------------------------
-    # Inbound: notices (member joined etc.)
+    # 入站：通知事件（成员入群等）
     # ------------------------------------------------------------------
 
     async def _on_notice(self, ev: dict[str, Any]) -> None:
+        """处理通知事件（如群成员增加）。"""
         if ev.get("notice_type") != "group_increase" or not self.config.welcome_new_members:
             return
 
@@ -411,7 +439,7 @@ class NapcatChannel(BaseChannel):
         )
 
     async def _lookup_member_name(self, group_id: int, user_id: int) -> str:
-        """Lookup group member nickname. Fallback to user id."""
+        """查询群成员昵称，失败时回退到用户 ID。"""
         try:
             resp = await self._call_action(
                 "get_group_member_info",
@@ -425,10 +453,11 @@ class NapcatChannel(BaseChannel):
             return str(user_id)
 
     # ------------------------------------------------------------------
-    # Outbound
+    # 出站消息
     # ------------------------------------------------------------------
 
     async def send(self, msg: OutboundMessage) -> None:
+        """通过 Napcat 发送消息。"""
         if self._ws is None:
             logger.warning("napcat: not connected, dropping outbound message")
             return
@@ -461,6 +490,7 @@ class NapcatChannel(BaseChannel):
             self._bot_outbound_ids.append(int(mid))
 
     async def _build_image_segment(self, ref: str) -> dict[str, Any] | None:
+        """构建图片消息段，支持 URL 和本地路径（base64 编码）。"""
         ref = (ref or "").strip()
         if not ref:
             return None
@@ -485,6 +515,7 @@ class NapcatChannel(BaseChannel):
         params: dict[str, Any],
         timeout: float = _ACTION_TIMEOUT,
     ) -> dict[str, Any]:
+        """通过 echo 机制调用 OneBot action 并等待响应。"""
         if self._ws is None:
             raise RuntimeError("napcat: not connected")
         echo = uuid.uuid4().hex
@@ -507,10 +538,11 @@ class NapcatChannel(BaseChannel):
             self._pending.pop(echo, None)
 
     # ------------------------------------------------------------------
-    # Image download
+    # 图片下载
     # ------------------------------------------------------------------
 
     async def _download_image(self, info: dict[str, Any]) -> str | None:
+        """下载入站图片到本地，支持大小限制和流式读取。"""
         url = info.get("url")
         if not isinstance(url, str):
             return None

@@ -1,60 +1,63 @@
-"""Tool usage statistics and cold-storage rotation.
+"""工具使用统计与冷存储轮转。
 
-Tracks how often each tool is called.  Tools that have not been invoked
-for ``cold_storage_days`` days are rotated into cold storage — they are
-removed from the INDEX.md and their schema is no longer sent to the model
-(unless explicitly discovered via ``cold_storage`` → ``discover_tools``).
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统中的使用统计与冷存储
+管理组件。它跟踪每个工具的调用频率，将长时间未被调用的工具轮转入冷存储
+——这些工具会从 INDEX.md 中移除，其 schema 不再发送给模型（除非通过
+``cold_storage`` → ``discover_tools`` 显式发现）。
 
-A call to any cold tool automatically recovers it back to the active index.
+调用任何冷工具会自动将其恢复到活跃索引中。
 """
 
 from __future__ import annotations
 
-import json
-import time
-from dataclasses import asdict, dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING
+import json  # JSON 序列化，用于持久化统计与冷存储数据
+import time  # 时间相关，用于记录最后调用时间戳
+from dataclasses import asdict, dataclass  # 数据类支持
+from pathlib import Path  # 路径处理
+from typing import TYPE_CHECKING  # 仅类型检查时导入
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
     from biscuitbot.agent.tools.registry import ToolRegistry
 
 
 @dataclass
 class ToolUsageStat:
-    """Per-tool call statistics."""
+    """单个工具的调用统计。"""
 
-    call_count: int = 0
-    last_called_at: float = 0.0  # unix timestamp; 0 = never called
+    call_count: int = 0  # 总调用次数
+    last_called_at: float = 0.0  # 最后调用时间戳（Unix）；0 = 从未调用
 
     def record_call(self) -> None:
+        """记录一次调用：计数加一并更新时间戳。"""
         self.call_count += 1
         self.last_called_at = time.time()
 
 
 @dataclass
 class ColdEntry:
-    """A tool that has been rotated into cold storage."""
+    """已被轮转入冷存储的工具条目。"""
 
-    name: str
-    capability: str
-    usage_md: str
-    source_file: str = ""
-    cold_since: float = 0.0
+    name: str  # 工具名称
+    capability: str  # 工具能力描述
+    usage_md: str  # 使用说明文档路径
+    source_file: str = ""  # 源文件模块路径
+    cold_since: float = 0.0  # 进入冷存储的时间戳
 
 
 class UsageStats:
-    """Tracks tool call frequency and manages cold storage rotation.
+    """跟踪工具调用频率并管理冷存储轮转。
 
-    Persists to ``usage_stats.json`` and ``cold_storage.json`` inside the
-    ``.agent_tools/`` workspace directory.
+    持久化到 ``.agent_tools/`` 工作区目录下的 ``usage_stats.json`` 和
+    ``cold_storage.json``。
     """
 
     def __init__(self, base_dir: Path | None = None):
-        self._stats: dict[str, ToolUsageStat] = {}
-        self._cold: dict[str, ColdEntry] = {}
-        self._stats_file: Path | None = None
-        self._cold_file: Path | None = None
+        self._stats: dict[str, ToolUsageStat] = {}  # 工具名 -> 调用统计
+        self._cold: dict[str, ColdEntry] = {}  # 工具名 -> 冷存储条目
+        self._stats_file: Path | None = None  # 统计文件路径
+        self._cold_file: Path | None = None  # 冷存储文件路径
         if base_dir is not None:
             base_dir.mkdir(parents=True, exist_ok=True)
             self._stats_file = base_dir / "usage_stats.json"
@@ -62,11 +65,11 @@ class UsageStats:
         self._load()
 
     # ------------------------------------------------------------------
-    # Recording
+    # 记录
     # ------------------------------------------------------------------
 
     def record_call(self, name: str) -> None:
-        """Record a tool call.  Auto-recovers from cold storage."""
+        """记录一次工具调用。自动从冷存储中恢复。"""
         stat = self._stats.setdefault(name, ToolUsageStat())
         stat.record_call()
         if name in self._cold:
@@ -74,20 +77,26 @@ class UsageStats:
         self._save()
 
     # ------------------------------------------------------------------
-    # Cold storage queries
+    # 冷存储查询
     # ------------------------------------------------------------------
 
     def is_cold(self, name: str) -> bool:
+        """判断工具是否在冷存储中。"""
         return name in self._cold
 
     def cold_tool_names(self) -> list[str]:
+        """返回所有冷存储工具名列表。"""
         return list(self._cold.keys())
 
     def get_cold_entry(self, name: str) -> ColdEntry | None:
+        """获取指定工具的冷存储条目。"""
         return self._cold.get(name)
 
     def search_cold(self, query: str, limit: int = 10) -> list[ColdEntry]:
-        """Search cold storage by keyword match on name + capability."""
+        """按关键词匹配搜索冷存储（匹配名称与能力描述）。
+
+        优先按 token 重叠数排序；无重叠时回退到子串匹配。
+        """
         query_lower = query.lower()
         tokens = set(query_lower.split())
         scored: list[tuple[float, ColdEntry]] = []
@@ -96,7 +105,7 @@ class UsageStats:
             entry_tokens = set(text.split())
             overlap = len(tokens & entry_tokens)
             if overlap == 0:
-                # Fallback: substring match
+                # 回退：子串匹配
                 if query_lower in text:
                     overlap = 1
                 else:
@@ -106,7 +115,7 @@ class UsageStats:
         return [e for _, e in scored[:limit]]
 
     # ------------------------------------------------------------------
-    # Rotation
+    # 轮转
     # ------------------------------------------------------------------
 
     def rotate_cold(
@@ -114,16 +123,14 @@ class UsageStats:
         registry: "ToolRegistry",
         threshold_days: int,
     ) -> list[str]:
-        """Move tools not called in *threshold_days* to cold storage.
+        """将超过 *threshold_days* 天未调用的工具移入冷存储。
 
-        Always-include tools are never rotated (they are core infrastructure).
-        Tools that have never been called are only rotated if they have been
-        registered for longer than the threshold (using a heuristic: the stat
-        must exist with ``last_called_at == 0`` AND the tool is not newly
-        registered — approximated by checking if it has been in stats for at
-        least one rotation cycle).
+        always-include 工具永不轮转（它们是核心基础设施）。从未被调用的
+        工具仅在注册时间超过阈值时才轮转（使用启发式：统计必须存在且
+        ``last_called_at == 0``，且工具非新注册——通过检查是否已经历至少
+        一个轮转周期来近似判断）。
 
-        Returns the list of newly-cold tool names.
+        返回新进入冷存储的工具名列表。
         """
         if threshold_days <= 0:
             return []
@@ -131,17 +138,17 @@ class UsageStats:
         threshold_s = threshold_days * 86400
         newly_cold: list[str] = []
         for name in registry.tool_names:
-            # Never rotate always-include tools
+            # 永不轮转 always-include 工具
             if registry._tool_is_always_include(name):
                 continue
             if name in self._cold:
                 continue
             stat = self._stats.get(name)
             if stat is None:
-                # Tool never tracked — skip (likely just registered)
+                # 工具从未被跟踪——跳过（可能刚注册）
                 continue
             if stat.last_called_at == 0:
-                # Never called — skip for now (give it a chance)
+                # 从未被调用——暂时跳过（给它机会）
                 continue
             if now - stat.last_called_at > threshold_s:
                 tool = registry.get(name)
@@ -160,7 +167,7 @@ class UsageStats:
         return newly_cold
 
     def restore(self, name: str) -> bool:
-        """Manually restore a cold tool.  Returns True if it was cold."""
+        """手动恢复一个冷存储工具。返回是否原本在冷存储中。"""
         if name in self._cold:
             del self._cold[name]
             self._save()
@@ -168,10 +175,11 @@ class UsageStats:
         return False
 
     # ------------------------------------------------------------------
-    # Persistence
+    # 持久化
     # ------------------------------------------------------------------
 
     def _save(self) -> None:
+        """将统计与冷存储数据持久化到 JSON 文件。"""
         if self._stats_file is not None:
             data = {k: asdict(v) for k, v in self._stats.items()}
             self._stats_file.write_text(
@@ -186,6 +194,7 @@ class UsageStats:
             )
 
     def _load(self) -> None:
+        """从 JSON 文件加载统计与冷存储数据。"""
         if self._stats_file is not None and self._stats_file.is_file():
             try:
                 data = json.loads(self._stats_file.read_text(encoding="utf-8"))

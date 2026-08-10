@@ -1,28 +1,40 @@
-"""Image generation provider helpers."""
+"""图像生成 Provider 辅助工具。
+
+本模块在 biscuitbot 项目中承担"多模态图像生成"职责：
+- 定义统一的图像生成 Provider 抽象基类（``ImageGenerationProvider``）；
+- 实现多家图像生成服务（Ollama、Gemini/Imagen、OpenAI、智谱、阿里灵积/万相、AIHubMix）的异步客户端；
+- 提供图像数据 URL 转换、Provider 注册表、尺寸映射等基础工具。
+
+产品层的配置兜底、WebUI 上传校验、频道集成等逻辑位于 ``biscuitbot.audio`` 等模块，
+本模块仅关注"如何调用各家图像生成 API 并把结果统一成 data URL"。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import binascii
-import re
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
-from urllib.parse import urlparse
+import asyncio  # 异步事件循环（轮询、并发请求）
+import base64  # 二进制数据与 base64 互转（图片传输）
+import binascii  # base64 解码异常类型
+import re  # 正则表达式（尺寸、宽高比解析）
+from abc import ABC, abstractmethod  # 抽象基类支持
+from dataclasses import dataclass  # 不可变数据类（响应结构）
+from pathlib import Path  # 跨平台路径处理
+from typing import Any  # 动态类型标注
+from urllib.parse import urlparse  # URL 解析（提取域名/路径）
 
-import httpx
-from loguru import logger
+import httpx  # 异步 HTTP 客户端
+from loguru import logger  # 结构化日志
 
-from biscuitbot.providers.registry import find_by_name
-from biscuitbot.utils.helpers import detect_image_mime
+from biscuitbot.providers.registry import find_by_name  # 按 name 查找 Provider 元数据
+from biscuitbot.utils.helpers import detect_image_mime  # 通过魔术字节识别图片 MIME 类型
 
 
 def extract_domain(url: str) -> str:
-    """Extract scheme://hostname[:port] from a URL, discarding the path.
+    """从 URL 中提取 ``scheme://hostname[:port]``，丢弃路径部分。
 
-    Examples:
+    用于把用户填写的完整 API 地址收敛成纯域名，
+    例如把 DashScope 兼容模式地址还原为 ``https://dashscope.aliyuncs.com``。
+
+    示例：
         extract_domain("https://dashscope.aliyuncs.com/compatible-mode/v1")
         → "https://dashscope.aliyuncs.com"
         extract_domain("https://api.openai.com/v1")
@@ -36,32 +48,44 @@ def extract_domain(url: str) -> str:
         result += f":{parsed.port}"
     return result
 
+# 图像生成请求默认超时时间（秒），覆盖大多数云端 API
 _DEFAULT_TIMEOUT_S = 120.0
+# Gemini 图像生成默认超时时间（秒）
 _GEMINI_DEFAULT_TIMEOUT_S = 120.0
+# Gemini Imagen 模型支持的宽高比集合
 _GEMINI_IMAGEN_ASPECT_RATIOS = {"1:1", "9:16", "16:9", "3:4", "4:3"}
 
 
 def _url_has_path(url: str) -> bool:
-    """Return True if *url* contains a non-empty path after the domain."""
+    """判断 *url* 在域名之后是否包含非空路径。"""
     parsed = urlparse(url)
     return bool(parsed.path and parsed.path.strip("/"))
+# Ollama 默认长边像素，当未指定尺寸时使用
 _OLLAMA_DEFAULT_SIDE = 1024
+# Ollama 尺寸预设（按长边像素），支持 "1K"/"2K"/"4K" 快捷写法
 _OLLAMA_SIZE_PRESETS = {
     "1K": 1024,
     "2K": 2048,
     "4K": 4096,
 }
+# 匹配显式尺寸 "WIDTHxHEIGHT"（如 "1024x768"），大小写 x 均可
 _OLLAMA_EXPLICIT_SIZE_RE = re.compile(r"^\s*(\d+)\s*[xX]\s*(\d+)\s*$")
+# 匹配宽高比 "W:H"（如 "16:9"）
 _OLLAMA_ASPECT_RATIO_RE = re.compile(r"^\s*(\d+)\s*:\s*(\d+)\s*$")
 
 
 class ImageGenerationError(RuntimeError):
-    """Raised when the image generation provider cannot return images."""
+    """当图像生成 Provider 无法返回图片时抛出。"""
 
 
 @dataclass(frozen=True)
 class GeneratedImageResponse:
-    """Images and optional text returned by the provider."""
+    """Provider 返回的图片列表及可选文本。
+
+    - ``images``：以 data URL 形式表示的图片，可直接嵌入 Markdown 或前端展示；
+    - ``content``：Provider 附带的文字说明（部分模型会输出描述）；
+    - ``raw``：原始响应体，便于调试或上游扩展使用。
+    """
 
     images: list[str]
     content: str
@@ -69,7 +93,7 @@ class GeneratedImageResponse:
 
 
 def _read_image_b64(path: str | Path) -> tuple[str, str]:
-    """Return ``(mime, base64)`` for the image at ``path``."""
+    """读取 ``path`` 指向的图片，返回 ``(mime, base64)``。"""
     p = Path(path).expanduser()
     raw = p.read_bytes()
     mime = detect_image_mime(raw)
@@ -79,18 +103,23 @@ def _read_image_b64(path: str | Path) -> tuple[str, str]:
 
 
 def image_path_to_data_url(path: str | Path) -> str:
-    """Convert a local image path to an image data URL."""
+    """把本地图片路径转换为 ``data:<mime>;base64,...`` 形式的 data URL。"""
     mime, encoded = _read_image_b64(path)
     return f"data:{mime};base64,{encoded}"
 
 
 def image_path_to_inline_data(path: str | Path) -> dict[str, str]:
-    """Convert a local image path to a Gemini ``inlineData`` payload dict."""
+    """把本地图片路径转换为 Gemini ``inlineData`` 载荷字典。"""
     mime, encoded = _read_image_b64(path)
     return {"mimeType": mime, "data": encoded}
 
 
 def _b64_image_data_url(value: str) -> str:
+    """把裸 base64 字符串转换为带 MIME 的 data URL。
+
+    先解码校验合法性，再用魔术字节识别真实 MIME，
+    避免把错误数据透传到上游或前端。
+    """
     encoded = "".join(value.split())
     try:
         raw = base64.b64decode(encoded, validate=True)
@@ -107,6 +136,11 @@ async def _download_image_data_url(
     client: httpx.AsyncClient,
     url: str,
 ) -> str:
+    """下载远端图片 URL 并重新编码为 data URL。
+
+    部分 Provider（如智谱、阿里万相）只返回临时图片 URL，
+    这里统一下载并转成 base64 data URL，避免外链失效。
+    """
     response = await client.get(url)
     try:
         response.raise_for_status()
@@ -122,17 +156,18 @@ async def _download_image_data_url(
 
 
 # ---------------------------------------------------------------------------
-# Registry
+# Registry —— 图像生成 Provider 注册表
 # ---------------------------------------------------------------------------
 
+# 全局图像 Provider 注册表：name → Provider 类。在模块导入期由 register_image_gen_provider 填充。
 _IMAGE_GEN_PROVIDERS: dict[str, type[ImageGenerationProvider]] = {}
 
 
 def register_image_gen_provider(cls: type[ImageGenerationProvider]) -> None:
-    """Register an image provider at import time only.
+    """仅在导入期注册一个图像 Provider。
 
-    The registry is populated by module side effects so provider discovery
-    stays lazy and consistent across the process.
+    注册表由模块副作用填充，保证 Provider 发现过程惰性且进程内一致：
+    只要该模块被导入，对应的 Provider 即被登记。
     """
     name = cls.provider_name
     if not name:
@@ -141,15 +176,20 @@ def register_image_gen_provider(cls: type[ImageGenerationProvider]) -> None:
 
 
 def get_image_gen_provider(name: str) -> type[ImageGenerationProvider] | None:
+    """按 name 取得已注册的图像 Provider 类，未注册返回 None。"""
     return _IMAGE_GEN_PROVIDERS.get(name)
 
 
 def image_gen_provider_names() -> tuple[str, ...]:
-    """Return registered image generation provider names in registry order."""
+    """按注册顺序返回所有图像生成 Provider 名称。"""
     return tuple(_IMAGE_GEN_PROVIDERS)
 
 
 def image_gen_provider_configs(config: Any) -> dict[str, Any]:
+    """从全局配置中提取已注册 Provider 对应的配置项。
+
+    仅返回在注册表中存在且配置中确实填写的 Provider，便于上层逐个初始化。
+    """
     providers_cfg = config.providers
     return {
         name: pc
@@ -159,15 +199,22 @@ def image_gen_provider_configs(config: Any) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Base class
+# Base class —— 图像生成 Provider 抽象基类
 # ---------------------------------------------------------------------------
 
 
 class ImageGenerationProvider(ABC):
-    """Base class for image generation provider clients."""
+    """图像生成 Provider 客户端的抽象基类。
 
+    各家图像服务（Ollama、Gemini、OpenAI、智谱、阿里灵积、AIHubMix）均继承本类，
+    通过实现 :meth:`generate` 提供统一的"提示词 → 图片"调用入口。
+    """
+
+    # Provider 唯一标识，子类必须设置（如 "ollama"）
     provider_name: str = ""
+    # API Key 缺失时的提示文案
     missing_key_message: str = ""
+    # 默认请求超时（秒），子类可覆盖
     default_timeout: float = _DEFAULT_TIMEOUT_S
 
     def __init__(
@@ -188,22 +235,22 @@ class ImageGenerationProvider(ABC):
         self._client = client
 
     def _base_path(self) -> str:
-        """Return the default URL path prefix for this provider.
+        """返回该 Provider 的默认 URL 路径前缀。
 
-        Used by ``_resolve_base_url`` when the caller supplies only a domain
-        (e.g. ``https://api.openai.com``).  The domain is combined with this
-        path to form the full base URL (e.g. ``https://api.openai.com/v1``).
+        当调用方只传域名（例如 ``https://api.openai.com``）时，
+        :meth:`_resolve_base_url` 会把本路径拼到域名后形成完整 base URL
+        （例如 ``https://api.openai.com/v1``）。
 
-        Subclasses that use a non-empty path prefix should override this.
+        使用非空路径前缀的子类应覆盖此方法。
         """
         return ""
 
     def _resolve_base_url(self, api_base: str | None) -> str:
+        """解析最终的 base URL：优先用调用方传入的地址，其次查注册表，最后用默认值。"""
         if api_base:
             base = api_base.rstrip("/")
-            # If the caller supplied only a domain (no path), append the
-            # provider's default path prefix so the URL is usable directly.
-            # e.g. "https://api.openai.com" → "https://api.openai.com/v1"
+            # 调用方只传了域名（没有路径）时，拼接 Provider 默认路径前缀，
+            # 例如 "https://api.openai.com" → "https://api.openai.com/v1"
             base_path = self._base_path()
             if base_path and not _url_has_path(base):
                 base = f"{base}{base_path}"
@@ -214,6 +261,7 @@ class ImageGenerationProvider(ABC):
         return self._default_base_url()
 
     def _default_base_url(self) -> str:
+        """子类可覆盖：当既无 api_base 也无注册表项时的兜底 base URL。"""
         return ""
 
     @abstractmethod
@@ -225,9 +273,19 @@ class ImageGenerationProvider(ABC):
         reference_images: list[str] | None = None,
         aspect_ratio: str | None = None,
         image_size: str | None = None,
-    ) -> GeneratedImageResponse: ...
+    ) -> GeneratedImageResponse:
+        """生成图片，子类必须实现。
+
+        参数说明：
+        - ``prompt``：文本提示词；
+        - ``model``：模型名（如 ``dall-e-3``、``wan2.6-t2i``）；
+        - ``reference_images``：参考图（部分 Provider 不支持）；
+        - ``aspect_ratio``：宽高比（如 ``"16:9"``）；
+        - ``image_size``：显式尺寸（如 ``"1024x1024"``）。
+        """
 
     def _require_images(self, images: list[str], data: dict[str, Any]) -> None:
+        """校验返回的图片列表非空，否则抛出 :class:`ImageGenerationError`。"""
         if images:
             return
         provider_error = data.get("error") if isinstance(data, dict) else None
@@ -244,6 +302,7 @@ class ImageGenerationProvider(ABC):
         body: dict[str, Any],
         client: httpx.AsyncClient | None = None,
     ) -> httpx.Response:
+        """统一 HTTP POST 入口：优先复用传入/共享 client，否则临时创建并自动关闭。"""
         if client is not None:
             return await client.post(url, headers=headers, json=body)
         if self._client is not None:
@@ -255,7 +314,10 @@ class ImageGenerationProvider(ABC):
 
 
 def _http_error_detail(response: httpx.Response) -> str:
-    """Extract a readable error message from an HTTP error response."""
+    """从 HTTP 错误响应中提取可读的错误信息。
+
+    优先解析 JSON 中的 ``error.message``，失败则回退到响应文本前 500 字。
+    """
     try:
         data = response.json()
         if isinstance(data, dict):
@@ -270,11 +332,20 @@ def _http_error_detail(response: httpx.Response) -> str:
 
 
 def _round_to_multiple(value: float, multiple: int = 8) -> int:
+    """把像素值四舍五入到 ``multiple`` 的倍数（Ollama 要求 8 的倍数）。"""
     rounded = int(round(value / multiple) * multiple)
     return max(multiple, rounded)
 
 
 def _ollama_dimensions(aspect_ratio: str | None, image_size: str | None) -> tuple[int, int]:
+    """根据宽高比/尺寸预设，计算 Ollama 的 ``(width, height)``。
+
+    规则：
+    1. 若 ``image_size`` 形如 ``1024x768``，直接解析为宽高；
+    2. 若 ``image_size`` 是 ``"1K"/"2K"/"4K"``，作为长边像素；
+    3. 否则使用默认长边 ``_OLLAMA_DEFAULT_SIDE``；
+    4. 再结合 ``aspect_ratio`` 推算短边，并按 8 的倍数取整。
+    """
     if image_size:
         size = image_size.strip()
         explicit = _OLLAMA_EXPLICIT_SIZE_RE.fullmatch(size)
@@ -297,21 +368,25 @@ def _ollama_dimensions(aspect_ratio: str | None, image_size: str | None) -> tupl
         return long_side, long_side
 
     if width_ratio >= height_ratio:
+        # 横向：宽为长边，高按比例缩放
         width = long_side
         height = _round_to_multiple(long_side * height_ratio / width_ratio)
     else:
+        # 纵向：高为长边，宽按比例缩放
         height = long_side
         width = _round_to_multiple(long_side * width_ratio / height_ratio)
     return max(8, width), max(8, height)
 
 
 def _ollama_image_data_url(value: str) -> str:
+    """把 Ollama 返回的图片字段统一成 data URL：已是 data URL 则原样返回，否则按 base64 转换。"""
     if value.startswith("data:image/"):
         return value
     return _b64_image_data_url(value)
 
 
 def _ollama_images_from_payload(payload: dict[str, Any]) -> list[str]:
+    """从 Ollama 响应体中递归收集图片字段（兼容 ``image`` 和 ``images`` 两种结构）。"""
     images: list[str] = []
 
     def collect(value: Any) -> None:
@@ -327,7 +402,7 @@ def _ollama_images_from_payload(payload: dict[str, Any]) -> list[str]:
 
 
 class OllamaImageGenerationClient(ImageGenerationProvider):
-    """Async client for Ollama native image generation models."""
+    """Ollama 原生图像生成模型的异步客户端。"""
 
     provider_name = "ollama"
     default_timeout = 300.0
@@ -339,6 +414,7 @@ class OllamaImageGenerationClient(ImageGenerationProvider):
         return "/api"
 
     def _resolve_base_url(self, api_base: str | None) -> str:
+        """覆盖基类：把 OpenAI 风格的 ``/v1`` 自动改写成 Ollama 的 ``/api``。"""
         if api_base:
             base = api_base.rstrip("/")
             if base.endswith("/v1"):
@@ -368,10 +444,10 @@ class OllamaImageGenerationClient(ImageGenerationProvider):
             "prompt": prompt,
             "width": width,
             "height": height,
-            "steps": 0,
+            "steps": 0,  # steps=0 表示让模型自行决定采样步数
         }
         body.update(self.extra_body)
-        body["stream"] = False
+        body["stream"] = False  # 关闭流式，一次性返回结果
 
         headers = {
             "Content-Type": "application/json",
@@ -408,7 +484,7 @@ class OllamaImageGenerationClient(ImageGenerationProvider):
 
 
 class GeminiImageGenerationClient(ImageGenerationProvider):
-    """Async client for Gemini/Imagen image generation via the Generative Language API."""
+    """通过 Generative Language API 调用 Gemini/Imagen 的异步客户端。"""
 
     provider_name = "gemini"
     missing_key_message = (
@@ -423,9 +499,8 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
         return "/v1beta"
 
     def _resolve_base_url(self, api_base: str | None) -> str:
-        # Gemini chat completions use the registry's OpenAI-compatible shim.
-        # Image generation must hit the native Generative Language API, so we
-        # intentionally bypass the shared registry lookup here.
+        # Gemini 的对话补全走注册表里的 OpenAI 兼容 shim；
+        # 但图像生成必须直连原生 Generative Language API，因此这里刻意跳过注册表查找。
         if api_base:
             base = api_base.rstrip("/")
             if not _url_has_path(base):
@@ -444,6 +519,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
     ) -> GeneratedImageResponse:
         if not self.api_key:
             raise ImageGenerationError(self.missing_key_message)
+        # 根据模型名分流：Imagen 走 predict 接口，Gemini Flash 走 generateContent
         if "imagen" in model.lower():
             if reference_images:
                 logger.warning(
@@ -466,6 +542,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
         model: str,
         aspect_ratio: str | None,
     ) -> GeneratedImageResponse:
+        """调用 Imagen 的 ``:predict`` 接口生成图片。"""
         parameters: dict[str, Any] = {"sampleCount": 1}
         if aspect_ratio in _GEMINI_IMAGEN_ASPECT_RATIOS:
             parameters["aspectRatio"] = aspect_ratio
@@ -494,6 +571,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
 
         data = response.json()
         images: list[str] = []
+        # Imagen 响应：predictions[].bytesBase64Encoded + mimeType
         for prediction in data.get("predictions") or []:
             if not isinstance(prediction, dict):
                 continue
@@ -513,6 +591,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
         model: str,
         reference_images: list[str],
     ) -> GeneratedImageResponse:
+        """调用 Gemini Flash 的 ``:generateContent`` 接口生成图片（支持参考图）。"""
         parts: list[dict[str, Any]] = [
             {"inlineData": image_path_to_inline_data(path)} for path in reference_images
         ]
@@ -520,6 +599,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
 
         body: dict[str, Any] = {
             "contents": [{"role": "user", "parts": parts}],
+            # 要求同时返回文本与图像
             "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
         }
         body.update(self.extra_body)
@@ -544,6 +624,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
         data = response.json()
         images: list[str] = []
         text_parts: list[str] = []
+        # Gemini 响应：candidates[].content.parts[]，part 可能是 text 或 inlineData
         for candidate in data.get("candidates") or []:
             if not isinstance(candidate, dict):
                 continue
@@ -572,17 +653,21 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
 
 
 # ---------------------------------------------------------------------------
-# OpenAI image generation
+# OpenAI image generation —— OpenAI Images API（DALL-E、GPT-Image）
 # ---------------------------------------------------------------------------
 
+# DALL-E 2 支持的显式尺寸集合
 _OPENAI_DALLE2_SUPPORTED_SIZES = {"256x256", "512x512", "1024x1024"}
+# DALL-E 3 支持的显式尺寸集合
 _OPENAI_DALLE3_SUPPORTED_SIZES = {"1024x1024", "1792x1024", "1024x1792"}
+# GPT-Image 系列支持的显式尺寸集合（含 "auto"）
 _OPENAI_GPT_IMAGE_SUPPORTED_SIZES = {
     "1024x1024",
     "1536x1024",
     "1024x1536",
     "auto",
 }
+# DALL-E 2 宽高比 → 尺寸映射（DALL-E 2 仅支持 1:1，其余统一回退到 1024x1024）
 _OPENAI_DALLE2_ASPECT_RATIO_SIZES = {
     "1:1": "1024x1024",
     "16:9": "1024x1024",
@@ -590,6 +675,7 @@ _OPENAI_DALLE2_ASPECT_RATIO_SIZES = {
     "3:4": "1024x1024",
     "4:3": "1024x1024",
 }
+# DALL-E 3 宽高比 → 尺寸映射
 _OPENAI_DALLE3_ASPECT_RATIO_SIZES = {
     "1:1": "1024x1024",
     "16:9": "1792x1024",
@@ -597,6 +683,7 @@ _OPENAI_DALLE3_ASPECT_RATIO_SIZES = {
     "3:4": "1024x1792",
     "4:3": "1792x1024",
 }
+# GPT-Image 宽高比 → 尺寸映射
 _OPENAI_GPT_IMAGE_ASPECT_RATIO_SIZES = {
     "1:1": "1024x1024",
     "16:9": "1536x1024",
@@ -607,7 +694,7 @@ _OPENAI_GPT_IMAGE_ASPECT_RATIO_SIZES = {
 
 
 class OpenAIImageGenerationClient(ImageGenerationProvider):
-    """OpenAI Images API using an API key (``providers.openai.apiKey``)."""
+    """使用 API Key 调用 OpenAI Images API 的客户端（``providers.openai.apiKey``）。"""
 
     provider_name = "openai"
     missing_key_message = (
@@ -622,7 +709,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
 
     @staticmethod
     def _strip_model_prefix(model: str) -> str:
-        """Remove ``openai/`` prefix if present (OpenRouter convention)."""
+        """去掉 ``openai/`` 前缀（OpenRouter 约定，便于复用同一模型名）。"""
         if model.startswith("openai/"):
             return model.split("/", 1)[1]
         return model
@@ -639,6 +726,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
         if not self.api_key:
             raise ImageGenerationError(self.missing_key_message)
 
+        # DALL-E 系列不支持参考图，仅打印告警后继续
         if reference_images:
             logger.warning(
                 "DALL-E models do not support reference images; "
@@ -659,6 +747,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             "prompt": prompt,
         }
 
+        # GPT-Image 系列不支持 response_format/n，仅旧版 DALL-E 需要
         if not _openai_is_gpt_image_model(clean_model):
             body["response_format"] = "b64_json"
             body["n"] = 1
@@ -668,7 +757,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             body["size"] = size
 
         body.update(self.extra_body)
-        # Drop null-valued params so extraBody can opt out of defaults like response_format.
+        # 剔除值为 None 的字段，便于 extraBody 主动关闭默认参数（如 response_format）
         body = {key: value for key, value in body.items() if value is not None}
 
         logger.info("OpenAI Images API request: POST {}/images/generations body={}", self.api_base, body)
@@ -689,6 +778,7 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             ) from exc
 
         payload = response.json()
+        # 日志中刻意剔除 data 字段（体积大），只打印元信息
         logger.info("OpenAI Images API response ({}): {}", response.status_code,
                        {k: v for k, v in payload.items() if k != "data"})
 
@@ -713,7 +803,7 @@ def _openai_size(
     aspect_ratio: str | None,
     image_size: str | None,
 ) -> str:
-    """Resolve aspect ratio or image_size to an OpenAI Images API size string."""
+    """把宽高比/显式尺寸解析为 OpenAI Images API 的 size 字符串。"""
     sizes, supported_sizes = _openai_size_options(model)
     explicit_size = _normalize_openai_image_size(image_size)
     if explicit_size and _openai_explicit_size_supported(
@@ -733,11 +823,16 @@ def _openai_size(
 
 
 def _openai_is_gpt_image_model(model: str) -> bool:
+    """判断是否为 GPT-Image 系列（gpt-image-*、chatgpt-image-*）。"""
     normalized = model.lower()
     return normalized.startswith(("gpt-image", "chatgpt-image"))
 
 
 def _openai_size_options(model: str) -> tuple[dict[str, str], set[str] | None]:
+    """根据模型名返回 (宽高比映射, 支持的显式尺寸集合)。
+
+    返回的 ``supported_sizes`` 为 ``None`` 表示接受任意 ``WIDTHxHEIGHT``。
+    """
     normalized = model.lower()
     if normalized.startswith("dall-e-2"):
         return _OPENAI_DALLE2_ASPECT_RATIO_SIZES, _OPENAI_DALLE2_SUPPORTED_SIZES
@@ -749,6 +844,7 @@ def _openai_size_options(model: str) -> tuple[dict[str, str], set[str] | None]:
 
 
 def _normalize_openai_image_size(image_size: str | None) -> str | None:
+    """规范化显式尺寸：去空白并转小写。"""
     if not image_size:
         return None
     normalized = image_size.strip().lower()
@@ -760,6 +856,10 @@ def _openai_explicit_size_supported(
     *,
     supported_sizes: set[str] | None,
 ) -> bool:
+    """判断显式尺寸是否被当前模型支持。
+
+    ``supported_sizes`` 为 ``None`` 时，只要形如 ``WIDTHxHEIGHT`` 即视为支持。
+    """
     if supported_sizes is not None:
         return size in supported_sizes
     width, sep, height = size.partition("x")
@@ -770,9 +870,9 @@ async def _openai_images_from_payload(
     client: httpx.AsyncClient,
     payload: dict[str, Any],
 ) -> list[str]:
-    """Extract images from OpenAI Images API response.
+    """从 OpenAI Images API 响应中提取图片。
 
-    Handles both ``b64_json`` (preferred) and ``url`` (downloaded) formats.
+    优先取 ``b64_json``（直接 base64），否则下载 ``url`` 并转成 data URL。
     """
     images: list[str] = []
     for item in payload.get("data") or []:
@@ -790,11 +890,13 @@ async def _openai_images_from_payload(
 
 
 # ---------------------------------------------------------------------------
-# Zhipu (智谱) image generation
+# Zhipu (智谱) image generation —— 智谱 CogView/GLM-Image
 # ---------------------------------------------------------------------------
 
+# 智谱图像生成默认超时（秒），其图像生成通常较慢
 _ZHIPU_TIMEOUT_S = 300.0
 
+# 智谱 glm-image 宽高比 → 尺寸映射
 _ZHIPU_ASPECT_RATIO_SIZES = {
     "1:1": "1280x1280",
     "16:9": "1728x960",
@@ -805,12 +907,12 @@ _ZHIPU_ASPECT_RATIO_SIZES = {
 
 
 class ZhipuImageGenerationClient(ImageGenerationProvider):
-    """Async client for Zhipu (智谱) image generation API.
+    """智谱（BigModel）图像生成 API 的异步客户端。
 
-    Supports:
-    - Text-to-image via glm-image, cogview-4, cogview-3-flash, etc.
-    - Aspect ratio selection
-    - Watermark control
+    支持：
+    - 通过 glm-image、cogview-4、cogview-3-flash 等模型文生图；
+    - 宽高比选择；
+    - 水印控制（通过 extraBody 透传）。
     """
 
     provider_name = "zhipu"
@@ -859,6 +961,7 @@ class ZhipuImageGenerationClient(ImageGenerationProvider):
 
         url = f"{self.api_base}/images/generations"
 
+        # 复用共享 client 或临时创建一个，并在结束时关闭临时 client
         client = self._client or httpx.AsyncClient(timeout=self.timeout)
         try:
             return await self._generate_with_client(
@@ -879,6 +982,7 @@ class ZhipuImageGenerationClient(ImageGenerationProvider):
         body: dict[str, Any],
         url: str,
     ) -> GeneratedImageResponse:
+        """使用给定 client 执行智谱图像生成请求并解析响应。"""
         try:
             response = await self._http_post(url, headers=headers, body=body, client=client)
         except httpx.TimeoutException as exc:
@@ -904,10 +1008,10 @@ def _zhipu_size(
     aspect_ratio: str | None,
     image_size: str | None,
 ) -> str:
-    """Resolve aspect ratio / image_size to Zhipu size string.
+    """把宽高比/显式尺寸解析为智谱 size 字符串。
 
-    Zhipu glm-image model supports: 1280x1280 (default), 1568x1056,
-    1056x1568, 1472x1088, 1088x1472, 1728x960, 960x1728.
+    智谱 glm-image 支持：1280x1280（默认）、1568x1056、1056x1568、
+    1472x1088、1088x1472、1728x960、960x1728。
     """
     if image_size and "x" in image_size.lower():
         return image_size
@@ -920,10 +1024,9 @@ async def _zhipu_images_from_payload(
     client: httpx.AsyncClient,
     payload: dict[str, Any],
 ) -> list[str]:
-    """Extract image data URLs from Zhipu API response.
+    """从智谱响应中提取图片 data URL。
 
-    Zhipu returns images as temporary URLs that expire after 30 days.
-    We download and re-encode as base64 data URLs.
+    智谱返回的是 30 天有效的临时 URL，这里统一下载并重新编码为 base64 data URL。
     """
     images: list[str] = []
     for item in payload.get("data") or []:
@@ -936,9 +1039,10 @@ async def _zhipu_images_from_payload(
 
 
 # ---------------------------------------------------------------------------
-# DashScope (阿里灵积/万相) image generation
+# DashScope (阿里灵积/万相) image generation —— 阿里通义万相
 # ---------------------------------------------------------------------------
 
+# DashScope 宽高比 → 尺寸映射（注意用星号 ``*`` 分隔，非 ``x``）
 _DASHSCOPE_ASPECT_RATIO_SIZES = {
     "1:1": "1024*1024",
     "16:9": "1696*960",
@@ -952,9 +1056,9 @@ def _dashscope_size(
     aspect_ratio: str | None,
     image_size: str | None,
 ) -> str:
-    """Resolve aspect ratio / image_size to DashScope size string.
+    """把宽高比/显式尺寸解析为 DashScope size 字符串。
 
-    DashScope uses ``WIDTH*HEIGHT`` format (asterisk, not ``x``).
+    DashScope 使用 ``WIDTH*HEIGHT`` 格式（星号分隔，非 ``x``）。
     """
     if image_size:
         size = image_size.strip().lower().replace("x", "*")
@@ -965,22 +1069,28 @@ def _dashscope_size(
     return "1024*1024"
 
 
+# DashScope 默认域名
 _DASHSCOPE_DEFAULT_API_BASE = "https://dashscope.aliyuncs.com"
+# 旧版万相（wanx）异步任务提交路径（prompt 格式）
 _DASHSCOPE_SUBMIT_PATH_OLD = "/api/v1/services/aigc/text2image/image-synthesis"
+# 新版万相2.x/千问异步任务提交路径（messages 格式）
 _DASHSCOPE_SUBMIT_PATH_NEW = "/api/v1/services/aigc/multimodal-generation/generation"
+# 异步任务结果轮询路径
 _DASHSCOPE_TASK_PATH = "/api/v1/tasks"
+# 轮询间隔（秒）
 _DASHSCOPE_POLL_INTERVAL_S = 2.0
+# 最大轮询次数（约 2 分钟）
 _DASHSCOPE_MAX_POLL_ATTEMPTS = 60
 
-# Models that use the newer messages-based API (wan2.6+, qwen-image*)
+# 使用新版 messages 格式 API 的模型（wan2.6+、qwen-image*）
 _DASHSCOPE_NEW_MODELS = frozenset({
     "wan2.6-t2i",
     "wan2.6-image",
     "wan2.5-t2i-preview",
 })
 
-# Models that support synchronous (direct) response — no polling needed.
-# qwen-image and wan2.6 models return the image URL directly in the POST response.
+# 支持同步直接返回结果的模型（无需轮询）：
+# qwen-image 与 wan2.6 系列会在 POST 响应中直接返回图片 URL
 _DASHSCOPE_SYNC_MODELS = frozenset({
     "qwen-image-2.0-pro",
     "qwen-image-2.0",
@@ -993,12 +1103,12 @@ _DASHSCOPE_SYNC_MODELS = frozenset({
 
 
 def _dashscope_model_mode(model: str) -> str:
-    """Determine the API mode for a DashScope image model.
+    """判断 DashScope 图像模型的 API 模式。
 
-    Returns:
-        "sync"  — qwen-image/wan2.6 models that respond directly (千问/万相2.6同步模式)
-        "async_new" — newer wan2.x models using messages format (万相V2异步模式)
-        "async_old" — older wanx models using prompt format (万相V1异步模式)
+    返回值：
+        - ``"sync"``：qwen-image / wan2.6 直接同步返回（千问/万相2.6同步模式）；
+        - ``"async_new"``：新版 wan2.x 走 messages 格式（万相V2异步模式）；
+        - ``"async_old"``：旧版 wanx 走 prompt 格式（万相V1异步模式）。
     """
     if model in _DASHSCOPE_SYNC_MODELS or model.startswith("qwen-image"):
         return "sync"
@@ -1008,22 +1118,22 @@ def _dashscope_model_mode(model: str) -> str:
 
 
 class DashScopeImageGenerationClient(ImageGenerationProvider):
-    """Async client for DashScope (阿里灵积) image generation API.
+    """阿里灵积 DashScope 图像生成 API 的异步客户端。
 
-    Supports two text-to-image modes under DashScope:
+    支持两种文生图模式：
 
-    - **千问模式 (qwen-image)**: Synchronous response.
-      Models: qwen-image-2.0-pro, qwen-image-plus, qwen-image-max, etc.
-      Uses ``/api/v1/services/aigc/image-generation/generation`` with
-      ``input.messages`` format.  The image URL is returned directly in
-      the POST response at ``output.choices[].message.content[].image``.
+    - **千问模式 (qwen-image)**：同步响应。
+      模型：qwen-image-2.0-pro、qwen-image-plus、qwen-image-max 等。
+      走 ``/api/v1/services/aigc/image-generation/generation``，
+      使用 ``input.messages`` 格式，图片 URL 直接在 POST 响应中的
+      ``output.choices[].message.content[].image`` 返回。
 
-    - **万相模式 (wanx / wan2.x)**: Asynchronous task-based.
-      Models: wanx2.1-t2i-turbo, wanx2.1-t2i-plus, wanx-v1, wan2.6-t2i, etc.
-      Submits a task (with ``X-DashScope-Async: enable``), then polls
-      ``/api/v1/tasks/{task_id}`` until the result is ready.
-      - Newer wan2.x models use ``input.messages`` format.
-      - Older wanx models use ``input.prompt`` format.
+    - **万相模式 (wanx / wan2.x)**：异步任务式。
+      模型：wanx2.1-t2i-turbo、wanx2.1-t2i-plus、wanx-v1、wan2.6-t2i 等。
+      提交任务（带 ``X-DashScope-Async: enable``），随后轮询
+      ``/api/v1/tasks/{task_id}`` 直到结果就绪。
+      - 新版 wan2.x 使用 ``input.messages`` 格式；
+      - 旧版 wanx 使用 ``input.prompt`` 格式。
     """
 
     provider_name = "dashscope"
@@ -1034,27 +1144,24 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         return _DASHSCOPE_DEFAULT_API_BASE
 
     def _base_path(self) -> str:
-        # DashScope image paths are determined by model mode at request time,
-        # not at client construction time.  Return empty so that a bare domain
-        # like "https://dashscope.aliyuncs.com" is kept as-is.
+        # DashScope 图像路径在请求时按模型模式动态决定，而非构造期。
+        # 这里返回空串，保证裸域名（如 "https://dashscope.aliyuncs.com"）原样保留。
         return ""
 
     def _resolve_base_url(self, api_base: str | None) -> str:
-        """Override to skip the LLM registry's default_api_base.
+        """覆盖基类：跳过 LLM 注册表里的 default_api_base。
 
-        DashScope's image generation API uses a different base path
-        (``/api/v1/...``) than the LLM compatible-mode endpoint
-        (``/compatible-mode/v1``), so we must not fall back to the
-        registry's ``default_api_base``.
+        DashScope 图像生成 API 用的基础路径（``/api/v1/...``）与
+        LLM 兼容模式端点（``/compatible-mode/v1``）不同，
+        因此不能回退到注册表的 ``default_api_base``。
 
-        If the user provides an api_base that already includes a known
-        DashScope path (e.g. the full endpoint URL), strip it so that
-        only the domain remains — the endpoint path is always determined
-        by the model mode.
+        若用户传入的 api_base 已包含 DashScope 已知路径
+        （如完整端点 URL），则剥离该路径只保留域名——
+        最终端点路径始终由模型模式决定。
         """
         if api_base:
             base = api_base.rstrip("/")
-            # Strip known DashScope paths — api_base should be just the domain
+            # 剥离 DashScope 已知路径，保证 api_base 只剩域名
             for suffix in (
                 _DASHSCOPE_SUBMIT_PATH_NEW,
                 _DASHSCOPE_SUBMIT_PATH_OLD,
@@ -1090,8 +1197,9 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         size = _dashscope_size(aspect_ratio, image_size)
         mode = _dashscope_model_mode(model)
 
-        # Build request body based on model mode
+        # 根据模型模式构造请求体
         if mode == "async_old":
+            # 旧版万相：prompt 格式
             body: dict[str, Any] = {
                 "model": model,
                 "input": {
@@ -1104,7 +1212,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
             }
             submit_path = _DASHSCOPE_SUBMIT_PATH_OLD
         else:
-            # Both sync (qwen-image) and async_new (wan2.x) use messages format
+            # 同步千问 与 新版万相2.x 均使用 messages 格式
             body = {
                 "model": model,
                 "input": {
@@ -1124,7 +1232,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
 
         body.update(self.extra_body)
 
-        # Sync models don't need the async header
+        # 同步模式不需要 async 头
         is_sync = mode == "sync"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -1137,7 +1245,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         logger.info("DashScope image generation: mode={}, model={}, url={}", mode, model, submit_url)
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            # Submit the request
+            # 提交请求
             try:
                 submit_resp = await client.post(submit_url, headers=headers, json=body)
             except httpx.TimeoutException as exc:
@@ -1155,11 +1263,11 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
 
             submit_data = submit_resp.json()
 
-            # --- Sync mode: image URL is in the direct response ---
+            # --- 同步模式：图片 URL 直接在响应中 ---
             if is_sync:
                 return await self._handle_sync_response(client, submit_data)
 
-            # --- Async mode: poll for the result ---
+            # --- 异步模式：轮询获取结果 ---
             task_id = (submit_data.get("output") or {}).get("task_id")
             if not task_id:
                 err_msg = (submit_data.get("output") or {}).get("message") or submit_data.get("message") or "no task_id returned"
@@ -1172,7 +1280,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         client: httpx.AsyncClient,
         data: dict[str, Any],
     ) -> GeneratedImageResponse:
-        """Parse a synchronous DashScope response (千问模式)."""
+        """解析同步 DashScope 响应（千问模式）。"""
         output = data.get("output") or {}
         images: list[str] = []
 
@@ -1193,7 +1301,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
         client: httpx.AsyncClient,
         task_id: str,
     ) -> GeneratedImageResponse:
-        """Poll a DashScope async task until it completes (万相模式)."""
+        """轮询 DashScope 异步任务直到完成（万相模式）。"""
         poll_url = f"{self.api_base}{_DASHSCOPE_TASK_PATH}/{task_id}"
         poll_headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -1205,6 +1313,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
             try:
                 poll_resp = await client.get(poll_url, headers=poll_headers)
             except httpx.RequestError as exc:
+                # 轮询网络错误不致命，记录后继续重试
                 logger.warning("DashScope poll error (attempt {}): {}", attempt + 1, exc)
                 continue
 
@@ -1221,7 +1330,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
             if task_status == "SUCCEEDED":
                 images: list[str] = []
 
-                # New models: output.choices[].message.content[].image
+                # 新版模型：output.choices[].message.content[].image
                 choices = output.get("choices")
                 if isinstance(choices, list):
                     for choice in choices:
@@ -1231,7 +1340,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
                             if isinstance(url, str) and url:
                                 images.append(await _download_image_data_url(client, url))
 
-                # Old models: output.results[].url
+                # 旧版模型：output.results[].url
                 results = output.get("results")
                 if isinstance(results, list):
                     for result in results:
@@ -1249,7 +1358,7 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
                     f"DashScope image generation failed: {err_code} {err_msg}".strip()
                 )
 
-            # Still PENDING or RUNNING, continue polling
+            # 仍处于 PENDING / RUNNING，继续轮询
             if task_status not in ("PENDING", "RUNNING"):
                 logger.warning("DashScope unknown task status: {}", task_status)
 
@@ -1259,12 +1368,12 @@ class DashScopeImageGenerationClient(ImageGenerationProvider):
 
 
 # ---------------------------------------------------------------------------
-# AIHubMix image generation (OpenAI-compatible gateway)
+# AIHubMix image generation —— OpenAI 兼容网关（复用 OpenAI 客户端逻辑）
 # ---------------------------------------------------------------------------
 
 
 class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
-    """AIHubMix image generation via its OpenAI-compatible Images API."""
+    """AIHubMix 图像生成客户端（复用 OpenAI 兼容的 Images API）。"""
 
     provider_name = "aihubmix"
     missing_key_message = (
@@ -1279,7 +1388,7 @@ class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
 
     @staticmethod
     def _strip_model_prefix(model: str) -> str:
-        """Remove known provider prefixes (openai/, aihubmix/)."""
+        """去掉已知 Provider 前缀（openai/、aihubmix/）。"""
         for prefix in ("openai/", "aihubmix/"):
             if model.startswith(prefix):
                 return model.split("/", 1)[1]
@@ -1287,7 +1396,7 @@ class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
 
 
 # ---------------------------------------------------------------------------
-# Provider registration
+# Provider registration —— 模块导入期注册全部图像 Provider
 # ---------------------------------------------------------------------------
 
 register_image_gen_provider(AIHubMixImageGenerationClient)

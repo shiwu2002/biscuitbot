@@ -1,67 +1,69 @@
-"""System-level IO tool: keyboard/mouse simulation, clipboard, USB & serial devices.
+"""系统级 IO 工具：键盘/鼠标模拟、剪贴板、USB 与串口设备操作。
 
-Disabled by default — these capabilities operate directly on the host OS
-(simulating input, reading the clipboard, touching hardware devices) and
-require explicit opt-in via ``tools.system_io.enable``.
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统中的系统级 IO 组件。
+``SystemIoTool``（system_io）默认禁用，因为这些能力直接操作宿主操作系统
+（模拟输入、读取剪贴板、操作硬件设备），需要通过 ``tools.system_io.enable``
+显式启用。
 
-Implementation strategy:
-- Clipboard & USB listing use platform-native CLI tools (no third-party deps).
-- Keyboard/mouse simulation prefers ``pynput`` when installed, falling back to
-  ``xdotool`` on Linux and ``osascript`` on macOS. Windows requires ``pynput``.
-- Serial port read/write requires ``pyserial`` (optional dependency).
-- All subprocess calls are async and wrapped in a per-action timeout.
+实现策略：
+- 剪贴板与 USB 列表使用平台原生 CLI 工具（无需第三方依赖）。
+- 键盘/鼠标模拟优先使用 ``pynput``（若已安装），Linux 回退到 ``xdotool``，
+  macOS 回退到 ``osascript``。Windows 需要 ``pynput``。
+- 串口读写需要 ``pyserial``（可选依赖）。
+- 所有子进程调用均为异步，并包装在每操作超时中。
 """
 
 from __future__ import annotations
 
-import asyncio
-import os
-import platform
-import sys
-from typing import Any
+import asyncio  # 异步 IO，用于子进程与阻塞操作
+import os  # 操作系统接口
+import platform  # 平台信息
+import sys  # 系统相关（平台判断）
+from typing import Any  # 类型注解
 
-from loguru import logger
-from pydantic import Field
+from loguru import logger  # 日志记录
+from pydantic import Field  # Pydantic 字段
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
+from biscuitbot.agent.tools.schema import (  # JSON Schema 类型
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from biscuitbot.config_base import Base
+from biscuitbot.config_base import Base  # 配置基类
 
-_IS_WINDOWS = sys.platform == "win32"
-_IS_MACOS = sys.platform == "darwin"
-_IS_LINUX = sys.platform.startswith("linux")
+_IS_WINDOWS = sys.platform == "win32"  # 是否为 Windows 平台
+_IS_MACOS = sys.platform == "darwin"  # 是否为 macOS 平台
+_IS_LINUX = sys.platform.startswith("linux")  # 是否为 Linux 平台
 
-# Action groups. Read-only actions have no host side-effects; write actions
-# mutate host state (clipboard, input, serial bus) and must never parallelize.
+# 动作分组。只读动作对宿主无副作用；写动作会修改宿主状态（剪贴板、输入、
+# 串口总线），绝不允许多个写动作并行执行。
 _READ_ACTIONS: frozenset[str] = frozenset({"clipboard_read", "usb_list", "serial_list"})
 _WRITE_ACTIONS: frozenset[str] = frozenset({
     "clipboard_write", "key_tap", "key_type",
     "mouse_move", "mouse_click", "mouse_scroll",
-    "serial_write", "serial_read",  # serial_read opens/owns the port
+    "serial_write", "serial_read",  # serial_read 会打开/独占端口
 })
 _ALL_ACTIONS: frozenset[str] = _READ_ACTIONS | _WRITE_ACTIONS
 
-_DEFAULT_TIMEOUT_MS = 3000
-_MAX_TIMEOUT_MS = 30000
-_MAX_OUTPUT_CHARS = 8000
+_DEFAULT_TIMEOUT_MS = 3000  # 默认每操作超时（毫秒）
+_MAX_TIMEOUT_MS = 30000  # 最大每操作超时（毫秒）
+_MAX_OUTPUT_CHARS = 8000  # 输出最大字符数
 
 
 class SystemIoToolConfig(Base):
-    """System-level IO tool configuration.
+    """系统级 IO 工具配置。
 
-    Disabled by default. When enabled, the agent can simulate keyboard/mouse
-    input, read/write the clipboard, list USB devices, and read/write serial
-    ports on the host OS. Use ``allow_actions`` to restrict to a subset.
+    默认禁用。启用后，agent 可以在宿主操作系统上模拟键盘/鼠标输入、
+    读写剪贴板、列出 USB 设备以及读写串口。使用 ``allow_actions`` 可限制
+    为子集。
     """
 
     enable: bool = False
-    # Optional allowlist of action names. Empty = all actions permitted
-    # (when enable=true). Useful to lock down to read-only operations,
-    # e.g. ["clipboard_read", "usb_list", "serial_list"].
+    # 可选的动作允许列表。空列表 = 启用时允许所有动作。
+    # 可用于锁定为只读操作，如 ["clipboard_read", "usb_list", "serial_list"]。
     allow_actions: list[str] = Field(default_factory=list)
 
 
@@ -126,19 +128,19 @@ class SystemIoToolConfig(Base):
     )
 )
 class SystemIoTool(Tool):
-    """System-level IO: keyboard/mouse simulation, clipboard, USB & serial devices.
+    """系统级 IO：键盘/鼠标模拟、剪贴板、USB 与串口设备操作。
 
-    Disabled by default; enable via ``tools.system_io.enable`` in config.
-    Operates directly on the host OS — requires explicit user opt-in.
+    默认禁用；通过配置中的 ``tools.system_io.enable`` 启用。
+    直接操作宿主操作系统，需要用户显式选择启用。
     """
 
-    _scopes = {"core"}
+    _scopes = {"core"}  # 工具可用作用域：仅核心
     _capability = (
         "Simulate keyboard/mouse input, read/write clipboard, and list/operate "
         "USB & serial devices on the host OS."
     )
-    _usage_md = "docs/system_io.md"
-    config_key = "system_io"
+    _usage_md = "docs/system_io.md"  # 使用说明文档路径
+    config_key = "system_io"  # 配置键名
 
     @classmethod
     def config_cls(cls):
@@ -171,10 +173,19 @@ class SystemIoTool(Tool):
 
     @property
     def exclusive(self) -> bool:
-        # Hardware input has real-world side effects; never parallelize.
+        # 硬件输入有真实世界副作用，绝不并行执行
         return True
 
     async def execute(self, action: str, **kwargs: Any) -> str:
+        """执行系统级 IO 动作。
+
+        参数:
+            action: 要执行的动作名称（见 _ALL_ACTIONS）。
+            **kwargs: 动作特定参数（如 text、keys、x、y 等）。
+
+        返回:
+            动作结果文本；超时或错误时返回错误信息。
+        """
         if action not in _ALL_ACTIONS:
             return f"Error: unknown action '{action}'. Valid: {sorted(_ALL_ACTIONS)}"
         if self.config.allow_actions and action not in self.config.allow_actions:
@@ -191,17 +202,19 @@ class SystemIoTool(Tool):
             )
         except asyncio.TimeoutError:
             return f"Error: action '{action}' timed out after {timeout_ms}ms"
-        except Exception as exc:  # noqa: BLE001 — surface as tool result, never raise
+        except Exception as exc:  # noqa: BLE001 — 作为工具结果返回，绝不抛出
             logger.exception("system_io action '{}' failed", action)
             return f"Error: {exc}"
         return self._truncate(result)
 
     async def _dispatch(self, action: str, kwargs: dict[str, Any]) -> str:
+        """按动作名分派到对应的 _action_<name> 处理器。"""
         handler = getattr(self, f"_action_{action}")
         return await handler(kwargs)
 
     @staticmethod
     def _truncate(text: str) -> str:
+        """截断输出到 _MAX_OUTPUT_CHARS，保留首尾各一半。"""
         if len(text) <= _MAX_OUTPUT_CHARS:
             return text
         half = _MAX_OUTPUT_CHARS // 2
@@ -222,7 +235,7 @@ class SystemIoTool(Tool):
         input_bytes: bytes | None = None,
         timeout: float = 5.0,
     ) -> tuple[int, bytes, bytes]:
-        """Run a subprocess asynchronously and return (rc, stdout, stderr)."""
+        """异步运行子进程，返回 (退出码, stdout, stderr)。"""
         proc = await asyncio.create_subprocess_exec(
             *args,
             stdin=asyncio.subprocess.PIPE if input_bytes is not None else asyncio.subprocess.DEVNULL,
@@ -365,7 +378,7 @@ class SystemIoTool(Tool):
         )
 
     def _keyboard_backend(self) -> str:
-        """Pick the best available keyboard backend for the current platform."""
+        """为当前平台选择最佳可用的键盘后端。"""
         try:
             import pynput  # noqa: F401
             return "pynput"
@@ -693,6 +706,7 @@ class SystemIoTool(Tool):
         )
 
     def _mouse_backend(self) -> str:
+        """为当前平台选择最佳可用的鼠标后端。"""
         try:
             import pynput  # noqa: F401
             return "pynput"
@@ -842,15 +856,16 @@ class SystemIoTool(Tool):
 
     @staticmethod
     def _which(name: str) -> str | None:
-        # Local wrapper so tests can patch discovery easily.
+        """查找可执行文件路径的本地包装器，便于测试时 patch。"""
+        # 本地包装器，便于测试 patch 发现逻辑
         import shutil
         return shutil.which(name)
 
 
 def suppress_ctx():
-    """Return a context manager that suppresses asyncio.TimeoutError & CancelledError.
+    """返回一个抑制 asyncio.TimeoutError 与 CancelledError 的上下文管理器。
 
-    Defined as a function (not inline) so the import site stays readable.
+    定义为函数（非内联）以保持调用点可读性。
     """
     from contextlib import suppress
     return suppress(asyncio.TimeoutError, asyncio.CancelledError)

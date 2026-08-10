@@ -1,19 +1,33 @@
-"""Search tools: file discovery and grep."""
+"""搜索工具：文件查找与内容搜索。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统中的文件发现与内容搜索
+组件。提供两个工具：
+
+- ``FindFilesTool``（find_files）：按路径片段、glob 模式或文件类型查找文件，
+  返回工作区相对路径。
+- ``GrepTool``（grep）：使用 regex 模式搜索文件内容，返回匹配的文件路径或
+  带上下文的匹配行。
+
+这两个工具是 agent 进行代码导航与分析的基础能力。
+"""
 
 from __future__ import annotations
 
-import fnmatch
-import os
-import re
-from contextlib import suppress
-from pathlib import Path, PurePosixPath
-from typing import Any, Iterable, TypeVar
+import fnmatch  # Unix shell 风格的通配符匹配
+import os  # 操作系统接口，用于遍历目录树
+import re  # 正则表达式，用于 grep 内容匹配
+from contextlib import suppress  # 上下文管理器，忽略指定异常
+from pathlib import Path, PurePosixPath  # 路径处理，PurePosixPath 用于 glob 匹配
+from typing import Any, Iterable, TypeVar  # 类型注解
 
-from biscuitbot.agent.tools.filesystem import ListDirTool, _FsTool
+from biscuitbot.agent.tools.filesystem import ListDirTool, _FsTool  # 文件系统工具基类与列表工具
 
-_DEFAULT_HEAD_LIMIT = 250
-_DEFAULT_FILE_HEAD_LIMIT = 200
-T = TypeVar("T")
+_DEFAULT_HEAD_LIMIT = 250  # grep 默认返回结果上限
+_DEFAULT_FILE_HEAD_LIMIT = 200  # find_files 默认返回路径上限
+T = TypeVar("T")  # 泛型类型变量，用于分页工具函数
+# 文件类型简写到 glob 模式的映射表，支持常见编程语言与配置文件类型
 _TYPE_GLOB_MAP = {
     "py": ("*.py", "*.pyi"),
     "python": ("*.py", "*.pyi"),
@@ -39,10 +53,16 @@ _TYPE_GLOB_MAP = {
 
 
 def _normalize_pattern(pattern: str) -> str:
+    """规范化 glob 模式：去除首尾空白并将反斜杠转为正斜杠。"""
     return pattern.strip().replace("\\", "/")
 
 
 def _match_glob(rel_path: str, name: str, pattern: str) -> bool:
+    """判断文件是否匹配给定的 glob 模式。
+
+    若模式包含路径分隔符或以 ``**`` 开头，则按完整相对路径匹配；
+    否则仅按文件名匹配。
+    """
     normalized = _normalize_pattern(pattern)
     if not normalized:
         return False
@@ -52,6 +72,11 @@ def _match_glob(rel_path: str, name: str, pattern: str) -> bool:
 
 
 def _is_binary(raw: bytes) -> bool:
+    """启发式判断字节内容是否为二进制（非文本）。
+
+    判定规则：含 NUL 字节即为二进制；否则取前 4096 字节采样，
+    若控制字符占比超过 20% 则视为二进制。
+    """
     if b"\x00" in raw:
         return True
     sample = raw[:4096]
@@ -62,6 +87,16 @@ def _is_binary(raw: bytes) -> bool:
 
 
 def _paginate(items: list[T], limit: int | None, offset: int) -> tuple[list[T], bool]:
+    """对结果列表进行分页，返回切片结果与是否被截断的标志。
+
+    参数:
+        items: 完整结果列表。
+        limit: 每页最大条数；None 表示不限。
+        offset: 跳过的条数。
+
+    返回:
+        (分页后的列表, 是否还有更多结果被截断)。
+    """
     if limit is None:
         return items[offset:], False
     sliced = items[offset : offset + limit]
@@ -70,6 +105,7 @@ def _paginate(items: list[T], limit: int | None, offset: int) -> tuple[list[T], 
 
 
 def _pagination_note(limit: int | None, offset: int, truncated: bool) -> str | None:
+    """生成分页提示文本，仅在结果被截断或存在偏移时返回。"""
     if truncated:
         if limit is None:
             return f"(pagination: offset={offset})"
@@ -80,6 +116,10 @@ def _pagination_note(limit: int | None, offset: int, truncated: bool) -> str | N
 
 
 def _matches_type(name: str, file_type: str | None) -> bool:
+    """判断文件名是否匹配指定的文件类型简写。
+
+    支持的类型见 ``_TYPE_GLOB_MAP``；未映射的类型按 ``*.<type>`` 处理。
+    """
     if not file_type:
         return True
     lowered = file_type.strip().lower()
@@ -90,6 +130,7 @@ def _matches_type(name: str, file_type: str | None) -> bool:
 
 
 def _matches_query(rel_path: str, query: str | None) -> bool:
+    """判断路径是否包含查询的所有术语（空格分隔，大小写不敏感）。"""
     if not query:
         return True
     haystack = rel_path.lower()
@@ -98,9 +139,15 @@ def _matches_query(rel_path: str, query: str | None) -> bool:
 
 
 class _SearchTool(_FsTool):
-    _IGNORE_DIRS = set(ListDirTool._IGNORE_DIRS)
+    """搜索工具的公共基类，提供路径展示与文件遍历能力。"""
+
+    _IGNORE_DIRS = set(ListDirTool._IGNORE_DIRS)  # 复用 ListDirTool 的忽略目录集合
 
     def _display_path(self, target: Path, root: Path) -> str:
+        """将目标路径转换为展示用的相对路径。
+
+        优先相对工作区根；若不在工作区内则相对搜索根。
+        """
         workspace = self._display_workspace()
         if workspace:
             with suppress(ValueError):
@@ -108,6 +155,7 @@ class _SearchTool(_FsTool):
         return target.relative_to(root).as_posix()
 
     def _iter_files(self, root: Path) -> Iterable[Path]:
+        """递归遍历目录树，跳过忽略目录，按字典序返回所有文件。"""
         if root.is_file():
             yield root
             return
@@ -120,13 +168,13 @@ class _SearchTool(_FsTool):
 
 
 class FindFilesTool(_SearchTool):
-    """Find files by path fragment, glob, or type."""
-    _scopes = {"core", "subagent"}
+    """按路径片段、glob 模式或文件类型查找文件。"""
+    _scopes = {"core", "subagent"}  # 工具可用作用域：核心与子 agent
 
     _capability = (
         "Find files by path fragment, glob, or file type; returns workspace-relative paths."
     )
-    _usage_md = "docs/find_files.md"
+    _usage_md = "docs/find_files.md"  # 使用说明文档路径
 
     @property
     def name(self) -> str:
@@ -195,6 +243,10 @@ class FindFilesTool(_SearchTool):
         }
 
     def _iter_paths(self, root: Path, *, include_dirs: bool) -> Iterable[Path]:
+        """递归遍历路径，可选择包含目录。
+
+        与 ``_iter_files`` 不同，本方法在 ``include_dirs=True`` 时也会产出目录。
+        """
         if root.is_file():
             yield root
             return
@@ -220,6 +272,21 @@ class FindFilesTool(_SearchTool):
         offset: int = 0,
         **kwargs: Any,
     ) -> str:
+        """执行文件查找。
+
+        参数:
+            path: 搜索的目录或文件（默认 '.'）。
+            query: 可选的不区分大小写的路径片段搜索，空格分隔的术语必须全部存在。
+            glob: 可选的文件过滤器，例如 '*.py' 或 'tests/**/test_*.py'。
+            type: 可选的文件类型简写，例如 'py', 'ts', 'md', 'json'。
+            include_dirs: 是否包含匹配的目录（默认 false）。
+            sort: 排序方式，'path'（路径）或 'modified'（最近修改），默认 'path'。
+            head_limit: 返回的最大路径数（默认 200，0 表示全部，最大 1000）。
+            offset: 应用 head_limit 前跳过的结果数。
+
+        返回:
+            匹配的工作区相对路径列表；若未找到则返回 "No files found"。
+        """
         try:
             target = self._resolve(path or ".")
             if not target.exists():
@@ -282,16 +349,16 @@ class FindFilesTool(_SearchTool):
 
 
 class GrepTool(_SearchTool):
-    """Search file contents using a regex-like pattern."""
-    _scopes = {"core", "subagent"}
+    """使用类 regex 模式搜索文件内容。"""
+    _scopes = {"core", "subagent"}  # 工具可用作用域：核心与子 agent
 
     _capability = (
         "Search file contents by regex pattern; returns matching paths or lines with context."
     )
-    _usage_md = "docs/grep.md"
+    _usage_md = "docs/grep.md"  # 使用说明文档路径
 
-    _MAX_RESULT_CHARS = 128_000
-    _MAX_FILE_BYTES = 2_000_000
+    _MAX_RESULT_CHARS = 128_000  # 单次结果最大字符数
+    _MAX_FILE_BYTES = 2_000_000  # 跳过超过 2MB 的文件
 
     @property
     def name(self) -> str:
@@ -407,6 +474,10 @@ class GrepTool(_SearchTool):
         before: int,
         after: int,
     ) -> str:
+        """格式化一个匹配块：包含文件路径、行号与上下文行。
+
+        匹配行用 ``>`` 标记，上下文行用空格标记。
+        """
         start = max(1, match_line - before)
         end = min(len(lines), match_line + after)
         block = [f"{display_path}:{match_line}"]
@@ -432,6 +503,27 @@ class GrepTool(_SearchTool):
         offset: int = 0,
         **kwargs: Any,
     ) -> str:
+        """执行内容搜索。
+
+        参数:
+            pattern: 要搜索的 regex 或纯文本模式。
+            path: 搜索的文件或目录（默认 '.'）。
+            glob: 可选的文件过滤器。
+            type: 可选的文件类型简写。
+            case_insensitive: 是否大小写不敏感搜索（默认 false）。
+            fixed_strings: 将模式视为纯文本而非 regex（默认 false）。
+            output_mode: 输出模式：'content'（带上下文的匹配行）、
+                'files_with_matches'（仅文件路径）、'count'（每文件匹配数）。
+            context_before: 匹配行前的上下文行数。
+            context_after: 匹配行后的上下文行数。
+            max_matches: content 模式下 head_limit 的旧别名。
+            max_results: files_with_matches/count 模式下 head_limit 的旧别名。
+            head_limit: 返回的最大结果数。
+            offset: 应用 head_limit 前跳过的结果数。
+
+        返回:
+            匹配结果；若未找到则返回 "No matches found"。
+        """
         try:
             target = self._resolve(path or ".")
             if not target.exists():

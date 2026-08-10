@@ -1,45 +1,62 @@
-"""WhatsApp channel implementation using Node.js bridge."""
+"""WhatsApp 渠道实现，通过 Node.js 桥接进程接入。
 
-import asyncio
-import hashlib
-import json
-import mimetypes
-import os
-import secrets
-import shutil
-import subprocess
-from collections import OrderedDict
-from contextlib import suppress
-from pathlib import Path
-from typing import Any, Literal
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的 WhatsApp 平台组件。
+在项目架构中起到的作用：通过 Node.js 桥接进程将 WhatsApp 的消息收发能力接入 biscuitbot 消息总线。
 
-from loguru import logger
-from pydantic import Field
+平台特点与接入方式
+------------------
+- 接入方式：通过 Node.js 桥接进程（基于 @whiskeysockets/baileys 库）处理 WhatsApp Web 协议，
+  Python 与 Node.js 之间通过 WebSocket 通信。
+- 鉴权：首次使用需扫描二维码登录，桥接令牌持久化到本地文件（权限 0600）。
+- 消息格式：支持文本和媒体（图片/文件/视频）的收发，语音消息自动转写。
+- 群聊策略：支持 open（全部响应）和 mention（仅 @时响应）两种模式。
+- 地址格式：支持旧版手机号（@s.whatsapp.net）和新版 LID（@lid.whatsapp.net）两种 JID 格式。
+- 桥接管理：自动检测桥接源码变更并重新构建，基于哈希戳文件实现增量构建。
+"""
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.schema import Base
+import asyncio  # 异步事件循环与 WebSocket 通信
+import hashlib  # 桥接源码哈希计算（用于增量构建判断）
+import json  # JSON 序列化/反序列化（桥接消息协议）
+import mimetypes  # MIME 类型猜测（媒体文件分类）
+import os  # 环境变量传递
+import secrets  # 安全随机令牌生成
+import shutil  # 文件/目录复制与删除（桥接部署）
+import subprocess  # 子进程管理（npm install/build）
+from collections import OrderedDict  # 有序去重缓存（消息 ID 去重）
+from contextlib import suppress  # 上下文管理器，抑制指定异常
+from pathlib import Path  # 路径处理
+from typing import Any, Literal  # 类型注解支持
+
+from loguru import logger  # 日志记录
+from pydantic import Field  # Pydantic 模型字段定义
+
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.schema import Base  # 配置模型基类
 
 
 class WhatsAppConfig(Base):
-    """WhatsApp channel configuration."""
+    """WhatsApp 渠道配置。"""
 
     enabled: bool = False
-    bridge_url: str = "ws://localhost:3001"
-    bridge_token: str = ""
-    allow_from: list[str] = Field(default_factory=list)
-    group_policy: Literal["open", "mention"] = "open"  # "open" responds to all, "mention" only when @mentioned
+    bridge_url: str = "ws://localhost:3001"  # Node.js 桥接服务的 WebSocket 地址
+    bridge_token: str = ""  # 桥接认证令牌（为空时自动生成并持久化）
+    allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    group_policy: Literal["open", "mention"] = "open"  # 群聊策略：open=全部响应，mention=仅@时响应
 
 
 def _bridge_token_path() -> Path:
+    """返回桥接令牌持久化文件的路径。"""
     from biscuitbot.config.paths import get_runtime_subdir
 
     return get_runtime_subdir("whatsapp-auth") / "bridge-token"
 
 
 def _load_or_create_bridge_token(path: Path) -> str:
-    """Load a persisted bridge token or create one on first use."""
+    """加载已持久化的桥接令牌，或首次使用时创建一个。"""
     if path.exists():
         token = path.read_text(encoding="utf-8").strip()
         if token:
@@ -54,11 +71,10 @@ def _load_or_create_bridge_token(path: Path) -> str:
 
 
 class WhatsAppChannel(BaseChannel):
-    """
-    WhatsApp channel that connects to a Node.js bridge.
+    """WhatsApp 渠道，通过 Node.js 桥接进程连接。
 
-    The bridge uses @whiskeysockets/baileys to handle the WhatsApp Web protocol.
-    Communication between Python and Node.js is via WebSocket.
+    桥接使用 @whiskeysockets/baileys 库处理 WhatsApp Web 协议。
+    Python 与 Node.js 之间通过 WebSocket 通信。
     """
 
     name = "whatsapp"
@@ -66,20 +82,21 @@ class WhatsAppChannel(BaseChannel):
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
+        """返回默认配置字典。"""
         return WhatsAppConfig().model_dump(by_alias=True)
 
     def __init__(self, config: Any, bus: MessageBus):
         if isinstance(config, dict):
             config = WhatsAppConfig.model_validate(config)
         super().__init__(config, bus)
-        self._ws = None
-        self._connected = False
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
-        self._lid_to_phone: dict[str, str] = {}
-        self._bridge_token: str | None = None
+        self._ws = None  # WebSocket 连接实例
+        self._connected = False  # 桥接连接状态
+        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # 有序去重缓存（消息 ID）
+        self._lid_to_phone: dict[str, str] = {}  # LID 到手机号的映射缓存
+        self._bridge_token: str | None = None  # 桥接认证令牌（延迟初始化）
 
     def _effective_bridge_token(self) -> str:
-        """Resolve the bridge token, generating a local secret when needed."""
+        """解析桥接令牌，必要时生成本地密钥。"""
         if self._bridge_token is not None:
             return self._bridge_token
         configured = self.config.bridge_token.strip()
@@ -118,7 +135,7 @@ class WhatsAppChannel(BaseChannel):
         return True
 
     async def start(self) -> None:
-        """Start the WhatsApp channel by connecting to the bridge."""
+        """通过连接桥接服务启动 WhatsApp 渠道。"""
         import websockets
 
         bridge_url = self.config.bridge_url
@@ -156,7 +173,7 @@ class WhatsAppChannel(BaseChannel):
                     await asyncio.sleep(5)
 
     async def stop(self) -> None:
-        """Stop the WhatsApp channel."""
+        """停止 WhatsApp 渠道。"""
         self._running = False
         self._connected = False
 
@@ -165,7 +182,7 @@ class WhatsAppChannel(BaseChannel):
             self._ws = None
 
     async def send(self, msg: OutboundMessage) -> None:
-        """Send a message through WhatsApp."""
+        """通过 WhatsApp 发送消息。"""
         if not self._ws or not self._connected:
             self.logger.warning("WhatsApp bridge not connected")
             return
@@ -196,7 +213,7 @@ class WhatsAppChannel(BaseChannel):
                 raise
 
     async def _handle_bridge_message(self, raw: str) -> None:
-        """Handle a message from the bridge."""
+        """处理来自桥接的消息。"""
         try:
             data = json.loads(raw)
         except json.JSONDecodeError:
@@ -315,11 +332,9 @@ class WhatsAppChannel(BaseChannel):
 
 
 def _ensure_bridge_setup() -> Path:
-    """
-    Ensure the WhatsApp bridge is set up and built.
+    """确保 WhatsApp 桥接已设置并构建完成。
 
-    Returns the bridge directory. Raises RuntimeError if npm is not found
-    or bridge cannot be built.
+    返回桥接目录。如果未找到 npm 或无法构建桥接，则抛出 RuntimeError。
     """
     from biscuitbot.config.paths import get_bridge_install_dir
 

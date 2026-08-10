@@ -1,74 +1,98 @@
-"""Memory system: pure file I/O store and lightweight Consolidator."""
+"""记忆系统：纯文件 I/O 存储与轻量级 Consolidator。
+
+所属模块与项目作用
+===================
+本文件位于 ``biscuitbot/agent`` 目录，是 Agent 模块中负责记忆持久化与会话合并的核心组件。
+在项目架构中起到的作用：
+- ``MemoryStore`` 提供纯文件 I/O 层，管理长期记忆（MEMORY.md）、历史记录
+  （history.jsonl，JSONL 追加写）、人格文件（SOUL.md）、用户画像（USER.md），
+  并负责从旧版 HISTORY.md 迁移、游标管理、历史压缩与归档、Dream 提示构建等；
+- ``Consolidator`` 提供轻量级、按 token 预算触发的会话合并：当会话提示 token
+  超过安全预算时，将较早的消息交由 LLM 摘要后写入 history.jsonl，并推进
+  会话的 ``last_consolidated`` 游标；同时支持空闲会话的硬截断压缩；
+- 两者共同构成 Agent 的“记忆子系统”，在 ``AgentLoop``/``AutoCompact``/
+  ``ContextBuilder`` 中被引用，是上下文装配与历史回放的数据源。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import json
-import os
-import re
-import threading
-import weakref
-from contextlib import suppress
-from datetime import datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+import asyncio  # 异步锁支持（Consolidator 的会话级合并锁）
+import json  # JSONL 序列化与解析
+import os  # 文件同步（fsync）与目录同步
+import re  # 旧版历史解析用的正则
+import threading  # 游标分配与追加的串行锁
+import weakref  # Consolidator 锁的弱引用字典，避免会话锁泄漏
+from contextlib import suppress  # 忽略可预期异常
+from datetime import datetime  # 时间戳生成
+from pathlib import Path  # 路径处理
+from typing import TYPE_CHECKING, Any, Callable, Iterator  # 类型注解支持
 
-from loguru import logger
+from loguru import logger  # 日志记录
 
-from biscuitbot.session.manager import Session
-from biscuitbot.utils.gitstore import GitStore
-from biscuitbot.utils.helpers import (
-    atomic_write_text,
-    ensure_dir,
-    estimate_message_tokens,
-    estimate_prompt_tokens_chain,
-    find_legal_message_start,
-    strip_think,
-    truncate_text,
-    truncate_text_to_tokens,
+from biscuitbot.session.manager import Session  # 会话对象类型
+from biscuitbot.utils.gitstore import GitStore  # Git 存储，用于记忆文件的版本管理
+from biscuitbot.utils.helpers import (  # 通用辅助函数
+    atomic_write_text,  # 原子写文本
+    ensure_dir,  # 确保目录存在
+    estimate_message_tokens,  # 估算单条消息 token 数
+    estimate_prompt_tokens_chain,  # 估算整条提示链的 token 数
+    find_legal_message_start,  # 查找合法消息起始位置（避免破坏多模态结构）
+    strip_think,  # 剥离 think 模板泄漏
+    truncate_text,  # 按字符截断
+    truncate_text_to_tokens,  # 按 token 截断
 )
-from biscuitbot.utils.prompt_templates import render_template
+from biscuitbot.utils.prompt_templates import render_template  # 模板渲染
 
 if TYPE_CHECKING:
-    from biscuitbot.providers.base import LLMProvider
-    from biscuitbot.session.manager import SessionManager
+    from biscuitbot.providers.base import LLMProvider  # 仅类型检查时导入，避免循环依赖
+    from biscuitbot.session.manager import SessionManager  # 仅类型检查时导入
 
 
 # ---------------------------------------------------------------------------
-# MemoryStore — pure file I/O layer
+# MemoryStore — 纯文件 I/O 层
 # ---------------------------------------------------------------------------
 
 class MemoryStore:
-    """Pure file I/O for memory files: MEMORY.md, history.jsonl, SOUL.md, USER.md."""
+    """记忆文件的纯文件 I/O 层：MEMORY.md、history.jsonl、SOUL.md、USER.md。
 
-    _DEFAULT_MAX_HISTORY = 1000
-    _INTERNAL_HISTORY_SESSION_PREFIXES = ("cron:", "dream:")
-    _INTERNAL_HISTORY_SESSION_KEYS = {"heartbeat"}
-    _LEGACY_ENTRY_START_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2}[^\]]*)\]\s*")
-    _LEGACY_TIMESTAMP_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*")
-    _LEGACY_RAW_MESSAGE_RE = re.compile(
+    职责与项目角色：
+    - 管理工作目录下各类记忆文件的读写，提供原子写与游标管理；
+    - 维护 JSONL 格式的追加写历史记录，支持按游标读取未处理条目；
+    - 提供旧版 HISTORY.md 到 history.jsonl 的一次性迁移；
+    - 支持 Dream（离线记忆整理）所需的提示构建与受限工具注册；
+    - 通过 ``GitStore`` 对关键记忆文件做版本管理。
+
+    典型用法：由 ``ContextBuilder``/``Consolidator``/``AgentLoop`` 持有并调用。
+    """
+
+    _DEFAULT_MAX_HISTORY = 1000  # history.jsonl 默认保留的最大条目数
+    _INTERNAL_HISTORY_SESSION_PREFIXES = ("cron:", "dream:")  # 内部会话前缀，统一会话视角下过滤
+    _INTERNAL_HISTORY_SESSION_KEYS = {"heartbeat"}  # 内部会话 key 集合，统一会话视角下过滤
+    _LEGACY_ENTRY_START_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2}[^\]]*)\]\s*")  # 旧版条目起始正则
+    _LEGACY_TIMESTAMP_RE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]\s*")  # 旧版时间戳正则
+    _LEGACY_RAW_MESSAGE_RE = re.compile(  # 旧版 RAW 消息起始正则
         r"^\[\d{4}-\d{2}-\d{2}[^\]]*\]\s+[A-Z][A-Z0-9_]*(?:\s+\[tools:\s*[^\]]+\])?:"
     )
 
     def __init__(self, workspace: Path, max_history_entries: int = _DEFAULT_MAX_HISTORY):
-        self.workspace = workspace
-        self.max_history_entries = max_history_entries
-        self.memory_dir = ensure_dir(workspace / "memory")
-        self.memory_file = self.memory_dir / "MEMORY.md"
-        self.history_file = self.memory_dir / "history.jsonl"
-        self.legacy_history_file = self.memory_dir / "HISTORY.md"
-        self.soul_file = workspace / "SOUL.md"
-        self.user_file = workspace / "USER.md"
-        self._cursor_file = self.memory_dir / ".cursor"
-        self._dream_cursor_file = self.memory_dir / ".dream_cursor"
-        self._corruption_logged = False  # rate-limit non-int cursor warning
-        self._malformed_entry_logged = False  # rate-limit bad history shape warning
-        self._oversize_logged = False  # rate-limit oversized-entry warning
-        self._append_lock = threading.Lock()  # serialize cursor allocation + append
-        self._git = GitStore(workspace, tracked_files=[
+        self.workspace = workspace  # 工作目录
+        self.max_history_entries = max_history_entries  # 历史保留上限
+        self.memory_dir = ensure_dir(workspace / "memory")  # 记忆目录（确保存在）
+        self.memory_file = self.memory_dir / "MEMORY.md"  # 长期记忆文件
+        self.history_file = self.memory_dir / "history.jsonl"  # 历史记录（JSONL）
+        self.legacy_history_file = self.memory_dir / "HISTORY.md"  # 旧版历史文件（待迁移）
+        self.soul_file = workspace / "SOUL.md"  # 人格文件
+        self.user_file = workspace / "USER.md"  # 用户画像文件
+        self._cursor_file = self.memory_dir / ".cursor"  # 历史游标计数器文件
+        self._dream_cursor_file = self.memory_dir / ".dream_cursor"  # Dream 已处理游标文件
+        self._corruption_logged = False  # 限速：非整型游标告警只记一次
+        self._malformed_entry_logged = False  # 限速：畸形历史条目告警只记一次
+        self._oversize_logged = False  # 限速：超大条目告警只记一次
+        self._append_lock = threading.Lock()  # 串行化游标分配与追加，避免并发重复
+        self._git = GitStore(workspace, tracked_files=[  # Git 版本管理的关键文件
             "SOUL.md", "USER.md", "memory/MEMORY.md",
         ])
-        self._maybe_migrate_legacy_history()
+        self._maybe_migrate_legacy_history()  # 启动时尝试迁移旧版历史
 
     @property
     def git(self) -> GitStore:
@@ -666,23 +690,32 @@ class MemoryStore:
 
 
 # ---------------------------------------------------------------------------
-# Consolidator — lightweight token-budget triggered consolidation
+# Consolidator — 轻量级、按 token 预算触发的合并器
 # ---------------------------------------------------------------------------
 
-# Individual history.jsonl writers cap their own payloads tightly; the
-# _HISTORY_ENTRY_HARD_CAP at append_history() is a belt-and-suspenders default
-# that catches any new caller that forgot to set its own cap.
-_RAW_ARCHIVE_MAX_CHARS = 16_000       # fallback dump (LLM failed)
-_ARCHIVE_SUMMARY_MAX_CHARS = 8_000    # LLM-produced consolidation summary
-_HISTORY_ENTRY_HARD_CAP = 64_000      # emergency cap in append_history
+# 各 history.jsonl 写入方都会自行收紧负载大小；append_history() 中的
+# _HISTORY_ENTRY_HARD_CAP 是兜底默认值，用于捕获忘记设置自身上限的新调用方。
+_RAW_ARCHIVE_MAX_CHARS = 16_000       # 兜底转储（LLM 失败时）的字符上限
+_ARCHIVE_SUMMARY_MAX_CHARS = 8_000    # LLM 生成的合并摘要的字符上限
+_HISTORY_ENTRY_HARD_CAP = 64_000      # append_history 中的紧急截断上限
 
 
 class Consolidator:
-    """Lightweight consolidation: summarizes evicted messages into history.jsonl."""
+    """轻量级合并器：将被淘汰的消息摘要后写入 history.jsonl。
 
-    _MAX_CONSOLIDATION_ROUNDS = 5
+    职责与项目角色：
+    - 当会话提示 token 超过安全预算时，按用户轮次边界挑选可合并的较早消息，
+      交由 LLM 生成摘要并写入历史记录，随后推进 ``last_consolidated`` 游标；
+    - 支持“回放窗口溢出”合并：当未合并尾部超过回放最大消息数时，归档被隐藏的消息；
+    - 提供 ``compact_idle_session``，在合并锁下对空闲会话做硬截断压缩；
+    - 通过弱引用字典维护每会话的合并锁，保证同会话串行、跨会话并发。
 
-    _SAFETY_BUFFER = 1024  # extra headroom for tokenizer estimation drift
+    典型用法：由 ``AgentLoop`` 在 BUILD/SAVE 阶段与 ``AutoCompact`` 在归档时调用。
+    """
+
+    _MAX_CONSOLIDATION_ROUNDS = 5  # 单次合并调用的最大轮数
+
+    _SAFETY_BUFFER = 1024  # 为分词器估算漂移预留的额外余量
 
     def __init__(
         self,

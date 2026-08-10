@@ -1,23 +1,39 @@
-"""Shell execution tool."""
+"""Shell 命令执行工具。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统中的 shell 执行组件。
+``ExecTool``（exec）允许 agent 执行 shell 命令（如构建、测试、git、包管理），
+并提供多层安全防护：
+
+- **deny-list**：按严重程度分两级，灾难性命令（rm -rf、mkfs 等）在 standard
+  和 minimal 级别均拦截；摩擦型命令（download-and-execute、内部状态文件写入）
+  仅在 standard 级别拦截。
+- **SSRF 防护**：检测并拦截内网/私有 URL。
+- **工作区边界**：当 restrict_to_workspace 启用时，拦截路径穿越与工作区外
+  的绝对路径。
+- **沙箱包装**：可选通过 bubblewrap 沙箱限制文件系统访问。
+- **会话模式**：通过 yield_time_ms 支持长时间运行命令的异步会话。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import os
-import re
-import shutil
-import sys
-from contextlib import suppress
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Any
+import asyncio  # 异步 IO，用于子进程管理
+import os  # 操作系统接口
+import re  # 正则表达式，用于 deny-list 匹配
+import shutil  # shell 工具查找（which）
+import sys  # 系统相关（平台判断）
+from contextlib import suppress  # 上下文管理器，忽略异常
+from dataclasses import dataclass  # 数据类装饰器
+from pathlib import Path  # 路径处理
+from typing import Any  # 类型注解
 
-from loguru import logger
-from pydantic import Field
+from loguru import logger  # 日志记录
+from pydantic import Field  # Pydantic 字段
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.context import current_request_session_key
-from biscuitbot.agent.tools.exec_session import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
+from biscuitbot.agent.tools.context import current_request_session_key  # 当前请求会话键
+from biscuitbot.agent.tools.exec_session import (  # 执行会话管理
     DEFAULT_EXEC_SESSION_MANAGER,
     DEFAULT_MAX_OUTPUT_CHARS,
     DEFAULT_YIELD_MS,
@@ -26,23 +42,23 @@ from biscuitbot.agent.tools.exec_session import (
     clamp_session_int,
     format_session_poll,
 )
-from biscuitbot.agent.tools.sandbox import wrap_command
-from biscuitbot.agent.tools.schema import (
+from biscuitbot.agent.tools.sandbox import wrap_command  # 沙箱命令包装
+from biscuitbot.agent.tools.schema import (  # JSON Schema 类型
     BooleanSchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
-from biscuitbot.config.paths import get_media_dir
-from biscuitbot.config_base import Base
-from biscuitbot.security.guard_level import GuardPolicy
-from biscuitbot.security.workspace_access import current_scope_allows_loopback, current_tool_workspace
-from biscuitbot.security.workspace_policy import is_path_within
+from biscuitbot.config.paths import get_media_dir  # 媒体目录路径
+from biscuitbot.config_base import Base  # 配置基类
+from biscuitbot.security.guard_level import GuardPolicy  # 守卫策略
+from biscuitbot.security.workspace_access import current_scope_allows_loopback, current_tool_workspace  # 工作区访问控制
+from biscuitbot.security.workspace_policy import is_path_within  # 路径在工作区内判断
 
-_IS_WINDOWS = sys.platform == "win32"
+_IS_WINDOWS = sys.platform == "win32"  # 是否为 Windows 平台
 
 
-# Policy note appended to recoverable workspace-boundary guard errors.
+# 追加到可恢复的工作区边界守卫错误后的策略说明
 _WORKSPACE_BOUNDARY_NOTE = (
     "\n\nNote: this is a hard policy boundary, not a transient failure. "
     "Do NOT retry with shell tricks (symlinks, base64 piping, alternative "
@@ -51,65 +67,64 @@ _WORKSPACE_BOUNDARY_NOTE = (
     "restrict_to_workspace policy and ask how to proceed."
 )
 
-# Hardcoded shell deny-list, split by severity for guard_level gating.
-# Catastrophic commands are blocked at guard_level standard + minimal.
-# Friction patterns (download-and-execute, internal-state-file writes) are
-# blocked only at standard; they cause real friction for legitimate workflows
-# (rustup/homebrew install scripts) so power users can drop them via minimal/off.
+# 硬编码的 shell 拒绝列表，按严重程度分级以配合 guard_level 门控。
+# 灾难性命令在 guard_level standard + minimal 级别均被拦截。
+# 摩擦型模式（download-and-execute、内部状态文件写入）仅在 standard 级别拦截；
+# 它们对合法开发流程（rustup/homebrew 安装脚本）会造成实际摩擦，因此高级用户
+# 可通过 minimal/off 级别放宽。
 _CATASTROPHIC_DENY_PATTERNS: list[str] = [
     r"\brm\s+-[rf]{1,2}\b",          # rm -r, rm -rf, rm -fr
     r"\bdel\s+/[fq]\b",              # del /f, del /q
     r"\brmdir\s+/s\b",               # rmdir /s
-    r"(?:^|[;&|]\s*)format(?!=)\b",   # format (as standalone command only)
-    r"\b(mkfs|diskpart)\b",          # disk operations
+    r"(?:^|[;&|]\s*)format(?!=)\b",   # format（仅作为独立命令）
+    r"\b(mkfs|diskpart)\b",          # 磁盘操作
     r"\bdd\s+if=",                   # dd
-    r">\s*/dev/sd",                  # write to disk
-    r"\b(shutdown|reboot|poweroff)\b",  # system power
-    r":\(\)\s*\{.*\};\s*:",          # fork bomb
+    r">\s*/dev/sd",                  # 写入磁盘
+    r"\b(shutdown|reboot|poweroff)\b",  # 系统电源
+    r":\(\)\s*\{.*\};\s*:",          # fork 炸弹
 ]
 
-# Friction-level patterns: high-signal for indirect prompt injection but
-# commonly tripped by legitimate dev workflows. Gated to standard only.
+# 摩擦级模式：对间接提示注入高信号，但常被合法开发流程触发。仅在 standard 级别生效。
 _FRICTION_DENY_PATTERNS: list[str] = [
-    # Block "download-and-execute" patterns commonly used in indirect
-    # prompt injection to turn a benign exec into remote code
-    # execution. Normal dev workflows rarely pipe remote fetches into
-    # an interpreter shell, so these are high-signal deny rules.
+    # 拦截 "download-and-execute" 模式，该模式常用于间接提示注入，将良性 exec
+    # 转为远程代码执行。正常开发流程很少将远程获取管道到解释器 shell，
+    # 因此这些是高信号拒绝规则。
     r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",   # curl … | sh
     r"\b(?:curl|wget|fetch)\b[^|;&]*\|\s*(?:sh|bash|zsh|dash|ksh)\s",  # curl … | sh -
     r"\bbase64\s+-d\b[^|]*\|\s*(?:sh|bash|zsh|dash|ksh)\b",            # base64 -d … | sh
     r"\beval\s+[\"'$]?\(?\s*\$?\(\s*(?:curl|wget|fetch)\b",            # eval "$(curl …)"
-    # Block writes to biscuitbot internal state files (#2989).
-    # history.jsonl / .dream_cursor are managed by append_history();
-    # direct writes corrupt the cursor format and crash /dream.
-    r">>?\s*\S*(?:history\.jsonl|\.dream_cursor)",            # > / >> redirect
+    # 拦截对 biscuitbot 内部状态文件的写入（#2989）。
+    # history.jsonl / .dream_cursor 由 append_history() 管理；
+    # 直接写入会破坏游标格式并导致 /dream 崩溃。
+    r">>?\s*\S*(?:history\.jsonl|\.dream_cursor)",            # > / >> 重定向
     r"\btee\b[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",     # tee / tee -a
-    r"\b(?:cp|mv)\b(?:\s+[^\s|;&<>]+)+\s+\S*(?:history\.jsonl|\.dream_cursor)",  # cp/mv target
+    r"\b(?:cp|mv)\b(?:\s+[^\s|;&<>]+)+\s+\S*(?:history\.jsonl|\.dream_cursor)",  # cp/mv 目标
     r"\bdd\b[^|;&<>]*\bof=\S*(?:history\.jsonl|\.dream_cursor)",  # dd of=
     r"\bsed\s+-i[^|;&<>]*(?:history\.jsonl|\.dream_cursor)",  # sed -i
 ]
 
 
 class ExecToolConfig(Base):
-    """Shell exec tool configuration."""
+    """Shell exec 工具配置。"""
     enable: bool = True
-    timeout: int = Field(default=60, ge=0)  # Hard timeout (s); 0 = no limit. Not capped by the per-call max.
-    path_prepend: str = ""
-    path_append: str = ""
-    sandbox: str = ""
-    allowed_env_keys: list[str] = Field(default_factory=list)
-    allow_patterns: list[str] = Field(default_factory=list)
-    deny_patterns: list[str] = Field(default_factory=list)
+    timeout: int = Field(default=60, ge=0)  # 硬超时（秒）；0 = 无限制。不受单次调用上限约束。
+    path_prepend: str = ""  # 前置 PATH
+    path_append: str = ""  # 后置 PATH
+    sandbox: str = ""  # 沙箱后端名称（如 "bwrap"）
+    allowed_env_keys: list[str] = Field(default_factory=list)  # 允许透传的环境变量键
+    allow_patterns: list[str] = Field(default_factory=list)  # 用户自定义允许列表
+    deny_patterns: list[str] = Field(default_factory=list)  # 用户自定义拒绝列表
 
 
 @dataclass(slots=True)
 class _PreparedCommand:
-    command: str
-    cwd: str
-    env: dict[str, str]
-    timeout: int | None
-    shell_program: str | None
-    login: bool
+    """已准备好的命令：经过守卫检查与沙箱包装后的执行参数。"""
+    command: str  # 命令字符串
+    cwd: str  # 工作目录
+    env: dict[str, str]  # 环境变量
+    timeout: int | None  # 超时（秒），None 表示不限
+    shell_program: str | None  # 指定的 shell 程序路径
+    login: bool  # 是否以 login shell 方式运行
 
 
 @tool_parameters(
@@ -168,17 +183,17 @@ class _PreparedCommand:
     )
 )
 class ExecTool(Tool):
-    """Tool to execute shell commands."""
-    _scopes = {"core", "subagent"}
+    """执行 shell 命令的工具。"""
+    _scopes = {"core", "subagent"}  # 工具可用作用域：核心与子 agent
 
     _capability = (
         "Execute shell commands (build, test, git, package managers) with "
         "timeout, sandbox, and deny-list guards."
     )
-    _always_include = True
-    _usage_md = "docs/exec.md"
+    _always_include = True  # 该工具的完整 schema 始终发送给模型
+    _usage_md = "docs/exec.md"  # 使用说明文档路径
 
-    config_key = "exec"
+    config_key = "exec"  # 配置键名
 
     @classmethod
     def config_cls(cls):
@@ -221,17 +236,16 @@ class ExecTool(Tool):
         guard_level: str = "standard",
         session_manager: Any | None = None,
     ):
-        self.timeout = timeout
-        self.working_dir = working_dir
-        self.sandbox = sandbox
-        self.guard_level = guard_level
-        # Build the hardcoded deny-list based on guard_level. User-supplied
-        # deny_patterns always apply (they're the user's own rules). The
-        # application's hardcoded patterns are gated by GuardPolicy:
-        #   standard → catastrophic + friction
-        #   minimal  → catastrophic only
-        #   off      → none
-        # SSRF and workspace-boundary checks in _guard_command run regardless.
+        self.timeout = timeout  # 配置级默认超时
+        self.working_dir = working_dir  # 工作目录
+        self.sandbox = sandbox  # 沙箱后端
+        self.guard_level = guard_level  # 守卫等级
+        # 根据 guard_level 构建硬编码拒绝列表。用户自定义 deny_patterns 始终生效
+        # （用户自己的规则）。应用的硬编码模式由 GuardPolicy 门控：
+        #   standard → 灾难性 + 摩擦型
+        #   minimal  → 仅灾难性
+        #   off      → 无
+        # _guard_command 中的 SSRF 和工作区边界检查始终运行，不受等级影响。
         policy = GuardPolicy(guard_level)
         hardcoded: list[str] = []
         if policy.catastrophic_shell_blocks:
@@ -253,10 +267,10 @@ class ExecTool(Tool):
     def name(self) -> str:
         return "exec"
 
-    _MAX_TIMEOUT = 600
-    _MAX_OUTPUT = 10_000
+    _MAX_TIMEOUT = 600  # 单次调用最大超时（秒）
+    _MAX_OUTPUT = 10_000  # 默认输出最大字符数
 
-    # Kernel device files safe as stdio redirect targets (#3599).
+    # 可安全作为 stdio 重定向目标的内核设备文件（#3599）
     _BENIGN_DEVICE_PATHS: frozenset[str] = frozenset({
         "/dev/null",
         "/dev/zero",
@@ -297,6 +311,23 @@ class ExecTool(Tool):
         max_output_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
+        """执行 shell 命令并返回输出。
+
+        参数:
+            command: 要执行的 shell 命令（cmd 为兼容别名）。
+            cmd: command 的兼容别名。
+            working_dir: 可选的工作目录（workdir 为兼容别名）。
+            workdir: working_dir 的兼容别名。
+            timeout: 超时秒数（默认 60，最大 600）。
+            shell: 可选的 shell 程序（Unix 支持 sh/bash/zsh）。
+            login: 是否以 login shell 方式运行 bash/zsh（默认 true）。
+            yield_time_ms: 等待毫秒数；设置后仍在运行的命令返回 session_id。
+            max_output_chars: 返回的最大输出字符数（默认 10000，最大 50000）。
+            max_output_tokens: max_output_chars 的兼容别名。
+
+        返回:
+            命令输出（stdout + stderr + 退出码）；超时或错误时返回错误信息。
+        """
         command = command or cmd
         working_dir = working_dir or workdir
         if not command:
@@ -366,6 +397,7 @@ class ExecTool(Tool):
         yield_time_ms: int | None,
         max_output_chars: int | None,
     ) -> str:
+        """以会话模式启动命令，返回可轮询的 session_id。"""
         try:
             session_id, poll = await self._session_manager.start(
                 command=prepared.command,
@@ -388,12 +420,11 @@ class ExecTool(Tool):
             return f"Error executing command: {exc}"
 
     def _resolve_timeout(self, timeout: int | None) -> int | None:
-        """Resolve the effective hard timeout in seconds (None = no limit).
+        """解析有效的硬超时（秒），None 表示无限制。
 
-        A per-call timeout supplied by the model stays capped at _MAX_TIMEOUT so
-        the LLM cannot request unbounded execution. The config-level default
-        (self.timeout) may exceed that cap, and 0 disables the limit entirely
-        for trusted long-running tasks (#3595).
+        模型提供的单次调用超时始终被 _MAX_TIMEOUT 封顶，防止 LLM 请求无限制
+        执行。配置级默认值（self.timeout）可超过该上限，0 表示完全禁用限制
+        用于可信的长时间运行任务（#3595）。
         """
         if timeout:
             return min(timeout, self._MAX_TIMEOUT)
@@ -409,6 +440,10 @@ class ExecTool(Tool):
         shell: str | None = None,
         login: bool | None = None,
     ) -> _PreparedCommand | str:
+        """准备命令：解析工作区、守卫检查、沙箱包装、构建环境变量。
+
+        返回 ``_PreparedCommand`` 或错误字符串。
+        """
         access = current_tool_workspace(
             self.working_dir,
             restrict_to_workspace=self.restrict_to_workspace,
@@ -582,14 +617,13 @@ class ExecTool(Tool):
                     logger.debug("Process already reaped or not found: {}", e)
 
     def _build_env(self) -> dict[str, str]:
-        """Build a minimal environment for subprocess execution.
+        """为子进程构建最小环境变量集合。
 
-        On Unix, only HOME/LANG/TERM are passed; ``bash -l`` sources the
-        user's profile which sets PATH and other essentials.
+        Unix 上仅传递 HOME/LANG/TERM；``bash -l`` 会 source 用户 profile 来
+        设置 PATH 及其他必需变量。
 
-        On Windows, ``cmd.exe`` has no login-profile mechanism, so a curated
-        set of system variables (including PATH) is forwarded.  API keys and
-        other secrets are still excluded.
+        Windows 上 ``cmd.exe`` 没有 login-profile 机制，因此转发一组精选的
+        系统变量（含 PATH）。API key 和其他密钥始终被排除。
         """
         if _IS_WINDOWS:
             sr = os.environ.get("SYSTEMROOT", r"C:\Windows")
@@ -636,7 +670,11 @@ class ExecTool(Tool):
         *,
         restrict_to_workspace: bool | None = None,
     ) -> str | None:
-        """Best-effort safety guard for potentially destructive commands."""
+        """对潜在破坏性命令进行尽力而为的安全守卫检查。
+
+        检查顺序：allow_patterns 优先 → deny_patterns → SSRF 内网 URL →
+        工作区边界（路径穿越与绝对路径）。返回错误字符串或 None（通过）。
+        """
         cmd = command.strip()
         lower = cmd.lower()
 
@@ -703,7 +741,7 @@ class ExecTool(Tool):
 
     @classmethod
     def _is_benign_device_path(cls, path: str) -> bool:
-        """Return True for kernel device files that should never be workspace-blocked."""
+        """判断是否为不应被工作区边界拦截的内核设备文件。"""
         if path in cls._BENIGN_DEVICE_PATHS:
             return True
         return path.startswith("/dev/fd/")

@@ -1,28 +1,45 @@
-"""Channel manager for coordinating chat channels."""
+"""渠道管理器，负责协调各聊天渠道的生命周期与消息路由。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/channels 目录，是 Channel（聊天平台接入）层的核心协调组件。
+在项目架构中起到的作用：管理所有已启用的渠道实例，负责渠道的初始化、启动、停止，
+并将出站消息从消息总线分发到正确的目标渠道。
+
+平台特点与接入方式
+------------------
+- 渠道发现：通过 pkgutil 扫描内置渠道模块 + entry_points 加载外部插件。
+- 生命周期：统一管理各渠道的启动与停止，支持优雅关闭。
+- 消息路由：从消息总线消费出站消息，按渠道名称分发到对应实例。
+- 重试机制：出站消息发送失败时采用指数退避重试（1s、2s、4s）。
+- 流式合并：将同一会话的连续流式 delta 消息合并，减少 API 调用。
+- 去重抑制：基于内容指纹对重复回复进行抑制，避免重复发送。
+- 布尔覆盖：支持渠道级别覆盖全局的 send_progress/send_tool_hints/show_reasoning 配置。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import hashlib
-from collections.abc import Callable
-from contextlib import suppress
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import asyncio  # 异步事件循环与任务管理
+import hashlib  # 内容指纹计算（用于去重）
+from collections.abc import Callable  # 可调用对象类型注解
+from contextlib import suppress  # 上下文管理器，抑制指定异常
+from pathlib import Path  # 路径处理（webui 静态资源目录）
+from typing import TYPE_CHECKING, Any  # 类型注解支持
 
-from loguru import logger
+from loguru import logger  # 日志记录
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.config.schema import Config
-from biscuitbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message
+from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.config.schema import Config  # 全局配置模型
+from biscuitbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message  # 重启通知处理
 
 if TYPE_CHECKING:
-    from biscuitbot.session.manager import SessionManager
+    from biscuitbot.session.manager import SessionManager  # 会话管理器（仅类型检查时导入）
 
 
 def _default_webui_dist() -> Path | None:
-    """Return the absolute path to the bundled webui dist directory if it exists."""
+    """返回内置 webui dist 目录的绝对路径（如存在）。"""
     try:
         import biscuitbot.web as web_pkg  # type: ignore[import-not-found]
     except ImportError:
@@ -31,9 +48,10 @@ def _default_webui_dist() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-# Retry delays for message sending (exponential backoff: 1s, 2s, 4s)
+# 消息发送重试延迟（指数退避：1秒、2秒、4秒）
 _SEND_RETRY_DELAYS = (1, 2, 4)
 
+# 布尔配置项的驼峰命名别名映射（用于兼容 JSON/TOML 原始配置）
 _BOOL_CAMEL_ALIASES: dict[str, str] = {
     "send_progress": "sendProgress",
     "send_tool_hints": "sendToolHints",
@@ -41,13 +59,12 @@ _BOOL_CAMEL_ALIASES: dict[str, str] = {
 }
 
 class ChannelManager:
-    """
-    Manages chat channels and coordinates message routing.
+    """渠道管理器，负责管理聊天渠道并协调消息路由。
 
-    Responsibilities:
-    - Initialize enabled channels (Telegram, WhatsApp, etc.)
-    - Start/stop channels
-    - Route outbound messages
+    职责：
+    - 初始化已启用的渠道（Telegram、WhatsApp 等）
+    - 启动/停止渠道
+    - 路由出站消息到目标渠道
     """
 
     def __init__(
@@ -65,21 +82,21 @@ class ChannelManager:
     ):
         self.config = config
         self.bus = bus
-        self._session_manager = session_manager
-        self._cron_service = cron_service
-        self._webui_runtime_model_name = webui_runtime_model_name
-        self._webui_cron_pending_job_ids = webui_cron_pending_job_ids
-        self._webui_static_dist = webui_static_dist
-        self._webui_runtime_surface = webui_runtime_surface
-        self._webui_runtime_capabilities = dict(webui_runtime_capabilities or {})
-        self.channels: dict[str, BaseChannel] = {}
-        self._dispatch_task: asyncio.Task | None = None
-        self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}
+        self._session_manager = session_manager  # 会话管理器（可选）
+        self._cron_service = cron_service  # 定时任务服务（可选）
+        self._webui_runtime_model_name = webui_runtime_model_name  # webui 运行时模型名回调
+        self._webui_cron_pending_job_ids = webui_cron_pending_job_ids  # webui 待处理定时任务 ID 回调
+        self._webui_static_dist = webui_static_dist  # 是否使用内置 webui 静态资源
+        self._webui_runtime_surface = webui_runtime_surface  # webui 运行时展示方式
+        self._webui_runtime_capabilities = dict(webui_runtime_capabilities or {})  # webui 运行时能力
+        self.channels: dict[str, BaseChannel] = {}  # 已初始化的渠道实例映射
+        self._dispatch_task: asyncio.Task | None = None  # 出站消息分发任务
+        self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}  # 原始消息回复指纹缓存（去重）
 
         self._init_channels()
 
     def _init_channels(self) -> None:
-        """Initialize channels discovered via pkgutil scan + entry_points plugins."""
+        """通过 pkgutil 扫描 + entry_points 插件发现并初始化已启用的渠道。"""
         from biscuitbot.channels.registry import discover_channel_names, discover_enabled
 
         # Collect enabled module names first, then only import those.
@@ -150,6 +167,7 @@ class ChannelManager:
         self._validate_allow_from()
 
     def _validate_allow_from(self) -> None:
+        """校验各渠道的 allowFrom 配置，未配置时进入配对模式。"""
         for name, ch in self.channels.items():
             cfg = ch.config
             if isinstance(cfg, dict):
@@ -168,7 +186,7 @@ class ChannelManager:
                 )
 
     def _should_send_progress(self, channel_name: str, *, tool_hint: bool = False) -> bool:
-        """Return whether progress (or tool-hints) may be sent to *channel_name*."""
+        """判断是否允许向 *channel_name* 发送进度（或工具提示）消息。"""
         ch = self.channels.get(channel_name)
         if ch is None:
             logger.warning("Progress check for unknown channel: {}", channel_name)
@@ -176,11 +194,11 @@ class ChannelManager:
         return ch.send_tool_hints if tool_hint else ch.send_progress
 
     def _resolve_bool_override(self, section: Any, key: str, default: bool) -> bool:
-        """Return *key* from *section* if it is a bool, otherwise *default*.
+        """从 *section* 中返回 *key* 的布尔值，否则返回 *default*。
 
-        For dict configs also checks the camelCase alias (e.g. ``sendProgress``
-        for ``send_progress``) so raw JSON/TOML configs work alongside
-        Pydantic models.
+        对于字典配置，还会检查驼峰命名别名（如 ``sendProgress``
+        对应 ``send_progress``），使原始 JSON/TOML 配置能与
+        Pydantic 模型协同工作。
         """
         if isinstance(section, dict):
             value = section.get(key)
@@ -193,14 +211,14 @@ class ChannelManager:
         return value if isinstance(value, bool) else default
 
     async def _start_channel(self, name: str, channel: BaseChannel) -> None:
-        """Start a channel and log any exceptions."""
+        """启动单个渠道并记录异常。"""
         try:
             await channel.start()
         except Exception:
             logger.exception("Failed to start channel {}", name)
 
     async def start_all(self) -> None:
-        """Start all channels and the outbound dispatcher."""
+        """启动所有渠道及出站消息分发器。"""
         if not self.channels:
             logger.warning("No channels enabled")
             return
@@ -220,7 +238,7 @@ class ChannelManager:
         await asyncio.gather(*tasks, return_exceptions=True)
 
     def _notify_restart_done_if_needed(self) -> None:
-        """Send restart completion message when runtime env markers are present."""
+        """当运行时环境标记存在时，发送重启完成通知消息。"""
         notice = consume_restart_notice_from_env()
         if not notice:
             return
@@ -238,7 +256,7 @@ class ChannelManager:
         ))
 
     async def stop_all(self) -> None:
-        """Stop all channels and the dispatcher."""
+        """停止所有渠道及分发器。"""
         logger.info("Stopping all channels...")
 
         # Stop dispatcher
@@ -257,10 +275,12 @@ class ChannelManager:
 
     @staticmethod
     def _fingerprint_content(content: str) -> str:
+        """计算消息内容的归一化 SHA-1 指纹（用于去重判断）。"""
         normalized = " ".join(content.split())
         return hashlib.sha1(normalized.encode("utf-8")).hexdigest() if normalized else ""
 
     def _should_suppress_outbound(self, msg: OutboundMessage) -> bool:
+        """判断出站消息是否应被抑制（重复内容去重）。"""
         metadata = msg.metadata or {}
         if metadata.get("_progress"):
             return False
@@ -283,7 +303,7 @@ class ChannelManager:
         return False
 
     async def _dispatch_outbound(self) -> None:
-        """Dispatch outbound messages to the appropriate channel."""
+        """将出站消息分发到对应的渠道。"""
         logger.info("Outbound dispatcher started")
 
         # Buffer for messages that couldn't be processed during delta coalescing
@@ -367,7 +387,7 @@ class ChannelManager:
 
     @staticmethod
     async def _send_once(channel: BaseChannel, msg: OutboundMessage) -> None:
-        """Send one outbound message without retry policy."""
+        """发送单条出站消息，不应用重试策略。"""
         if msg.metadata.get("_reasoning_end"):
             await channel.send_reasoning_end(msg.chat_id, msg.metadata)
         elif msg.metadata.get("_reasoning_delta"):
@@ -392,13 +412,13 @@ class ChannelManager:
     def _coalesce_stream_deltas(
         self, first_msg: OutboundMessage
     ) -> tuple[OutboundMessage, list[OutboundMessage]]:
-        """Merge consecutive _stream_delta messages for the same (channel, chat_id).
+        """合并同一 (channel, chat_id) 的连续 _stream_delta 消息。
 
-        This reduces the number of API calls when the queue has accumulated multiple
-        deltas, which happens when LLM generates faster than the channel can process.
+        当队列中累积了多个 delta 时（LLM 生成速度超过渠道处理速度时发生），
+        此方法可减少 API 调用次数。
 
         Returns:
-            tuple of (merged_message, list_of_non_matching_messages)
+            (合并后的消息, 非匹配消息列表) 的元组
         """
         target_key = (first_msg.channel, first_msg.chat_id)
         combined_content = first_msg.content
@@ -440,9 +460,9 @@ class ChannelManager:
         return merged, non_matching
 
     async def _send_with_retry(self, channel: BaseChannel, msg: OutboundMessage) -> None:
-        """Send a message with retry on failure using exponential backoff.
+        """发送消息，失败时使用指数退避重试。
 
-        Note: CancelledError is re-raised to allow graceful shutdown.
+        注意：CancelledError 会被重新抛出以支持优雅关闭。
         """
         max_attempts = max(self.config.channels.send_max_retries, 1)
 
@@ -470,11 +490,11 @@ class ChannelManager:
                     raise  # Propagate cancellation during sleep
 
     def get_channel(self, name: str) -> BaseChannel | None:
-        """Get a channel by name."""
+        """按名称获取渠道实例。"""
         return self.channels.get(name)
 
     def get_status(self) -> dict[str, Any]:
-        """Get status of all channels."""
+        """获取所有渠道的运行状态。"""
         return {
             name: {
                 "enabled": True,
@@ -485,5 +505,5 @@ class ChannelManager:
 
     @property
     def enabled_channels(self) -> list[str]:
-        """Get list of enabled channel names."""
+        """获取已启用的渠道名称列表。"""
         return list(self.channels.keys())

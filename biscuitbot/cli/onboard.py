@@ -1,30 +1,41 @@
-"""biscuitbot 交互式配置引导问卷。"""
+"""biscuitbot 交互式配置引导问卷。
 
-import json
-import types
-from dataclasses import dataclass
-from functools import lru_cache
-from typing import Any, Literal, NamedTuple, get_args, get_origin
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/cli 目录，是 CLI 模块中的交互式配置引导组件。
+在项目架构中起到的作用：
+- 通过 questionary / prompt_toolkit 提供多级菜单式的配置向导；
+- 覆盖 LLM Provider、模型预设、聊天 Channel、Agent、API、Gateway、
+  Tools、MCP 服务器、语音转录等所有可配置项；
+- 基于反射自动适配 Pydantic 模型字段，避免手写表单；
+- 对敏感字段（如 api_key）做掩码处理，保证配置安全展示。
+"""
+
+import json  # JSON 编解码，用于 dict 字段的输入解析
+import types  # 类型内省，用于识别 UnionType 等
+from dataclasses import dataclass  # 数据类装饰器，用于 OnboardResult
+from functools import lru_cache  # 缓存装饰器，用于 provider/channel 信息查询
+from typing import Any, Literal, NamedTuple, get_args, get_origin  # 类型提示工具
 
 try:
-    import questionary
+    import questionary  # 交互式问答库，提供 select/text/confirm 等组件
 except ModuleNotFoundError:  # pragma: no cover - exercised in environments without wizard deps
     questionary = None
-from loguru import logger
-from pydantic import BaseModel
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+from loguru import logger  # 日志记录
+from pydantic import BaseModel  # Pydantic 基础模型类
+from rich.console import Console  # Rich 终端控制台
+from rich.panel import Panel  # Rich 面板组件
+from rich.table import Table  # Rich 表格组件
 
-from biscuitbot.cli.models import (
+from biscuitbot.cli.models import (  # 模型信息辅助工具
     format_token_count,
     get_model_context_limit,
     get_model_suggestions,
 )
-from biscuitbot.config.loader import get_config_path, load_config
-from biscuitbot.config.schema import Config, ModelPresetConfig
+from biscuitbot.config.loader import get_config_path, load_config  # 配置文件加载
+from biscuitbot.config.schema import Config, ModelPresetConfig  # 配置 schema 定义
 
-console = Console()
+console = Console()  # 全局 Rich 控制台实例
 
 
 @dataclass
@@ -234,7 +245,7 @@ def _get_field_display_name(field_key: str, field_info) -> str:
 
 # --- Sensitive Field Masking ---
 
-_SENSITIVE_KEYWORDS = frozenset({"api_key", "token", "secret", "password", "credentials"})
+_SENSITIVE_KEYWORDS = frozenset({"api_key", "token", "secret", "password", "credentials"})  # 敏感字段关键词集合，用于判定是否对值打码
 
 
 def _is_sensitive_field(field_name: str) -> bool:
@@ -680,6 +691,7 @@ def _handle_fallback_models_field(
             items.clear()
 
 
+# 字段名 -> 专用处理器映射，针对需要特殊交互的字段（如自动补全、推荐值等）
 _FIELD_HANDLERS: dict[str, Any] = {
     "model": _handle_model_field,
     "context_window_tokens": _handle_context_window_field,
@@ -1331,6 +1343,7 @@ def _remove_mcp_server(config: Config) -> None:
 
 # --- General Settings ---
 
+# 通用设置分区元信息：键 -> (显示名, 副标题, 需跳过的字段集合)
 _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
     "Agent Settings": ("Agent 默认设置", "配置默认模型、温度及行为参数", None),
     "Channel Common": ("Channel 通用设置", "配置跨 channel 行为：进度推送、工具提示、重试次数", None),
@@ -1340,6 +1353,7 @@ _SETTINGS_SECTIONS: dict[str, tuple[str, str, set[str] | None]] = {
     "Transcription": ("语音转录", "配置语音转文字（provider/model/language/时长限制）", None),
 }
 
+# 各分区对应的配置读取函数
 _SETTINGS_GETTER = {
     "Agent Settings": lambda c: c.agents.defaults,
     "Channel Common": lambda c: c.channels,
@@ -1349,6 +1363,7 @@ _SETTINGS_GETTER = {
     "Transcription": lambda c: c.transcription,
 }
 
+# 各分区对应的配置写回函数
 _SETTINGS_SETTER = {
     "Agent Settings": lambda c, v: setattr(c.agents, "defaults", v),
     "Channel Common": lambda c, v: setattr(c, "channels", v),

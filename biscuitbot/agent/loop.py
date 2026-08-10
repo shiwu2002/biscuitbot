@@ -1,69 +1,84 @@
-"""Agent loop: the core processing engine."""
+"""Agent 主循环：核心处理引擎。
+
+所属模块与项目作用
+===================
+本文件位于 ``biscuitbot/agent`` 目录，是 Agent 模块的核心处理引擎。
+在项目架构中起到的作用：
+- ``AgentLoop`` 是整个 Agent 的中枢，负责从消息总线消费入站消息、按会话串行/
+  跨会话并发地派发任务，并驱动一次轮次的完整状态机流转；
+- 一次轮次经过 RESTORE → COMPACT → COMMAND → BUILD → RUN → SAVE → RESPOND → DONE
+  的状态机，依次完成会话恢复、自动压缩、命令分发、上下文构建、LLM 迭代执行、
+  结果持久化与响应装配；
+- 管理 MCP 服务器连接（含跨任务 anyio 取消作用域的处理）、子代理、工具注册表、
+  会话锁、并发闸门、模型预设切换、运行时事件发布等子系统能力；
+- 通过 ``AutoCompact``/``Consolidator``/``CronTurnCoordinator`` 等协作组件，
+  实现空闲会话压缩、按 token 阈值合并、定时轮次调度等高级行为。
+"""
 
 from __future__ import annotations
 
-import asyncio
-import dataclasses
-import os
-import time
-from contextlib import AsyncExitStack, nullcontext, suppress
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from functools import partial
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+import asyncio  # 异步任务、锁、信号量与队列支持
+import dataclasses  # 用于不可变消息的 replace，构造带 override 的副本
+import os  # 读取环境变量（如最大并发请求数）
+import time  # 时间测量与时间戳生成
+from contextlib import AsyncExitStack, nullcontext, suppress  # 异步退出栈与上下文工具
+from dataclasses import dataclass, field  # 数据类定义
+from enum import Enum, auto  # 枚举类型，用于轮次状态机
+from functools import partial  # 偏函数，绑定回调参数
+from pathlib import Path  # 路径处理
+from typing import TYPE_CHECKING, Any, Awaitable, Callable  # 类型注解支持
 
-from loguru import logger
+from loguru import logger  # 日志记录
 
-from biscuitbot.agent import context as agent_context
-from biscuitbot.agent import model_presets as preset_helpers
-from biscuitbot.agent.autocompact import AutoCompact
-from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.agent.cron_turns import CronTurnCoordinator
-from biscuitbot.agent.hook import AgentHook, CompositeHook
-from biscuitbot.agent.memory import Consolidator
-from biscuitbot.agent.progress_hook import AgentProgressHook
-from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec
-from biscuitbot.agent.subagent import SubagentManager
-from biscuitbot.agent.tools.context import RequestContext, bind_request_context, reset_request_context
-from biscuitbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states
-from biscuitbot.agent.tools.message import MessageTool
-from biscuitbot.agent.tools.registry import ToolRegistry
-from biscuitbot.agent.tools.self import MyTool
-from biscuitbot.bus.events import InboundMessage, OutboundMessage
-from biscuitbot.bus.progress import build_bus_progress_callback
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.bus.runtime_events import (
+from biscuitbot.agent import context as agent_context  # Agent 上下文相关辅助函数集合
+from biscuitbot.agent import model_presets as preset_helpers  # 模型预设辅助函数
+from biscuitbot.agent.autocompact import AutoCompact  # 空闲会话自动压缩器
+from biscuitbot.agent.context import ContextBuilder  # 上下文构建器
+from biscuitbot.agent.cron_turns import CronTurnCoordinator  # cron 轮次协调器
+from biscuitbot.agent.hook import AgentHook, CompositeHook  # 生命周期钩子与组合钩子
+from biscuitbot.agent.memory import Consolidator  # 记忆合并器
+from biscuitbot.agent.progress_hook import AgentProgressHook  # 进度/流式输出钩子
+from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec  # Runner 与运行规格
+from biscuitbot.agent.subagent import SubagentManager  # 子代理管理器
+from biscuitbot.agent.tools.context import RequestContext, bind_request_context, reset_request_context  # 请求上下文绑定
+from biscuitbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states  # 文件状态跟踪
+from biscuitbot.agent.tools.message import MessageTool  # 消息工具（用于抑制响应等判断）
+from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表
+from biscuitbot.agent.tools.self import MyTool  # 自我状态查询工具
+from biscuitbot.bus.events import InboundMessage, OutboundMessage  # 入/出站消息类型
+from biscuitbot.bus.progress import build_bus_progress_callback  # 总线进度回调构建
+from biscuitbot.bus.queue import MessageBus  # 消息总线
+from biscuitbot.bus.runtime_events import (  # 运行时事件总线与发布器
     RuntimeEventBus,
     RuntimeEventPublisher,
     ensure_runtime_event_publisher,
 )
-from biscuitbot.command import CommandContext, CommandRouter, register_builtin_commands
-from biscuitbot.config.schema import AgentDefaults, ModelPresetConfig
-from biscuitbot.cron.session_turns import (
+from biscuitbot.command import CommandContext, CommandRouter, register_builtin_commands  # 命令路由与内置命令注册
+from biscuitbot.config.schema import AgentDefaults, ModelPresetConfig  # Agent 默认配置与模型预设配置
+from biscuitbot.cron.session_turns import (  # cron 会话轮次辅助
     cron_history_overrides,
 )
-from biscuitbot.providers.base import LLMProvider
-from biscuitbot.providers.factory import ProviderSnapshot
-from biscuitbot.security.workspace_access import (
+from biscuitbot.providers.base import LLMProvider  # LLM 提供商基类
+from biscuitbot.providers.factory import ProviderSnapshot  # 提供商快照
+from biscuitbot.security.workspace_access import (  # 工作区访问范围解析与绑定
     WorkspaceScopeResolver,
     bind_workspace_scope,
     reset_workspace_scope,
 )
-from biscuitbot.session import turn_continuation
-from biscuitbot.session.goal_state import (
+from biscuitbot.session import turn_continuation  # 轮次延续相关逻辑
+from biscuitbot.session.goal_state import (  # 目标状态相关
     goal_state_runtime_lines,
     runner_wall_llm_timeout_s,
     sustained_goal_active,
 )
-from biscuitbot.session.keys import UNIFIED_SESSION_KEY, session_key_for_channel
-from biscuitbot.session.manager import Session, SessionManager
-from biscuitbot.utils.document import extract_documents, reference_non_image_attachments
-from biscuitbot.utils.helpers import image_placeholder_text
-from biscuitbot.utils.helpers import truncate_text as truncate_text_fn
-from biscuitbot.utils.image_generation_intent import image_generation_prompt
-from biscuitbot.utils.llm_runtime import LLMRuntime
-from biscuitbot.utils.runtime import (
+from biscuitbot.session.keys import UNIFIED_SESSION_KEY, session_key_for_channel  # 会话 key 生成
+from biscuitbot.session.manager import Session, SessionManager  # 会话与 会话管理器
+from biscuitbot.utils.document import extract_documents, reference_non_image_attachments  # 文档抽取与附件引用
+from biscuitbot.utils.helpers import image_placeholder_text  # 图片占位文本
+from biscuitbot.utils.helpers import truncate_text as truncate_text_fn  # 文本截断（别名）
+from biscuitbot.utils.image_generation_intent import image_generation_prompt  # 图像生成意图识别
+from biscuitbot.utils.llm_runtime import LLMRuntime  # LLM 运行时信息
+from biscuitbot.utils.runtime import (  # 运行时常量
     EMPTY_FINAL_RESPONSE_MESSAGE,
 )
 
@@ -77,96 +92,120 @@ if TYPE_CHECKING:
 
 
 class TurnState(Enum):
-    RESTORE = auto()
-    COMPACT = auto()
-    COMMAND = auto()
-    BUILD = auto()
-    RUN = auto()
-    SAVE = auto()
-    RESPOND = auto()
-    DONE = auto()
+    """一次轮次的状态机枚举。
+
+    状态流转顺序：RESTORE → COMPACT → COMMAND → BUILD → RUN → SAVE → RESPOND → DONE。
+    其中 COMMAND 可由 "shortcut" 事件直接跳到 DONE（快捷命令无需走完整流程）。
+    """
+
+    RESTORE = auto()  # 恢复会话检查点/待处理用户轮次，并抽取文档
+    COMPACT = auto()  # 自动压缩：准备会话与压缩摘要
+    COMMAND = auto()  # 命令分发：判断是否为命令并处理
+    BUILD = auto()  # 构建上下文：历史、工具索引、初始消息
+    RUN = auto()  # 运行 Agent 迭代循环
+    SAVE = auto()  # 保存轮次结果到会话
+    RESPOND = auto()  # 装配出站响应
+    DONE = auto()  # 完成
 
 
 @dataclass
 class StateTraceEntry:
-    state: TurnState
-    started_at: float
-    duration_ms: float
-    event: str
-    error: str | None = None
+    """状态机单步执行轨迹条目，用于追踪与运行时事件发布。"""
+
+    state: TurnState  # 该步对应的状态
+    started_at: float  # 开始时间（perf_counter）
+    duration_ms: float  # 耗时（毫秒）
+    event: str  # 该步返回的事件名
+    error: str | None = None  # 错误标记（异常时为 "exception"）
 
 
 @dataclass
 class TurnContext:
-    msg: InboundMessage
-    session_key: str
-    state: TurnState
-    turn_id: str
-    session: Session | None = None
+    """单次轮次的可变上下文，贯穿状态机各阶段。
 
-    history: list[dict[str, Any]] = field(default_factory=list)
-    initial_messages: list[dict[str, Any]] = field(default_factory=list)
+    职责与项目角色：
+    - 承载一次轮次处理过程中的全部中间状态（消息、历史、工具结果、回调等）；
+    - 由各状态处理器（``_state_*``）读写，驱动状态机推进；
+    - 记录运行轨迹（``trace``）与延迟指标，供运行时事件发布与诊断使用。
+    """
 
-    final_content: str | None = None
-    tools_used: list[str] = field(default_factory=list)
-    all_messages: list[dict[str, Any]] = field(default_factory=list)
-    stop_reason: str = ""
-    had_injections: bool = False
+    msg: InboundMessage  # 触发本轮的入站消息
+    session_key: str  # 会话 key
+    state: TurnState  # 当前状态机状态
+    turn_id: str  # 轮次唯一标识
+    session: Session | None = None  # 会话对象（由 _state_restore 填充）
 
-    user_persisted_early: bool = False
-    save_skip: int = 0
+    history: list[dict[str, Any]] = field(default_factory=list)  # 回放的历史消息
+    initial_messages: list[dict[str, Any]] = field(default_factory=list)  # 构建的初始消息列表
 
-    outbound: OutboundMessage | None = None
-    suppress_response: bool = False
+    final_content: str | None = None  # 最终正文内容
+    tools_used: list[str] = field(default_factory=list)  # 本轮使用的工具名
+    all_messages: list[dict[str, Any]] = field(default_factory=list)  # Runner 返回的全部消息
+    stop_reason: str = ""  # 停止原因
+    had_injections: bool = False  # 是否发生过中途消息注入
 
-    on_progress: Callable[..., Awaitable[None]] | None = None
-    on_stream: Callable[[str], Awaitable[None]] | None = None
-    on_stream_end: Callable[..., Awaitable[None]] | None = None
-    on_retry_wait: Callable[..., Awaitable[None]] | None = None
+    user_persisted_early: bool = False  # 用户消息是否已提前持久化
+    save_skip: int = 0  # 保存时跳过的消息条数（已持久化的前缀）
 
-    pending_queue: asyncio.Queue | None = None
-    pending_summary: str | None = None
+    outbound: OutboundMessage | None = None  # 最终出站消息
+    suppress_response: bool = False  # 是否抑制响应输出
 
-    ephemeral: bool = False
-    tools: ToolRegistry | None = None
+    on_progress: Callable[..., Awaitable[None]] | None = None  # 进度回调
+    on_stream: Callable[[str], Awaitable[None]] | None = None  # 流式增量回调
+    on_stream_end: Callable[..., Awaitable[None]] | None = None  # 流式结束回调
+    on_retry_wait: Callable[..., Awaitable[None]] | None = None  # 重试等待回调
 
-    turn_wall_started_at: float = field(default_factory=time.time)
-    visible_run_started_at: float | None = None
-    turn_latency_ms: int | None = None
+    pending_queue: asyncio.Queue | None = None  # 中途注入消息队列
+    pending_summary: str | None = None  # 自动压缩摘要
 
-    trace: list[StateTraceEntry] = field(default_factory=list)
+    ephemeral: bool = False  # 是否为临时轮次（不持久化）
+    tools: ToolRegistry | None = None  # 本轮使用的工具注册表（可覆盖默认）
+
+    turn_wall_started_at: float = field(default_factory=time.time)  # 轮次墙钟开始时间
+    visible_run_started_at: float | None = None  # 可见运行开始时间
+    turn_latency_ms: int | None = None  # 轮次延迟（毫秒）
+
+    trace: list[StateTraceEntry] = field(default_factory=list)  # 状态机执行轨迹
 
 
 class AgentLoop:
-    """
-    The agent loop is the core processing engine.
+    """Agent 核心处理引擎。
 
-    It:
-    1. Receives messages from the bus
-    2. Builds context with history, memory, skills
-    3. Calls the LLM
-    4. Executes tool calls
-    5. Sends responses back
+    职责与项目角色：
+    - 作为整个 Agent 的中枢，从消息总线消费入站消息并按会话派发任务；
+    - 驱动一次轮次的完整状态机流转（RESTORE → ... → DONE）；
+    - 管理 MCP 连接、子代理、工具注册表、会话锁、并发闸门、模型预设切换等；
+    - 协作 ``AutoCompact``/``Consolidator``/``CronTurnCoordinator`` 等组件完成
+      压缩、合并与定时调度。
+
+    典型流程：
+    1. 从总线接收消息；
+    2. 用历史、记忆、技能构建上下文；
+    3. 调用 LLM；
+    4. 执行工具调用；
+    5. 发送响应回去。
     """
 
     @property
     def current_iteration(self) -> int:
+        """当前迭代序号（由 Runner 通过钩子回写）。"""
         return self._current_iteration
 
     @property
     def tool_names(self) -> list[str]:
+        """已注册的工具名列表。"""
         return self.tools.tool_names
 
     def llm_runtime(self) -> LLMRuntime:
-        """Return the current provider/model pair owned by this loop."""
+        """返回本循环当前持有的 provider/model 对。"""
         self._refresh_provider_snapshot()
         return LLMRuntime(self.provider, self.model)
 
-    _RUNTIME_CHECKPOINT_KEY = "runtime_checkpoint"
-    _PENDING_USER_TURN_KEY = "pending_user_turn"
+    _RUNTIME_CHECKPOINT_KEY = "runtime_checkpoint"  # 会话元数据中存放运行时检查点的 key
+    _PENDING_USER_TURN_KEY = "pending_user_turn"  # 会话元数据中标记“用户消息已提前持久化但未生成响应”的 key
 
-    # Event-driven state transition table.
-    # Handlers return an event string; the driver looks up the next state here.
+    # 事件驱动的状态转换表。
+    # 各处理器返回一个事件字符串；驱动循环据此查表得到下一状态。
     _TRANSITIONS: dict[tuple[TurnState, str], TurnState] = {
         (TurnState.RESTORE, "ok"): TurnState.COMPACT,
         (TurnState.COMPACT, "ok"): TurnState.COMMAND,
@@ -217,20 +256,20 @@ class AgentLoop:
     ):
         from biscuitbot.config.schema import ToolsConfig
 
-        _tc = tools_config or ToolsConfig()
-        defaults = AgentDefaults()
-        self.bus = bus
-        self.runtime_events = runtime_events or RuntimeEventBus()
-        self.runtime_event_publisher = RuntimeEventPublisher(self.runtime_events)
-        self.channels_config = channels_config
-        self.provider = provider
-        self._provider_snapshot_loader = provider_snapshot_loader
-        self._preset_snapshot_loader = preset_snapshot_loader
-        self._runtime_model_publisher = runtime_model_publisher
-        self._provider_signature = provider_signature
-        self._default_selection_signature = preset_helpers.default_selection_signature(provider_signature)
-        self.workspace = workspace
-        self.model = model or provider.get_default_model()
+        _tc = tools_config or ToolsConfig()  # 工具配置，缺省时使用空配置
+        defaults = AgentDefaults()  # Agent 默认值
+        self.bus = bus  # 消息总线
+        self.runtime_events = runtime_events or RuntimeEventBus()  # 运行时事件总线
+        self.runtime_event_publisher = RuntimeEventPublisher(self.runtime_events)  # 运行时事件发布器
+        self.channels_config = channels_config  # 渠道配置
+        self.provider = provider  # LLM 提供商
+        self._provider_snapshot_loader = provider_snapshot_loader  # 提供商快照加载器（运行时热更新）
+        self._preset_snapshot_loader = preset_snapshot_loader  # 模型预设快照加载器
+        self._runtime_model_publisher = runtime_model_publisher  # 运行时模型变更发布回调
+        self._provider_signature = provider_signature  # 当前提供商签名（用于变更检测）
+        self._default_selection_signature = preset_helpers.default_selection_signature(provider_signature)  # 默认选择签名
+        self.workspace = workspace  # 工作目录
+        self.model = model or provider.get_default_model()  # 当前模型名
         self.max_iterations = (
             max_iterations if max_iterations is not None else defaults.max_tool_iterations
         )
@@ -295,43 +334,39 @@ class AgentLoop:
             max_concurrent_subagents=max_concurrent_subagents,
             llm_wall_timeout_for_session=lambda sk: runner_wall_llm_timeout_s(self.sessions, sk),
         )
-        self._unified_session = unified_session
-        self._max_messages = max_messages if max_messages > 0 else 120
-        self._running = False
-        self._mcp_servers = mcp_servers or {}
-        self._mcp_stacks: dict[str, AsyncExitStack] = {}
-        # anyio cancel scopes (used by MCP stdio_client) are task-local: they
-        # must be exited in the same task that entered them. _mcp_owner_task
-        # records the task that called _connect_mcp (i.e. run()). When a
-        # _dispatch sub-task triggers a reconnect, it can't close the old stack
-        # directly — instead it moves the stack to _mcp_deferred_stacks, and
-        # the owner task closes them via _close_deferred_mcp_stacks().
-        self._mcp_owner_task: asyncio.Task | None = None
-        self._mcp_deferred_stacks: list[tuple[str, AsyncExitStack]] = []
-        # Reconnect requests deferred from _dispatch sub-tasks. Each entry is
-        # (server_name, tool_name, stale_tool, future). The sub-task enqueues
-        # and awaits the future; the owner task drains the queue from
-        # _run_main_loop's idle branch via _process_mcp_reconnects() and runs
-        # _refresh_terminated_server itself, so the NEW stack's cancel scopes
-        # are entered in the owner task (matching where they'll be closed).
-        self._mcp_reconnect_requests: list[tuple[str, str, Any, asyncio.Future]] = []
-        self._mcp_connected = False
-        self._mcp_connecting = False
-        self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
-        self._background_tasks: list[asyncio.Task] = []
-        self._session_locks: dict[str, asyncio.Lock] = {}
-        # Per-session pending queues for mid-turn message injection.
-        # When a session has an active task, new messages for that session
-        # are routed here instead of creating a new task.
-        self._pending_queues: dict[str, asyncio.Queue] = {}
-        self._cron_turns = CronTurnCoordinator(
+        self._unified_session = unified_session  # 是否启用统一会话模式
+        self._max_messages = max_messages if max_messages > 0 else 120  # 历史回放最大消息数
+        self._running = False  # 主循环运行标志
+        self._mcp_servers = mcp_servers or {}  # 配置的 MCP 服务器
+        self._mcp_stacks: dict[str, AsyncExitStack] = {}  # 已建立的 MCP 连接栈：server_name -> AsyncExitStack
+        # anyio 取消作用域（MCP stdio_client 使用）是任务局部的：必须在进入它们的
+        # 同一任务中退出。_mcp_owner_task 记录调用 _connect_mcp 的任务（即 run()）。
+        # 当 _dispatch 子任务触发重连时，无法直接关闭旧栈——而是将栈移到
+        # _mcp_deferred_stacks，由 owner 任务通过 _close_deferred_mcp_stacks() 关闭。
+        self._mcp_owner_task: asyncio.Task | None = None  # MCP owner 任务（建立连接的任务）
+        self._mcp_deferred_stacks: list[tuple[str, AsyncExitStack]] = []  # 待 owner 任务关闭的延迟栈
+        # 从 _dispatch 子任务延迟的重连请求。每条为 (server_name, tool_name, stale_tool, future)。
+        # 子任务入队并 await future；owner 任务从 _run_main_loop 的空闲分支通过
+        # _process_mcp_reconnects() 排空队列并自行执行 _refresh_terminated_server，
+        # 使新栈的取消作用域在 owner 任务中进入（与关闭处匹配）。
+        self._mcp_reconnect_requests: list[tuple[str, str, Any, asyncio.Future]] = []  # 延迟重连请求列表
+        self._mcp_connected = False  # MCP 是否已连接
+        self._mcp_connecting = False  # MCP 是否正在连接中
+        self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> 活跃任务列表
+        self._background_tasks: list[asyncio.Task] = []  # 后台任务列表（关闭时排空）
+        self._session_locks: dict[str, asyncio.Lock] = {}  # 会话级锁，保证同会话串行
+        # 每会话的中途注入消息队列。
+        # 当某会话有活跃任务时，发往该会话的新消息会被路由到这里，
+        # 而不是创建一个竞争任务。
+        self._pending_queues: dict[str, asyncio.Queue] = {}  # session_key -> 注入队列
+        self._cron_turns = CronTurnCoordinator(  # cron 轮次协调器
             publish_inbound=self.bus.publish_inbound,
             dispatch=self._dispatch,
             is_running=lambda: self._running,
         )
-        # BISCUITBOT_MAX_CONCURRENT_REQUESTS: <=0 means unlimited; default 3.
+        # BISCUITBOT_MAX_CONCURRENT_REQUESTS：<=0 表示不限；默认 3。
         _max = int(os.environ.get("BISCUITBOT_MAX_CONCURRENT_REQUESTS", "3"))
-        self._concurrency_gate: asyncio.Semaphore | None = (
+        self._concurrency_gate: asyncio.Semaphore | None = (  # 跨会话并发闸门
             asyncio.Semaphore(_max) if _max > 0 else None
         )
         self.consolidator = Consolidator(
@@ -1619,7 +1654,11 @@ class AgentLoop:
         )
 
     async def _state_restore(self, ctx: TurnContext) -> str:
-        """Restore checkpoint / pending user turn; extract documents."""
+        """恢复检查点/待处理用户轮次，并抽取文档附件。
+
+        处理媒体附件（按需抽取文档文本或引用非图片附件），获取会话对象，
+        恢复运行时检查点与未完成的用户轮次，保证崩溃后上下文不丢失。
+        """
         msg = ctx.msg
 
         if msg.media:
@@ -1655,12 +1694,23 @@ class AgentLoop:
         return self.channels_config.extract_document_text
 
     async def _state_compact(self, ctx: TurnContext) -> str:
+        """执行自动压缩准备：获取会话与压缩摘要。
+
+        调用 ``AutoCompact.prepare_session``，若会话曾被打包归档，
+        则返回压缩摘要供后续 BUILD 阶段注入。
+        """
         assert ctx.session is not None  # set by _state_restore
         ctx.session, pending = self.auto_compact.prepare_session(ctx.session, ctx.session_key)
         ctx.pending_summary = pending
         return "ok"
 
     async def _state_command(self, ctx: TurnContext) -> str:
+        """命令分发：若匹配命令则处理并返回 shortcut，否则返回 dispatch 进入 BUILD。
+
+        快捷命令会跳过 BUILD 与 SAVE，因此在此处直接持久化轮次，
+        以便 WebUI 历史水合能看到消息；标记 ``_command`` 便于 get_history
+        将其从 LLM 上下文中过滤。``/new`` 例外（它会清空会话）。
+        """
         assert ctx.session is not None  # set by _state_restore
         raw = ctx.msg.content.strip()
         cmd_ctx = CommandContext(
@@ -1687,6 +1737,12 @@ class AgentLoop:
         return "dispatch"
 
     async def _state_build(self, ctx: TurnContext) -> str:
+        """构建上下文：合并记忆、设置工具上下文、回放历史、构建初始消息。
+
+        非临时轮次会先尝试按 token 阈值合并；随后设置工具上下文、重置
+        MessageTool 轮次状态、回放历史并构建初始消息列表；
+        若用户消息尚未持久化则提前持久化；最后准备进度与重试等待回调。
+        """
         assert ctx.session is not None  # set by _state_restore
         if not ctx.ephemeral:
             await self.consolidator.maybe_consolidate_by_tokens(
@@ -1734,6 +1790,12 @@ class AgentLoop:
         return "ok"
 
     async def _state_run(self, ctx: TurnContext) -> str:
+        """运行 Agent 迭代循环并收集结果。
+
+        发布 running 状态，调用 ``_run_agent_loop`` 执行 LLM 迭代与工具调用，
+        将结果（正文、工具名、消息、停止原因、是否注入）写回 ctx，
+        并交由 ``turn_continuation`` 判断是否需要延续轮次。
+        """
         if ctx.visible_run_started_at is None:
             ctx.visible_run_started_at = time.time()
         await self._runtime_events().run_status_changed(
@@ -1770,6 +1832,12 @@ class AgentLoop:
         return "ok"
 
     async def _state_save(self, ctx: TurnContext) -> str:
+        """保存轮次结果到会话：处理空响应、计算延迟、持久化与后台合并。
+
+        准备保存边界；若正文为空且未抑制响应则填入默认空响应消息；
+        计算轮次延迟并调用 ``_save_turn`` 持久化；非临时轮次会触发文件
+        容量限制与后台 token 合并；最后清理检查点并保存会话。
+        """
         assert ctx.session is not None  # set by _state_restore
         turn_continuation.prepare_save_boundary(ctx)
 
@@ -1810,6 +1878,10 @@ class AgentLoop:
         return "ok"
 
     async def _state_respond(self, ctx: TurnContext) -> str:
+        """装配出站响应：若抑制响应则返回 None，否则组装 OutboundMessage。
+
+        临时轮次会在出站元数据中附带 ``_stop_reason`` 供调用方判断。
+        """
         if ctx.suppress_response:
             ctx.outbound = None
             return "ok"

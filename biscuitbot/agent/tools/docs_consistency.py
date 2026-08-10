@@ -1,15 +1,18 @@
-"""Docs-code consistency checker for progressive discovery.
+"""文档-代码一致性检查器，服务于渐进式发现机制。
 
-Every tool has a ``_usage_md`` pointing to a ``docs/<name>.md`` usage doc.
-This module checks that those docs stay in sync with the actual tool code:
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统的文档一致性检查组件。
+在项目架构中起到的作用：每个工具都有 ``_usage_md`` 指向 ``docs/<name>.md``
+使用说明文档，本模块负责检查这些文档与实际工具代码保持同步：
 
-1. The md file exists.
-2. The md has a ``# <tool_name>`` title.
-3. The parameters table in the md matches ``tool.parameters`` schema.
-4. The ``_capability`` description is reflected in the md body.
+1. md 文件存在。
+2. md 包含 ``# <tool_name>`` 标题。
+3. md 中的参数表与 ``tool.parameters`` schema 一致。
+4. ``_capability`` 描述在 md 正文中有所体现。
 
-A scheduled system cron job (``docs_consistency_check``) runs this checker
-nightly; on mismatch it spawns a subagent to regenerate the stale docs.
+由系统定时任务（``docs_consistency_check``）每夜运行，发现不一致时
+派生子代理重新生成过时文档。
 """
 
 from __future__ import annotations
@@ -20,32 +23,42 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from biscuitbot.agent.tools.base import Tool
-    from biscuitbot.agent.tools.registry import ToolRegistry
+    from biscuitbot.agent.tools.base import Tool  # 工具基类，仅用于类型提示
+    from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表，仅用于类型提示
 
 
 @dataclass
 class DocsMismatch:
-    """A single tool whose docs are out of sync with its code."""
+    """单个工具的文档与代码不一致的记录。
 
-    tool_name: str
-    usage_md: str
-    source_file: str
-    issues: list[str] = field(default_factory=list)
+    用于汇总某个工具文档检查中发现的所有问题。
+    """
+
+    tool_name: str  # 工具名称
+    usage_md: str  # 使用说明文档路径
+    source_file: str  # 工具源码文件路径
+    issues: list[str] = field(default_factory=list)  # 发现的问题列表
 
 
 # ---------------------------------------------------------------------------
-# Path resolution
+# 路径解析
 # ---------------------------------------------------------------------------
 
-_TOOLS_DIR = Path(__file__).resolve().parent
+_TOOLS_DIR = Path(__file__).resolve().parent  # 工具包目录
 
 
 def _resolve_md_path(usage_md: str, workspace: Path) -> Path | None:
-    """Resolve ``_usage_md`` to an actual file path.
+    """将 ``_usage_md`` 解析为实际文件路径。
 
-    Built-in tools use ``docs/<name>.md`` relative to the tools package.
-    Custom tools may use a workspace-relative or absolute path.
+    内置工具使用相对于工具包的 ``docs/<name>.md``，
+    自定义工具可能使用工作区相对路径或绝对路径。
+
+    参数:
+        usage_md: 使用说明路径字符串。
+        workspace: 工作区路径。
+
+    返回:
+        文件存在时返回 Path，否则返回 None。
     """
     p = Path(usage_md)
     if p.is_absolute():
@@ -58,7 +71,7 @@ def _resolve_md_path(usage_md: str, workspace: Path) -> Path | None:
 
 
 def _resolve_source_file(tool: "Tool") -> str:
-    """Best-effort source-file path for the tool's Python module."""
+    """尽力获取工具 Python 模块的源码文件路径。"""
     module = getattr(tool.__class__, "__module__", "")
     if module and module.startswith("biscuitbot."):
         parts = module.split(".")
@@ -67,11 +80,11 @@ def _resolve_source_file(tool: "Tool") -> str:
 
 
 # ---------------------------------------------------------------------------
-# Parameter extraction
+# 参数提取
 # ---------------------------------------------------------------------------
 
 def _extract_schema_params(tool: "Tool") -> set[str] | None:
-    """Return parameter names from the tool's JSON schema, or None if N/A."""
+    """从工具的 JSON schema 中提取参数名集合，不适用时返回 None。"""
     params = tool.parameters
     if not isinstance(params, dict):
         return None
@@ -81,17 +94,23 @@ def _extract_schema_params(tool: "Tool") -> set[str] | None:
     return set(properties.keys()) if properties else set()
 
 
-_SECTION_HEADERS = ("参数", "Parameters", "参数说明", "参数列表")
+_SECTION_HEADERS = ("参数", "Parameters", "参数说明", "参数列表")  # 支持的参数章节标题
 
 
 def _extract_md_params(content: str) -> set[str] | None:
-    """Extract parameter names from the md's parameter table.
+    """从 md 的参数表中提取参数名。
 
-    Returns ``None`` when no parameter section is found (so the checker
-    can skip the param comparison instead of flagging a false mismatch).
+    未找到参数章节时返回 None（以便检查器跳过参数比较，而非误报不一致）。
+
+    参数:
+        content: md 文件内容。
+
+    返回:
+        参数名集合；无参数章节时返回 None。
     """
     lines = content.splitlines()
     start = -1
+    # 定位参数章节起始行
     for i, line in enumerate(lines):
         stripped = line.strip().lower()
         for header in _SECTION_HEADERS:
@@ -104,44 +123,44 @@ def _extract_md_params(content: str) -> set[str] | None:
         return None
 
     params: set[str] = set()
-    seen_separator = False
-    in_table = False
+    seen_separator = False  # 是否已遇到表格分隔行
+    in_table = False  # 是否已进入数据行区域
     for line in lines[start:]:
         stripped = line.strip()
-        # Stop at the next section header
+        # 遇到下一个章节标题则停止
         if stripped.startswith("## ") or stripped.startswith("# "):
             break
-        # Parse table rows: | param_name | type | ... |
+        # 解析表格行：| param_name | type | ... |
         if not stripped.startswith("|"):
-            # Non-table line after we've started collecting data rows
-            # stops the main parameter table (avoids nested sub-tables).
+            # 数据行之后遇到非表格行则结束主参数表（避免误读嵌套子表）
             if in_table:
                 break
             continue
         cells = [c.strip() for c in stripped.split("|")]
-        # cells[0] is empty (before first |), cells[1] is first column
+        # cells[0] 为首个 | 前的空串，cells[1] 为第一列
         if len(cells) < 2:
             continue
         first_col = cells[1].strip("`").strip("**").strip()
         if not first_col:
             continue
-        # Separator row (e.g., |------|------|)
+        # 分隔行（如 |------|------|）
         if first_col.startswith("---") or first_col.startswith(":-"):
             seen_separator = True
             continue
-        # Rows before the separator are header rows — skip them
+        # 分隔行之前为表头行，跳过
         if not seen_separator:
             continue
-        # Data row after the separator
+        # 分隔行之后的数据行
         params.add(first_col)
         in_table = True
     return params if params else None
 
 
 # ---------------------------------------------------------------------------
-# Capability check
+# 能力描述检查
 # ---------------------------------------------------------------------------
 
+# 英文停用词集合，用于能力关键词提取时过滤无意义词
 _STOPWORDS = frozenset({
     "the", "and", "for", "with", "from", "into", "that", "this", "its",
     "are", "was", "were", "has", "have", "not", "but", "via", "can",
@@ -151,26 +170,34 @@ _STOPWORDS = frozenset({
 
 
 def _contains_cjk(text: str) -> bool:
-    """Return True if *text* contains CJK (Chinese/Japanese/Korean) characters."""
+    """判断文本是否包含 CJK（中日韩）字符。"""
     return bool(re.search(r"[\u4e00-\u9fff]", text))
 
 
 def _capability_keywords(capability: str) -> list[str]:
-    """Extract meaningful keywords from the capability string."""
+    """从能力描述字符串中提取有意义的关键词。"""
     tokens = re.split(r"[^a-zA-Z0-9\u4e00-\u9fff]+", capability.lower())
     return [t for t in tokens if len(t) >= 4 and t not in _STOPWORDS]
 
 
 # ---------------------------------------------------------------------------
-# Single-tool check
+# 单工具检查
 # ---------------------------------------------------------------------------
 
 def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
-    """Return a list of issues for *tool*, empty if docs are consistent."""
+    """检查单个工具的文档一致性，返回问题列表（空表示一致）。
+
+    参数:
+        tool: 待检查的工具实例。
+        workspace: 工作区路径。
+
+    返回:
+        问题描述列表。
+    """
     issues: list[str] = []
     usage_md = getattr(tool, "_usage_md", "")
     if not usage_md:
-        return issues  # skip tools without _usage_md
+        return issues  # 无 _usage_md 的工具跳过检查
 
     md_path = _resolve_md_path(usage_md, workspace)
     if md_path is None:
@@ -179,12 +206,12 @@ def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
 
     content = md_path.read_text(encoding="utf-8")
 
-    # 1. Title check
+    # 1. 标题检查
     title_expected = f"# {tool.name}"
     if title_expected not in content:
         issues.append(f"md 缺少工具名标题 '{title_expected}'")
 
-    # 2. Parameter consistency
+    # 2. 参数一致性检查
     schema_params = _extract_schema_params(tool)
     md_params = _extract_md_params(content)
     if schema_params is not None and md_params is not None:
@@ -195,20 +222,18 @@ def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
         if extra_in_md:
             issues.append(f"md 多余参数说明：{sorted(extra_in_md)}")
 
-    # 3. Capability reflection
+    # 3. 能力描述体现检查
     capability = getattr(tool, "_capability", "")
     if capability:
         keywords = _capability_keywords(capability)
         content_lower = content.lower()
         matched = [kw for kw in keywords if kw in content_lower]
-        # Require at least one keyword to appear in the doc body.
-        # Skip the check for Chinese docs: English capability keywords
-        # naturally won't match Chinese text.  We only look at the body
-        # *before* the parameter table — that's where the capability
-        # description belongs.
+        # 要求至少一个关键词出现在文档正文中
+        # 对中文文档跳过此检查：英文能力关键词自然无法匹配中文文本
+        # 仅检查参数表之前的正文部分——能力描述应位于此处
         if keywords and not matched:
             body_only = content
-            # Find first occurrence of a Chinese parameter-section header
+            # 查找首个中文参数章节标题，截取其前的正文
             for hdr in _SECTION_HEADERS:
                 hdr_match = re.search(rf"^## {re.escape(hdr)}", content, re.MULTILINE)
                 if hdr_match:
@@ -221,17 +246,21 @@ def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# 公共 API
 # ---------------------------------------------------------------------------
 
 def check_docs_consistency(
     registry: "ToolRegistry",
     workspace: Path,
 ) -> list[DocsMismatch]:
-    """Check all registered tools' docs against their code.
+    """检查所有已注册工具的文档与代码一致性。
 
-    Returns a list of :class:`DocsMismatch` for tools whose docs are
-    stale or missing.  An empty list means everything is in sync.
+    参数:
+        registry: 工具注册表。
+        workspace: 工作区路径。
+
+    返回:
+        文档不一致的工具列表（:class:`DocsMismatch`）；空列表表示全部一致。
     """
     mismatches: list[DocsMismatch] = []
     for name in sorted(registry.tool_names):
@@ -253,7 +282,14 @@ def check_docs_consistency(
 
 
 def build_repair_task(mismatches: list[DocsMismatch]) -> str:
-    """Build the task prompt for the docs-repair subagent."""
+    """构建文档修复子代理的任务提示词。
+
+    参数:
+        mismatches: 不匹配的工具列表。
+
+    返回:
+        供子代理使用的任务提示词字符串。
+    """
     lines = [
         "你是文档修复智能体。以下工具的使用说明 md 文件与工具代码不匹配，",
         "请逐一修复每个不匹配的文件。",

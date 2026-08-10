@@ -1,97 +1,97 @@
 """
-Provider Registry — single source of truth for LLM provider metadata.
+Provider 注册表 —— LLM Provider 元数据的唯一事实来源（single source of truth）。
 
-Adding a new provider:
-  1. Add a ProviderSpec to PROVIDERS below.
-  2. Add a field to ProvidersConfig in config/schema.py.
-  Done. Env vars, config matching, status display all derive from here.
+新增一个 Provider 只需两步：
+  1. 在下方 PROVIDERS 中新增一个 ProviderSpec；
+  2. 在 config/schema.py 的 ProvidersConfig 中新增对应字段。
+环境变量、配置匹配、状态展示等逻辑均从此处派生。
 
-Order matters — it controls match priority and fallback. Gateways first.
-Every entry writes out all fields so you can copy-paste as a template.
+注册顺序很重要——它决定了模型匹配优先级与兜底顺序，网关类 Provider 排在前面。
+每个条目都完整列出所有字段，便于直接复制作为模板。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass  # 不可变数据类（ProviderSpec）
+from typing import Any  # 动态类型标注
 
-from pydantic.alias_generators import to_snake
+from pydantic.alias_generators import to_snake  # 把名称转换为 snake_case
 
 
 @dataclass(frozen=True)
 class ProviderSpec:
-    """One LLM provider's metadata. See PROVIDERS below for real examples.
+    """单个 LLM Provider 的元数据。具体示例见下方 PROVIDERS。
 
-    Placeholders in env_extras values:
-      {api_key}  — the user's API key
-      {api_base} — api_base from config, or this spec's default_api_base
+    env_extras 值中可使用的占位符：
+      {api_key}  — 用户的 API Key
+      {api_base} — 来自配置的 api_base，或本 spec 的 default_api_base
     """
 
-    # identity
-    name: str  # config field name, e.g. "dashscope"
-    keywords: tuple[str, ...]  # model-name keywords for matching (lowercase)
-    env_key: str  # env var for API key, e.g. "DASHSCOPE_API_KEY"
-    display_name: str = ""  # shown in `biscuitbot status`
+    # --- 标识信息 ---
+    name: str  # 配置字段名，例如 "dashscope"
+    keywords: tuple[str, ...]  # 用于匹配模型名的关键字（小写）
+    env_key: str  # API Key 对应的环境变量名，例如 "DASHSCOPE_API_KEY"
+    display_name: str = ""  # 在 `biscuitbot status` 中展示的名称
 
-    # which provider implementation to use
-    # "openai_compat" | "anthropic"
+    # --- 使用哪种 Provider 实现 ---
+    # "openai_compat"（OpenAI 兼容） | "anthropic"（原生 Anthropic SDK）
     backend: str = "openai_compat"
 
-    # extra env vars, e.g. (("ZHIPUAI_API_KEY", "{api_key}"),)
+    # 额外环境变量，例如 (("ZHIPUAI_API_KEY", "{api_key}"),)
     env_extras: tuple[tuple[str, str], ...] = ()
 
-    # gateway / local detection
-    is_gateway: bool = False  # routes any model (OpenRouter, AiHubMix)
-    is_local: bool = False  # local deployment (vLLM, Ollama)
-    detect_by_key_prefix: str = ""  # match api_key prefix, e.g. "sk-or-"
-    detect_by_base_keyword: str = ""  # match substring in api_base URL
-    default_api_base: str = ""  # OpenAI-compatible base URL for this provider
+    # --- 网关 / 本地部署识别 ---
+    is_gateway: bool = False  # 是否为网关型 Provider（可路由任意模型，如 OpenRouter、AiHubMix）
+    is_local: bool = False  # 是否为本地部署（如 vLLM、Ollama）
+    detect_by_key_prefix: str = ""  # 通过 api_key 前缀识别，例如 "sk-or-"
+    detect_by_base_keyword: str = ""  # 通过 api_base URL 子串识别
+    default_api_base: str = ""  # 该 Provider 的 OpenAI 兼容 base URL
 
-    # gateway behavior
-    strip_model_prefix: bool = False  # strip "provider/" before sending to gateway
-    strip_model_prefixes: tuple[str, ...] = ()  # strip only when the first model segment matches
+    # --- 网关行为 ---
+    strip_model_prefix: bool = False  # 是否在发送给网关前去掉 "provider/" 前缀
+    strip_model_prefixes: tuple[str, ...] = ()  # 仅当模型首段匹配这些前缀时才剥离
     supports_max_completion_tokens: bool = False
 
-    # per-model param overrides, e.g. (("kimi-k2.5", {"temperature": 1.0}),)
+    # --- 按模型覆盖参数，例如 (("kimi-k2.5", {"temperature": 1.0}),) ---
     model_overrides: tuple[tuple[str, dict[str, Any]], ...] = ()
 
-    # OAuth-based providers (e.g., OpenAI Codex) don't use API keys
+    # --- OAuth 型 Provider（如 OpenAI Codex）不使用 API Key ---
     is_oauth: bool = False
 
-    # Direct providers skip API-key validation (user supplies everything)
+    # --- 直连 Provider：跳过 API Key 校验（用户自行提供全部参数）---
     is_direct: bool = False
 
-    # Provider is listed for shared credentials but cannot serve chat completions.
+    # --- 仅用于共享凭据但不能提供对话补全的 Provider（如只做转写）---
     is_transcription_only: bool = False
 
-    # Provider supports cache_control on content blocks (e.g. Anthropic prompt caching)
+    # --- 是否支持 content 块上的 cache_control（如 Anthropic 提示缓存）---
     supports_prompt_caching: bool = False
 
-    # How to inject the thinking on/off toggle into extra_body.
-    # ""              — no extra_body needed (default)
+    # --- 如何把思考开关注入 extra_body ---
+    # ""              — 无需 extra_body（默认）
     # "thinking_type" — {"thinking": {"type": "enabled"/"disabled"}}
-    #                   (DeepSeek, VolcEngine, BytePlus)
-    # "enable_thinking" — {"enable_thinking": true/false}  (DashScope)
-    # "reasoning_split" — {"reasoning_split": true/false}  (MiniMax)
+    #                   （DeepSeek、火山引擎、BytePlus）
+    # "enable_thinking" — {"enable_thinking": true/false}  （DashScope）
+    # "reasoning_split" — {"reasoning_split": true/false}  （MiniMax）
     thinking_style: str = ""
 
-    # Gateway-native reasoning control to pair with model-level thinking styles.
+    # --- 网关原生的推理控制，与模型级 thinking_style 配合使用 ---
     # "reasoning_effort" — {"reasoning": {"effort": <none|minimal|...>}}
-    #                      (OpenRouter)
+    #                      （OpenRouter）
     gateway_reasoning_style: str = ""
 
-    # When True, treat the "reasoning" response field as formal content
-    # when "content" is empty.  Only set this for providers (e.g. StepFun)
-    # whose API returns the actual answer in "reasoning" instead of "content".
+    # --- 为真时，当 "content" 为空，把响应中的 "reasoning" 字段当作正文 ---
+    # 仅对部分 Provider（如 StepFun）设置：其 API 把真正答案放在 "reasoning" 而非 "content"。
     reasoning_as_content: bool = False
 
     @property
     def label(self) -> str:
+        """展示标签：优先用 display_name，否则用 name 首字母大写形式。"""
         return self.display_name or self.name.title()
 
 
 # ---------------------------------------------------------------------------
-# PROVIDERS — the registry. Order = priority. Copy any entry as template.
+# PROVIDERS —— 注册表本体。顺序即优先级。可直接复制任一条目作为模板。
 # ---------------------------------------------------------------------------
 
 PROVIDERS: tuple[ProviderSpec, ...] = (
@@ -202,12 +202,12 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# Lookup helpers
+# Lookup helpers —— 查找辅助函数
 # ---------------------------------------------------------------------------
 
 
 def find_by_name(name: str) -> ProviderSpec | None:
-    """Find a provider spec by config field name, e.g. "dashscope"."""
+    """按配置字段名查找 ProviderSpec，例如 "dashscope"。未找到返回 None。"""
     normalized = to_snake(name.replace("-", "_"))
     for spec in PROVIDERS:
         if spec.name == normalized:
@@ -216,7 +216,11 @@ def find_by_name(name: str) -> ProviderSpec | None:
 
 
 def create_dynamic_spec(name: str) -> ProviderSpec:
-    """Create a dynamic ProviderSpec for custom user-defined providers."""
+    """为用户自定义的 Provider 创建动态 ProviderSpec。
+
+    用于在运行时按用户输入的名称生成一个直连型（is_direct=True）的 OpenAI 兼容 spec，
+    同时自动生成需要剥离的模型前缀（保留原始名与归一化名，去重保序）。
+    """
     normalized = to_snake(name.replace("-", "_"))
     strip_prefixes = tuple(dict.fromkeys((name, normalized)))
     return ProviderSpec(

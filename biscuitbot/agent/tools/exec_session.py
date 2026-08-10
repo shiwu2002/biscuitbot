@@ -1,4 +1,13 @@
-"""Session support for long-running exec workflows."""
+"""长时运行 exec 工作流的会话支持。
+
+所属模块与项目作用
+===================
+本文件位于 biscuitbot/agent/tools 目录，是工具系统的执行会话组件。
+在项目架构中起到的作用：为长时运行的命令提供会话管理能力，支持启动
+后台进程、向其 stdin 写入数据、轮询输出、等待特定输出出现、关闭 stdin、
+终止进程以及列出活跃会话。使得 agent 能与交互式命令（如开发服务器、
+测试监听器）进行增量式交互。
+"""
 
 from __future__ import annotations
 
@@ -9,49 +18,59 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.context import current_request_session_key
-from biscuitbot.agent.tools.schema import (
+from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
+from biscuitbot.agent.tools.context import current_request_session_key  # 当前请求会话键
+from biscuitbot.agent.tools.schema import (  # Schema 构造器
     BooleanSchema,
     IntegerSchema,
     StringSchema,
     tool_parameters_schema,
 )
 
-DEFAULT_YIELD_MS = 1000
-MAX_YIELD_MS = 30_000
-DEFAULT_WAIT_FOR_MS = 10_000
-MAX_WAIT_FOR_MS = 120_000
-DEFAULT_MAX_OUTPUT_CHARS = 10_000
-MAX_OUTPUT_CHARS = 50_000
-OUTPUT_DRAIN_GRACE_S = 0.1
+DEFAULT_YIELD_MS = 1000  # 默认轮询等待毫秒数
+MAX_YIELD_MS = 30_000  # 最大轮询等待毫秒数
+DEFAULT_WAIT_FOR_MS = 10_000  # 默认等待目标输出毫秒数
+MAX_WAIT_FOR_MS = 120_000  # 最大等待目标输出毫秒数
+DEFAULT_MAX_OUTPUT_CHARS = 10_000  # 默认返回输出字符上限
+MAX_OUTPUT_CHARS = 50_000  # 最大返回输出字符上限
+OUTPUT_DRAIN_GRACE_S = 0.1  # 输出排空宽限秒数
 
 
 @dataclass(slots=True)
 class _SessionPoll:
-    output: str
-    done: bool
-    exit_code: int | None
-    elapsed_s: float = 0.0
-    timed_out: bool = False
-    terminated: bool = False
-    stdin_closed: bool = False
-    truncated_chars: int = 0
+    """单次会话轮询的结果。"""
+
+    output: str  # 本次轮询获取的输出
+    done: bool  # 进程是否已退出
+    exit_code: int | None  # 退出码，未退出时为 None
+    elapsed_s: float = 0.0  # 已运行秒数
+    timed_out: bool = False  # 是否因超时终止
+    terminated: bool = False  # 是否被手动终止
+    stdin_closed: bool = False  # stdin 是否已关闭
+    truncated_chars: int = 0  # 被截断的字符数
 
 
 @dataclass(slots=True)
 class ExecSessionInfo:
-    session_id: str
-    command: str
-    cwd: str
-    elapsed_s: float
-    idle_s: float
-    remaining_s: float
-    returncode: int | None
-    owner_session_key: str | None = None
+    """执行会话的概要信息，用于列表展示。"""
+
+    session_id: str  # 会话 ID
+    command: str  # 执行的命令
+    cwd: str  # 工作目录
+    elapsed_s: float  # 已运行秒数
+    idle_s: float  # 空闲秒数
+    remaining_s: float  # 剩余超时秒数
+    returncode: int | None  # 退出码
+    owner_session_key: str | None = None  # 所属会话键
 
 
 class _ExecSession:
+    """单个执行会话的内部实现，封装子进程与输出缓冲。
+
+    职责：管理一个异步子进程，持续读取 stdout/stderr 到缓冲区，
+    提供 stdin 写入、stdin 关闭、输出轮询与进程终止能力。
+    """
+
     def __init__(
         self,
         *,
@@ -62,18 +81,29 @@ class _ExecSession:
         timeout: int | None,
         owner_session_key: str | None = None,
     ) -> None:
+        """初始化执行会话。
+
+        参数:
+            session_id: 会话唯一标识。
+            process: 异步子进程对象。
+            command: 执行的命令字符串。
+            cwd: 工作目录。
+            timeout: 超时秒数，None/0 表示无限制。
+            owner_session_key: 所属会话键，用于归属隔离。
+        """
         self.session_id = session_id
         self.process = process
         self.command = command
         self.cwd = cwd
         self.owner_session_key = owner_session_key
         self.started_at = time.monotonic()
-        # timeout None/0 means no limit; an infinite deadline is never reached.
+        # timeout 为 None/0 时无限制，使用无限大截止时间
         self.deadline = time.monotonic() + timeout if timeout else float("inf")
         self.last_access = time.monotonic()
-        self._chunks: list[str] = []
-        self._lock = asyncio.Lock()
+        self._chunks: list[str] = []  # 输出缓冲区
+        self._lock = asyncio.Lock()  # 保护缓冲区的异步锁
         self._timed_out = False
+        # 启动后台任务持续读取 stdout 与 stderr
         self._stdout_task = asyncio.create_task(self._read_stream(process.stdout, ""))
         self._stderr_task = asyncio.create_task(self._read_stream(process.stderr, "STDERR:\n"))
 
@@ -82,6 +112,12 @@ class _ExecSession:
         stream: asyncio.StreamReader | None,
         prefix: str,
     ) -> None:
+        """持续读取流并追加到缓冲区。
+
+        参数:
+            stream: 异步流读取器。
+            prefix: 首个数据块的前缀（如 stderr 的 "STDERR:\\n"）。
+        """
         if stream is None:
             return
         first = True
@@ -91,12 +127,20 @@ class _ExecSession:
                 break
             text = chunk.decode("utf-8", errors="replace")
             if prefix and first:
-                text = prefix + text
+                text = prefix + text  # 仅首块加前缀
                 first = False
             async with self._lock:
                 self._chunks.append(text)
 
     async def write(self, chars: str) -> str | None:
+        """向进程 stdin 写入字符。
+
+        参数:
+            chars: 待写入的字符串。
+
+        返回:
+            成功返回 None，失败返回错误描述。
+        """
         if self.process.returncode is not None:
             return "session has already exited"
         if self.process.stdin is None:
@@ -109,6 +153,11 @@ class _ExecSession:
         return None
 
     async def close_stdin(self) -> str | None:
+        """关闭进程 stdin（发送 EOF）。
+
+        返回:
+            成功返回 None，失败返回错误描述。
+        """
         if self.process.returncode is not None:
             return "session has already exited"
         if self.process.stdin is None:
@@ -126,15 +175,29 @@ class _ExecSession:
         terminated: bool = False,
         stdin_closed: bool = False,
     ) -> _SessionPoll:
+        """轮询会话输出。
+
+        参数:
+            yield_time_ms: 等待输出的毫秒数。
+            max_output_chars: 返回输出的字符上限。
+            terminated: 是否已终止进程。
+            stdin_closed: 是否已关闭 stdin。
+
+        返回:
+            本次轮询的结果对象。
+        """
         self.last_access = time.monotonic()
+        # 进程未退出时等待指定时间以收集输出
         if yield_time_ms > 0 and self.process.returncode is None:
             await asyncio.sleep(min(yield_time_ms, MAX_YIELD_MS) / 1000)
 
+        # 超时检查
         if self.process.returncode is None and time.monotonic() >= self.deadline:
             self._timed_out = True
             await self.kill()
 
         if self.process.returncode is not None:
+            # 进程已退出：等待读取任务完成以排空剩余输出
             with suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(
                     asyncio.gather(self._stdout_task, self._stderr_task),
@@ -160,6 +223,7 @@ class _ExecSession:
         )
 
     async def kill(self) -> None:
+        """强制终止进程。"""
         if self.process.returncode is not None:
             return
         self.process.kill()
@@ -167,6 +231,7 @@ class _ExecSession:
             await asyncio.wait_for(self.process.wait(), timeout=5.0)
 
     async def _wait_for_buffered_output(self) -> None:
+        """在宽限期内等待缓冲区出现数据，避免丢失快速产生的输出。"""
         deadline = time.monotonic() + OUTPUT_DRAIN_GRACE_S
         while time.monotonic() < deadline:
             async with self._lock:
@@ -176,7 +241,19 @@ class _ExecSession:
 
 
 class ExecSessionManager:
+    """执行会话管理器，负责会话的创建、查找、写入与清理。
+
+    职责：维护一组活跃的 _ExecSession，提供并发安全的会话生命周期管理，
+    包括空闲会话自动清理与归属会话键隔离。
+    """
+
     def __init__(self, *, max_sessions: int = 8, idle_timeout: int = 1800) -> None:
+        """初始化会话管理器。
+
+        参数:
+            max_sessions: 最大并发会话数。
+            idle_timeout: 空闲超时秒数，超过后自动清理。
+        """
         self.max_sessions = max_sessions
         self.idle_timeout = idle_timeout
         self._sessions: dict[str, _ExecSession] = {}
@@ -195,6 +272,22 @@ class ExecSessionManager:
         max_output_chars: int,
         owner_session_key: str | None = None,
     ) -> tuple[str, _SessionPoll]:
+        """启动新的执行会话。
+
+        参数:
+            command: 命令字符串。
+            cwd: 工作目录。
+            env: 环境变量。
+            timeout: 超时秒数。
+            shell_program: 自定义 shell 程序。
+            login: 是否使用登录 shell。
+            yield_time_ms: 初始轮询等待毫秒数。
+            max_output_chars: 输出字符上限。
+            owner_session_key: 所属会话键。
+
+        返回:
+            (session_id, 首次轮询结果) 元组。
+        """
         async with self._lock:
             await self._cleanup_locked()
             if len(self._sessions) >= self.max_sessions:
@@ -213,6 +306,7 @@ class ExecSessionManager:
 
         poll = await session.poll(yield_time_ms, max_output_chars)
         if poll.done:
+            # 进程立即退出则移除会话
             async with self._lock:
                 self._sessions.pop(session_id, None)
         return session_id, poll
@@ -228,11 +322,26 @@ class ExecSessionManager:
         max_output_chars: int,
         owner_session_key: str | None = None,
     ) -> _SessionPoll:
+        """向会话写入 stdin 或轮询输出。
+
+        参数:
+            session_id: 会话 ID。
+            chars: 待写入的字符。
+            close_stdin: 是否关闭 stdin。
+            terminate: 是否终止进程。
+            yield_time_ms: 轮询等待毫秒数。
+            max_output_chars: 输出字符上限。
+            owner_session_key: 所属会话键，用于归属校验。
+
+        返回:
+            轮询结果对象。
+        """
         async with self._lock:
             await self._cleanup_locked()
             session = self._sessions.get(session_id)
         if session is None:
             raise KeyError(session_id)
+        # 归属会话键校验，防止跨会话访问
         if (
             owner_session_key
             and session.owner_session_key
@@ -264,6 +373,14 @@ class ExecSessionManager:
         return poll
 
     async def list(self, *, owner_session_key: str | None = None) -> list[ExecSessionInfo]:
+        """列出活跃会话。
+
+        参数:
+            owner_session_key: 所属会话键，用于过滤。
+
+        返回:
+            会话概要信息列表。
+        """
         async with self._lock:
             await self._cleanup_locked()
             now = time.monotonic()
@@ -285,6 +402,7 @@ class ExecSessionManager:
             ]
 
     async def _cleanup_locked(self) -> None:
+        """清理空闲超时的会话（调用方需持有锁）。"""
         now = time.monotonic()
         stale = [
             session_id
@@ -303,6 +421,7 @@ class ExecSessionManager:
         shell_program: str | None,
         login: bool,
     ) -> asyncio.subprocess.Process:
+        """创建子进程，委托给 ExecTool 的 _spawn 方法。"""
         from biscuitbot.agent.tools.shell import ExecTool
 
         return await ExecTool._spawn(
@@ -311,16 +430,37 @@ class ExecSessionManager:
         )
 
 
+# 模块级默认会话管理器实例
 DEFAULT_EXEC_SESSION_MANAGER = ExecSessionManager()
 
 
 def clamp_session_int(value: int | None, default: int, minimum: int, maximum: int) -> int:
+    """将整数值限制在 [minimum, maximum] 范围内，None 时返回默认值。
+
+    参数:
+        value: 原始值。
+        default: 默认值。
+        minimum: 最小值。
+        maximum: 最大值。
+
+    返回:
+        限制后的整数值。
+    """
     if value is None:
         return default
     return min(max(value, minimum), maximum)
 
 
 def _truncate_output(output: str, max_output_chars: int) -> tuple[str, int]:
+    """截断输出到指定字符数，保留首尾各一半。
+
+    参数:
+        output: 原始输出。
+        max_output_chars: 最大字符数。
+
+    返回:
+        (截断后的输出, 被截断的字符数) 元组。
+    """
     if len(output) <= max_output_chars:
         return output, 0
     half = max_output_chars // 2
@@ -334,6 +474,15 @@ def _truncate_output(output: str, max_output_chars: int) -> tuple[str, int]:
 
 
 def format_session_poll(session_id: str, poll: _SessionPoll) -> str:
+    """将轮询结果格式化为可读字符串。
+
+    参数:
+        session_id: 会话 ID。
+        poll: 轮询结果对象。
+
+    返回:
+        格式化后的字符串。
+    """
     parts = [poll.output] if poll.output else []
     if poll.truncated_chars:
         parts.append(f"(output truncated by {poll.truncated_chars:,} chars)")
@@ -401,24 +550,32 @@ def format_session_poll(session_id: str, poll: _SessionPoll) -> str:
     )
 )
 class WriteStdinTool(Tool):
-    """Write to or poll a running exec session."""
+    """向运行中的 exec 会话写入 stdin 或轮询其输出。
+
+    职责：与通过 exec（yield_time_ms）创建的运行中会话交互，支持写入
+    stdin、关闭 stdin、终止进程、轮询输出，以及等待特定输出出现。
+
+    用法：由 agent 调用，传入 session_id 及相应操作参数。
+    """
 
     _capability = (
         "Send stdin to a running exec session and poll its output incrementally."
     )
-    _usage_md = "docs/write_stdin.md"
+    _usage_md = "docs/write_stdin.md"  # 工具使用说明文档路径
 
-    _scopes = {"core", "subagent"}
-    config_key = "exec"
+    _scopes = {"core", "subagent"}  # 工具可用作用域
+    config_key = "exec"  # 配置键名
 
     @classmethod
     def config_cls(cls):
+        """返回该工具对应的配置类。"""
         from biscuitbot.agent.tools.shell import ExecToolConfig
 
         return ExecToolConfig
 
     @classmethod
     def enabled(cls, ctx: Any) -> bool:
+        """根据配置判断工具是否启用。"""
         return ctx.config.exec.enable
 
     def __init__(
@@ -426,22 +583,31 @@ class WriteStdinTool(Tool):
         *,
         manager: ExecSessionManager | None = None,
     ) -> None:
+        """初始化工具，注入会话管理器。
+
+        参数:
+            manager: 执行会话管理器，为空时使用默认实例。
+        """
         self._manager = manager or DEFAULT_EXEC_SESSION_MANAGER
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
+        """工厂方法：创建工具实例。"""
         return cls()
 
     @property
     def exclusive(self) -> bool:
+        """该工具需独占执行，避免并发写入冲突。"""
         return True
 
     @property
     def name(self) -> str:
+        """工具名称。"""
         return "write_stdin"
 
     @property
     def description(self) -> str:
+        """工具描述。"""
         return (
             "Interact with a running exec session created by exec with "
             "yield_time_ms. Use chars='' to poll without writing, chars to send "
@@ -464,7 +630,24 @@ class WriteStdinTool(Tool):
         max_output_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
+        """执行写入或轮询操作。
+
+        参数:
+            session_id: 会话 ID。
+            chars: 待写入 stdin 的字符。
+            close_stdin: 是否关闭 stdin。
+            terminate: 是否终止进程。
+            yield_time_ms: 轮询等待毫秒数。
+            wait_for: 等待出现的输出文本。
+            wait_timeout_ms: 等待超时毫秒数。
+            max_output_chars: 输出字符上限。
+            max_output_tokens: max_output_chars 的兼容别名。
+
+        返回:
+            操作结果字符串。
+        """
         try:
+            # 兼容旧参数名 max_output_tokens
             if max_output_chars is None:
                 max_output_chars = max_output_tokens
             output_limit = clamp_session_int(
@@ -474,6 +657,7 @@ class WriteStdinTool(Tool):
                 MAX_OUTPUT_CHARS,
             )
             if wait_for:
+                # 等待特定输出模式
                 return await self._wait_for_output(
                     session_id=session_id,
                     chars=chars,
@@ -514,6 +698,20 @@ class WriteStdinTool(Tool):
         wait_timeout_ms: int,
         max_output_chars: int,
     ) -> str:
+        """循环轮询直到输出中出现目标文本或超时。
+
+        参数:
+            session_id: 会话 ID。
+            chars: 首次写入的字符。
+            close_stdin: 是否首次关闭 stdin。
+            terminate: 是否首次终止进程。
+            wait_for: 等待的目标文本。
+            wait_timeout_ms: 等待超时毫秒数。
+            max_output_chars: 输出字符上限。
+
+        返回:
+            聚合输出与状态信息字符串。
+        """
         deadline = time.monotonic() + (wait_timeout_ms / 1000)
         aggregate: list[str] = []
         first = True
@@ -535,6 +733,7 @@ class WriteStdinTool(Tool):
             if poll.output:
                 aggregate.append(poll.output)
                 joined = "".join(aggregate)
+                # 检测目标文本是否出现
                 if wait_for in joined:
                     poll.output = joined
                     return format_session_poll(session_id, poll)
@@ -548,22 +747,30 @@ class WriteStdinTool(Tool):
 
 @tool_parameters(tool_parameters_schema())
 class ListExecSessionsTool(Tool):
-    """List active exec sessions."""
+    """列出活跃的 exec 会话。
+
+    职责：返回当前运行中的执行会话列表，包含会话 ID、工作目录、运行时长、
+    空闲时间、剩余超时与命令预览，便于 agent 在上下文切换后恢复 session_id。
+
+    用法：由 agent 调用，无需参数。
+    """
 
     _capability = "List currently running exec sessions with their IDs and status."
-    _usage_md = "docs/list_exec_sessions.md"
+    _usage_md = "docs/list_exec_sessions.md"  # 工具使用说明文档路径
 
-    _scopes = {"core", "subagent"}
-    config_key = "exec"
+    _scopes = {"core", "subagent"}  # 工具可用作用域
+    config_key = "exec"  # 配置键名
 
     @classmethod
     def config_cls(cls):
+        """返回该工具对应的配置类。"""
         from biscuitbot.agent.tools.shell import ExecToolConfig
 
         return ExecToolConfig
 
     @classmethod
     def enabled(cls, ctx: Any) -> bool:
+        """根据配置判断工具是否启用。"""
         return ctx.config.exec.enable
 
     def __init__(
@@ -571,18 +778,26 @@ class ListExecSessionsTool(Tool):
         *,
         manager: ExecSessionManager | None = None,
     ) -> None:
+        """初始化工具，注入会话管理器。
+
+        参数:
+            manager: 执行会话管理器，为空时使用默认实例。
+        """
         self._manager = manager or DEFAULT_EXEC_SESSION_MANAGER
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
+        """工厂方法：创建工具实例。"""
         return cls()
 
     @property
     def name(self) -> str:
+        """工具名称。"""
         return "list_exec_sessions"
 
     @property
     def description(self) -> str:
+        """工具描述。"""
         return (
             "List active long-running exec sessions, including session_id, cwd, "
             "elapsed time, idle time, remaining timeout, and command preview. "
@@ -592,9 +807,15 @@ class ListExecSessionsTool(Tool):
 
     @property
     def read_only(self) -> bool:
+        """该工具只读，无副作用，可安全并行。"""
         return True
 
     async def execute(self, **kwargs: Any) -> str:
+        """执行会话列表查询。
+
+        返回:
+            活跃会话列表字符串；无会话时返回提示。
+        """
         try:
             sessions = await self._manager.list(
                 owner_session_key=current_request_session_key(),
@@ -604,6 +825,7 @@ class ListExecSessionsTool(Tool):
             lines = []
             for info in sessions:
                 command = " ".join(info.command.split())
+                # 截断过长的命令预览
                 if len(command) > 120:
                     command = command[:119] + "..."
                 status = "exited" if info.returncode is not None else "running"
