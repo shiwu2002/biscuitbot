@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from loguru import logger as default_logger
 
+from biscuitbot.agent.employees import EmployeeStore
 from biscuitbot.webui.gateway_tokens import GatewayTokenStore
 from biscuitbot.webui.media_gateway import WebUIMediaGateway
 from biscuitbot.webui.transcript import WebUITranscriptRecorder
@@ -24,6 +25,7 @@ class GatewayServices:
     media: WebUIMediaGateway
     transcripts: WebUITranscriptRecorder
     workspaces: WebUIWorkspaceController
+    employees: EmployeeStore
     session_manager: Any | None
     cron_service: Any | None
     cron_pending_job_ids: Callable[[str], set[str]] | None
@@ -56,6 +58,7 @@ def build_gateway_services(
         default_workspace=workspace_path,
         default_restrict_to_workspace=default_restrict_to_workspace,
     )
+    employees = EmployeeStore(workspace_path)
     http = GatewayHTTPHandler(
         config=config,
         session_manager=session_manager,
@@ -71,6 +74,7 @@ def build_gateway_services(
         disabled_skills=disabled_skills,
         cron_service=cron_service,
         cron_pending_job_ids=cron_pending_job_ids,
+        employees=employees,
         log=logger,
     )
     return GatewayServices(
@@ -79,6 +83,7 @@ def build_gateway_services(
         media=media,
         transcripts=transcripts,
         workspaces=workspaces,
+        employees=employees,
         session_manager=session_manager,
         cron_service=cron_service,
         cron_pending_job_ids=cron_pending_job_ids,

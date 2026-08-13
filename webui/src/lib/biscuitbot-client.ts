@@ -71,6 +71,7 @@ type SessionUpdateHandler = (
   chatId: string,
   scope?: SessionUpdateScope,
   workspaceScope?: WorkspaceScopePayload,
+  employee?: string,
 ) => void;
 type RunStatusHandler = (chatId: string, startedAt: number | null) => void;
 
@@ -310,7 +311,11 @@ export class BiscuitbotClient {
   }
 
   /** Ask the server to provision a new chat_id; resolves with the assigned id. */
-  newChat(timeoutMs: number = 5_000, workspaceScope?: WorkspaceScopePayload | null): Promise<string> {
+  newChat(
+    timeoutMs: number = 5_000,
+    workspaceScope?: WorkspaceScopePayload | null,
+    employee?: string | null,
+  ): Promise<string> {
     if (this.pendingNewChat) {
       return Promise.reject(new Error("newChat already in flight"));
     }
@@ -323,6 +328,7 @@ export class BiscuitbotClient {
       this.queueSend({
         type: "new_chat",
         ...(workspaceScope ? { workspace_scope: workspaceScope } : {}),
+        ...(employee ? { employee } : {}),
       });
     });
   }
@@ -489,7 +495,12 @@ export class BiscuitbotClient {
     }
 
     if (parsed.event === "session_updated") {
-      this.emitSessionUpdate(parsed.chat_id, parsed.scope, parsed.workspace_scope);
+      this.emitSessionUpdate(
+        parsed.chat_id,
+        parsed.scope,
+        parsed.workspace_scope,
+        parsed.employee,
+      );
       return;
     }
 
@@ -532,9 +543,10 @@ export class BiscuitbotClient {
     chatId: string,
     scope?: SessionUpdateScope,
     workspaceScope?: WorkspaceScopePayload,
+    employee?: string,
   ): void {
     for (const handler of this.sessionUpdateHandlers) {
-      handler(chatId, scope, workspaceScope);
+      handler(chatId, scope, workspaceScope, employee);
     }
   }
 

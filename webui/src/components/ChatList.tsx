@@ -36,7 +36,7 @@ import {
   type ChatGroupLabels,
 } from "@/lib/chat-groups";
 import { cn } from "@/lib/utils";
-import type { ChatSummary, SidebarDensity, SidebarSortMode } from "@/lib/types";
+import type { ChatSummary, Employee, SidebarDensity, SidebarSortMode } from "@/lib/types";
 
 const INITIAL_VISIBLE_SESSIONS = 160;
 const VISIBLE_SESSIONS_INCREMENT = 160;
@@ -67,6 +67,8 @@ interface ChatListProps {
   sort?: SidebarSortMode;
   showArchived?: boolean;
   defaultWorkspacePath?: string | null;
+  /** 数字人员工目录：用于给绑定员工的会话行显示头像徽标。 */
+  employees?: Employee[];
   actionMenuPortalContainer?: HTMLElement | null;
   loading?: boolean;
   emptyLabel?: string;
@@ -96,6 +98,7 @@ export const ChatList = memo(function ChatList({
   sort = "updated_desc",
   showArchived = false,
   defaultWorkspacePath,
+  employees = [],
   actionMenuPortalContainer,
   loading,
   emptyLabel,
@@ -177,6 +180,10 @@ export const ChatList = memo(function ChatList({
   const running = new Set(runningChatIds);
   const updated = new Set(updatedChatIds);
   const compact = density === "compact";
+  const employeesById = useMemo(
+    () => new Map(employees.map((employee) => [employee.id, employee])),
+    [employees],
+  );
   const firstProjectGroupIndex = limitedGroups.findIndex((group) => group.kind === "project");
 
   return (
@@ -259,6 +266,15 @@ export const ChatList = memo(function ChatList({
                               : "text-sidebar-foreground/82 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
                           )}
                         >
+                          {s.employee && employeesById.has(s.employee) ? (
+                            <span
+                              title={employeesById.get(s.employee)?.name}
+                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[13px] leading-none"
+                              aria-hidden
+                            >
+                              {employeesById.get(s.employee)?.avatar || "🧑‍💼"}
+                            </span>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => onSelect(s.key)}

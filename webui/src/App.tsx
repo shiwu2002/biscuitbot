@@ -20,6 +20,7 @@ import { useSessions } from "@/hooks/useSessions";
 import { useDeferredTitleRefresh } from "@/hooks/useDeferredTitleRefresh";
 import { useSidebarState } from "@/hooks/useSidebarState";
 import { useSkills } from "@/hooks/useSkills";
+import { useEmployees } from "@/hooks/useEmployees";
 import { ThemeProvider, useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +36,7 @@ import { BiscuitbotClient } from "@/lib/biscuitbot-client";
 import { ClientProvider, useClient } from "@/providers/ClientProvider";
 import type {
   ChatSummary,
+  Employee,
   RuntimeSurface,
   SessionAutomationJob,
   SettingsPayload,
@@ -73,7 +75,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "settings" | "apps" | "automations" | "skills";
+type ShellView = "chat" | "settings" | "apps" | "automations" | "skills" | "employees";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -90,6 +92,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "apps",
   "automations",
   "skills",
+  "employees",
   "runtime",
   "advanced",
 ];
@@ -103,7 +106,14 @@ function defaultShellRoute(): ShellRoute {
 }
 
 function shellViewForSettingsSection(section: SettingsSectionKey): ShellView {
-  if (section === "apps" || section === "automations" || section === "skills") return section;
+  if (
+    section === "apps"
+    || section === "automations"
+    || section === "skills"
+    || section === "employees"
+  ) {
+    return section;
+  }
   return "settings";
 }
 
@@ -137,6 +147,9 @@ function readShellRoute(): ShellRoute {
   }
   if (path === "/skills") {
     return { view: "skills", activeKey, settingsSection: "skills" };
+  }
+  if (path === "/employees") {
+    return { view: "employees", activeKey, settingsSection: "employees" };
   }
   if (path.startsWith("/chat/")) {
     const encoded = path.slice("/chat/".length);
@@ -580,10 +593,13 @@ function Shell({
   const [updatedChatIds, setUpdatedChatIds] = useState<Set<string>>(readSessionUpdateChatIds);
   const [workspaces, setWorkspaces] = useState<WorkspacesPayload | null>(null);
   const { skills, reload: reloadSkills } = useSkills(token);
+  const { employees, reload: reloadEmployees } = useEmployees(token);
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsPayload | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [draftWorkspaceScope, setDraftWorkspaceScope] =
     useState<WorkspaceScopePayload | null>(null);
+  /** 新建会话时预选的数字人员工（hero 态选择；仅影响新建会话，不走路由）。 */
+  const [draftEmployee, setDraftEmployee] = useState<Employee | null>(null);
   const [workspaceOverrides, setWorkspaceOverrides] =
     useState<Record<string, WorkspaceScopePayload>>({});
   const runningChatIdsRef = useRef<Set<string>>(new Set());
@@ -615,6 +631,7 @@ function Shell({
       setWorkspaceError(null);
       if (route.view === "chat" && !route.activeKey) {
         setDraftWorkspaceScope(null);
+        setDraftEmployee(null);
       }
     };
     window.addEventListener("hashchange", applyRoute);
@@ -901,10 +918,13 @@ function Shell({
     [activeChatId, activeChatRunning, client],
   );
 
-  const onCreateChat = useCallback(async (workspaceScope?: WorkspaceScopePayload | null) => {
+  const onCreateChat = useCallback(async (
+    workspaceScope?: WorkspaceScopePayload | null,
+    employeeId?: string | null,
+  ) => {
     try {
       const scope = workspaceScope ?? activeWorkspaceScope;
-      const chatId = await createChat(scope);
+      const chatId = await createChat(scope, employeeId);
       const newKey = `websocket:${chatId}`;
       // Mark this key as recently created to prevent race-condition reset
       pendingCreatedKeyRef.current = newKey;
@@ -960,6 +980,7 @@ function Shell({
   const onNewChat = useCallback(() => {
     navigate(defaultShellRoute());
     setDraftWorkspaceScope(null);
+    setDraftEmployee(null);
     setWorkspaceError(null);
     setSessionSearchOpen(false);
     setMobileSidebarOpen(false);
@@ -1003,6 +1024,8 @@ function Shell({
       } else {
         setDraftWorkspaceScope(null);
       }
+      // 员工绑定属于会话属性（session row），打开历史会话时不带入预选员工。
+      setDraftEmployee(null);
       setWorkspaceError(null);
       navigate({ view: "chat", activeKey: key, settingsSection: "overview" });
       setMobileSidebarOpen(false);
@@ -1211,6 +1234,21 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
+  /** 从侧边栏「数字人员工」区块进入：预选该员工并打开新会话（hero 态）。 */
+  const onOpenEmployee = useCallback((employee: Employee) => {
+    setDraftEmployee(employee);
+    setDraftWorkspaceScope(null);
+    setWorkspaceError(null);
+    navigate(defaultShellRoute());
+    setSessionSearchOpen(false);
+    setMobileSidebarOpen(false);
+  }, [navigate]);
+
+  /** hero 态员工选择器：切换预选员工（null = 主智能体）。 */
+  const onSelectEmployee = useCallback((employee: Employee | null) => {
+    setDraftEmployee(employee);
+  }, []);
+
   const onSettingsSectionChange = useCallback(
     (section: SettingsSectionKey) => {
       navigate({
@@ -1414,6 +1452,8 @@ function Shell({
     onOpenApps,
     onOpenAutomations,
     onOpenSkills,
+    onOpenEmployee,
+    employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility: view === "apps" || view === "automations" || view === "skills" ? view : null,
     onToggleArchived,
@@ -1599,6 +1639,9 @@ function Shell({
                 onWorkspaceScopeChange={applyWorkspaceScope}
                 settingsSnapshot={settingsSnapshot}
                 onOpenModelSettings={onOpenModelSettings}
+                employees={employees}
+                draftEmployee={draftEmployee}
+                onSelectEmployee={onSelectEmployee}
               />
             </div>
             {view !== "chat" && (
@@ -1614,6 +1657,8 @@ function Shell({
                   onSettingsChange={setSettingsSnapshot}
                   skills={skills}
                   onSkillsDeleted={reloadSkills}
+                  employees={employees}
+                  onEmployeesChanged={reloadEmployees}
                   onWorkspaceSettingsChange={refreshWorkspaces}
                   onSectionChange={onSettingsSectionChange}
                   onLogout={onLogout}

@@ -285,3 +285,28 @@ class WebUIWorkspaceController:
             session.metadata["webui"] = True
             session.metadata[WORKSPACE_SCOPE_METADATA_KEY] = scope.metadata()
             self._sessions.save(session)
+
+    def persist_employee(self, chat_id: str, employee_id: str) -> None:
+        """把数字人员工 id 持久化到会话元数据（随会话 JSONL 跨重启保留）。
+
+        员工在 ``new_chat`` 时一次性绑定；之后由 ``session.metadata`` 携带。
+        """
+        if self._sessions is not None and employee_id:
+            session = self._sessions.get_or_create(f"websocket:{chat_id}")
+            session.metadata["employee"] = employee_id
+            self._sessions.save(session)
+
+    def employee_for_session_key(self, session_key: str) -> str | None:
+        """读回会话绑定的员工 id；未绑定或元数据异常时返回 None。"""
+        if self._sessions is None:
+            return None
+        metadata_reader = getattr(self._sessions, "read_session_metadata", None)
+        if callable(metadata_reader):
+            data = metadata_reader(session_key)
+        else:
+            data = self._sessions.read_session_file(session_key)
+        metadata = data.get("metadata", {}) if isinstance(data, dict) else {}
+        if not isinstance(metadata, dict):
+            return None
+        value = metadata.get("employee")
+        return value if isinstance(value, str) and value.strip() else None

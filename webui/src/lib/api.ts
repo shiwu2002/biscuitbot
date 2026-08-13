@@ -2,6 +2,8 @@ import type {
   AutomationsPayload,
   AutomationUpdatePayload,
   ChatSummary,
+  Employee,
+  EmployeesPayload,
   CliAppsPayload,
   FilePreviewPayload,
   ImageGenerationSettingsUpdate,
@@ -95,6 +97,20 @@ function automationValuesHeader(values: AutomationUpdatePayload): HeadersInit {
   return { "X-Biscuitbot-Automation-Values": encodeURIComponent(JSON.stringify(values)) };
 }
 
+/** 数字人员工的创建/更新字段（均可选；后端负责必填校验与归一化）。 */
+export interface EmployeeValues {
+  id?: string;
+  name?: string;
+  avatar?: string;
+  system_prompt?: string;
+  skills?: string[];
+  enabled?: boolean;
+}
+
+function employeeValuesHeader(values: EmployeeValues): HeadersInit {
+  return { "X-Biscuitbot-Employee-Values": encodeURIComponent(JSON.stringify(values)) };
+}
+
 function splitKey(key: string): { channel: string; chatId: string } {
   const idx = key.indexOf(":");
   if (idx === -1) return { channel: "", chatId: key };
@@ -113,6 +129,7 @@ export async function listSessions(
     preview?: string;
     run_started_at?: number | null;
     workspace_scope?: WorkspaceScopePayload | null;
+    employee?: string | null;
   };
   const body = await request<{ sessions: Row[] }>(
     `${base}/api/sessions`,
@@ -129,6 +146,7 @@ export async function listSessions(
     preview: s.preview ?? "",
     runStartedAt: s.run_started_at ?? null,
     workspaceScope: s.workspace_scope ?? null,
+    employee: s.employee ?? null,
   }));
 }
 
@@ -271,6 +289,60 @@ export async function deleteSkill(
   return request<{ deleted: boolean; name: string }>(
     `${base}/api/webui/skills/${encodeURIComponent(name)}/delete`,
     token,
+  );
+}
+
+export async function fetchEmployees(
+  token: string,
+  base: string = "",
+): Promise<EmployeesPayload> {
+  return request<EmployeesPayload>(
+    `${base}/api/webui/employees`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+export async function createEmployee(
+  token: string,
+  values: EmployeeValues,
+  base: string = "",
+): Promise<Employee> {
+  return request<Employee>(
+    `${base}/api/webui/employees/create`,
+    token,
+    { headers: employeeValuesHeader(values) },
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+export async function updateEmployee(
+  token: string,
+  id: string,
+  values: EmployeeValues,
+  base: string = "",
+): Promise<Employee> {
+  const query = new URLSearchParams();
+  query.set("id", id);
+  return request<Employee>(
+    `${base}/api/webui/employees/update?${query}`,
+    token,
+    { headers: employeeValuesHeader(values) },
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+export async function deleteEmployee(
+  token: string,
+  id: string,
+  base: string = "",
+): Promise<{ deleted: boolean; id: string }> {
+  return request<{ deleted: boolean; id: string }>(
+    `${base}/api/webui/employees/${encodeURIComponent(id)}/delete`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
   );
 }
 

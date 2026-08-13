@@ -180,6 +180,23 @@ export interface SkillDetail extends SkillSummary {
 
 export interface SkillsPayload { skills: SkillSummary[]; }
 
+/** 数字人员工（Digital Employee）目录条目。
+ *
+ * 员工是带专属 persona 的拟人化代理：与主智能体不同，与其对话时 LLM 会沉浸
+ * 在该角色中（``system_prompt``），并只加载其 ``skills`` 里绑定的技能。
+ */
+export interface Employee {
+  id: string;
+  name: string;
+  avatar?: string;
+  system_prompt: string;
+  skills: string[];
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface EmployeesPayload { employees: Employee[]; }
+
 /** Structured UI blob on ``progress`` WS frames; channels may add more ``kind`` values later. */
 export interface AgentUIBlob {
   kind: string;
@@ -235,6 +252,8 @@ export interface ChatSummary {
   /** Unix epoch seconds when this session currently has a turn in flight. */
   runStartedAt?: number | null;
   workspaceScope?: WorkspaceScopePayload | null;
+  /** 绑定的数字人员工 id（无则为主智能体会话）。 */
+  employee?: string | null;
 }
 
 export type WorkspaceAccessMode = "restricted" | "full";
@@ -904,6 +923,8 @@ export type InboundEvent =
       chat_id: string;
       scope?: "metadata" | "thread" | string;
       workspace_scope?: WorkspaceScopePayload;
+      /** new_chat 时绑定的数字人员工 id（仅在绑定员工时出现）。 */
+      employee?: string;
     }
   | { event: "transcription_result"; request_id: string; text: string }
   | {
@@ -993,7 +1014,7 @@ export interface FilePreviewPayload {
 }
 
 export type Outbound =
-  | { type: "new_chat"; workspace_scope?: WorkspaceScopePayload }
+  | { type: "new_chat"; workspace_scope?: WorkspaceScopePayload; employee?: string }
   | { type: "fork_chat"; source_chat_id: string; before_user_index: number; title?: string }
   | { type: "attach"; chat_id: string }
   | { type: "set_workspace_scope"; chat_id: string; workspace_scope: WorkspaceScopePayload }

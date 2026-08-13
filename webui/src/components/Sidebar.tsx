@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type {
   ChatSummary,
+  Employee,
   SidebarViewState,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,9 @@ interface SidebarProps {
   onOpenSkills: () => void;
   onOpenAutomations: () => void;
   onOpenSearch: () => void;
+  /** 数字人员工列表；点击员工进入绑定其 persona 的新会话。 */
+  employees?: Employee[];
+  onOpenEmployee?: (employee: Employee) => void;
   activeUtility?: "apps" | "skills" | "automations" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
@@ -184,6 +188,37 @@ export function Sidebar(props: SidebarProps) {
           />
         ) : null}
       </div>
+      {!collapsed && props.employees && props.employees.length > 0 && props.onOpenEmployee ? (
+        <div className="px-2 pb-1.5">
+          <div className="px-2 pb-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/55">
+            {t("sidebar.employees.title", { defaultValue: "数字人员工" })}
+          </div>
+          <div className="mt-0.5 flex max-h-[9.5rem] flex-col gap-0.5 overflow-y-auto pr-0.5">
+            {props.employees
+              .filter((employee) => employee.enabled)
+              .map((employee) => (
+                <button
+                  key={employee.id}
+                  type="button"
+                  title={employee.name}
+                  onClick={() => props.onOpenEmployee?.(employee)}
+                  className={cn(
+                    "group flex h-8 min-w-0 items-center gap-2 rounded-[10px] px-2 text-[12.5px] font-medium text-sidebar-foreground/80",
+                    "transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                  )}
+                >
+                  <span
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[13px] leading-none"
+                    aria-hidden
+                  >
+                    {employee.avatar || "🧑‍💼"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-left">{employee.name}</span>
+                </button>
+              ))}
+          </div>
+        </div>
+      ) : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-opacity duration-200",
@@ -217,6 +252,7 @@ export function Sidebar(props: SidebarProps) {
             sort={props.viewState?.sort}
             showArchived={props.showArchived}
             defaultWorkspacePath={props.defaultWorkspacePath}
+            employees={props.employees}
             actionMenuPortalContainer={
               props.containActionMenus ? menuPortalContainer : undefined
             }

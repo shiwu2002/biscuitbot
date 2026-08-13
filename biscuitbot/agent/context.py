@@ -18,6 +18,7 @@ import platform  # 用于获取运行时平台信息，注入身份提示
 from pathlib import Path  # 文件路径处理
 from typing import Any, Mapping, Sequence  # 类型注解支持
 
+from biscuitbot.agent.employees import EmployeeStore  # 数字人员工目录存储，按会话注入 persona
 from biscuitbot.agent.memory import MemoryStore  # 记忆存储，提供长期记忆与历史读取
 from biscuitbot.agent.skills import SkillsLoader  # 技能加载器，提供技能内容与摘要
 from biscuitbot.agent.tools import mcp as mcp_tools  # MCP 工具相关运行时能力桥接
@@ -117,6 +118,7 @@ class ContextBuilder:
         self.guard_level = guard_level  # 护栏等级，注入身份提示以约束行为
         self.memory = MemoryStore(workspace)  # 记忆存储实例
         self.skills = SkillsLoader(workspace, disabled_skills=set(disabled_skills) if disabled_skills else None)  # 技能加载器实例
+        self.employees = EmployeeStore(workspace)  # 数字人员工目录存储，用于按会话解析 persona
 
     def build_system_prompt(
         self,
@@ -128,6 +130,7 @@ class ContextBuilder:
         session_key: str | None = None,
         unified_session: bool = False,
         tool_index: str | None = None,
+        session_metadata: Mapping[str, Any] | None = None,
     ) -> str:
         """从身份、引导文件、记忆与技能构建系统提示。
 
@@ -139,13 +142,19 @@ class ContextBuilder:
             include_memory_recent_history: 是否包含最近历史区段；
             session_key: 会话 key，用于按会话过滤历史；
             unified_session: 是否使用统一会话视角读取历史；
-            tool_index: 工具索引文本，追加到提示中。
+            tool_index: 工具索引文本，追加到提示中；
+            session_metadata: 会话元数据，若绑定数字人员工则注入其 persona 并限制技能范围。
 
         返回:
             拼接完成的系统提示字符串，各片段以分隔线连接。
         """
         root = workspace or self.workspace
         parts = [self._get_identity(channel=channel, workspace=root)]  # 身份段始终在最前
+
+        # 数字人员工 persona：紧跟身份段、置于引导文件之前，使其足够醒目
+        employee = self._resolve_employee(session_metadata)
+        if employee is not None:
+            parts.append(self._persona_section(employee))
 
         bootstrap = self._load_bootstrap_files(root)
         if bootstrap:
@@ -167,7 +176,12 @@ class ContextBuilder:
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
 
-        skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
+        # 员工绑定的技能限制摘要可见范围；未绑定时保持全局（全部技能可发现）
+        employee_skills = self._employee_skill_allowlist(session_metadata)
+        skills_summary = self.skills.build_skills_summary(
+            exclude=set(always_skills),
+            include=employee_skills,
+        )
         if skills_summary:
             parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
 
@@ -210,6 +224,39 @@ class ContextBuilder:
             channel=channel or "",
             guard_level=self.guard_level,
         )
+
+    # ---- 数字人员工（persona）辅助 ------------------------------------------
+
+    def _resolve_employee(self, session_metadata: Mapping[str, Any] | None) -> dict[str, Any] | None:
+        """按会话元数据解析**已启用**的数字人员工；未绑定或未启用时返回 None。
+
+        session_metadata 由 ``session.metadata`` 携带（``new_chat`` 时持久化的 employee id）。
+        """
+        if not session_metadata:
+            return None
+        employee_id = session_metadata.get("employee")
+        if not isinstance(employee_id, str) or not employee_id.strip():
+            return None
+        return self.employees._enabled_employee(employee_id.strip())
+
+    def _employee_skill_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
+        """返回员工绑定的技能 allowlist；无员工/未绑定技能时返回 None（表示全局）。"""
+        employee = self._resolve_employee(session_metadata)
+        if employee is None:
+            return None
+        skills = employee.get("skills")
+        if not isinstance(skills, list) or not skills:
+            return None
+        return {str(s).strip() for s in skills if isinstance(s, str) and s.strip()}
+
+    @staticmethod
+    def _persona_section(employee: dict[str, Any]) -> str:
+        """渲染员工 persona 段：标题 + 头像 + 角色提示词。"""
+        name = employee.get("name", "")
+        avatar = employee.get("avatar", "")
+        system_prompt = employee.get("system_prompt", "").strip()
+        heading = f"# Persona — {name}" + (f" {avatar}" if avatar else "")
+        return f"{heading}\n\n{system_prompt}"
 
     @staticmethod
     def _build_runtime_context(
@@ -413,6 +460,7 @@ class ContextBuilder:
                     session_key=session_key,
                     unified_session=unified_session,
                     tool_index=tool_index,
+                    session_metadata=session_metadata,
                 ),
             },
             *history,

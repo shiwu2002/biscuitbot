@@ -51,6 +51,7 @@ import {
   Sparkles,
   Trash2,
   Triangle,
+  UsersRound,
   Waves,
   X,
   Zap,
@@ -59,6 +60,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { EmployeesSettings } from "@/components/settings/EmployeesSettings";
 import { SkillsCatalogSettings } from "@/components/settings/SkillsCatalogSettings";
 import { TokenUsageHeatmap } from "@/components/settings/TokenUsageHeatmap";
 import { Button } from "@/components/ui/button";
@@ -125,6 +127,7 @@ import type {
   AutomationUpdatePayload,
   CliAppInfo,
   CliAppsPayload,
+  Employee,
   GuardLevel,
   ImageGenerationSettingsUpdate,
   McpPresetInfo,
@@ -152,6 +155,7 @@ export type SettingsSectionKey =
   | "apps"
   | "automations"
   | "skills"
+  | "employees"
   | "runtime"
   | "systemIo"
   | "advanced";
@@ -297,6 +301,8 @@ interface SettingsViewProps {
   onSettingsChange?: (payload: SettingsPayload) => void;
   skills?: SkillSummary[];
   onSkillsDeleted?: () => void;
+  employees?: Employee[];
+  onEmployeesChanged?: () => void;
   onWorkspaceSettingsChange?: () => void | Promise<void>;
   onSectionChange?: (section: SettingsSectionKey) => void;
   onLogout?: () => void;
@@ -552,6 +558,8 @@ export function SettingsView({
   onSettingsChange,
   skills = [],
   onSkillsDeleted,
+  employees = [],
+  onEmployeesChanged,
   onWorkspaceSettingsChange,
   onSectionChange,
   onLogout,
@@ -1783,6 +1791,14 @@ export function SettingsView({
         );
       case "skills":
         return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
+      case "employees":
+        return (
+          <EmployeesSettings
+            employees={employees}
+            skills={skills.map((skill) => skill.name)}
+            onChanged={onEmployeesChanged}
+          />
+        );
       case "runtime":
         return (
           <RuntimeSettings
@@ -1927,6 +1943,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "vision", icon: Eye, fallback: "Vision" },
   { key: "voice", icon: Mic, fallback: "Voice" },
   { key: "browser", icon: Globe2, fallback: "Web" },
+  { key: "employees", icon: UsersRound, fallback: "Employees" },
   { key: "runtime", icon: Server, fallback: "System" },
   { key: "systemIo", icon: Cpu, fallback: "System IO" },
   { key: "advanced", icon: ShieldCheck, fallback: "Security" },

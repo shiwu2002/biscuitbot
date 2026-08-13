@@ -166,7 +166,11 @@ class SkillsLoader:
         ]
         return "\n\n---\n\n".join(parts)
 
-    def build_skills_summary(self, exclude: set[str] | None = None) -> str:
+    def build_skills_summary(
+        self,
+        exclude: set[str] | None = None,
+        include: set[str] | None = None,
+    ) -> str:
         """
         Build a summary of all skills (name, description, path, availability).
 
@@ -175,6 +179,8 @@ class SkillsLoader:
 
         Args:
             exclude: Set of skill names to omit from the summary.
+            include: Optional allowlist; when set, only these skill names are
+                shown in the summary (used to scope skills per digital employee).
 
         Returns:
             Markdown-formatted skills summary.
@@ -185,6 +191,7 @@ class SkillsLoader:
 
         参数:
             exclude: 需排除的技能名集合。
+            include: 可选的允许列表；设置后仅展示这些技能（用于按数字人员工限定技能范围）。
 
         返回:
             Markdown 格式的技能摘要；无技能时返回空字符串。
@@ -197,6 +204,8 @@ class SkillsLoader:
         for entry in all_skills:
             skill_name = entry["name"]
             if exclude and skill_name in exclude:
+                continue
+            if include is not None and skill_name not in include:
                 continue
             meta = self._get_skill_meta(skill_name)
             available = self._check_requirements(meta)

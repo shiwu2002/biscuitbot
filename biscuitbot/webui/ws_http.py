@@ -23,6 +23,10 @@ from loguru import logger
 from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
+from biscuitbot.agent.employees import (
+    EmployeeStore,
+    EmployeeValidationError,
+)
 from biscuitbot.command.builtin import builtin_command_palette
 from biscuitbot.cron.session_turns import is_bound_cron_job
 from biscuitbot.cron.types import CronJob, CronSchedule
@@ -89,6 +93,7 @@ from biscuitbot.webui.workspaces import WebUIWorkspaceController
 
 _SLOW_WEBUI_HTTP_LOG_MS = 1_000
 _AUTOMATION_VALUES_HEADER = "X-Biscuitbot-Automation-Values"
+_EMPLOYEE_VALUES_HEADER = "X-Biscuitbot-Employee-Values"
 
 if TYPE_CHECKING:
     from biscuitbot.bus.queue import MessageBus
@@ -159,6 +164,7 @@ class GatewayHTTPHandler:
         disabled_skills: set[str] | None = None,
         cron_service: CronService | None = None,
         cron_pending_job_ids: Callable[[str], set[str]] | None = None,
+        employees: EmployeeStore | None = None,
         log: Any = logger,
     ) -> None:
         self.config = config
@@ -171,6 +177,7 @@ class GatewayHTTPHandler:
         self.workspaces = workspaces
         self.skills_workspace_path = skills_workspace_path
         self.disabled_skills = disabled_skills or set()
+        self.employees = employees
         self.cron_service = cron_service
         self.cron_pending_job_ids = cron_pending_job_ids
         self._log = log
@@ -402,6 +409,9 @@ class GatewayHTTPHandler:
                 row["run_started_at"] = started_at
             scope = self.workspaces.scope_for_session_key(key)
             row["workspace_scope"] = scope.payload()
+            employee = self.workspaces.employee_for_session_key(key)
+            if employee:
+                row["employee"] = employee
             cleaned.append(row)
         return {"sessions": cleaned}
 
@@ -676,6 +686,15 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/webui/skills/([^/]+)$", got)
         if m:
             return self._handle_webui_skill_detail(request, m.group(1))
+        if got == "/api/webui/employees":
+            return self._handle_webui_employees(request)
+        if got == "/api/webui/employees/create":
+            return self._handle_webui_employee_create(request)
+        if got == "/api/webui/employees/update":
+            return self._handle_webui_employee_update(request)
+        m = re.match(r"^/api/webui/employees/([^/]+)/delete$", got)
+        if m:
+            return self._handle_webui_employee_delete(request, m.group(1))
         if got == "/api/webui/sidebar-state":
             return self._handle_webui_sidebar_state(request)
         if got == "/api/webui/sidebar-state/update":
@@ -735,6 +754,67 @@ class GatewayHTTPHandler:
             logger.exception("failed to delete skill '{}'", name)
             return _http_error(500, "failed to delete skill")
         return _http_json_response(result)
+
+    def _handle_webui_employees(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self.employees is None:
+            return _http_error(503, "employees store unavailable")
+        try:
+            return _http_json_response({"employees": self.employees.list_employees()})
+        except Exception:
+            logger.exception("failed to list employees")
+            return _http_error(500, "failed to list employees")
+
+    def _handle_webui_employee_create(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self.employees is None:
+            return _http_error(503, "employees store unavailable")
+        values = _employee_values_from_request(request)
+        if values is None:
+            return _http_error(400, "invalid employee values")
+        try:
+            return _http_json_response(self.employees.create_employee(values))
+        except EmployeeValidationError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to create employee")
+            return _http_error(500, "failed to create employee")
+
+    def _handle_webui_employee_update(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self.employees is None:
+            return _http_error(503, "employees store unavailable")
+        query = _parse_query(request.path)
+        employee_id = _query_first(query, "id")
+        if not employee_id:
+            return _http_error(400, "missing employee id")
+        values = _employee_values_from_request(request)
+        if values is None:
+            return _http_error(400, "invalid employee values")
+        try:
+            return _http_json_response(self.employees.update_employee(employee_id, values))
+        except EmployeeValidationError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to update employee '{}'", employee_id)
+            return _http_error(500, "failed to update employee")
+
+    def _handle_webui_employee_delete(self, request: WsRequest, raw_id: str) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self.employees is None:
+            return _http_error(503, "employees store unavailable")
+        employee_id = unquote(raw_id)
+        try:
+            return _http_json_response(self.employees.delete_employee(employee_id))
+        except EmployeeValidationError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to delete employee '{}'", employee_id)
+            return _http_error(500, "failed to delete employee")
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):
@@ -809,6 +889,21 @@ def _automation_values_from_request(request: WsRequest) -> dict[str, Any] | None
     raw = _case_insensitive_header(request.headers, _AUTOMATION_VALUES_HEADER)
     if not raw:
         return {}
+    try:
+        values = json.loads(raw)
+    except Exception:
+        try:
+            values = json.loads(unquote(raw))
+        except Exception:
+            return None
+    return values if isinstance(values, dict) else None
+
+
+def _employee_values_from_request(request: WsRequest) -> dict[str, Any] | None:
+    """解析 ``X-Biscuitbot-Employee-Values`` 头中的员工字段（前端 encodeURIComponent 编码）。"""
+    raw = _case_insensitive_header(request.headers, _EMPLOYEE_VALUES_HEADER)
+    if not raw:
+        return None
     try:
         values = json.loads(raw)
     except Exception:

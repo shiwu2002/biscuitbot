@@ -641,23 +641,29 @@ class AgentLoop:
 
         logger.info("Registered {} tools: {}", len(registered), registered)
 
-    def _build_tool_index(self) -> str:
+    def _build_tool_index(self, skill_names: set[str] | None = None) -> str:
         """Generate the Tools & Skills Index for the system prompt.
 
         Merges registered tools with the skills loader so the model sees
         a single unified discovery table.
+
+        参数:
+            skill_names: 可选的技能 allowlist；设置后仅列出这些技能（用于按数字人员工限定范围）。
         """
         skills_entries: list[dict[str, str]] | None = None
         try:
-            skills_loader = getattr(self, "skills", None)
+            skills_loader = getattr(self.context, "skills", None)
             if skills_loader is not None:
+                listed = skills_loader.list_skills()
+                if skill_names is not None:
+                    listed = [s for s in listed if s["name"] in skill_names]
                 skills_entries = [
                     {
                         "name": s["name"],
                         "capability": skills_loader._get_skill_description(s["name"]),
                         "usage_md": s["path"],
                     }
-                    for s in skills_loader.list_skills()
+                    for s in listed
                 ]
         except Exception:
             logger.debug("Failed to list skills for tool index", exc_info=True)
@@ -806,7 +812,9 @@ class AgentLoop:
         scope = self.workspace_scopes.for_message(msg, session.metadata)
         # Always inject the Tools & Skills Index so the model can discover
         # on-demand tools by name + capability + usage_doc path.
-        tool_index = self._build_tool_index()
+        # 数字人员工绑定技能时，仅在其技能范围内构建工具索引。
+        allowed_skills = self.context._employee_skill_allowlist(session.metadata)
+        tool_index = self._build_tool_index(skill_names=allowed_skills)
         return self.context.build_messages(
             history=history,
             current_message=image_generation_prompt(msg.content, msg.metadata),
@@ -1445,7 +1453,8 @@ class AgentLoop:
 
         # Always inject the Tools & Skills Index (same content as
         # _build_initial_messages — keeps system prompt stable across turns).
-        tool_index = self._build_tool_index()
+        allowed_skills = self.context._employee_skill_allowlist(session.metadata)
+        tool_index = self._build_tool_index(skill_names=allowed_skills)
         messages = self.context.build_messages(
             history=history,
             current_message="" if is_subagent else msg.content,

@@ -33,6 +33,7 @@ import {
 import { inferProviderFromModelName, providerDisplayLabel } from "@/lib/provider-brand";
 import type {
   ChatSummary,
+  Employee,
   SettingsPayload,
   SlashCommand,
   UIMessage,
@@ -84,7 +85,14 @@ interface ThreadShellProps {
   onToggleSidebar: () => void;
   onGoHome?: () => void;
   onNewChat?: () => void;
-  onCreateChat?: (workspaceScope?: WorkspaceScopePayload | null) => Promise<string | null>;
+  onCreateChat?: (
+    workspaceScope?: WorkspaceScopePayload | null,
+    employeeId?: string | null,
+  ) => Promise<string | null>;
+  /** 数字人员工列表与 hero 态预选状态（hero 选择员工后新会话绑定该员工）。 */
+  employees?: Employee[];
+  draftEmployee?: Employee | null;
+  onSelectEmployee?: (employee: Employee | null) => void;
   onForkChat?: (sourceChatId: string, beforeUserIndex: number) => Promise<string | null>;
   onTurnEnd?: () => void;
   theme?: "light" | "dark";
@@ -237,6 +245,9 @@ export function ThreadShell({
   onCreateChat,
   onForkChat,
   onTurnEnd,
+  employees = [],
+  draftEmployee = null,
+  onSelectEmployee,
   theme = "light",
   onToggleTheme = () => {},
   hideSidebarToggleForHostChrome = false,
@@ -536,13 +547,13 @@ export function ThreadShell({
       if (booting) return;
       setBooting(true);
       pendingFirstRef.current = { content, images, options: withWorkspaceScope(options) };
-      const newId = await onCreateChat?.(workspaceScope);
+      const newId = await onCreateChat?.(workspaceScope, draftEmployee?.id);
       if (!newId) {
         pendingFirstRef.current = null;
         setBooting(false);
       }
     },
-    [booting, onCreateChat, withWorkspaceScope, workspaceScope],
+    [booting, draftEmployee?.id, onCreateChat, withWorkspaceScope, workspaceScope],
   );
 
   const handleThreadSend = useCallback(
@@ -690,6 +701,9 @@ export function ThreadShell({
           workspaceScopeDisabled={workspaceScopeDisabled}
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
+          employees={employees}
+          draftEmployee={draftEmployee}
+          onSelectEmployee={onSelectEmployee}
           pendingQueueKey={chatId}
         />
       ) : (
@@ -720,6 +734,9 @@ export function ThreadShell({
           workspaceScopeDisabled={workspaceScopeDisabled}
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
+          employees={employees}
+          draftEmployee={draftEmployee}
+          onSelectEmployee={onSelectEmployee}
         />
       )}
     </>

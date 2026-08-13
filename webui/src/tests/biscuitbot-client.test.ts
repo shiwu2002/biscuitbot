@@ -360,6 +360,7 @@ describe("BiscuitbotClient", () => {
       "chat-title",
       "metadata",
       expect.objectContaining({ project_path: "/tmp/project" }),
+      undefined,
     );
     expect(chatHandler).not.toHaveBeenCalled();
   });

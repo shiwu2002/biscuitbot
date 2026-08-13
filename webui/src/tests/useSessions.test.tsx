@@ -219,7 +219,7 @@ describe("useSessions", () => {
       await result.current.createChat();
     });
 
-    expect(client.newChat).toHaveBeenCalledWith(60_000, undefined);
+    expect(client.newChat).toHaveBeenCalledWith(60_000, undefined, undefined);
     expect(result.current.sessions.map((s) => s.key)).toEqual(["websocket:chat-new"]);
 
     await act(async () => {
@@ -258,7 +258,7 @@ describe("useSessions", () => {
       await result.current.createChat(workspaceScope);
     });
 
-    expect(client.newChat).toHaveBeenCalledWith(60_000, workspaceScope);
+    expect(client.newChat).toHaveBeenCalledWith(60_000, workspaceScope, undefined);
     expect(result.current.sessions[0]?.workspaceScope).toEqual(workspaceScope);
   });
 

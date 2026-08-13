@@ -57,6 +57,7 @@ import {
   WorkspaceAccessMenu,
   WorkspaceProjectPicker,
 } from "@/components/thread/WorkspaceControls";
+import { EmployeePicker } from "@/components/thread/EmployeePicker";
 import {
   useAttachedImages,
   type AttachedImage,
@@ -69,6 +70,7 @@ import type { SendImage, SendOptions } from "@/hooks/useBiscuitbotStream";
 import { useVoiceRecorder, type VoiceRecorderErrorKey } from "@/hooks/useVoiceRecorder";
 import type {
   CliAppInfo,
+  Employee,
   GoalStateWsPayload,
   McpPresetInfo,
   OutboundCliAppMention,
@@ -171,6 +173,10 @@ interface ThreadComposerProps {
   workspaceScopeDisabled?: boolean;
   workspaceError?: string | null;
   onWorkspaceScopeChange?: (scope: WorkspaceScopePayload) => void;
+  /** 数字人员工：hero 态可选择员工（预选员工时其会话绑定该员工 persona）。 */
+  employees?: Employee[];
+  draftEmployee?: Employee | null;
+  onSelectEmployee?: (employee: Employee | null) => void;
   pendingQueueKey?: string | null;
 }
 
@@ -781,6 +787,9 @@ export function ThreadComposer({
   workspaceScopeDisabled = false,
   workspaceError = null,
   onWorkspaceScopeChange,
+  employees = [],
+  draftEmployee = null,
+  onSelectEmployee,
   pendingQueueKey = null,
 }: ThreadComposerProps) {
   const { t } = useTranslation();
@@ -1869,6 +1878,12 @@ export function ThreadComposer({
           controls={workspaceControls}
           error={workspaceError}
           onChange={onWorkspaceScopeChange}
+        />
+        <EmployeePicker
+          isHero={isHero}
+          employees={employees}
+          selected={draftEmployee}
+          onChange={onSelectEmployee}
         />
       </div>
     </form>

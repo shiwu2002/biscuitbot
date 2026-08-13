@@ -694,16 +694,20 @@ class WebSocketChannel(BaseChannel):
             )
             if scope is None:
                 return
+            employee_id = self._employee_id_from_envelope(envelope)
             self._workspaces.persist_scope(new_id, scope)
+            if employee_id:
+                self._workspaces.persist_employee(new_id, employee_id)
             self._attach(connection, new_id)
             await self._send_event(connection, "attached", chat_id=new_id)
-            await self._send_event(
-                connection,
-                "session_updated",
-                chat_id=new_id,
-                scope="metadata",
-                workspace_scope=scope.payload(),
-            )
+            updated_fields: dict[str, Any] = {
+                "chat_id": new_id,
+                "scope": "metadata",
+                "workspace_scope": scope.payload(),
+            }
+            if employee_id:
+                updated_fields["employee"] = employee_id
+            await self._send_event(connection, "session_updated", **updated_fields)
             await self._hydrate_after_subscribe(new_id)
             return
         if t == "fork_chat":
@@ -853,6 +857,22 @@ class WebSocketChannel(BaseChannel):
                 **({"chat_id": chat_id} if chat_id else {}),
             )
             return None
+
+    def _employee_id_from_envelope(self, envelope: dict[str, Any]) -> str | None:
+        """从信封中取出已启用员工 id；非法/未启用/不存在时返回 None（回退全局行为）。
+
+        员工仅在 ``new_chat`` 时绑定；无法解析时静默降级，不阻断建会话。
+        """
+        raw = envelope.get("employee")
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        employee_id = raw.strip()
+        employees = getattr(getattr(self, "gateway", None), "employees", None)
+        if employees is not None:
+            existing = employees.get_employee(employee_id)
+            if existing is None or not existing.get("enabled", True):
+                return None
+        return employee_id
 
     # -- 出站 WebSocket 事件 -----------------------------------------------
 
