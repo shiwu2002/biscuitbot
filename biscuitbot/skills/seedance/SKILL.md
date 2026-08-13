@@ -2,7 +2,7 @@
 name: seedance
 tier: user
 description: 使用火山引擎方舟（Volcengine Ark）Seedance 2.0 视频大模型生成或编辑视频：文生视频、图生视频、参考图+参考视频编辑，输出可下载的视频 URL。当用户要求生成一段视频、把图片变成视频、或基于参考素材编辑视频时使用。
-metadata: {"biscuitbot":{"emoji":"🎬","requires":{"env":["ARK_API_KEY"],"pkgs":["volcenginesdkarkruntime"]}}}
+metadata: {"biscuitbot":{"emoji":"🎬","requires":{"env":["ARK_API_KEY"],"pkgs":["volcengine-python-sdk[ark]"]}}}
 ---
 
 # Seedance 2.0 视频生成 / 编辑
@@ -11,10 +11,10 @@ metadata: {"biscuitbot":{"emoji":"🎬","requires":{"env":["ARK_API_KEY"],"pkgs"
 
 ## 前置条件
 
-1. **API Key**：环境变量 `ARK_API_KEY`（方舟控制台申请）。未设置该变量时技能不可用（依赖校验会提示 `ENV: ARK_API_KEY`）。
-2. **SDK**：`volcenginesdkarkruntime`，首次使用时安装：
+1. **API Key**：环境变量 `ARK_API_KEY`。用户已配置密钥 `ark-<REDACTED>`，使用前先 `export ARK_API_KEY=ark-<REDACTED>`。未设置该变量时技能不可用（依赖校验会提示 `ENV: ARK_API_KEY`）。
+2. **SDK**：`volcengine-python-sdk[ark]`（导入名仍为 `volcenginesdkarkruntime`），首次使用时安装：
    ```bash
-   pip install volcenginesdkarkruntime
+   pip install "volcengine-python-sdk[ark]"
    ```
 3. **模型开通**：`doubao-seedance-2-0-260128` 需在方舟控制台开通，并可能需要公测权限。
 
@@ -43,7 +43,7 @@ cat > /tmp/seedance_video.py <<'PY'
 """Seedance 2.0 视频生成/编辑：文生视频、图生视频、参考图+参考视频编辑。
 
 stdout 仅输出最终视频 URL；进度与错误走 stderr。退出码：0=成功 1=任务失败 2=配置错误。
-依赖：pip install volcenginesdkarkruntime；环境变量 ARK_API_KEY。
+依赖：pip install "volcengine-python-sdk[ark]"；环境变量 ARK_API_KEY。
 """
 import argparse
 import os

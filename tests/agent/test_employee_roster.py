@@ -22,7 +22,7 @@ def _write_empty_current(workspace: Path) -> None:
             {
                 "schema_version": 1,
                 "builtin_seeded": True,
-                "builtin_version": 5,
+                "builtin_version": 6,
                 "employees": [],
             },
             ensure_ascii=False,
@@ -37,7 +37,7 @@ class TestRosterSection:
         prompt = cb.build_system_prompt()
         assert "数字员工团队" in prompt
         assert "invoke_employee" in prompt
-        for codename in ("阿伟", "灵溪", "沐辰", "阿凯", "静娴", "达芬奇"):
+        for codename in ("阿伟", "灵溪", "沐辰", "阿凯", "静娴", "达芬奇", "宫本"):
             assert codename in prompt
 
     def test_roster_hidden_when_no_enabled_employees(self, tmp_path: Path) -> None:
