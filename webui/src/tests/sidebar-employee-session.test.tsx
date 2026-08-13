@@ -5,7 +5,6 @@ import i18n from "@/i18n";
 import type { ChatSummary, Employee } from "@/lib/types";
 
 const connectSpy = vi.fn();
-const createChatSpy = vi.fn().mockResolvedValue("chat-1");
 const sessionUpdateHandlers = new Set<(chatId: string, scope?: string) => void>();
 const CLIP_MASTER: Employee = {
   id: "clip-master",
@@ -18,19 +17,40 @@ const CLIP_MASTER: Employee = {
   created_at: "2026-08-13T00:00:00Z",
 };
 
+const CLIP_SESSION: ChatSummary = {
+  key: "websocket:clip-1",
+  channel: "websocket",
+  chatId: "clip-1",
+  createdAt: null,
+  updatedAt: "2026-08-13T10:00:00Z",
+  preview: "帮我剪一支宣传片",
+  title: "产品宣传片",
+  employee: "clip-master",
+};
+
+const MAIN_SESSION: ChatSummary = {
+  key: "websocket:main-1",
+  channel: "websocket",
+  chatId: "main-1",
+  createdAt: null,
+  updatedAt: "2026-08-13T09:00:00Z",
+  preview: "整理一下今天的待办",
+  title: "待办整理",
+};
+
 vi.mock("@/hooks/useSessions", async (importOriginal) => {
   const React = await import("react");
   const actual = await importOriginal<typeof import("@/hooks/useSessions")>();
   return {
     ...actual,
     useSessions: () => {
-      const [sessions] = React.useState<ChatSummary[]>([]);
+      const [sessions] = React.useState<ChatSummary[]>([CLIP_SESSION, MAIN_SESSION]);
       return {
         sessions,
         loading: false,
         error: null,
         refresh: vi.fn(),
-        createChat: createChatSpy,
+        createChat: async () => "chat-1",
         forkChat: async () => "fork-chat",
         getSessionAutomations: async () => [],
         deleteChat: async () => ({ deleted: true }),
@@ -95,11 +115,10 @@ vi.mock("@/lib/biscuitbot-client", () => {
 
 import App from "@/App";
 
-describe("和 TA 对话自动携带数字员工", () => {
+describe("侧边栏历史会话点击跳转到对应员工专属页", () => {
   beforeEach(async () => {
     await i18n.changeLanguage("zh-CN");
     connectSpy.mockClear();
-    createChatSpy.mockClear().mockResolvedValue("chat-1");
     sessionUpdateHandlers.clear();
     window.history.replaceState(null, "", "/");
     vi.stubGlobal(
@@ -112,38 +131,53 @@ describe("和 TA 对话自动携带数字员工", () => {
     vi.unstubAllGlobals();
   });
 
-  it("从「和 TA 对话」进入员工专属页，点「开始新对话」后 hero 绑定员工，首发消息自动绑定", async () => {
+  it("点击绑定员工的会话 → 跳到该员工的专属对话页", async () => {
     render(<App />);
-
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
 
-    // 侧边栏 → 数字人员工 tab
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "数字人员工" }));
-    await screen.findByRole("heading", { name: "数字人员工" });
 
-    // 点「和 TA 对话」→ 跳转到该员工的专属对话页（技能 + 历史会话 + 开始新对话）
-    fireEvent.click(screen.getByText("和 TA 对话"));
-    expect(await screen.findByText("掌握的技能")).toBeInTheDocument();
-    expect(screen.getByText("历史对话")).toBeInTheDocument();
+    // 侧边栏里点击绑定 clip-master 的会话「产品宣传片」
+    fireEvent.click(within(sidebar).getByText("产品宣传片"));
 
-    // 点「开始新对话」→ 新会话 hero 显示「正在与 🎬 阿伟 对话」徽标
-    fireEvent.click(screen.getAllByText("开始新对话")[0]);
+    // 应跳转到阿伟的专属页：名字标题 + 掌握的技能
+    expect(await screen.findByRole("heading", { name: "阿伟" })).toBeInTheDocument();
+    expect(screen.getByText("掌握的技能")).toBeInTheDocument();
+    // 专属页历史列表也展示该会话：侧边栏 1 处 + 专属页历史 1 处 + 内嵌对话头部标题 1 处
+    expect(await screen.findAllByText("产品宣传片")).toHaveLength(3);
+    // 自动打开最近会话并在专属页历史列表中带 ▸ 游标高亮（侧边栏项不带 aria-current）
+    const clipButtons = screen.getAllByRole("button", { name: /产品宣传片/ });
+    expect(clipButtons.length).toBeGreaterThanOrEqual(2);
+    expect(clipButtons.some((el) => el.getAttribute("aria-current") === "true")).toBe(true);
+  });
 
-    // hashchange 的 applyRoute 不得清掉预选员工 → hero 显示「正在与 🎬 阿伟 对话」徽标
-    await waitFor(() =>
-      expect(screen.getByText("正在与 🎬 阿伟 对话")).toBeInTheDocument(),
-    );
+  it("点击未绑定员工的会话 → 仍打开普通聊天", async () => {
+    render(<App />);
+    await waitFor(() => expect(connectSpy).toHaveBeenCalled());
 
-    // 首发消息 → createChat(scope, employee.id)
-    // 主聊天 ThreadShell（不可见）与内嵌 ThreadShell 同时渲染输入框，限定到员工专属页内
-    const pageMain = screen.getAllByRole("main").slice(-1)[0];
-    fireEvent.change(within(pageMain).getByRole("textbox", { name: "消息输入框" }), {
-      target: { value: "你好，剪影" },
-    });
-    fireEvent.click(within(pageMain).getByRole("button", { name: "发送消息" }));
+    const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
+    fireEvent.click(within(sidebar).getByText("待办整理"));
 
-    await waitFor(() => expect(createChatSpy).toHaveBeenCalledTimes(1));
-    expect(createChatSpy.mock.calls[0][1]).toBe("clip-master");
+    // 未绑定员工 → 打开普通聊天：侧边栏 + 聊天头部各出现一次
+    expect(await screen.findAllByText("待办整理")).toHaveLength(2);
+    expect(screen.queryByText("掌握的技能")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "阿伟" })).not.toBeInTheDocument();
+  });
+
+  it("员工视图点击员工卡片 → 跳转到该员工专属页", async () => {
+    render(<App />);
+    await waitFor(() => expect(connectSpy).toHaveBeenCalled());
+
+    // 侧边栏进入员工视图
+    const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
+    fireEvent.click(within(sidebar).getByText("数字人员工"));
+
+    // 员工视图卡片出现，点击卡片本体
+    expect(await screen.findByText("阿伟")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("阿伟"));
+
+    // 应跳转到阿伟的专属页（真实 navigate 链路：onPick → onOpenEmployee → employee-chat）
+    expect(await screen.findByRole("heading", { name: "阿伟" })).toBeInTheDocument();
+    expect(screen.getByText("掌握的技能")).toBeInTheDocument();
   });
 });

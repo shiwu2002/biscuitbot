@@ -80,7 +80,7 @@ class Schema(ABC):
         """
         raw_type = schema.get("type")
         nullable = (isinstance(raw_type, list) and "null" in raw_type) or schema.get("nullable", False)
-        t = Schema.resolve_json_schema_type(raw_type)
+        t = Schema.resolve_jsonschema_type(raw_type)
         label = path or "parameter"
 
         if nullable and val is None:
@@ -180,7 +180,7 @@ class Tool(ABC):
 
         中文说明：从 JSON Schema 联合类型中选取首个非 null 的类型名。
         """
-        return Schema.resolve_json_schema_type(t)
+        return Schema.resolve_jsonschema_type(t)
 
     @property
     @abstractmethod

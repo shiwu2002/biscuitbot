@@ -43,7 +43,7 @@ class TestInvokeEmployeeTool:
     async def test_execute_returns_employee_result(self, tmp_path: Path) -> None:
         tool = self._tool(tmp_path, "这是剪影剪好的成片说明")
         out = await tool.execute("clip-master", "帮我剪辑一段视频")
-        assert "剪影" in out
+        assert "阿伟" in out
         assert "这是剪影剪好的成片说明" in out
 
     async def test_unknown_employee_lists_roster(self, tmp_path: Path) -> None:
@@ -51,7 +51,7 @@ class TestInvokeEmployeeTool:
         out = await tool.execute("ghost", "干活")
         assert "没有可用的数字员工" in out
         assert "clip-master" in out  # 名单里有可用员工
-        assert "剪影" in out
+        assert "阿伟" in out
 
     async def test_disabled_employee_rejected(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
@@ -72,16 +72,16 @@ class TestInvokeEmployeeTool:
         out = await tool.execute("", "干活")
         assert "缺少 employee_id" in out
 
-    async def test_skills_not_manually_bound_all_skills_available(self, tmp_path: Path) -> None:
-        """技能不手动分配：调用任何员工都传入 include_skills=None（全部技能由员工自主选用）。"""
+    async def test_skills_scope_to_employee_own(self, tmp_path: Path) -> None:
+        """技能归属自己：调用员工时传入该员工自己的技能 allowlist，而非共享全部。"""
         tool = self._tool(tmp_path)
         await tool.execute("clip-master", "干活")
-        assert tool._manager.run_employee_inline.await_args.kwargs["include_skills"] is None
+        assert tool._manager.run_employee_inline.await_args.kwargs["include_skills"] == {"jianying-editor"}
 
-    async def test_skills_none_for_employee_without_bound_skills(self, tmp_path: Path) -> None:
+    async def test_skills_own_for_employee_with_bound_skill(self, tmp_path: Path) -> None:
         tool = self._tool(tmp_path)
         await tool.execute("super-secretary", "安排日程")
-        assert tool._manager.run_employee_inline.await_args.kwargs["include_skills"] is None
+        assert tool._manager.run_employee_inline.await_args.kwargs["include_skills"] == {"secretary"}
 
     async def test_long_result_is_truncated(self, tmp_path: Path) -> None:
         tool = self._tool(tmp_path, "长" * 30000)
@@ -105,8 +105,8 @@ class TestRunEmployeeInline:
         store = _store(tmp_path)
         mgr = _manager(tmp_path)
         prompt = mgr._build_subagent_prompt(employee=store.get_employee("clip-master"))
-        assert "# Persona — 剪影（剪辑） 🎬" in prompt
-        assert "以数字员工「剪影」的身份执行任务" in prompt
+        assert "# Persona — 阿伟（剪辑） 🎬" in prompt
+        assert "以数字员工「阿伟」的身份执行任务" in prompt
 
     async def test_include_skills_scopes_skills_summary(self, tmp_path: Path) -> None:
         store = _store(tmp_path)

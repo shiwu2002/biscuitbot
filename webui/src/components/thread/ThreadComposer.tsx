@@ -173,10 +173,14 @@ interface ThreadComposerProps {
   workspaceScopeDisabled?: boolean;
   workspaceError?: string | null;
   onWorkspaceScopeChange?: (scope: WorkspaceScopePayload) => void;
-  /** 数字人员工：hero 态可选择员工（预选员工时其会话绑定该员工 persona）。 */
+  /** 数字人员工：hero 态可选择员工（预选员工时其会话绑定该员工 persona）；
+   * 已有会话时员工固定（employeeMode="readonly"，只读徽标）。 */
   employees?: Employee[];
   draftEmployee?: Employee | null;
+  employeeMode?: "select" | "readonly";
   onSelectEmployee?: (employee: Employee | null) => void;
+  /** 只读员工徽标点击：跳转到该员工的专属对话页（查看员工，不切换绑定）。 */
+  onOpenEmployee?: (employee: Employee) => void;
   pendingQueueKey?: string | null;
 }
 
@@ -789,7 +793,9 @@ export function ThreadComposer({
   onWorkspaceScopeChange,
   employees = [],
   draftEmployee = null,
+  employeeMode = "select",
   onSelectEmployee,
+  onOpenEmployee,
   pendingQueueKey = null,
 }: ThreadComposerProps) {
   const { t } = useTranslation();
@@ -1880,10 +1886,11 @@ export function ThreadComposer({
           onChange={onWorkspaceScopeChange}
         />
         <EmployeePicker
-          isHero={isHero}
+          mode={employeeMode}
           employees={employees}
           selected={draftEmployee}
           onChange={onSelectEmployee}
+          onOpenEmployee={onOpenEmployee}
         />
       </div>
     </form>

@@ -158,8 +158,13 @@ export function EmployeesView({
             {ordered.map((employee) => (
               <article
                 key={employee.id}
+                onClick={() => onPick?.(employee)}
+                title={t("employeesView.openPage", {
+                  defaultValue: "点击查看{{name}}的专属对话页",
+                  name: employee.name,
+                })}
                 className={cn(
-                  "flex min-w-0 items-start gap-3 sm:gap-4",
+                  "group flex min-w-0 cursor-pointer items-start gap-3 sm:gap-4",
                   !employee.enabled && "opacity-70",
                 )}
               >
@@ -169,7 +174,7 @@ export function EmployeesView({
                 >
                   {employee.avatar || "🧑‍💼"}
                 </span>
-                <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card px-4 py-3.5 shadow-sm sm:px-5 sm:py-4">
+                <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card px-4 py-3.5 shadow-sm transition-colors group-hover:border-border group-hover:bg-muted/40 sm:px-5 sm:py-4">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <h3 className="text-[15px] font-semibold leading-6 text-foreground">
                       {employee.name}
@@ -200,7 +205,10 @@ export function EmployeesView({
                       size="sm"
                       variant="ghost"
                       disabled={!onPick}
-                      onClick={() => onPick?.(employee)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onPick?.(employee);
+                      }}
                       className="h-8 rounded-[9px] px-3 text-[12.5px]"
                     >
                       <MessageCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
@@ -210,7 +218,10 @@ export function EmployeesView({
                       type="button"
                       size="sm"
                       variant="ghost"
-                      onClick={() => setEditor({ employee })}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditor({ employee });
+                      }}
                       className="h-8 rounded-[9px] px-3 text-[12.5px]"
                     >
                       <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
@@ -224,7 +235,10 @@ export function EmployeesView({
                         name: employee.name,
                         defaultValue: "删除员工 {{name}}",
                       })}
-                      onClick={() => setDeleteTarget(employee)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(employee);
+                      }}
                       className="h-8 rounded-[9px] px-3 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
                       <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />

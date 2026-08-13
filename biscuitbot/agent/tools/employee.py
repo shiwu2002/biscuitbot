@@ -124,11 +124,12 @@ class InvokeEmployeeTool(Tool):
 
         scope = current_workspace_scope()
         workspace = scope.project_path if scope is not None else None
-        # 技能不手动分配：员工与主智能体一样可发现全部技能，由员工自主选用
+        # 技能归属自己：员工内联执行时只用该员工自己的技能，而非共享全部
+        employee_skills = set(employee.get("skills") or [])
         content = await self._manager.run_employee_inline(
             employee,
             task,
-            include_skills=None,
+            include_skills=employee_skills,
             workspace=workspace,
         )
         if len(content) > _MAX_RESULT_CHARS:

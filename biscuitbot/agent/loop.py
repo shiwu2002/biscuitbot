@@ -813,8 +813,10 @@ class AgentLoop:
         scope = self.workspace_scopes.for_message(msg, session.metadata)
         # Always inject the Tools & Skills Index so the model can discover
         # on-demand tools by name + capability + usage_doc path.
-        # 技能不手动分配：员工与主智能体一样可发现全部技能，由员工自主选用。
-        tool_index = self._build_tool_index(skill_names=None)
+        # 技能归属自己：绑定数字员工时工具索引只列该员工自己的技能；主会话共享全部。
+        tool_index = self._build_tool_index(
+            skill_names=self.context._employee_skill_allowlist(session.metadata)
+        )
         return self.context.build_messages(
             history=history,
             current_message=image_generation_prompt(msg.content, msg.metadata),
@@ -1453,8 +1455,10 @@ class AgentLoop:
 
         # Always inject the Tools & Skills Index (same content as
         # _build_initial_messages — keeps system prompt stable across turns).
-        # 技能不手动分配：员工与主智能体一样可发现全部技能，由员工自主选用。
-        tool_index = self._build_tool_index(skill_names=None)
+        # 技能归属自己：绑定数字员工时工具索引只列该员工自己的技能；主会话共享全部。
+        tool_index = self._build_tool_index(
+            skill_names=self.context._employee_skill_allowlist(session.metadata)
+        )
         messages = self.context.build_messages(
             history=history,
             current_message="" if is_subagent else msg.content,

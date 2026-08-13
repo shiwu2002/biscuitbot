@@ -79,7 +79,7 @@ function maxFilePreviewWidth(containerWidth: number): number {
   );
 }
 
-interface ThreadShellProps {
+export interface ThreadShellProps {
   session: ChatSummary | null;
   title: string;
   onToggleSidebar: () => void;
@@ -93,6 +93,11 @@ interface ThreadShellProps {
   employees?: Employee[];
   draftEmployee?: Employee | null;
   onSelectEmployee?: (employee: Employee | null) => void;
+  /** 只读员工徽标点击：跳转到该员工的专属对话页（查看员工，不切换绑定）。 */
+  onOpenEmployee?: (employee: Employee) => void;
+  /** 覆盖员工选择器模式：专属页 hero 态需要强制 readonly（员工固定不可切换）。
+   * 缺省时按 session 推导：已有会话 readonly，hero 态 select。 */
+  employeeMode?: "select" | "readonly";
   onForkChat?: (sourceChatId: string, beforeUserIndex: number) => Promise<string | null>;
   onTurnEnd?: () => void;
   theme?: "light" | "dark";
@@ -248,6 +253,8 @@ export function ThreadShell({
   employees = [],
   draftEmployee = null,
   onSelectEmployee,
+  onOpenEmployee,
+  employeeMode: employeeModeProp,
   theme = "light",
   onToggleTheme = () => {},
   hideSidebarToggleForHostChrome = false,
@@ -366,6 +373,16 @@ export function ThreadShell({
   const displayMessages = useMemo(() => projectWebuiThreadMessages(messages), [messages]);
 
   const showHeroComposer = messages.length === 0 && !loading;
+  /** 已有会话：员工固定（readonly，只读徽标）；无会话：hero 态可预选（select）。
+   * 专属页通过 employeeMode 覆盖，hero 态也强制 readonly（员工固定）。 */
+  const employeePickMode: "select" | "readonly" =
+    employeeModeProp ?? (session ? "readonly" : "select");
+  const employeePickSelected = useMemo<Employee | null>(() => {
+    if (session?.employee) {
+      return employees.find((e) => e.id === session.employee) ?? null;
+    }
+    return draftEmployee;
+  }, [session?.employee, employees, draftEmployee]);
   const wasShowingHeroComposerRef = useRef(showHeroComposer);
   const modelBadge = useMemo(
     () => toModelBadgeInfo(modelName, settings),
@@ -702,8 +719,10 @@ export function ThreadShell({
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           employees={employees}
-          draftEmployee={draftEmployee}
+          draftEmployee={employeePickSelected}
+          employeeMode={employeePickMode}
           onSelectEmployee={onSelectEmployee}
+          onOpenEmployee={onOpenEmployee}
           pendingQueueKey={chatId}
         />
       ) : (
@@ -735,8 +754,10 @@ export function ThreadShell({
           workspaceError={workspaceError}
           onWorkspaceScopeChange={onWorkspaceScopeChange}
           employees={employees}
-          draftEmployee={draftEmployee}
+          draftEmployee={employeePickSelected}
+          employeeMode={employeePickMode}
           onSelectEmployee={onSelectEmployee}
+          onOpenEmployee={onOpenEmployee}
         />
       )}
     </>

@@ -88,6 +88,23 @@ async def process_pending_reconnects(state: Any, tools: ToolRegistry) -> None:
     await mcp_tools.process_pending_reconnects(state, tools)
 
 
+# 需求精化指令段：所有会话（主智能体 + 绑定数字员工）统一注入，
+# 让「短提示词 → 员工反问」反转为「先自行精化需求 → 再执行任务」。
+_REQUIREMENT_REFINEMENT_SECTION = (
+    "# 需求精化（先精化，再执行）\n\n"
+    "收到用户请求后，不要拿原始文字直接动手。先用你的角色定位与专业知识，"
+    "把用户的需求精化为一份完整的「任务简报」再据此执行：\n"
+    "1、提炼目标——用户到底要什么、最终交付物是什么；\n"
+    "2、补全缺失——用户需求过简或含糊时，用你的专业经验补齐背景、关键参数与合理默认值，"
+    "不要因为用户没说就搁置，也不要反复向用户追问；\n"
+    "3、确定执行路径——列出执行步骤、会用到的技能或工具"
+    "（必要时先用 read_file 读取技能文档），以及输出形式。\n\n"
+    "呈现方式：对模糊或复杂的任务，先在回复中以「需求精化」小节简要展示优化后的任务简报，"
+    "再开始执行，让用户看到一句话需求如何变成可执行方案；"
+    "对已经明确的小任务直接执行即可，不必展示简报，但执行仍应按上述思路展开。"
+)
+
+
 class ContextBuilder:
     """为 Agent 构建上下文（系统提示 + 消息列表）。
 
@@ -162,6 +179,9 @@ class ContextBuilder:
         if employee is not None:
             parts.append(self._persona_section(employee))
 
+        # 需求精化：所有会话注入「先精化需求 → 再执行」，把短提示词自动扩充为可执行任务简报
+        parts.append(_REQUIREMENT_REFINEMENT_SECTION)
+
         bootstrap = self._load_bootstrap_files(root)
         if bootstrap:
             parts.append(bootstrap)
@@ -182,8 +202,12 @@ class ContextBuilder:
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
 
-        # 技能不手动分配：数字员工与主智能体一样可发现全部技能，由员工自主选用
-        skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
+        # 技能归属自己：绑定数字员工时技能摘要只列该员工自己的技能；主会话共享全部
+        employee_skills = self._employee_skill_allowlist(session_metadata)
+        if employee_skills is not None:
+            skills_summary = self.skills.build_skills_summary(include=employee_skills)
+        else:
+            skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
         if skills_summary:
             parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
 
@@ -240,6 +264,17 @@ class ContextBuilder:
         if not isinstance(employee_id, str) or not employee_id.strip():
             return None
         return self.employees._enabled_employee(employee_id.strip())
+
+    def _employee_skill_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
+        """返回绑定员工的技能 allowlist；未绑定员工时返回 None（主会话共享全部技能）。
+
+        绑定员工时返回其 ``skills`` 集合（可为空集，表示该员工没有自己的技能，
+        此时技能摘要不显示任何技能——技能归属自己，而非共享全部）。
+        """
+        employee = self._resolve_employee(session_metadata)
+        if employee is None:
+            return None
+        return set(employee.get("skills") or [])
 
     @staticmethod
     def _persona_section(employee: dict[str, Any]) -> str:

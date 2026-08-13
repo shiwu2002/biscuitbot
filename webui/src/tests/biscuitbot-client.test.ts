@@ -413,6 +413,31 @@ describe("BiscuitbotClient", () => {
     );
   });
 
+  it("serializes set_employee bind and unbind envelopes", () => {
+    const client = new BiscuitbotClient({
+      url: "ws://test",
+      reconnect: false,
+      socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
+    });
+    client.connect();
+    lastSocket().fakeOpen();
+
+    client.setEmployee("chat-a", "clip-master");
+    expect(lastSocket().sent).toContain(
+      JSON.stringify({
+        type: "set_employee",
+        chat_id: "chat-a",
+        employee: "clip-master",
+      }),
+    );
+
+    // 解除绑定：不携带 employee 字段
+    client.setEmployee("chat-a", null);
+    expect(lastSocket().sent).toContain(
+      JSON.stringify({ type: "set_employee", chat_id: "chat-a" }),
+    );
+  });
+
   it("sends transcription requests and resolves transcription results outside chat dispatch", async () => {
     const client = new BiscuitbotClient({
       url: "ws://test",

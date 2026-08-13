@@ -78,6 +78,20 @@ describe("EmployeesView 数字人员工视图", () => {
     expect(onPick).toHaveBeenCalledWith(CLIP_MASTER);
   });
 
+  it("点击员工卡片跳转到专属对话页", () => {
+    const onPick = vi.fn();
+    renderView({ onPick });
+    fireEvent.click(screen.getByText("剪影"));
+    expect(onPick).toHaveBeenCalledWith(CLIP_MASTER);
+  });
+
+  it("点击「编辑」不触发卡片跳转", () => {
+    const onPick = vi.fn();
+    renderView({ onPick });
+    fireEvent.click(screen.getByText("编辑"));
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
   it("creates an employee with codename, title and persona", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ...CLIP_MASTER }));
     vi.stubGlobal("fetch", fetchMock);

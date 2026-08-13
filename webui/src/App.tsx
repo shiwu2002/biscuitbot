@@ -15,7 +15,8 @@ import { SessionSearchDialog } from "@/components/SessionSearchDialog";
 import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { TalentMarketView } from "@/components/settings/TalentMarketView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
-import { ThreadShell } from "@/components/thread/ThreadShell";
+import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
+import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
@@ -79,7 +80,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "settings" | "apps" | "automations" | "skills" | "employees" | "talent-market";
+type ShellView = "chat" | "settings" | "apps" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -153,6 +154,17 @@ function readShellRoute(): ShellRoute {
   if (path === "/employees") {
     return { view: "employees", activeKey, settingsSection: "overview" };
   }
+  if (path.startsWith("/employees/")) {
+    const encoded = path.slice("/employees/".length);
+    try {
+      const employeeId = decodeURIComponent(encoded).trim();
+      return employeeId
+        ? { view: "employee-chat", activeKey: employeeId, settingsSection: "overview" }
+        : { view: "employees", activeKey, settingsSection: "overview" };
+    } catch {
+      return { view: "employees", activeKey, settingsSection: "overview" };
+    }
+  }
   if (path === "/talent-market") {
     return { view: "talent-market", activeKey, settingsSection: "overview" };
   }
@@ -175,6 +187,9 @@ function shellRouteHash(route: ShellRoute): string {
     return route.activeKey
       ? `#/chat/${encodeURIComponent(route.activeKey)}`
       : "#/new";
+  }
+  if (route.view === "employee-chat" && route.activeKey) {
+    return `#/employees/${encodeURIComponent(route.activeKey)}`;
   }
   const params = new URLSearchParams();
   if (route.activeKey) params.set("chat", route.activeKey);
@@ -620,9 +635,6 @@ function Shell({
     useState<WorkspaceScopePayload | null>(null);
   /** 新建会话时预选的数字人员工（hero 态选择；仅影响新建会话，不走路由）。 */
   const [draftEmployee, setDraftEmployee] = useState<Employee | null>(null);
-  /** 「和 TA 对话」导航到新会话空态时，hashchange 的 applyRoute 会清空 draftEmployee；
-   * 此标记让该次导航跳过清空，保留预选员工。仅由 employees 视图触发，hash 必然变化，标记必被消费。 */
-  const preserveDraftEmployeeRef = useRef(false);
   const [workspaceOverrides, setWorkspaceOverrides] =
     useState<Record<string, WorkspaceScopePayload>>({});
   const runningChatIdsRef = useRef<Set<string>>(new Set());
@@ -653,10 +665,7 @@ function Shell({
       setSettingsInitialSection(route.settingsSection);
       setWorkspaceError(null);
       if (route.view === "chat" && !route.activeKey) {
-        // 「和 TA 对话」进入新会话空态时保留预选员工；其余路径（新会话/打开空态）仍清空。
-        const preserveEmployee = preserveDraftEmployeeRef.current;
-        preserveDraftEmployeeRef.current = false;
-        if (!preserveEmployee) setDraftEmployee(null);
+        setDraftEmployee(null);
         setDraftWorkspaceScope(null);
       }
     };
@@ -757,6 +766,10 @@ function Shell({
 
   useEffect(() => {
     if (loading || !activeKey) return;
+    const currentRoute = readShellRoute();
+    // 该守卫只针对会话路由（activeKey 是会话 key）：员工专属页等视图的
+    // activeKey 是员工 id 而非会话 key，不受会话失效重置影响。
+    if (currentRoute.view !== "chat") return;
     if (sessions.some((session) => session.key === activeKey)) {
       // Clear the pending flag once the session is confirmed in the list
       if (pendingCreatedKeyRef.current === activeKey) {
@@ -766,7 +779,6 @@ function Shell({
     }
     // If this key was just created, don't reset it - wait for the next refresh cycle
     if (pendingCreatedKeyRef.current === activeKey) return;
-    const currentRoute = readShellRoute();
     navigate(
       currentRoute.view === "chat"
         ? defaultShellRoute()
@@ -929,19 +941,30 @@ function Shell({
     }
   }, [closeHostSidebarPreview]);
 
-  const applyWorkspaceScope = useCallback(
-    (scope: WorkspaceScopePayload) => {
+  /** 为指定会话设置 workspace 作用域；chatId 为 null 时写入「下一个新建会话」的草稿。
+   * 主聊天视图与员工专属页内嵌 ThreadShell 共用（员工页传入自身选中的会话）。 */
+  const applyWorkspaceScopeForChat = useCallback(
+    (chatId: string | null, scope: WorkspaceScopePayload) => {
       const next = normalizeWorkspaceScope(scope);
       setWorkspaceError(null);
-      if (activeChatId) {
-        if (!activeChatRunning) {
-          client.setWorkspaceScope(activeChatId, next);
+      if (chatId) {
+        if (!runningChatIds.has(chatId)) {
+          client.setWorkspaceScope(chatId, next);
         }
+        setWorkspaceOverrides((current) => ({
+          ...current,
+          [chatId]: next,
+        }));
         return;
       }
       setDraftWorkspaceScope(next);
     },
-    [activeChatId, activeChatRunning, client],
+    [client, runningChatIds],
+  );
+
+  const applyWorkspaceScope = useCallback(
+    (scope: WorkspaceScopePayload) => applyWorkspaceScopeForChat(activeChatId, scope),
+    [activeChatId, applyWorkspaceScopeForChat],
   );
 
   const onCreateChat = useCallback(async (
@@ -1053,7 +1076,16 @@ function Shell({
       // 员工绑定属于会话属性（session row），打开历史会话时不带入预选员工。
       setDraftEmployee(null);
       setWorkspaceError(null);
-      navigate({ view: "chat", activeKey: key, settingsSection: "overview" });
+      if (selected?.employee) {
+        // 历史会话固定归属对应数字员工：点击直接跳转到该员工的专属对话页
+        navigate({
+          view: "employee-chat",
+          activeKey: selected.employee,
+          settingsSection: "overview",
+        });
+      } else {
+        navigate({ view: "chat", activeKey: key, settingsSection: "overview" });
+      }
       setMobileSidebarOpen(false);
     },
     [navigate, sessions],
@@ -1274,20 +1306,15 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
-  /** 从员工视图「和 TA 对话」进入：预选该员工并打开新会话（hero 态）。 */
+  /** 从员工视图「和 TA 对话」进入：跳转到该员工的专属对话页（技能 + 历史会话）。 */
   const onOpenEmployee = useCallback((employee: Employee) => {
-    setDraftEmployee(employee);
-    // navigate 写 hash 会触发 hashchange → applyRoute 默认清空 draftEmployee；
-    // 置位标记让这次导航保留预选员工（从 employees 视图进入，hash 必然变化，标记必被消费）。
-    preserveDraftEmployeeRef.current = true;
-    setDraftWorkspaceScope(null);
-    setWorkspaceError(null);
-    navigate(defaultShellRoute());
     setSessionSearchOpen(false);
     setMobileSidebarOpen(false);
+    navigate({ view: "employee-chat", activeKey: employee.id, settingsSection: "overview" });
   }, [navigate]);
 
-  /** hero 态员工选择器：切换预选员工（null = 主智能体）。 */
+  /** hero 态员工选择器：预选新建会话绑定的员工（null = 主智能体）。
+   * 已有会话中员工固定不可切换，由 ThreadShell 以只读徽标展示。 */
   const onSelectEmployee = useCallback((employee: Employee | null) => {
     setDraftEmployee(employee);
   }, []);
@@ -1485,10 +1512,19 @@ function Shell({
       });
       return;
     }
+    if (view === "employee-chat") {
+      const employee = employees.find((e) => e.id === activeKey);
+      document.title = t("app.documentTitle.chat", {
+        title: employee
+          ? t("employeeChat.title", { name: employee.name, defaultValue: "与 {{name}} 对话" })
+          : t("employeesView.title", { defaultValue: "数字人员工" }),
+      });
+      return;
+    }
     document.title = activeSession
       ? t("app.documentTitle.chat", { title: headerTitle })
       : t("app.documentTitle.base");
-  }, [activeSession, headerTitle, i18n.resolvedLanguage, t, view]);
+  }, [activeSession, employees, activeKey, headerTitle, i18n.resolvedLanguage, t, view]);
 
   const sidebarProps = {
     sessions,
@@ -1510,7 +1546,10 @@ function Shell({
     onOpenEmployees,
     employees,
     onOpenSearch: onOpenSessionSearch,
-    activeUtility: view === "apps" || view === "automations" || view === "skills" || view === "employees" ? view : null,
+    activeUtility:
+      view === "apps" || view === "automations" || view === "skills" || view === "employees" || view === "employee-chat"
+        ? view === "employee-chat" ? "employees" : view
+        : null,
     onToggleArchived,
     pinnedKeys: sidebarState.pinned_keys,
     archivedKeys: sidebarState.archived_keys,
@@ -1525,6 +1564,56 @@ function Shell({
     defaultWorkspacePath: workspaces?.default_scope.project_path ?? null,
   };
   const hostSidebarCollapsed = showHostChrome && !hostSidebarOpen;
+  /** 主聊天视图 ThreadShell 的宿主 props（session/title 由各调用点单独传入）。
+   * 员工专属页内嵌 ThreadShell 复用同一份，保证行为一致。 */
+  const shellHostProps: Omit<ThreadShellProps, "session" | "title"> = useMemo(
+    () => ({
+      onToggleSidebar: toggleSidebar,
+      onNewChat,
+      onCreateChat,
+      onForkChat,
+      onTurnEnd,
+      theme,
+      onToggleTheme: toggle,
+      hideSidebarToggleForHostChrome: true,
+      hostChromeTitleInset: hostSidebarCollapsed,
+      hideHeader: false,
+      workspaceScope: activeWorkspaceScope,
+      workspaceDefaultScope: workspaces?.default_scope ?? null,
+      workspaceControls: workspaces?.controls ?? null,
+      workspaceScopeDisabled: activeChatRunning,
+      workspaceError,
+      onWorkspaceScopeChange: applyWorkspaceScope,
+      settingsSnapshot,
+      onOpenModelSettings,
+      employees,
+      draftEmployee,
+      onSelectEmployee,
+      onOpenEmployee,
+    }),
+    [
+      toggleSidebar,
+      onNewChat,
+      onCreateChat,
+      onForkChat,
+      onTurnEnd,
+      theme,
+      toggle,
+      hostSidebarCollapsed,
+      activeWorkspaceScope,
+      workspaces?.default_scope,
+      workspaces?.controls,
+      activeChatRunning,
+      workspaceError,
+      applyWorkspaceScope,
+      settingsSnapshot,
+      onOpenModelSettings,
+      employees,
+      draftEmployee,
+      onSelectEmployee,
+      onOpenEmployee,
+    ],
+  );
   const showHostSidebarPreview =
     showMainSidebar && hostSidebarCollapsed && hostSidebarPreviewOpen;
   const hostSidebarFlowWidth = showHostChrome
@@ -1554,7 +1643,7 @@ function Shell({
             onSidebarPreviewLeave={scheduleHostSidebarPreviewClose}
             sidebarOpen={hostSidebarOpen}
             rightAction={
-              view === "chat" ? undefined : (
+              view === "chat" || view === "employee-chat" ? undefined : (
                 <Button
                   type="button"
                   variant="ghost"
@@ -1676,27 +1765,7 @@ function Shell({
               <ThreadShell
                 session={activeSession}
                 title={headerTitle}
-                onToggleSidebar={toggleSidebar}
-                onNewChat={onNewChat}
-                onCreateChat={onCreateChat}
-                onForkChat={onForkChat}
-                onTurnEnd={onTurnEnd}
-                theme={theme}
-                onToggleTheme={toggle}
-                hideSidebarToggleForHostChrome
-                hostChromeTitleInset={hostSidebarCollapsed}
-                hideHeader={false}
-                workspaceScope={activeWorkspaceScope}
-                workspaceDefaultScope={workspaces?.default_scope ?? null}
-                workspaceControls={workspaces?.controls ?? null}
-                workspaceScopeDisabled={activeChatRunning}
-                workspaceError={workspaceError}
-                onWorkspaceScopeChange={applyWorkspaceScope}
-                settingsSnapshot={settingsSnapshot}
-                onOpenModelSettings={onOpenModelSettings}
-                employees={employees}
-                draftEmployee={draftEmployee}
-                onSelectEmployee={onSelectEmployee}
+                {...shellHostProps}
               />
             </div>
             {view === "employees" ? (
@@ -1706,6 +1775,24 @@ function Shell({
                   onChanged={reloadEmployees}
                   onPick={onOpenEmployee}
                   onOpenTalentMarket={onOpenTalentMarket}
+                  onBackToChat={onBackToChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
+            ) : view === "employee-chat" ? (
+              <div className="absolute inset-0 flex flex-col">
+                <EmployeeChatView
+                  employeeId={activeKey}
+                  employees={employees}
+                  skills={skills}
+                  sessions={sessions}
+                  runningChatIds={runningChatIds}
+                  workspaceOverrides={workspaceOverrides}
+                  draftWorkspaceScope={draftWorkspaceScope}
+                  titleOverrides={sidebarState.title_overrides}
+                  onWorkspaceScopeChangeForChat={applyWorkspaceScopeForChat}
+                  createChat={createChat}
+                  shellHostProps={shellHostProps}
                   onBackToChat={onBackToChat}
                   hostChromeInset={showHostChrome}
                 />

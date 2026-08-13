@@ -286,15 +286,21 @@ class WebUIWorkspaceController:
             session.metadata[WORKSPACE_SCOPE_METADATA_KEY] = scope.metadata()
             self._sessions.save(session)
 
-    def persist_employee(self, chat_id: str, employee_id: str) -> None:
+    def persist_employee(self, chat_id: str, employee_id: str | None) -> None:
         """把数字人员工 id 持久化到会话元数据（随会话 JSONL 跨重启保留）。
 
-        员工在 ``new_chat`` 时一次性绑定；之后由 ``session.metadata`` 携带。
+        员工可在 ``new_chat`` 时一次性绑定，也可在会话中途通过
+        ``set_employee`` 协议更换或解除绑定；``employee_id`` 为空表示解除绑定
+        （从元数据中移除 employee 键，回退主智能体行为）。
         """
-        if self._sessions is not None and employee_id:
-            session = self._sessions.get_or_create(f"websocket:{chat_id}")
+        if self._sessions is None or not chat_id:
+            return
+        session = self._sessions.get_or_create(f"websocket:{chat_id}")
+        if employee_id:
             session.metadata["employee"] = employee_id
-            self._sessions.save(session)
+        else:
+            session.metadata.pop("employee", None)
+        self._sessions.save(session)
 
     def employee_for_session_key(self, session_key: str) -> str | None:
         """读回会话绑定的员工 id；未绑定或元数据异常时返回 None。"""

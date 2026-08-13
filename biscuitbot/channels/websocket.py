@@ -748,6 +748,33 @@ class WebSocketChannel(BaseChannel):
                 workspace_scope=scope.payload(),
             )
             return
+        if t == "set_employee":
+            cid = envelope.get("chat_id")
+            if not _is_valid_chat_id(cid):
+                await self._send_event(connection, "error", detail="invalid chat_id")
+                return
+            # employee 字段为空/缺失 → 解除绑定；显式传了非空员工 id 但未通过
+            # 校验（不存在/已禁用）时报错，避免把拼错 id 悄悄当成解除绑定。
+            raw_employee = envelope.get("employee")
+            explicit = isinstance(raw_employee, str) and bool(raw_employee.strip())
+            employee_id = self._employee_id_from_envelope(envelope)
+            if explicit and employee_id is None:
+                await self._send_event(
+                    connection,
+                    "error",
+                    detail="unknown_employee",
+                    reason=raw_employee.strip(),
+                )
+                return
+            self._workspaces.persist_employee(cid, employee_id)
+            await self._send_event(
+                connection,
+                "session_updated",
+                chat_id=cid,
+                scope="metadata",
+                employee=employee_id or "",
+            )
+            return
         if t == "transcribe_audio":
             event, payload = await webui_transcription_event(envelope)
             await self._send_event(connection, event, **payload)

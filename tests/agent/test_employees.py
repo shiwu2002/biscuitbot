@@ -62,9 +62,21 @@ class TestBuiltinSeed:
             "seedance",
             "jianying-editor",
         ]
-        assert by_id["ip-consultant"]["skills"] == []
-        assert by_id["super-secretary"]["skills"] == []
-        assert by_id["all-round-designer"]["skills"] == []
+        assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
+        assert by_id["super-secretary"]["skills"] == ["secretary"]
+        assert by_id["all-round-designer"]["skills"] == ["design"]
+
+    def test_builtin_personas_refine_before_executing(self, tmp_path: Path) -> None:
+        """内置员工 persona 应为「先精化需求 → 再执行」，而非先反问用户。"""
+        store = _store(tmp_path)
+        for emp in store.list_employees():
+            persona = emp["system_prompt"]
+            assert "精化" in persona, emp["id"]
+            assert "执行" in persona or "产出" in persona, emp["id"]
+        # 旧版「先确认/先追问」类反问措辞不得再出现
+        for forbid in ("先提出几个关键问题", "主动追问", "主动确认"):
+            for emp in store.list_employees():
+                assert forbid not in emp["system_prompt"], (forbid, emp["id"])
 
 
 class TestOneTimeMerge:
@@ -132,16 +144,16 @@ class TestOneTimeMerge:
         )
         employees = store.list_employees()
         clip = next(e for e in employees if e["id"] == "clip-master")
-        assert clip["name"] == "剪影"
+        assert clip["name"] == "阿伟"
         assert clip["title"] == "剪辑"
-        assert "剪影" in clip["system_prompt"]
+        assert "阿伟" in clip["system_prompt"]
 
     def test_edited_builtin_persona_preserved_when_version_current(
         self, tmp_path: Path
     ) -> None:
         # 版本已是最新时，用户对内置员工的编辑不会被覆盖
         store = _store(tmp_path)
-        store.list_employees()  # 触发 seed，写入 v2 标记
+        store.list_employees()  # 触发 seed，写入 v3 标记
         custom = "用户改过的剪影提示词"
         store.update_employee("clip-master", {"system_prompt": custom})
         employees = store.list_employees()
@@ -203,9 +215,9 @@ class TestTitleField:
     def test_seed_records_have_codenames_and_titles(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
         by_id = {e["id"]: e for e in store.list_employees()}
-        assert by_id["clip-master"]["name"] == "剪影"
+        assert by_id["clip-master"]["name"] == "阿伟"
         assert by_id["clip-master"]["title"] == "剪辑"
-        assert by_id["video-master"]["name"] == "光影"
+        assert by_id["video-master"]["name"] == "沐辰"
         assert by_id["video-master"]["title"] == "视频生成"
         assert by_id["short-video-operator"]["title"] == "短视频操盘"
         assert by_id["super-secretary"]["title"] == "秘书助理"
@@ -233,7 +245,7 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         store.list_employees()
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 2
+        assert raw["builtin_version"] == 5
 
     def test_v1_file_syncs_builtin_names_and_keeps_custom(
         self, tmp_path: Path
@@ -258,16 +270,48 @@ class TestBuiltinVersionMigration:
         )
         employees = store.list_employees()
         by_id = {e["id"]: e for e in employees}
-        assert by_id["clip-master"]["name"] == "剪影"
+        assert by_id["clip-master"]["name"] == "阿伟"
         assert by_id["clip-master"]["title"] == "剪辑"
         assert by_id["my-custom"]["name"] == "我的助理"
         assert by_id["my-custom"]["system_prompt"] == "自定义提示词"
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 2
+        assert raw["builtin_version"] == 5
+
+    def test_v1_sync_updates_builtin_skills(self, tmp_path: Path) -> None:
+        # 老 v1 文件：内置记录的空技能会被同步为新版绑定的技能
+        store = _store(tmp_path)
+        _write_old_file(
+            store,
+            [
+                {
+                    "id": "ip-consultant",
+                    "name": "探微",
+                    "system_prompt": "旧的访谈提示词",
+                    "enabled": True,
+                },
+                {
+                    "id": "super-secretary",
+                    "name": "得力",
+                    "system_prompt": "旧的秘书提示词",
+                    "enabled": True,
+                },
+                {
+                    "id": "all-round-designer",
+                    "name": "绘野",
+                    "system_prompt": "旧的设计提示词",
+                    "enabled": True,
+                },
+            ],
+        )
+        employees = store.list_employees()
+        by_id = {e["id"]: e for e in employees}
+        assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
+        assert by_id["super-secretary"]["skills"] == ["secretary"]
+        assert by_id["all-round-designer"]["skills"] == ["design"]
 
     def test_v1_sync_does_not_readd_deleted_builtin(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
-        # 先建 v2 种子，再删除一个内置员工
+        # 先建当前版本种子，再删除一个内置员工
         store.list_employees()
         store.delete_employee("video-master")
         # 模拟内置版本降级（文件里直接改旧版本），加载后不应找回已删员工

@@ -423,6 +423,16 @@ export class BiscuitbotClient {
     });
   }
 
+  /** 绑定/更换/解除当前会话的数字人员工；employee 传 null/空串即解除绑定回主智能体。 */
+  setEmployee(chatId: string, employee: string | null): void {
+    this.knownChats.add(chatId);
+    this.queueSend({
+      type: "set_employee",
+      chat_id: chatId,
+      ...(employee ? { employee } : {}),
+    });
+  }
+
   // -- internals ---------------------------------------------------------
 
   private setStatus(status: ConnectionStatus): void {

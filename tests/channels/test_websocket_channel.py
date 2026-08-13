@@ -777,6 +777,100 @@ async def test_native_webui_scope_allows_custom_scope_without_loopback(
 
 
 @pytest.mark.asyncio
+async def test_webui_set_employee_binds_and_persists(bus: MagicMock, tmp_path) -> None:
+    default_workspace = tmp_path / "default"
+    default_workspace.mkdir()
+    sessions = SessionManager(tmp_path / "sessions")
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"], "host": "127.0.0.1"},
+        bus,
+        gateway=_basic_handler(bus, session_manager=sessions, workspace_path=default_workspace),
+    )
+    conn = AsyncMock()
+    conn.remote_address = ("127.0.0.1", 50123)
+
+    await channel._dispatch_envelope(
+        conn,
+        "webui-client",
+        {"type": "set_employee", "chat_id": "chat-employee", "employee": "clip-master"},
+    )
+
+    payload = json.loads(conn.send.await_args.args[0])
+    assert payload["event"] == "session_updated"
+    assert payload["chat_id"] == "chat-employee"
+    assert payload["employee"] == "clip-master"
+    saved = sessions.read_session_file("websocket:chat-employee")
+    assert saved["metadata"]["employee"] == "clip-master"
+
+
+@pytest.mark.asyncio
+async def test_webui_set_employee_rejects_unknown_employee(bus: MagicMock, tmp_path) -> None:
+    default_workspace = tmp_path / "default"
+    default_workspace.mkdir()
+    sessions = SessionManager(tmp_path / "sessions")
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"], "host": "127.0.0.1"},
+        bus,
+        gateway=_basic_handler(bus, session_manager=sessions, workspace_path=default_workspace),
+    )
+    conn = AsyncMock()
+    conn.remote_address = ("127.0.0.1", 50123)
+    # 先绑定一个有效员工，再尝试换成不存在的员工
+    await channel._dispatch_envelope(
+        conn,
+        "webui-client",
+        {"type": "set_employee", "chat_id": "chat-employee", "employee": "clip-master"},
+    )
+    conn.send.reset_mock()
+
+    await channel._dispatch_envelope(
+        conn,
+        "webui-client",
+        {"type": "set_employee", "chat_id": "chat-employee", "employee": "ghost"},
+    )
+
+    payload = json.loads(conn.send.await_args.args[0])
+    assert payload["event"] == "error"
+    assert payload["detail"] == "unknown_employee"
+    assert payload["reason"] == "ghost"
+    # 绑定未被破坏
+    saved = sessions.read_session_file("websocket:chat-employee")
+    assert saved["metadata"]["employee"] == "clip-master"
+
+
+@pytest.mark.asyncio
+async def test_webui_set_employee_empty_unbinds(bus: MagicMock, tmp_path) -> None:
+    default_workspace = tmp_path / "default"
+    default_workspace.mkdir()
+    sessions = SessionManager(tmp_path / "sessions")
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"], "host": "127.0.0.1"},
+        bus,
+        gateway=_basic_handler(bus, session_manager=sessions, workspace_path=default_workspace),
+    )
+    conn = AsyncMock()
+    conn.remote_address = ("127.0.0.1", 50123)
+    await channel._dispatch_envelope(
+        conn,
+        "webui-client",
+        {"type": "set_employee", "chat_id": "chat-employee", "employee": "clip-master"},
+    )
+    conn.send.reset_mock()
+
+    await channel._dispatch_envelope(
+        conn,
+        "webui-client",
+        {"type": "set_employee", "chat_id": "chat-employee", "employee": ""},
+    )
+
+    payload = json.loads(conn.send.await_args.args[0])
+    assert payload["event"] == "session_updated"
+    assert payload["employee"] == ""
+    saved = sessions.read_session_file("websocket:chat-employee")
+    assert "employee" not in saved["metadata"]
+
+
+@pytest.mark.asyncio
 async def test_send_delivers_json_message_with_media_and_reply() -> None:
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus, gateway=_basic_handler(bus))

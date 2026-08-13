@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadShell } from "@/components/thread/ThreadShell";
 import { CLI_APPS_CHANGED_EVENT } from "@/lib/cli-app-events";
 import { ClientProvider } from "@/providers/ClientProvider";
-import type { CliAppsPayload, SettingsPayload, UIMessage } from "@/lib/types";
+import type { CliAppsPayload, Employee, SettingsPayload, UIMessage } from "@/lib/types";
 
 const HERO_GREETING_PATTERN =
   /我们要一起做点什么？|今天从哪里开始？|今天一起构建什么？|我们要一起解决什么？/;
@@ -1384,5 +1384,54 @@ describe("ThreadShell", () => {
 
     expect(screen.getByRole("listbox", { name: "应用" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /@gimp/i })).toBeInTheDocument();
+  });
+
+  describe("employeeMode 覆盖（专属页 hero 态员工固定）", () => {
+    const EMPLOYEE: Employee = {
+      id: "clip-master",
+      name: "阿伟",
+      title: "剪辑",
+      avatar: "🎬",
+      system_prompt: "你是剪辑高手",
+      skills: [],
+      enabled: true,
+      created_at: "2026-08-13T00:00:00Z",
+    };
+
+    it("employeeMode=readonly + session=null：只读徽标，不可清除也不可切换", () => {
+      const client = makeClient();
+      render(wrap(
+        client,
+        <ThreadShell
+          session={null}
+          title="与 阿伟 对话"
+          onToggleSidebar={() => {}}
+          employees={[EMPLOYEE]}
+          draftEmployee={EMPLOYEE}
+          onSelectEmployee={vi.fn()}
+          employeeMode="readonly"
+        />,
+      ));
+      // 只读徽标为 span（无清除按钮、无下拉入口）
+      expect(screen.getByText("正在与 🎬 阿伟 对话")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /改为与主智能体对话/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "数字人员工" })).not.toBeInTheDocument();
+    });
+
+    it("缺省时 hero 态为 select 模式：预选员工可清除", () => {
+      const client = makeClient();
+      render(wrap(
+        client,
+        <ThreadShell
+          session={null}
+          title="biscuitbot"
+          onToggleSidebar={() => {}}
+          employees={[EMPLOYEE]}
+          draftEmployee={EMPLOYEE}
+          onSelectEmployee={vi.fn()}
+        />,
+      ));
+      expect(screen.getByRole("button", { name: /改为与主智能体对话/ })).toBeInTheDocument();
+    });
   });
 });
