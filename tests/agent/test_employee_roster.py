@@ -49,7 +49,7 @@ class TestRosterSection:
     def test_roster_shows_title_tag(self, tmp_path: Path) -> None:
         cb = ContextBuilder(tmp_path)
         prompt = cb.build_system_prompt()
-        assert "阿伟（剪辑）" in prompt
+        assert "阿伟（AI视频剪辑总监）" in prompt
 
 
 class TestPersonaHeading:
@@ -57,7 +57,7 @@ class TestPersonaHeading:
         store = _store(tmp_path)
         clip = store.get_employee("clip-master")
         section = ContextBuilder._persona_section(clip)
-        assert section.splitlines()[0] == "# Persona — 阿伟（剪辑） 🎬"
+        assert section.splitlines()[0] == "# Persona — 阿伟（AI视频剪辑总监） 🎬"
         assert "你是「阿伟」" in section
 
     def test_persona_heading_without_title_omits_brackets(self) -> None:
@@ -70,7 +70,7 @@ class TestEmployeeSummary:
     def test_strips_self_prefix(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
         summary = ContextBuilder._employee_summary(store.get_employee("clip-master"))
-        assert summary.startswith("团队里的剪辑高手")
+        assert summary.startswith("团队里的AI视频剪辑总监、后期导演和内容包装专家")
         assert len(summary) <= 48
 
     def test_empty_persona_yields_empty_summary(self) -> None:

@@ -16,6 +16,7 @@ BUILTIN_IDS = {
     "short-video-operator",
     "super-secretary",
     "all-round-designer",
+    "screenwriter",
 }
 
 
@@ -67,12 +68,12 @@ class TestBuiltinSeed:
         assert by_id["all-round-designer"]["skills"] == ["design"]
 
     def test_builtin_personas_refine_before_executing(self, tmp_path: Path) -> None:
-        """内置员工 persona 应为「先精化需求 → 再执行」，而非先反问用户。"""
+        """内置员工 persona 应「主动执行/产出/创作」，而非先反问用户。"""
         store = _store(tmp_path)
         for emp in store.list_employees():
             persona = emp["system_prompt"]
-            assert "精化" in persona, emp["id"]
-            assert "执行" in persona or "产出" in persona, emp["id"]
+            # 每个员工都应主动产出成果（执行/产出/创造），而非只解释概念
+            assert any(kw in persona for kw in ("执行", "产出", "创造")), emp["id"]
         # 旧版「先确认/先追问」类反问措辞不得再出现
         for forbid in ("先提出几个关键问题", "主动追问", "主动确认"):
             for emp in store.list_employees():
@@ -145,7 +146,7 @@ class TestOneTimeMerge:
         employees = store.list_employees()
         clip = next(e for e in employees if e["id"] == "clip-master")
         assert clip["name"] == "阿伟"
-        assert clip["title"] == "剪辑"
+        assert clip["title"] == "AI视频剪辑总监"
         assert "阿伟" in clip["system_prompt"]
 
     def test_edited_builtin_persona_preserved_when_version_current(
@@ -216,12 +217,13 @@ class TestTitleField:
         store = _store(tmp_path)
         by_id = {e["id"]: e for e in store.list_employees()}
         assert by_id["clip-master"]["name"] == "阿伟"
-        assert by_id["clip-master"]["title"] == "剪辑"
+        assert by_id["clip-master"]["title"] == "AI视频剪辑总监"
         assert by_id["video-master"]["name"] == "沐辰"
-        assert by_id["video-master"]["title"] == "视频生成"
-        assert by_id["short-video-operator"]["title"] == "短视频操盘"
-        assert by_id["super-secretary"]["title"] == "秘书助理"
-        assert by_id["all-round-designer"]["title"] == "全能设计"
+        assert by_id["video-master"]["title"] == "AI视频导演"
+        assert by_id["short-video-operator"]["title"] == "短视频增长操盘手"
+        assert by_id["super-secretary"]["title"] == "AI执行秘书"
+        assert by_id["all-round-designer"]["title"] == "AI视觉设计总监"
+        assert by_id["screenwriter"]["title"] == "编剧"
 
     def test_missing_title_defaults_to_empty(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
@@ -245,7 +247,7 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         store.list_employees()
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 5
+        assert raw["builtin_version"] == 6
 
     def test_v1_file_syncs_builtin_names_and_keeps_custom(
         self, tmp_path: Path
@@ -271,11 +273,11 @@ class TestBuiltinVersionMigration:
         employees = store.list_employees()
         by_id = {e["id"]: e for e in employees}
         assert by_id["clip-master"]["name"] == "阿伟"
-        assert by_id["clip-master"]["title"] == "剪辑"
+        assert by_id["clip-master"]["title"] == "AI视频剪辑总监"
         assert by_id["my-custom"]["name"] == "我的助理"
         assert by_id["my-custom"]["system_prompt"] == "自定义提示词"
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 5
+        assert raw["builtin_version"] == 6
 
     def test_v1_sync_updates_builtin_skills(self, tmp_path: Path) -> None:
         # 老 v1 文件：内置记录的空技能会被同步为新版绑定的技能

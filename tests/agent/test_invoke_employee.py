@@ -105,7 +105,7 @@ class TestRunEmployeeInline:
         store = _store(tmp_path)
         mgr = _manager(tmp_path)
         prompt = mgr._build_subagent_prompt(employee=store.get_employee("clip-master"))
-        assert "# Persona — 阿伟（剪辑） 🎬" in prompt
+        assert "# Persona — 阿伟（AI视频剪辑总监） 🎬" in prompt
         assert "以数字员工「阿伟」的身份执行任务" in prompt
 
     async def test_include_skills_scopes_skills_summary(self, tmp_path: Path) -> None:

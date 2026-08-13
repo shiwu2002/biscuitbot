@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from biscuitbot.agent.tools.filesystem import FileToolsConfig
     from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
     from biscuitbot.agent.tools.screenshot import ScreenshotToolConfig
+    from biscuitbot.agent.tools.seedance_video import SeedanceVideoToolConfig
     from biscuitbot.agent.tools.self import MyToolConfig
     from biscuitbot.agent.tools.shell import ExecToolConfig
     from biscuitbot.agent.tools.system_io import SystemIoToolConfig
@@ -334,6 +335,9 @@ class ToolsConfig(Base):
     screenshot: ScreenshotToolConfig = Field(
         default_factory=lambda: _lazy_default("biscuitbot.agent.tools.screenshot", "ScreenshotToolConfig"),
     )
+    seedance_video: SeedanceVideoToolConfig = Field(
+        default_factory=lambda: _lazy_default("biscuitbot.agent.tools.seedance_video", "SeedanceVideoToolConfig"),
+    )
     system_io: SystemIoToolConfig = Field(
         default_factory=lambda: _lazy_default("biscuitbot.agent.tools.system_io", "SystemIoToolConfig"),
     )
@@ -605,6 +609,7 @@ def _resolve_tool_config_refs() -> None:
     from biscuitbot.agent.tools.filesystem import FileToolsConfig
     from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
     from biscuitbot.agent.tools.screenshot import ScreenshotToolConfig
+    from biscuitbot.agent.tools.seedance_video import SeedanceVideoToolConfig
     from biscuitbot.agent.tools.self import MyToolConfig
     from biscuitbot.agent.tools.shell import ExecToolConfig
     from biscuitbot.agent.tools.system_io import SystemIoToolConfig
@@ -621,6 +626,7 @@ def _resolve_tool_config_refs() -> None:
     mod.MyToolConfig = MyToolConfig  # type: ignore[attr-defined]
     mod.ImageGenerationToolConfig = ImageGenerationToolConfig  # type: ignore[attr-defined]
     mod.ScreenshotToolConfig = ScreenshotToolConfig  # type: ignore[attr-defined]
+    mod.SeedanceVideoToolConfig = SeedanceVideoToolConfig  # type: ignore[attr-defined]
     mod.SystemIoToolConfig = SystemIoToolConfig  # type: ignore[attr-defined]
 
     ToolsConfig.model_rebuild()
