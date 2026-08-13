@@ -66,7 +66,7 @@ describe("CodeBlock", () => {
     );
 
     expect(screen.queryByText("html")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /copy/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /复制/ })).not.toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
     expect(screen.getByTestId("plain-code-fallback")).toHaveClass("bg-transparent");
   });
@@ -138,7 +138,7 @@ describe("CodeBlock", () => {
         </ThemeProvider>,
       );
 
-      await user.click(screen.getByRole("button", { name: /copy/i }));
+      await user.click(screen.getByRole("button", { name: /复制/ }));
 
       expect(writeText).toHaveBeenCalledWith("PASS");
     } finally {

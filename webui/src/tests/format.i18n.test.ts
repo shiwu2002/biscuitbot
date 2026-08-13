@@ -16,57 +16,57 @@ describe("localized format helpers", () => {
   it("formats relative time using the active locale", async () => {
     const value = "2026-04-18T11:59:00Z";
 
-    await setAppLanguage("en");
-    const english = relativeTime(value);
-
     await setAppLanguage("zh-CN");
-    const chinese = relativeTime(value);
+    const simplified = relativeTime(value);
 
-    expect(english).toBe(
-      new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(
-        -1,
-        "minute",
-      ),
-    );
-    expect(chinese).toBe(
+    await setAppLanguage("zh-TW");
+    const traditional = relativeTime(value);
+
+    expect(simplified).toBe(
       new Intl.RelativeTimeFormat("zh-CN", { numeric: "auto" }).format(
         -1,
         "minute",
       ),
     );
-    expect(english).not.toBe(chinese);
+    expect(traditional).toBe(
+      new Intl.RelativeTimeFormat("zh-TW", { numeric: "auto" }).format(
+        -1,
+        "minute",
+      ),
+    );
+    expect(simplified).not.toBe(traditional);
   });
 
   it("formats date-time using the active locale", async () => {
     const value = "2026-04-18T08:30:00Z";
     const date = new Date(value);
 
-    await setAppLanguage("en");
-    const english = fmtDateTime(value);
+    await setAppLanguage("zh-CN");
+    const simplified = fmtDateTime(value);
 
-    await setAppLanguage("fr");
-    const french = fmtDateTime(value);
+    await setAppLanguage("zh-TW");
+    const traditional = fmtDateTime(value);
 
-    expect(english).toBe(
-      new Intl.DateTimeFormat("en", {
+    expect(simplified).toBe(
+      new Intl.DateTimeFormat("zh-CN", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date),
     );
-    expect(french).toBe(
-      new Intl.DateTimeFormat("fr", {
+    expect(traditional).toBe(
+      new Intl.DateTimeFormat("zh-TW", {
         dateStyle: "medium",
         timeStyle: "short",
       }).format(date),
     );
-    expect(english).not.toBe(french);
+    expect(simplified).not.toBe(traditional);
   });
 
   it("formats turn latency with locale-aware units", async () => {
-    await setAppLanguage("en");
-    const subMinute = formatTurnLatency(2400, "en");
+    await setAppLanguage("zh-CN");
+    const subMinute = formatTurnLatency(2400, "zh-CN");
     expect(subMinute).toBe(
-      new Intl.NumberFormat("en", {
+      new Intl.NumberFormat("zh-CN", {
         style: "unit",
         unit: "second",
         unitDisplay: "narrow",
@@ -75,8 +75,8 @@ describe("localized format helpers", () => {
       }).format(2.4),
     );
 
-    const minutePlus = formatTurnLatency(90_000, "en");
-    expect(minutePlus).toContain("m");
-    expect(minutePlus).toContain("s");
+    const minutePlus = formatTurnLatency(90_000, "zh-CN");
+    expect(minutePlus).toContain("分");
+    expect(minutePlus).toContain("秒");
   });
 });

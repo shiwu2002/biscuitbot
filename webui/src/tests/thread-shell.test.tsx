@@ -8,7 +8,7 @@ import { ClientProvider } from "@/providers/ClientProvider";
 import type { CliAppsPayload, SettingsPayload, UIMessage } from "@/lib/types";
 
 const HERO_GREETING_PATTERN =
-  /What should we work on\?|Where should we start\?|What are we building today\?|What should we tackle together\?/;
+  /我们要一起做点什么？|今天从哪里开始？|今天一起构建什么？|我们要一起解决什么？/;
 
 function makeClient() {
   const errorHandlers = new Set<(err: { kind: string }) => void>();
@@ -311,16 +311,16 @@ describe("ThreadShell", () => {
       ),
     );
 
-    const badge = await screen.findByRole("button", { name: "Model not configured" });
+    const badge = await screen.findByRole("button", { name: "模型未配置" });
     expect(screen.getByTestId("composer-model-setup-icon")).toBeInTheDocument();
     expect(screen.queryByTestId("composer-model-logo-openai_codex")).not.toBeInTheDocument();
     fireEvent.click(badge);
     expect(onOpenModelSettings).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Message input" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "消息输入框" }), {
       target: { value: "hello" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Configure model" }));
+    fireEvent.click(screen.getByRole("button", { name: "配置模型" }));
     expect(onOpenModelSettings).toHaveBeenCalledTimes(2);
     expect(client.sendMessage).not.toHaveBeenCalled();
   });
@@ -350,8 +350,8 @@ describe("ThreadShell", () => {
       ),
     );
 
-    await screen.findByLabelText("Message input");
-    expect(screen.queryByRole("button", { name: "Toggle image generation mode" })).not.toBeInTheDocument();
+    await screen.findByLabelText("消息输入框");
+    expect(screen.queryByRole("button", { name: "切换图片生成模式" })).not.toBeInTheDocument();
 
     await act(async () => {
       rerender(
@@ -368,7 +368,7 @@ describe("ThreadShell", () => {
       );
     });
 
-    expect(screen.queryByRole("button", { name: "Toggle image generation mode" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "切换图片生成模式" })).not.toBeInTheDocument();
   });
 
   it("restores in-memory messages when switching away and back to a session", async () => {
@@ -388,10 +388,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "persist me across tabs" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() =>
       expectSendMessageWithTurn(client, "chat-a", "persist me across tabs"),
@@ -448,10 +448,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "delete me cleanly" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() =>
       expectSendMessageWithTurn(client, "chat-a", "delete me cleanly"),
@@ -476,7 +476,7 @@ describe("ThreadShell", () => {
     await waitFor(() => {
       expect(screen.queryByText("delete me cleanly")).not.toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("Ask anything...")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("问任何问题...")).toBeInTheDocument();
   });
 
   it("creates a chat only when the blank landing sends a first message", async () => {
@@ -498,10 +498,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "start for real" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() => expect(onCreateChat).toHaveBeenCalledTimes(1));
     expect(onNewChat).not.toHaveBeenCalled();
@@ -531,10 +531,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "first message should stay" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() => expect(onCreateChat).toHaveBeenCalledTimes(1));
 
@@ -596,10 +596,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "/model" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() => expect(onCreateChat).toHaveBeenCalledTimes(1));
 
@@ -656,9 +656,9 @@ describe("ThreadShell", () => {
     await act(async () => {});
 
     expect(screen.getByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Ask anything...")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Write code" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create a project plan" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("问任何问题...")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编写代码" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "创建项目计划" })).not.toBeInTheDocument();
   });
 
   it("does not leak the previous thread when opening a brand-new chat", async () => {
@@ -716,9 +716,9 @@ describe("ThreadShell", () => {
 
     expect(screen.queryByText("old answer")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(screen.getByPlaceholderText("Ask anything...")).toBeInTheDocument(),
+      expect(screen.getByPlaceholderText("问任何问题...")).toBeInTheDocument(),
     );
-    const input = screen.getByPlaceholderText("Ask anything...");
+    const input = screen.getByPlaceholderText("问任何问题...");
     expect(input.className).toContain("min-h-[78px]");
     expect(screen.queryByText("old answer")).not.toBeInTheDocument();
   });
@@ -767,7 +767,7 @@ describe("ThreadShell", () => {
 
     const targetText = await screen.findByText("answer 100");
     fireEvent.click(within(targetText.closest(".w-full") as HTMLElement).getByRole("button", {
-      name: "Fork",
+      name: "分叉",
     }));
 
     await waitFor(() =>
@@ -792,10 +792,10 @@ describe("ThreadShell", () => {
       ),
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "only in chat a" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() =>
       expectSendMessageWithTurn(client, "chat-a", "only in chat a"),
@@ -1037,9 +1037,9 @@ describe("ThreadShell", () => {
 
   it("scrolls to the bottom after loading a session from the blank new-chat page", async () => {
     const client = makeClient();
-    const scrollIntoView = vi.fn();
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    const scrollTo = vi.fn();
+    const originalScrollTo = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo;
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) => {
@@ -1074,7 +1074,7 @@ describe("ThreadShell", () => {
       );
 
       expect(screen.getByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
-      scrollIntoView.mockClear();
+      scrollTo.mockClear();
 
       await act(async () => {
         rerender(
@@ -1092,13 +1092,13 @@ describe("ThreadShell", () => {
 
       await waitFor(() => expect(screen.getByText("loaded answer")).toBeInTheDocument());
       await waitFor(() =>
-        expect(scrollIntoView).toHaveBeenCalledWith({
-          block: "end",
+        expect(scrollTo).toHaveBeenCalledWith({
+          top: 0,
           behavior: "auto",
         }),
       );
     } finally {
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+      HTMLElement.prototype.scrollTo = originalScrollTo;
     }
   });
 
@@ -1148,11 +1148,11 @@ describe("ThreadShell", () => {
       }),
     ));
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "/" },
     });
 
-    expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "斜杠命令" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /\/history/i })).toBeInTheDocument();
   });
 
@@ -1213,9 +1213,9 @@ describe("ThreadShell", () => {
     });
 
     const banner = await screen.findByRole("alert");
-    expect(banner).toHaveTextContent("Message too large");
+    expect(banner).toHaveTextContent("消息过大");
 
-    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -1328,7 +1328,7 @@ describe("ThreadShell", () => {
     });
 
     expect(screen.queryByText("from chat a")).not.toBeInTheDocument();
-    expect(screen.getByText("Loading conversation…")).toBeInTheDocument();
+    expect(screen.getByText("正在加载对话…")).toBeInTheDocument();
 
     await act(async () => {
       resolveChatB?.(
@@ -1353,8 +1353,8 @@ describe("ThreadShell", () => {
       />,
     ));
 
-    const input = await screen.findByLabelText("Message input");
-    expect(screen.queryByRole("listbox", { name: "Apps" })).not.toBeInTheDocument();
+    const input = await screen.findByLabelText("消息输入框");
+    expect(screen.queryByRole("listbox", { name: "应用" })).not.toBeInTheDocument();
 
     const payload: CliAppsPayload = {
       apps: [{
@@ -1382,7 +1382,7 @@ describe("ThreadShell", () => {
     });
     fireEvent.change(input, { target: { value: "@", selectionStart: 1 } });
 
-    expect(screen.getByRole("listbox", { name: "Apps" })).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "应用" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /@gimp/i })).toBeInTheDocument();
   });
 });

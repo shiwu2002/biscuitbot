@@ -69,7 +69,7 @@ describe("ThreadMessages", () => {
       />,
     );
 
-    expect(screen.getByText("Forked from history")).toBeInTheDocument();
+    expect(screen.getByText("从历史消息分叉")).toBeInTheDocument();
   });
 
   it("keeps file edits as their own activity row inside a turn", () => {
@@ -308,7 +308,7 @@ describe("ThreadMessages", () => {
 
     render(<ThreadMessages messages={messages} isStreaming={false} />);
     expect(screen.queryByRole("button", { name: /^thinking$/i })).not.toBeInTheDocument();
-    expect(screen.getByText("Thought for 9s")).toBeInTheDocument();
+    expect(screen.getByText("思考了 9s")).toBeInTheDocument();
     expect(screen.getByText("final answer")).toBeInTheDocument();
   });
 
@@ -357,7 +357,7 @@ describe("ThreadMessages", () => {
     render(<ThreadMessages messages={messages} isStreaming />);
 
     const answer = screen.getByText("partial answer");
-    const liveActivity = screen.getByRole("button", { name: /working/i });
+    const liveActivity = screen.getByRole("button", { name: /进行中/ });
     expect(answer.compareDocumentPosition(liveActivity) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
@@ -405,7 +405,7 @@ describe("ThreadMessages", () => {
     render(<ThreadMessages messages={messages} isStreaming={false} />);
 
     const answer = screen.getByText("Hong Kong is hot today.");
-    const laterActivity = screen.getAllByText(/thought/i).at(-1);
+    const laterActivity = screen.getAllByText(/思考/).at(-1);
     expect(laterActivity).toBeTruthy();
     expect(laterActivity!.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -446,7 +446,7 @@ describe("ThreadMessages", () => {
 
     render(<ThreadMessages messages={messages} isStreaming={false} />);
 
-    const thought = screen.getAllByText(/thought/i).at(-1);
+    const thought = screen.getAllByText(/思考/).at(-1);
     const answer = screen.getByText("知道，IEM Cologne Major 2026 今天开打了。");
     expect(thought).toBeTruthy();
     expect(thought!.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -626,8 +626,8 @@ describe("ThreadMessages", () => {
 
     render(<ThreadMessages messages={messages} isStreaming={false} />);
 
-    expect(screen.getByText("Thought for 15s")).toBeInTheDocument();
-    expect(screen.queryByText("Thought for 0s")).not.toBeInTheDocument();
+    expect(screen.getByText("思考了 15s")).toBeInTheDocument();
+    expect(screen.queryByText("思考了 0s")).not.toBeInTheDocument();
   });
 
   it("shows copy only on the last assistant slice before the next user turn", () => {
@@ -656,7 +656,7 @@ describe("ThreadMessages", () => {
 
     render(<ThreadMessages messages={messages} isStreaming={false} />);
 
-    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "复制" })).toHaveLength(1);
     expect(screen.getByText("final reply")).toBeInTheDocument();
   });
 
@@ -666,7 +666,7 @@ describe("ThreadMessages", () => {
       { id: "a2", role: "assistant", content: "part two", createdAt: 2 },
     ];
     render(<ThreadMessages messages={messages} isStreaming={false} />);
-    expect(screen.getAllByRole("button", { name: "Copy" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "复制" })).toHaveLength(1);
   });
 
   it("uses turn ids as activity grouping boundaries when available", () => {

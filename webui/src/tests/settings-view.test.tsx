@@ -29,6 +29,8 @@ function settingsPayload(): SettingsPayload {
       bot_name: "biscuitbot",
       bot_icon: "nb",
       tool_hint_max_length: 40,
+      vision_model: null,
+      vision_model_override: null,
     },
     model_presets: [{
       name: "default",
@@ -69,6 +71,22 @@ function settingsPayload(): SettingsPayload {
       save_dir: "generated",
       providers: [],
     },
+    screenshot: {
+      enabled: false,
+      max_width: 1920,
+      max_height: 1080,
+      quality: 85,
+      vision_model: null,
+      vision_model_override: null,
+      vision_model_configured: false,
+      resolved_model: null,
+      available_providers: [],
+    },
+    system_io: {
+      enabled: false,
+      allow_actions: [],
+      available_actions: [],
+    },
     runtime: {
       config_path: "/tmp/config.json",
       workspace_path: "/tmp/workspace",
@@ -95,6 +113,9 @@ function settingsPayload(): SettingsPayload {
       exec_sandbox: null,
       exec_path_prepend_set: false,
       exec_path_append_set: false,
+      guard_level: "standard",
+      cold_storage_days: 14,
+      duplicate_similarity_threshold: 0.6,
     },
     requires_restart: false,
   };
@@ -203,9 +224,9 @@ describe("SettingsView Apps catalog", () => {
       showSidebar: false,
     });
 
-    expect(screen.getByRole("heading", { name: "Automations" })).toBeInTheDocument();
-    expect(await screen.findByText("No automations yet.")).toBeInTheDocument();
-    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "自动任务" })).toBeInTheDocument();
+    expect(await screen.findByText("暂无自动任务。")).toBeInTheDocument();
+    expect(screen.queryByText("设置")).not.toBeInTheDocument();
   });
 
   it("shows a visible uninstall button for installed CLI apps and calls uninstall", async () => {
@@ -242,9 +263,9 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView();
 
-    expect(await screen.findByRole("heading", { name: "Apps" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "应用" })).toBeInTheDocument();
     expect(await screen.findByText("AnyGen")).toBeInTheDocument();
-    const uninstall = screen.getByRole("button", { name: "Uninstall CLI" });
+    const uninstall = screen.getByRole("button", { name: "卸载 CLI" });
 
     fireEvent.click(uninstall);
 
@@ -328,11 +349,11 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "overview" });
 
-    expect(await screen.findByLabelText("Token activity")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Token 活动")).toBeInTheDocument();
     expect(screen.getByText("Token Usage")).toBeInTheDocument();
-    expect(screen.queryByText("Token activity")).not.toBeInTheDocument();
-    expect(screen.queryByText("Total tokens")).not.toBeInTheDocument();
-    expect(screen.queryByText("Peak tokens")).not.toBeInTheDocument();
+    expect(screen.queryByText("Token 活动")).not.toBeInTheDocument();
+    expect(screen.queryByText("累计 Token 数")).not.toBeInTheDocument();
+    expect(screen.queryByText("峰值 Token 数")).not.toBeInTheDocument();
   });
 
   it("aligns token activity days with the configured timezone", async () => {
@@ -371,7 +392,7 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "overview", initialSettings: payload });
 
-    expect(screen.getByLabelText("2026-06-03: 1.5K tokens, 2 requests")).toBeInTheDocument();
+    expect(screen.getByLabelText("2026-06-03：1.5K tokens，2 次请求")).toBeInTheDocument();
   });
 
   it("shows context window options in model settings", async () => {
@@ -392,7 +413,7 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "models" });
 
-    expect(await screen.findByText("Context window")).toBeInTheDocument();
+    expect(await screen.findByText("上下文窗口")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "64K" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "256K" })).toBeInTheDocument();
   });
@@ -411,11 +432,11 @@ describe("SettingsView Apps catalog", () => {
     });
 
     const configurationButton = await screen.findByRole("button", {
-      name: "Current configuration",
+      name: "当前配置",
     });
     expect(configurationButton).toHaveTextContent("companyProxy/gpt-4o");
     expect(configurationButton).toHaveTextContent("Company Proxy");
-    expect(configurationButton).not.toHaveTextContent("Not configured");
+    expect(configurationButton).not.toHaveTextContent("未配置");
   });
 
   it("does not treat auto dynamic provider api keys as configured without apiBase", async () => {
@@ -432,9 +453,9 @@ describe("SettingsView Apps catalog", () => {
     });
 
     const configurationButton = await screen.findByRole("button", {
-      name: "Current configuration",
+      name: "当前配置",
     });
-    expect(configurationButton).toHaveTextContent("Not configured");
+    expect(configurationButton).toHaveTextContent("未配置");
     expect(configurationButton).toHaveTextContent("Company Proxy · companyProxy/gpt-4o");
   });
 
@@ -489,11 +510,11 @@ describe("SettingsView Apps catalog", () => {
     renderSettingsView({ initialSection: "models" });
 
     const configurationButton = await screen.findByRole("button", {
-      name: "Current configuration",
+      name: "当前配置",
     });
-    expect(configurationButton).toHaveTextContent("Not configured");
+    expect(configurationButton).toHaveTextContent("未配置");
     expect(configurationButton).toHaveTextContent("OpenAI Codex · openai-codex/gpt-5.1-codex");
-    expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "登录" })).toBeInTheDocument();
   });
 
   it("keeps unsigned OAuth providers out of the active provider picker", async () => {
@@ -640,9 +661,9 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "models" });
 
-    fireEvent.pointerDown(await screen.findByRole("button", { name: /Select model/i }));
+    fireEvent.pointerDown(await screen.findByRole("button", { name: /选择模型/ }));
     expect(
-      await screen.findByText("Configure this provider before loading models."),
+      await screen.findByText("加载模型前请先配置此提供商。"),
     ).toBeInTheDocument();
     expect(
       fetchMock.mock.calls.some(([input]) =>
@@ -700,7 +721,7 @@ describe("SettingsView Apps catalog", () => {
 
     const modelButtons = await screen.findAllByRole("button", { name: /open-codex\/gpt-5\.5/i });
     fireEvent.pointerDown(modelButtons[modelButtons.length - 1]);
-    const input = (await screen.findByPlaceholderText("Search or type model ID")) as HTMLInputElement;
+    const input = (await screen.findByPlaceholderText("搜索或输入模型 ID")) as HTMLInputElement;
     expect(input.value).toBe("open-codex/gpt-5.5");
 
     fireEvent.change(input, { target: { value: "openai-codex/gpt-5.5" } });
@@ -730,20 +751,20 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "models" });
 
-    const configurationButton = await screen.findByRole("button", { name: "Current configuration" });
+    const configurationButton = await screen.findByRole("button", { name: "当前配置" });
     fireEvent.pointerDown(configurationButton!);
-    fireEvent.click(await screen.findByText("Add configuration"));
+    fireEvent.click(await screen.findByText("添加配置"));
 
-    expect(await screen.findByRole("heading", { name: "New model configuration" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("heading", { name: "新建模型配置" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "取消" }));
 
     await waitFor(() =>
-      expect(screen.queryByRole("heading", { name: "New model configuration" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("heading", { name: "新建模型配置" })).not.toBeInTheDocument(),
     );
     expect(document.body.style.pointerEvents).not.toBe("none");
 
     fireEvent.pointerDown(configurationButton!);
-    expect(await screen.findByText("Add configuration")).toBeInTheDocument();
+    expect(await screen.findByText("添加配置")).toBeInTheDocument();
   });
 
   it("loads provider models and lets users choose one without typing the id manually", async () => {
@@ -824,7 +845,7 @@ describe("SettingsView Apps catalog", () => {
     fireEvent.pointerDown(modelButtons[modelButtons.length - 1]);
     await screen.findByText("deepseek-reasoner");
     fireEvent.click(screen.getAllByText("deepseek-reasoner")[0]);
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -855,7 +876,7 @@ describe("SettingsView Apps catalog", () => {
       if (url === "/api/settings/mcp-presets") {
         return jsonResponse({ presets: [], installed_count: 0 });
       }
-      if (url === "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default") {
+      if (url === "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default&guard_level=standard&cold_storage_days=14&duplicate_similarity_threshold=0.6") {
         return jsonResponse({
           ...payload,
           advanced: { ...payload.advanced, webui_allow_local_service_access: false },
@@ -869,20 +890,23 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "advanced" });
 
-    expect(await screen.findByText("Web safety")).toBeInTheDocument();
+    expect(await screen.findByText("WebUI 安全")).toBeInTheDocument();
+    expect(
+      screen.getByText("控制提示词注入与 shell 命令拦截的防护强度。服务访问与工作区边界始终开启。"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/SSRF/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Private Service Protection")).not.toBeInTheDocument();
-    expect(screen.getByText("Default access")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Restricted" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Default Permission" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Full Access" })).toBeInTheDocument();
+    expect(screen.getAllByText("默认权限").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "已限制" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "默认权限" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完全访问权限" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("switch", { name: "Local services" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("switch", { name: "本机服务" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default",
+        "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default&guard_level=standard&cold_storage_days=14&duplicate_similarity_threshold=0.6",
         expect.objectContaining({
           headers: { Authorization: "Bearer tok" },
         }),
@@ -909,9 +933,9 @@ describe("SettingsView Apps catalog", () => {
 
     renderSettingsView({ initialSection: "advanced" });
 
-    expect(await screen.findByText("App safety")).toBeInTheDocument();
-    expect(screen.queryByText("Web safety")).not.toBeInTheDocument();
-    expect(screen.getByText("Allow Full Access shell commands to reach services on this Mac.")).toBeInTheDocument();
+    expect(await screen.findByText("应用安全")).toBeInTheDocument();
+    expect(screen.queryByText("WebUI 安全")).not.toBeInTheDocument();
+    expect(screen.getByText("允许完全访问权限下的 shell 命令访问这台 Mac 上的服务。")).toBeInTheDocument();
   });
 
   it("refreshes settings with a fresh token after native engine restart", async () => {
@@ -947,7 +971,7 @@ describe("SettingsView Apps catalog", () => {
       if (url === "/api/settings") return jsonResponse(payload);
       if (url === "/api/settings/cli-apps") return jsonResponse({ apps: [], installed_count: 0 });
       if (url === "/api/settings/mcp-presets") return jsonResponse({ presets: [], installed_count: 0 });
-      if (url === "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default") {
+      if (url === "/api/settings/network-safety/update?webui_allow_local_service_access=false&webui_default_access_mode=default&guard_level=standard&cold_storage_days=14&duplicate_similarity_threshold=0.6") {
         return jsonResponse(restartedPayload);
       }
       return { ok: false, status: 404, json: async () => ({}) } as Response;
@@ -959,9 +983,9 @@ describe("SettingsView Apps catalog", () => {
       onNativeEngineRestart: restartEngine,
     });
 
-    expect(await screen.findByText("App safety")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("switch", { name: "Local services" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("应用安全")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "本机服务" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(restartEngine).toHaveBeenCalledTimes(1));
     await waitFor(() =>

@@ -59,7 +59,7 @@ describe("ThreadComposer — image attachments", () => {
     render(<ThreadComposer onSend={onSend} />);
 
     const input = screen
-      .getByLabelText(/message input/i)
+      .getByLabelText("消息输入框")
       .closest("form")!
       .querySelector('input[type="file"]') as HTMLInputElement;
 
@@ -71,7 +71,7 @@ describe("ThreadComposer — image attachments", () => {
       expect(screen.getByTestId("composer-chip")).toBeInTheDocument(),
     );
 
-    const textarea = screen.getByLabelText(/message input/i);
+    const textarea = screen.getByLabelText("消息输入框");
     fireEvent.change(textarea, { target: { value: "hi" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
@@ -96,7 +96,7 @@ describe("ThreadComposer — image attachments", () => {
     render(<ThreadComposer onSend={onSend} />);
 
     const fileInput = screen
-      .getByLabelText(/message input/i)
+      .getByLabelText("消息输入框")
       .closest("form")!
       .querySelector('input[type="file"]') as HTMLInputElement;
 
@@ -104,7 +104,7 @@ describe("ThreadComposer — image attachments", () => {
       fireEvent.change(fileInput, { target: { files: [file] } });
     });
 
-    const textarea = screen.getByLabelText(/message input/i);
+    const textarea = screen.getByLabelText("消息输入框");
     fireEvent.change(textarea, { target: { value: "hello" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();
@@ -120,7 +120,7 @@ describe("ThreadComposer — image attachments", () => {
   it("rejects a non-image paste silently without adding a chip", async () => {
     const onSend = vi.fn();
     render(<ThreadComposer onSend={onSend} />);
-    const textarea = screen.getByLabelText(/message input/i);
+    const textarea = screen.getByLabelText("消息输入框");
 
     fireEvent.paste(textarea, {
       clipboardData: {
@@ -152,7 +152,7 @@ describe("ThreadComposer — image attachments", () => {
 
     render(<ThreadComposer onSend={onSend} />);
     const fileInput = screen
-      .getByLabelText(/message input/i)
+      .getByLabelText("消息输入框")
       .closest("form")!
       .querySelector('input[type="file"]') as HTMLInputElement;
 
@@ -162,10 +162,10 @@ describe("ThreadComposer — image attachments", () => {
 
     await waitFor(() => {
       const chip = screen.getByTestId("composer-chip");
-      expect(chip.textContent ?? "").toMatch(/decode|image/i);
+      expect(chip.textContent ?? "").toMatch(/无法解码/);
     });
 
-    const textarea = screen.getByLabelText(/message input/i);
+    const textarea = screen.getByLabelText("消息输入框");
     fireEvent.change(textarea, { target: { value: "hi" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
     expect(onSend).not.toHaveBeenCalled();

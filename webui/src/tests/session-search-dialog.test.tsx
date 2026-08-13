@@ -58,7 +58,7 @@ describe("SessionSearchDialog", () => {
       />,
     );
 
-    const input = screen.getByRole("textbox", { name: "Search" });
+    const input = screen.getByRole("textbox", { name: "搜索" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "ArrowDown" });
 

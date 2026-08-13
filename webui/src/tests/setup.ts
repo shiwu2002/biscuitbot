@@ -54,8 +54,11 @@ if (!("randomUUID" in globalThis.crypto)) {
 }
 
 beforeEach(async () => {
-  await i18n.changeLanguage("en");
-  document.documentElement.lang = "en";
+  // 应用默认中文（defaultLocale=zh-CN，仅支持 zh-CN/zh-TW）。
+  // 旧测试按英文产品编写，本处切到英文会触发 i18next 回退中文，
+  // 导致断言拿英文比中文而失败。
+  await i18n.changeLanguage("zh-CN");
+  document.documentElement.lang = "zh-CN";
   document.title = "biscuitbot";
-  localStorage.setItem("biscuitbot.locale", "en");
+  localStorage.setItem("biscuitbot.locale", "zh-CN");
 });

@@ -331,7 +331,7 @@ describe("AgentActivityCluster", () => {
         vi.advanceTimersByTime(901);
       });
       expect(screen.queryByTestId("agent-activity-scroll")).not.toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /1 steps/i })).toHaveAttribute(
+      expect(screen.getByRole("button", { name: /1 步/ })).toHaveAttribute(
         "aria-expanded",
         "false",
       );
@@ -356,7 +356,7 @@ describe("AgentActivityCluster", () => {
       />,
     );
 
-    expect(screen.getByText("Thought for 12s")).toBeInTheDocument();
+    expect(screen.getByText("思考了 12s")).toBeInTheDocument();
   });
 
   it("omits the duration when completed history has no reliable timing", () => {
@@ -374,8 +374,8 @@ describe("AgentActivityCluster", () => {
       />,
     );
 
-    expect(screen.getByText("Thought")).toBeInTheDocument();
-    expect(screen.queryByText("Thought for 0s")).not.toBeInTheDocument();
+    expect(screen.getByText("已思考")).toBeInTheDocument();
+    expect(screen.queryByText("思考了 0s")).not.toBeInTheDocument();
   });
 
   it("renders file edit totals and a compact expanded file list", async () => {
@@ -518,7 +518,7 @@ describe("AgentActivityCluster", () => {
     );
 
     const cliRuns = screen.getByTestId("activity-cli-runs");
-    expect(cliRuns).toHaveTextContent("Using");
+    expect(cliRuns).toHaveTextContent("正在使用");
     expect(cliRuns).toHaveTextContent("@blender");
     expect(cliRuns).toHaveTextContent("--json --background scene.blend");
     expect(screen.getByTestId("activity-cli-logo-blender")).toBeInTheDocument();
@@ -604,12 +604,12 @@ describe("AgentActivityCluster", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /failed @github/i }));
+    fireEvent.click(screen.getByRole("button", { name: /使用 @github 失败/ }));
 
-    expect(screen.getByTestId("activity-cli-runs")).toHaveTextContent("Failed");
+    expect(screen.getByTestId("activity-cli-runs")).toHaveTextContent("失败");
     expect(screen.getByTestId("activity-cli-runs")).toHaveTextContent("@github");
     expect(screen.getByTestId("activity-cli-runs")).toHaveTextContent("Error: CLI app 'github' not found");
-    expect(screen.queryByText("Ran CLI")).not.toBeInTheDocument();
+    expect(screen.queryByText(/已使用 @github/)).not.toBeInTheDocument();
   });
 
   it("renders MCP preset tool calls as branded activity rows", () => {
@@ -734,7 +734,7 @@ describe("AgentActivityCluster", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /1 tool calls/i }));
+    fireEvent.click(screen.getByRole("button", { name: /1 次工具调用/ }));
 
     expect(screen.getByText("Command")).toBeInTheDocument();
     expect(screen.getByText(/cat << 'EOF' \| bash · script, 6 lines/)).toBeInTheDocument();

@@ -131,12 +131,12 @@ function interpolationKeys(value: unknown): string[] {
 }
 
 describe("webui i18n", () => {
-  it("defaults to English until the user chooses another language", () => {
+  it("defaults to Simplified Chinese until the user chooses another language", () => {
     localStorage.removeItem(LOCALE_STORAGE_KEY);
-    expect(resolveInitialLocale()).toBe("en");
-
-    localStorage.setItem(LOCALE_STORAGE_KEY, "zh-CN");
     expect(resolveInitialLocale()).toBe("zh-CN");
+
+    localStorage.setItem(LOCALE_STORAGE_KEY, "zh-TW");
+    expect(resolveInitialLocale()).toBe("zh-TW");
   });
 
   it("switches UI copy and document locale through the language switcher", async () => {
@@ -150,18 +150,18 @@ describe("webui i18n", () => {
     );
 
     expect(
-      screen.getByPlaceholderText("Type your message…"),
+      screen.getByPlaceholderText("输入消息…"),
     ).toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.lang).toBe("zh-CN");
 
-    await user.click(screen.getByRole("button", { name: "Change language" }));
-    await user.click(screen.getByRole("menuitemradio", { name: /简体中文/i }));
+    await user.click(screen.getByRole("button", { name: "切换语言" }));
+    await user.click(screen.getByRole("menuitemradio", { name: /繁體中文/i }));
 
     await waitFor(() => {
-      expect(document.documentElement.lang).toBe("zh-CN");
+      expect(document.documentElement.lang).toBe("zh-TW");
     });
-    expect(localStorage.getItem("biscuitbot.locale")).toBe("zh-CN");
-    expect(screen.getByPlaceholderText("输入消息…")).toBeInTheDocument();
+    expect(localStorage.getItem("biscuitbot.locale")).toBe("zh-TW");
+    expect(screen.getByPlaceholderText("輸入訊息…")).toBeInTheDocument();
   });
 
   it("updates the composer aria label when the language changes", async () => {
@@ -169,10 +169,10 @@ describe("webui i18n", () => {
 
     await act(async () => {
       const { setAppLanguage } = await import("@/i18n");
-      await setAppLanguage("ja");
+      await setAppLanguage("zh-TW");
     });
 
-    expect(screen.getByLabelText("メッセージ入力欄")).toBeInTheDocument();
+    expect(screen.getByLabelText("訊息輸入框")).toBeInTheDocument();
   });
 
   it("keeps empty landing resources localized for every registered locale", () => {
@@ -194,10 +194,10 @@ describe("webui i18n", () => {
     }
   });
 
-  it("keeps every locale aligned with the English resource shape", () => {
-    const reference = flattenResource(resources.en.common);
+  it("keeps every locale aligned with the primary (zh-CN) resource shape", () => {
+    const reference = flattenResource(resources["zh-CN"].common);
     for (const [locale, resource] of Object.entries(resources)) {
-      if (locale === "en") continue;
+      if (locale === "zh-CN") continue;
       const current = flattenResource(resource.common);
       const missing = Array.from(reference.keys()).filter((key) => !current.has(key));
       const extra = Array.from(current.keys()).filter((key) => !reference.has(key));
@@ -263,17 +263,18 @@ describe("webui i18n", () => {
     }
   });
 
-  it("does not leak English settings chrome into localized locales", () => {
-    const english = flattenResource(resources.en.common);
-
+  it("provides localized settings chrome for every registered locale", () => {
+    // zh-CN 与 zh-TW 同为中文，部分词汇（模型/深色/已配置）本就一致，
+    // 因此只校验每个非主语言的 locale 都自带这些文案（存在且非空），
+    // 不要求与 zh-CN 逐字不同。
     for (const [locale, resource] of Object.entries(resources)) {
-      if (locale === "en") continue;
+      if (locale === "zh-CN") continue;
       const current = flattenResource(resource.common);
-      const leaked = LOCALIZED_SETTINGS_COPY_KEYS.filter(
-        (key) => current.get(key) === english.get(key),
+      const missing = LOCALIZED_SETTINGS_COPY_KEYS.filter(
+        (key) => !current.get(key),
       );
 
-      expect({ locale, leaked }).toEqual({ locale, leaked: [] });
+      expect({ locale, missing }).toEqual({ locale, missing: [] });
     }
   });
 

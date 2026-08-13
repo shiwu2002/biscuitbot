@@ -820,9 +820,10 @@ export type GuardLevel = "standard" | "minimal" | "off";
 export interface NetworkSafetySettingsUpdate {
   webuiAllowLocalServiceAccess: boolean;
   webuiDefaultAccessMode: WebuiDefaultAccessMode;
-  guardLevel: GuardLevel;
-  coldStorageDays: number;
-  duplicateSimilarityThreshold: number;
+  /** 以下字段可选：未提供时后端保持原值。 */
+  guardLevel?: GuardLevel;
+  coldStorageDays?: number;
+  duplicateSimilarityThreshold?: number;
 }
 
 export interface ImageGenerationSettingsUpdate {

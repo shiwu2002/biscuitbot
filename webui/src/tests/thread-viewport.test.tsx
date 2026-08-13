@@ -163,7 +163,7 @@ describe("ThreadViewport", () => {
         scroller.dispatchEvent(new Event("scroll"));
       });
 
-      const button = screen.getByRole("button", { name: "Scroll to bottom" });
+      const button = screen.getByRole("button", { name: "滚动到底部" });
       const buttonPositioner = button.parentElement as HTMLElement;
       expect(button).not.toHaveClass("-translate-x-1/2");
       expect(buttonPositioner).toHaveStyle({ bottom: "192px" });
@@ -225,7 +225,7 @@ describe("ThreadViewport", () => {
       });
 
       await waitFor(() => expect(scroller).toHaveStyle({ bottom: "320px" }));
-      expect(screen.queryByRole("button", { name: "Scroll to bottom" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "滚动到底部" })).not.toBeInTheDocument();
 
       act(() => {
         visualViewport.viewport.dispatchEvent(new Event("resize"));
@@ -336,7 +336,7 @@ describe("ThreadViewport", () => {
       scroller.dispatchEvent(new Event("scroll"));
     });
 
-    expect(screen.queryByRole("button", { name: "Scroll to bottom" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "滚动到底部" })).not.toBeInTheDocument();
   });
 
   it("renders only the tail window for long history by default", () => {
@@ -353,7 +353,7 @@ describe("ThreadViewport", () => {
     expect(screen.queryByText("message 139")).not.toBeInTheDocument();
     expect(screen.getByText("message 140")).toBeInTheDocument();
     expect(screen.getByText("message 299")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Load earlier messages" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "加载更早消息" })).not.toBeInTheDocument();
   });
 
   it("automatically expands earlier local history near the top", () => {
@@ -486,17 +486,17 @@ describe("ThreadViewport", () => {
       });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Open prompt navigator" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开输入导航" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("Prompts")).toBeInTheDocument();
+    expect(within(dialog).getByText("输入列表")).toBeInTheDocument();
     expect(within(dialog).getByText("message 4")).toBeInTheDocument();
 
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Search prompts" }), {
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "搜索输入" }), {
       target: { value: "message 4" },
     });
     expect(within(dialog).queryByText("message 1")).not.toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Jump to prompt: message 4" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "跳转到输入：message 4" }));
 
     expect(scrollTo).toHaveBeenCalledWith({
       top: 1424,
@@ -510,9 +510,9 @@ describe("ThreadViewport", () => {
 
     expect(screen.queryByText("message 20")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open prompt navigator" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开输入导航" }));
     const dialog = screen.getByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Jump to prompt: message 20" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "跳转到输入：message 20" }));
 
     await waitFor(() => expect(screen.getByText("message 20")).toBeInTheDocument());
   });

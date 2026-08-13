@@ -54,7 +54,7 @@ describe("SessionInfoPopover", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Session details" }));
+    await user.click(screen.getByRole("button", { name: "会话详情" }));
 
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(
@@ -107,9 +107,9 @@ describe("SessionInfoPopover", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Session details" }));
+    await user.click(screen.getByRole("button", { name: "会话详情" }));
 
-    expect(await screen.findByText("Runs shortly")).toBeInTheDocument();
+    expect(await screen.findByText("即将执行")).toBeInTheDocument();
     expect(screen.queryByText(/ago/i)).not.toBeInTheDocument();
   });
 
@@ -130,7 +130,7 @@ describe("SessionInfoPopover", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "Session details" }));
+    await user.click(screen.getByRole("button", { name: "会话详情" }));
     expect(await screen.findByText("Morning check")).toBeInTheDocument();
 
     await waitFor(
@@ -139,6 +139,6 @@ describe("SessionInfoPopover", () => {
       },
       { timeout: 4500 },
     );
-    expect(screen.getByText("No automations in this session yet.")).toBeInTheDocument();
+    expect(screen.getByText("这个会话暂时没有自动任务。")).toBeInTheDocument();
   }, 8000);
 });

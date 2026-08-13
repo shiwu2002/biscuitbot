@@ -112,8 +112,8 @@ describe("ChatList", () => {
     expect(within(biscuitbotSection).getByText("Alpha task")).toBeInTheDocument();
     expect(within(biscuitbotSection).getByText("Zeta task")).toBeInTheDocument();
     expect(biscuitbotText.indexOf("Alpha task")).toBeLessThan(biscuitbotText.indexOf("Zeta task"));
-    expect(within(biscuitbotSection).getByLabelText("Agent running")).toBeInTheDocument();
-    expect(screen.queryByText("Today")).not.toBeInTheDocument();
+    expect(within(biscuitbotSection).getByLabelText("Agent 正在运行")).toBeInTheDocument();
+    expect(screen.queryByText("今天")).not.toBeInTheDocument();
   });
 
   it("keeps default workspace chats in the Chats section instead of a project folder", () => {
@@ -154,11 +154,11 @@ describe("ChatList", () => {
       />,
     );
 
-    expect(screen.getByText("Projects")).toBeInTheDocument();
+    expect(screen.getByText("项目")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "biscuitbot" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "workspace" })).not.toBeInTheDocument();
 
-    const chatsSection = screen.getByRole("region", { name: "Chats" });
+    const chatsSection = screen.getByRole("region", { name: "对话" });
     expect(within(chatsSection).getByText("Default workspace chat")).toBeInTheDocument();
     expect(within(chatsSection).queryByText("Project chat")).not.toBeInTheDocument();
   });
@@ -203,16 +203,16 @@ describe("ChatList", () => {
     expect(within(projectSection).queryByText("Alpha task")).not.toBeInTheDocument();
 
     fireEvent.click(
-      within(projectSection).getByRole("button", { name: "Start a new chat in Photos" }),
+      within(projectSection).getByRole("button", { name: "在 Photos 中开始新对话" }),
     );
     expect(onNewChatInProject).toHaveBeenCalledWith("/Users/me/biscuitbot", "Photos");
     expect(onToggleGroup).toHaveBeenCalledTimes(1);
 
     fireEvent.pointerDown(
-      within(projectSection).getByLabelText("Chat actions for Photos"),
+      within(projectSection).getByLabelText("“Photos” 的会话操作"),
       { button: 0 },
     );
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
 
     expect(onRequestRenameProject).toHaveBeenCalledWith("/Users/me/biscuitbot", "Photos");
   });
@@ -242,7 +242,7 @@ describe("ChatList", () => {
       />,
     );
 
-    const updated = screen.getAllByLabelText("New activity");
+    const updated = screen.getAllByLabelText("有新内容");
     expect(updated).toHaveLength(1);
     expect(updated[0].firstElementChild).toHaveClass("h-2", "w-2");
   });
@@ -274,13 +274,15 @@ describe("ChatList", () => {
     };
 
     const { rerender } = render(<ChatList {...baseProps} />);
-    const chatsSection = screen.getByRole("region", { name: "Chats" });
+    const chatsSection = screen.getByRole("region", { name: "对话" });
 
     expect(within(chatsSection).getByText("Chat 9")).toBeInTheDocument();
     expect(within(chatsSection).getByText("Chat 2")).toBeInTheDocument();
     expect(within(chatsSection).queryByText("Chat 1")).not.toBeInTheDocument();
-    expect(within(chatsSection).queryByRole("button", { name: "Show all" })).not.toBeInTheDocument();
-    fireEvent.click(within(chatsSection).getByRole("button", { name: "2 hidden chats" }));
+    expect(
+      within(chatsSection).getByRole("button", { name: "已折叠 2 个对话" }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(chatsSection).getByRole("button", { name: "已折叠 2 个对话" }));
 
     expect(onToggleGroup).toHaveBeenCalledWith("workspace:chats");
 
@@ -292,7 +294,7 @@ describe("ChatList", () => {
     );
 
     expect(within(chatsSection).getByText("Chat 0")).toBeInTheDocument();
-    expect(within(chatsSection).getByRole("button", { name: "Show less" })).toBeInTheDocument();
+    expect(within(chatsSection).getByRole("button", { name: "收起" })).toBeInTheDocument();
   });
 
   it("sorts Chats section among project groups by recency, not always last", () => {
@@ -342,7 +344,7 @@ describe("ChatList", () => {
 
     // The most recently updated conversation ("Recent chat" at 12:00) must be
     // in the first group — Chats should come before both projects.
-    const chatsIdx = regionNames.findIndex((n) => n?.includes("Chats"));
+    const chatsIdx = regionNames.findIndex((n) => n?.includes("对话"));
     const projAIdx = regionNames.findIndex((n) => n?.includes("project-a"));
     const projBIdx = regionNames.findIndex((n) => n?.includes("project-b"));
 
@@ -397,8 +399,8 @@ describe("ChatList", () => {
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label") ?? "");
 
-    expect(regionNames).toEqual(["project-a", "Chats", "project-b"]);
-    expect(screen.getAllByText("Projects")).toHaveLength(1);
+    expect(regionNames).toEqual(["project-a", "对话", "project-b"]);
+    expect(screen.getAllByText("项目")).toHaveLength(1);
   });
 
   it("keeps Chats last when its latest conversation is older than all projects", () => {
@@ -447,7 +449,7 @@ describe("ChatList", () => {
       .getAllByRole("region")
       .map((r) => r.getAttribute("aria-label") ?? "");
 
-    expect(regionNames).toEqual(["project-a", "project-b", "Chats"]);
-    expect(screen.getAllByText("Projects")).toHaveLength(1);
+    expect(regionNames).toEqual(["project-a", "project-b", "对话"]);
+    expect(screen.getAllByText("项目")).toHaveLength(1);
   });
 });

@@ -277,7 +277,7 @@ describe("ThreadComposer", () => {
     expect(screen.queryByRole("button", { name: "Search" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reason" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Deep research" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Voice input" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "语音输入" })).not.toBeInTheDocument();
     const input = screen.getByPlaceholderText("Ask anything...");
     expect(input).toBeInTheDocument();
     expect(input.className).toContain("min-h-[78px]");
@@ -305,8 +305,8 @@ describe("ThreadComposer", () => {
     expect(input.parentElement?.parentElement?.className).toContain("max-w-[49.5rem]");
     expect(input.parentElement?.parentElement?.className).toContain("rounded-[22px]");
     expect(input.parentElement?.parentElement?.className).toContain("shadow-[0_12px_30px_rgba(15,23,42,0.07)]");
-    expect(screen.getByRole("button", { name: "Attach image" }).className).toContain("bg-card");
-    expect(screen.getByRole("button", { name: "Send message" }).className).toContain("bg-foreground");
+    expect(screen.getByRole("button", { name: "添加图片" }).className).toContain("bg-card");
+    expect(screen.getByRole("button", { name: "发送消息" }).className).toContain("bg-foreground");
     expect(screen.queryByText(/Enter to send/)).not.toBeInTheDocument();
   });
 
@@ -322,16 +322,16 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await waitForVoiceCapture();
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
 
     await waitFor(() => expect(onTranscribeAudio).toHaveBeenCalledWith(
       expect.stringMatching(/^data:audio\/webm;base64,/),
       expect.objectContaining({ durationMs: expect.any(Number) }),
     ));
-    await waitFor(() => expect(screen.getByLabelText("Message input")).toHaveValue("hello voice"));
+    await waitFor(() => expect(screen.getByLabelText("消息输入框")).toHaveValue("hello voice"));
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -350,7 +350,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const voiceButton = screen.getByRole("button", { name: "Voice input" });
+    const voiceButton = screen.getByRole("button", { name: "语音输入" });
     fireEvent.click(voiceButton);
     fireEvent.click(voiceButton);
 
@@ -359,12 +359,12 @@ describe("ThreadComposer", () => {
     await act(async () => {
       resolveStream?.({ getTracks: () => [{ stop: stopTrack }] } as unknown as MediaStream);
     });
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await waitForVoiceCapture();
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
 
     await waitFor(() => expect(onTranscribeAudio).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByLabelText("Message input")).toHaveValue("one recording"));
+    await waitFor(() => expect(screen.getByLabelText("消息输入框")).toHaveValue("one recording"));
   });
 
   it("supports press-and-hold voice recording", async () => {
@@ -379,20 +379,20 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const voiceButton = screen.getByRole("button", { name: "Voice input" });
+    const voiceButton = screen.getByRole("button", { name: "语音输入" });
     fireEvent.pointerDown(voiceButton, { button: 0, pointerId: 1, pointerType: "touch" });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 180));
     });
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await waitForVoiceCapture();
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Stop recording" }), {
+    fireEvent.pointerUp(screen.getByRole("button", { name: "停止录音" }), {
       pointerId: 1,
       pointerType: "touch",
     });
 
     await waitFor(() => expect(onTranscribeAudio).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByLabelText("Message input")).toHaveValue("held voice"));
+    await waitFor(() => expect(screen.getByLabelText("消息输入框")).toHaveValue("held voice"));
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -408,16 +408,16 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const voiceButton = screen.getByRole("button", { name: "Voice input" });
-    expect(voiceButton).toHaveAttribute("title", "Click to dictate or hold");
+    const voiceButton = screen.getByRole("button", { name: "语音输入" });
+    expect(voiceButton).toHaveAttribute("title", "点击进行听写或长按");
     expect(voiceButton).toHaveAttribute("aria-keyshortcuts", "Control+Shift+D");
     fireEvent.keyDown(window, { code: "KeyD", ctrlKey: true, key: "D", shiftKey: true });
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await waitForVoiceCapture();
     fireEvent.keyUp(window, { code: "KeyD", ctrlKey: true, key: "D", shiftKey: true });
 
     await waitFor(() => expect(onTranscribeAudio).toHaveBeenCalled());
-    await waitFor(() => expect(screen.getByLabelText("Message input")).toHaveValue("shortcut voice"));
+    await waitFor(() => expect(screen.getByLabelText("消息输入框")).toHaveValue("shortcut voice"));
     expect(onSend).not.toHaveBeenCalled();
   });
 
@@ -432,23 +432,23 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const voiceButton = screen.getByRole("button", { name: "Voice input" });
+    const voiceButton = screen.getByRole("button", { name: "语音输入" });
     fireEvent.pointerDown(voiceButton, { button: 0, pointerId: 1, pointerType: "touch" });
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 180));
     });
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await waitForVoiceCapture();
-    fireEvent.pointerUp(screen.getByRole("button", { name: "Stop recording" }), {
+    fireEvent.pointerUp(screen.getByRole("button", { name: "停止录音" }), {
       pointerId: 1,
       pointerType: "touch",
     });
-    await waitFor(() => expect(screen.getByLabelText("Message input")).toHaveValue("held once"));
+    await waitFor(() => expect(screen.getByLabelText("消息输入框")).toHaveValue("held once"));
 
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     });
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(onTranscribeAudio).toHaveBeenCalledTimes(1);
@@ -468,14 +468,14 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
     await waitForVoiceCapture();
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Configure a transcription provider first.")).toBeInTheDocument();
+      expect(screen.getByText("请先配置转写提供商。")).toBeInTheDocument();
     });
     expect(input).toHaveValue("draft");
     expect(onSend).not.toHaveBeenCalled();
@@ -492,11 +492,11 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Hold a little longer to record voice.")).toBeInTheDocument();
+      expect(screen.getByText("请稍微多录一会儿。")).toBeInTheDocument();
     });
     expect(onTranscribeAudio).not.toHaveBeenCalled();
   });
@@ -513,14 +513,14 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1_150));
     });
 
-    expect(screen.getByText("No microphone input detected.")).toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    expect(screen.getByText("没有检测到麦克风输入。")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
     expect(onTranscribeAudio).not.toHaveBeenCalled();
   });
 
@@ -536,14 +536,14 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Voice input" }));
-    expect(await screen.findByLabelText("Recording 0:00")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "语音输入" }));
+    expect(await screen.findByLabelText("正在录音 0:00")).toBeInTheDocument();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 1_150));
     });
 
-    expect(screen.queryByText("No microphone input detected.")).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByRole("button", { name: "Stop recording" }));
+    expect(screen.queryByText("没有检测到麦克风输入。")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "停止录音" }));
 
     await waitFor(() => expect(onTranscribeAudio).toHaveBeenCalledTimes(1));
     expect(screen.getByDisplayValue("voice text")).toBeInTheDocument();
@@ -566,8 +566,8 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Workspace access mode" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Full Access/ }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "工作区访问权限" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /完全访问权限/ }));
 
     expect(onWorkspaceScopeChange).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -602,22 +602,22 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Choose project" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "选择项目" }));
 
-    expect(await screen.findByRole("menuitem", { name: /Default workspace/ })).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /默认工作区/ })).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    const input = screen.getByLabelText("Paste path");
+    const input = screen.getByLabelText("粘贴路径");
     fireEvent.change(input, { target: { value: "relative/project" } });
-    fireEvent.click(screen.getByRole("button", { name: "Use Path" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用路径" }));
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Enter an absolute folder path on this machine.",
+      "请输入这台机器上的绝对文件夹路径。",
     );
     expect(onWorkspaceScopeChange).not.toHaveBeenCalled();
 
     fireEvent.change(input, { target: { value: "/Users/test/project-alpha" } });
-    fireEvent.click(screen.getByRole("button", { name: "Use Path" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用路径" }));
 
     expect(onWorkspaceScopeChange).toHaveBeenCalledWith(expect.objectContaining({
       project_path: "/Users/test/project-alpha",
@@ -626,10 +626,10 @@ describe("ThreadComposer", () => {
       restrict_to_workspace: false,
     }));
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Choose project" }));
-    const reopenedInput = await screen.findByLabelText("Paste path");
+    fireEvent.pointerDown(screen.getByRole("button", { name: "选择项目" }));
+    const reopenedInput = await screen.findByLabelText("粘贴路径");
     fireEvent.change(reopenedInput, { target: { value: "~/Pictures/Photos" } });
-    fireEvent.click(screen.getByRole("button", { name: "Use Path" }));
+    fireEvent.click(screen.getByRole("button", { name: "使用路径" }));
 
     expect(onWorkspaceScopeChange).toHaveBeenLastCalledWith(expect.objectContaining({
       project_path: "~/Pictures/Photos",
@@ -671,10 +671,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
+    fireEvent.click(screen.getByRole("button", { name: "选择项目" }));
 
     await waitFor(() => expect(pickFolder).toHaveBeenCalled());
-    expect(screen.queryByRole("menuitem", { name: /Default workspace/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /默认工作区/ })).not.toBeInTheDocument();
     expect(onWorkspaceScopeChange).toHaveBeenCalledWith(expect.objectContaining({
       project_path: "/Users/test/native-project",
       project_name: "native-project",
@@ -703,10 +703,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.pointerDown(screen.getByRole("button", { name: "Choose project" }));
+    fireEvent.pointerDown(screen.getByRole("button", { name: "选择项目" }));
 
-    expect(await screen.findByRole("menuitem", { name: /Default workspace/ })).toBeInTheDocument();
-    expect(screen.getByLabelText("Paste path")).toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: /默认工作区/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("粘贴路径")).toBeInTheDocument();
   });
 
   it("shows turn run timer when runStartedAt is set", () => {
@@ -722,7 +722,7 @@ describe("ThreadComposer", () => {
     );
 
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent(/Running/);
+    expect(status).toHaveTextContent(/运行中/);
     expect(status).toHaveTextContent(/2:05/);
     expect(status.parentElement).toHaveClass("composer-status-strip");
     expect(status.parentElement).toHaveAttribute("data-state", "enter");
@@ -746,9 +746,9 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Show full goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "查看完整目标" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Goal" });
+    const dialog = await screen.findByRole("dialog", { name: "目标" });
     expect(dialog).toBeInTheDocument();
     expect(dialog).toHaveTextContent("Short summary for strip");
     expect(dialog).toHaveTextContent(longObjective);
@@ -764,10 +764,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "/" } });
 
-    const palette = screen.getByRole("listbox", { name: "Slash commands" });
+    const palette = screen.getByRole("listbox", { name: "斜杠命令" });
     expect(palette).toBeInTheDocument();
     expect(palette).toHaveStyle({ maxHeight: "288px" });
     expect(screen.queryByRole("option", { name: /\/stop/i })).not.toBeInTheDocument();
@@ -779,7 +779,7 @@ describe("ThreadComposer", () => {
 
     expect(input).toHaveValue("/history ");
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.queryByRole("listbox", { name: "Slash commands" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "斜杠命令" })).not.toBeInTheDocument();
   });
 
   it("renders slash commands as direct actions with current status", () => {
@@ -801,12 +801,12 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "/" },
     });
 
-    expect(screen.getByRole("option", { name: /Model deepseek-v4-pro/i })).toBeInTheDocument();
-    expect(screen.getByText("Current")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /deepseek-v4-pro/ })).toBeInTheDocument();
+    expect(screen.getByText("当前")).toBeInTheDocument();
     expect(screen.getByText("/model [preset]")).toBeInTheDocument();
   });
 
@@ -822,10 +822,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "/" } });
 
-    expect(screen.getByRole("option", { name: /Stop current task/i })).toHaveAttribute(
+    expect(screen.getByRole("option", { name: /停止当前任务/ })).toHaveAttribute(
       "aria-selected",
       "true",
     );
@@ -846,7 +846,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "/" },
     });
 
@@ -854,7 +854,7 @@ describe("ThreadComposer", () => {
       "aria-selected",
       "true",
     );
-    expect(screen.getByText("Recent")).toBeInTheDocument();
+    expect(screen.getByText("最近")).toBeInTheDocument();
   });
 
   it("keeps keyboard-selected slash options visible while navigating", () => {
@@ -876,7 +876,7 @@ describe("ThreadComposer", () => {
         />,
       );
 
-      const input = screen.getByLabelText("Message input");
+      const input = screen.getByLabelText("消息输入框");
       fireEvent.change(input, { target: { value: "/" } });
       scrollIntoView.mockClear();
 
@@ -903,10 +903,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "@", selectionStart: 1 } });
 
-    const palette = screen.getByRole("listbox", { name: "Apps" });
+    const palette = screen.getByRole("listbox", { name: "应用" });
     expect(palette).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /@gimp/i })).toHaveAttribute(
       "aria-selected",
@@ -925,9 +925,9 @@ describe("ThreadComposer", () => {
     expect(screen.getByTestId("composer-cli-mention-blender")).toHaveTextContent("@blender");
     expect(screen.queryByTestId("composer-cli-app-tray")).not.toBeInTheDocument();
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.queryByRole("listbox", { name: "Apps" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "应用" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(onSend).toHaveBeenCalledWith("@blender", undefined, {
       cliApps: [{
@@ -970,7 +970,7 @@ describe("ThreadComposer", () => {
         />,
       );
 
-      const input = screen.getByLabelText("Message input");
+      const input = screen.getByLabelText("消息输入框");
       fireEvent.change(input, { target: { value: "@", selectionStart: 1 } });
       scrollIntoView.mockClear();
 
@@ -996,7 +996,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, {
       target: { value: "use @ble", selectionStart: 8 },
     });
@@ -1018,7 +1018,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, {
       target: { value: "use @bro", selectionStart: 8 },
     });
@@ -1031,7 +1031,7 @@ describe("ThreadComposer", () => {
     expect(input).toHaveValue("use @browserbase ");
     expect(screen.getByTestId("composer-mcp-mention-browserbase")).toHaveTextContent("@browserbase");
 
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(onSend).toHaveBeenCalledWith("use @browserbase", undefined, {
       mcpPresets: [{
@@ -1057,7 +1057,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "@", selectionStart: 1 } });
 
     expect(screen.queryByText("CLI Apps")).not.toBeInTheDocument();
@@ -1079,7 +1079,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, {
       target: { value: "use @ble tonight", selectionStart: 8 },
     });
@@ -1098,7 +1098,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, {
       target: { value: "meeting in @gimp", selectionStart: 16 },
     });
@@ -1135,12 +1135,12 @@ describe("ThreadComposer", () => {
         variant="hero"
       />,
     );
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
 
     fireEvent.change(input, { target: { value: "/" } });
 
     await waitFor(() => {
-      const palette = screen.getByRole("listbox", { name: "Slash commands" });
+      const palette = screen.getByRole("listbox", { name: "斜杠命令" });
       expect(palette.className).toContain("top-full");
       expect(palette).toHaveStyle({ maxHeight: "162px" });
     });
@@ -1162,12 +1162,12 @@ describe("ThreadComposer", () => {
         slashCommands={COMMANDS}
       />,
     );
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
 
     fireEvent.change(input, { target: { value: "/" } });
 
     await waitFor(() => {
-      const palette = screen.getByRole("listbox", { name: "Slash commands" });
+      const palette = screen.getByRole("listbox", { name: "斜杠命令" });
       expect(palette.className).toContain("bottom-full");
       expect(palette).toHaveStyle({ maxHeight: "112px" });
     });
@@ -1185,14 +1185,14 @@ describe("ThreadComposer", () => {
       </div>,
     );
 
-    fireEvent.change(screen.getByLabelText("Message input"), {
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
       target: { value: "/" },
     });
-    expect(screen.getByRole("listbox", { name: "Slash commands" })).toBeInTheDocument();
+    expect(screen.getByRole("listbox", { name: "斜杠命令" })).toBeInTheDocument();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "outside" }));
 
-    expect(screen.queryByRole("listbox", { name: "Slash commands" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("listbox", { name: "斜杠命令" })).not.toBeInTheDocument();
   });
 
   it("keeps image generation mode out of the composer chrome", () => {
@@ -1207,9 +1207,9 @@ describe("ThreadComposer", () => {
     expect(screen.queryByRole("button", { name: "Toggle image generation mode" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Image aspect ratio" })).not.toBeInTheDocument();
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "Draw a friendly robot" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
 
     expect(onSend).toHaveBeenCalledWith("Draw a friendly robot", undefined, undefined);
   });
@@ -1225,10 +1225,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Stop response" }));
+    fireEvent.click(screen.getByRole("button", { name: "停止响应" }));
 
     expect(onStop).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "Send message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "发送消息" })).not.toBeInTheDocument();
   });
 
   it("queues plain guidance while a task is running", () => {
@@ -1242,7 +1242,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "keep the UI minimal" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -1250,7 +1250,7 @@ describe("ThreadComposer", () => {
     expect(input).toHaveValue("");
     expect(screen.getByText("keep the UI minimal")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Guide" }));
+    fireEvent.click(screen.getByRole("button", { name: "引导" }));
 
     expect(onSend).toHaveBeenCalledWith("keep the UI minimal");
     expect(screen.queryByText("keep the UI minimal")).not.toBeInTheDocument();
@@ -1267,20 +1267,20 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "first follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.change(input, { target: { value: "second follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const queue = screen.getByRole("group", { name: "Queued guidance" });
+    const queue = screen.getByRole("group", { name: "待引导提示" });
     expect(queue).toHaveClass("composer-status-strip");
     expect(queue).toHaveClass("mx-3");
     expect(queue.parentElement?.className).toContain("group/composer");
     expect(within(queue).getByText("first follow-up")).toBeInTheDocument();
     expect(within(queue).getByText("second follow-up")).toBeInTheDocument();
-    expect(within(queue).getAllByRole("button", { name: "Edit guidance" })).toHaveLength(2);
-    expect(within(queue).getAllByRole("button", { name: "Guide" })).toHaveLength(2);
+    expect(within(queue).getAllByRole("button", { name: "编辑引导" })).toHaveLength(2);
+    expect(within(queue).getAllByRole("button", { name: "引导" })).toHaveLength(2);
 
     rerender(
       <ThreadComposer
@@ -1319,7 +1319,7 @@ describe("ThreadComposer", () => {
       expect(onSend).toHaveBeenLastCalledWith("second follow-up");
     });
     expect(onSend).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole("group", { name: "Queued guidance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "待引导提示" })).not.toBeInTheDocument();
   });
 
   it("lets users edit queued guidance before it is sent", async () => {
@@ -1333,17 +1333,17 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "rough follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const editButton = screen.getByRole("button", { name: "Edit guidance" });
+    const editButton = screen.getByRole("button", { name: "编辑引导" });
     fireEvent.click(editButton);
     await waitFor(() => {
       expect(input).toHaveFocus();
     });
     expect(input).toHaveValue("rough follow-up");
-    expect(screen.queryByRole("group", { name: "Queued guidance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "待引导提示" })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: "polished follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -1372,13 +1372,13 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "first follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.change(input, { target: { value: "second follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Edit guidance" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "编辑引导" })[0]);
     await waitFor(() => {
       expect(input).toHaveValue("first follow-up");
     });
@@ -1434,7 +1434,7 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(fileInput).toBeTruthy();
     const file = new File(["image"], "draft.png", { type: "image/png" });
@@ -1445,14 +1445,14 @@ describe("ThreadComposer", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(onSend).not.toHaveBeenCalled();
-    expect(screen.getByRole("group", { name: "Queued guidance" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "待引导提示" })).toBeInTheDocument();
     expect(screen.getByText("look at this")).toBeInTheDocument();
     expect(screen.queryByTestId("composer-chip")).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit guidance" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑引导" }));
     expect(input).toHaveValue("look at this");
     expect(screen.getByTestId("composer-chip")).toHaveTextContent("draft.png");
-    expect(screen.queryByRole("group", { name: "Queued guidance" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "待引导提示" })).not.toBeInTheDocument();
 
     fireEvent.keyDown(input, { key: "Enter" });
     rerender(
@@ -1488,13 +1488,13 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "first follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.change(input, { target: { value: "second follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const handles = screen.getAllByLabelText("Drag to reorder");
+    const handles = screen.getAllByLabelText("拖动排序");
     const secondRow = screen
       .getByText("second follow-up")
       .closest("[data-queued-prompt-row='true']");
@@ -1535,13 +1535,13 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "first follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.change(input, { target: { value: "second follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
 
-    const handles = screen.getAllByLabelText("Drag to reorder");
+    const handles = screen.getAllByLabelText("拖动排序");
     const firstRow = screen
       .getByText("first follow-up")
       .closest("[data-queued-prompt-row='true']");
@@ -1583,10 +1583,10 @@ describe("ThreadComposer", () => {
       />,
     );
 
-    const input = screen.getByLabelText("Message input");
+    const input = screen.getByLabelText("消息输入框");
     fireEvent.change(input, { target: { value: "remember this follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
-    fireEvent.click(screen.getByRole("button", { name: "Edit guidance" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑引导" }));
     fireEvent.change(input, { target: { value: "remember this edited follow-up" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByText("remember this edited follow-up")).toBeInTheDocument();
@@ -1616,7 +1616,7 @@ describe("ThreadComposer", () => {
     );
 
     expect(await screen.findByText("remember this edited follow-up")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Guide" }));
+    fireEvent.click(screen.getByRole("button", { name: "引导" }));
     expect(onSend).toHaveBeenCalledWith("remember this edited follow-up");
 
     remount.unmount();

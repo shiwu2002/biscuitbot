@@ -1009,7 +1009,12 @@ export function useBiscuitbotStream(
             return replaceMessageAt(base, targetIndex, merged);
           }
           segmentId = segmentId ?? detachedActivitySegmentId();
-          if (opensFileEditPhase) fileEditSegmentRef.current = segmentId;
+          // NOTE: do NOT re-assign ``fileEditSegmentRef.current`` here. The
+          // handler body above already set it synchronously (when it detached
+          // a fresh segment), and mutating it again inside this async state
+          // updater can clobber a ``clearActivitySegment()`` that a later
+          // event (e.g. reasoning_delta) performed before the batch flushed,
+          // causing a subsequent file_edit to merge into a closed segment.
           return [
             ...base,
             {

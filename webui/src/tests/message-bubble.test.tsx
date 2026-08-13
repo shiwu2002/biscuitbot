@@ -76,7 +76,7 @@ describe("MessageBubble", () => {
 
     expect(row).toHaveClass("ml-auto", "flex");
     expect(pill).toHaveClass("ml-auto", "w-fit", "rounded-[18px]");
-    expect(screen.queryByRole("button", { name: "Fork" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "分叉" })).not.toBeInTheDocument();
   });
 
   it("renders fork control in completed assistant action rows", () => {
@@ -91,7 +91,7 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} onForkFromHere={onForkFromHere} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Fork" }));
+    fireEvent.click(screen.getByRole("button", { name: "分叉" }));
     expect(onForkFromHere).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +129,7 @@ describe("MessageBubble", () => {
     render(<MessageBubble message={message} />);
 
     expect(screen.getByText("drink water")).toBeInTheDocument();
-    expect(screen.getByText("Triggered automatically")).toBeInTheDocument();
+    expect(screen.getByText("自动触发")).toBeInTheDocument();
     expect(screen.getByText("Time to drink water.")).toBeInTheDocument();
   });
 
@@ -191,11 +191,11 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
 
     expect(writeText).toHaveBeenCalledWith("I can help with the next step.");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument(),
     );
   });
 
@@ -219,11 +219,11 @@ describe("MessageBubble", () => {
     try {
       render(<MessageBubble message={message} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      fireEvent.click(screen.getByRole("button", { name: "复制" }));
 
       await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
       await waitFor(() =>
-        expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+        expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument(),
       );
     } finally {
       Reflect.deleteProperty(navigator, "clipboard");
@@ -252,12 +252,12 @@ describe("MessageBubble", () => {
     try {
       render(<MessageBubble message={message} />);
 
-      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      fireEvent.click(screen.getByRole("button", { name: "复制" }));
 
       expect(writeText).toHaveBeenCalledWith("Rejected clipboard copy.");
       await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
       await waitFor(() =>
-        expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument(),
+        expect(screen.getByRole("button", { name: "已复制" })).toBeInTheDocument(),
       );
     } finally {
       Reflect.deleteProperty(navigator, "clipboard");
@@ -276,7 +276,7 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
-    expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
   });
 
   it("does not show copy when showAssistantCopyAction is false", () => {
@@ -289,7 +289,7 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} showAssistantCopyAction={false} />);
 
-    expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "复制" })).not.toBeInTheDocument();
   });
 
   it("renders trace messages as collapsible tool groups", () => {
@@ -303,7 +303,7 @@ describe("MessageBubble", () => {
     };
 
     render(<MessageBubble message={message} />);
-    const toggle = screen.getByRole("button", { name: /used 2 tools/i });
+    const toggle = screen.getByRole("button", { name: /已使用 2 个工具/i });
 
     expect(screen.queryByText('weather("get")')).not.toBeInTheDocument();
     expect(screen.queryByText('search "hk weather"')).not.toBeInTheDocument();
@@ -352,12 +352,12 @@ describe("MessageBubble", () => {
 
     const { container } = render(<MessageBubble message={message} />);
 
-    expect(screen.getByText("Thinking…")).toBeInTheDocument();
+    expect(screen.getByText("正在思考…")).toBeInTheDocument();
     expect(screen.getByText(/Step 1: parse intent\./)).toBeInTheDocument();
     expect(container.querySelector(".reasoning-sheen-stripe")).not.toBeInTheDocument();
-    expect(screen.getByText("Thinking…")).toHaveClass("streaming-text-sheen");
-    expect(screen.getByText("Thinking…")).toHaveAttribute("data-sheen-text", "Thinking…");
-    expect(screen.getByRole("button", { name: /thinking/i }).parentElement).not.toHaveClass("mb-2");
+    expect(screen.getByText("正在思考…")).toHaveClass("streaming-text-sheen");
+    expect(screen.getByText("正在思考…")).toHaveAttribute("data-sheen-text", "正在思考…");
+    expect(screen.getByRole("button", { name: /思考/ }).parentElement).not.toHaveClass("mb-2");
   });
 
   it("collapses the reasoning section by default once streaming ends", () => {
@@ -372,12 +372,12 @@ describe("MessageBubble", () => {
 
     render(<MessageBubble message={message} />);
 
-    expect(screen.getByText("Thinking")).toBeInTheDocument();
+    expect(screen.getByText("思考过程")).toBeInTheDocument();
     expect(screen.getByText("The answer is 42.")).toBeInTheDocument();
     expect(screen.queryByText("hidden until expanded")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /thinking/i }).parentElement).toHaveClass("mb-2");
+    expect(screen.getByRole("button", { name: /思考/ }).parentElement).toHaveClass("mb-2");
 
-    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
+    fireEvent.click(screen.getByRole("button", { name: /思考/ }));
     expect(screen.getByText("hidden until expanded")).toBeInTheDocument();
   });
 
@@ -393,7 +393,7 @@ describe("MessageBubble", () => {
     };
 
     const { container } = render(<MessageBubble message={message} />);
-    fireEvent.click(screen.getByRole("button", { name: /thinking/i }));
+    fireEvent.click(screen.getByRole("button", { name: /思考/ }));
 
     await waitFor(() => {
       expect(container.querySelector("h3")?.textContent).toBe("Section title");
@@ -462,7 +462,7 @@ describe("MessageBubble", () => {
 
     const { container } = render(<MessageBubble message={message} />);
 
-    const imageButton = screen.getByRole("button", { name: /view image/i });
+    const imageButton = screen.getByRole("button", { name: /查看图片/ });
     expect(imageButton).toHaveClass("w-[min(100%,34rem)]", "rounded-[20px]");
     expect(imageButton).not.toHaveAttribute("title");
     expect(container.querySelector("img")).toHaveClass("h-auto", "w-full", "object-contain");
@@ -506,7 +506,7 @@ describe("MessageBubble", () => {
 
     const { container } = render(<MessageBubble message={message} />);
 
-    expect(screen.getByRole("button", { name: /view image: growth.svg/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /查看图片: growth.svg/ })).toBeInTheDocument();
     expect(container.querySelector('img[src="/api/media/sig/svg"]')).toBeInTheDocument();
     expect(screen.queryByLabelText("File attachment")).not.toBeInTheDocument();
   });
