@@ -3,9 +3,11 @@ import {
   Archive,
   Brain,
   CalendarClock,
+  ChevronRight,
   Menu,
   Search,
   Settings,
+  Sparkles,
   SquarePen,
   Blocks,
 } from "lucide-react";
@@ -43,6 +45,11 @@ interface SidebarProps {
   /** 数字人员工列表；点击员工进入绑定其 persona 的新会话。 */
   employees?: Employee[];
   onOpenEmployee?: (employee: Employee) => void;
+  /** 打开人才市场（数字员工注册表目录页）。 */
+  onOpenTalentMarket?: () => void;
+  /** 数字员工分组是否折叠（受控自 App，多实例共用）。 */
+  employeeSectionCollapsed?: boolean;
+  onToggleEmployeeSection?: () => void;
   activeUtility?: "apps" | "skills" | "automations" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
@@ -188,35 +195,70 @@ export function Sidebar(props: SidebarProps) {
           />
         ) : null}
       </div>
-      {!collapsed && props.employees && props.employees.length > 0 && props.onOpenEmployee ? (
+      {!collapsed && props.onOpenTalentMarket ? (
         <div className="px-2 pb-1.5">
-          <div className="px-2 pb-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/55">
-            {t("sidebar.employees.title", { defaultValue: "数字人员工" })}
+          <div className="flex items-center justify-between px-2 pb-0.5">
+            <button
+              type="button"
+              onClick={props.onToggleEmployeeSection}
+              aria-expanded={!props.employeeSectionCollapsed}
+              title={t("sidebar.employees.toggle", {
+                defaultValue: "折叠/展开数字人员工",
+              })}
+              className="flex min-w-0 items-center gap-0.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/55 hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn(
+                  "h-3 w-3 shrink-0 transition-transform",
+                  !props.employeeSectionCollapsed && "rotate-90",
+                )}
+                aria-hidden
+              />
+              <span className="truncate">
+                {t("sidebar.employees.title", { defaultValue: "数字人员工" })}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={props.onOpenTalentMarket}
+              title={t("sidebar.talentMarket", { defaultValue: "人才市场" })}
+              className="flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10.5px] font-medium text-muted-foreground/70 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground"
+            >
+              <Sparkles className="h-3 w-3" aria-hidden />
+              {t("sidebar.talentMarket", { defaultValue: "人才市场" })}
+            </button>
           </div>
-          <div className="mt-0.5 flex max-h-[9.5rem] flex-col gap-0.5 overflow-y-auto pr-0.5">
-            {props.employees
-              .filter((employee) => employee.enabled)
-              .map((employee) => (
-                <button
-                  key={employee.id}
-                  type="button"
-                  title={employee.name}
-                  onClick={() => props.onOpenEmployee?.(employee)}
-                  className={cn(
-                    "group flex h-8 min-w-0 items-center gap-2 rounded-[10px] px-2 text-[12.5px] font-medium text-sidebar-foreground/80",
-                    "transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
-                  )}
-                >
-                  <span
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[13px] leading-none"
-                    aria-hidden
+          {!props.employeeSectionCollapsed ? (
+            <div className="mt-0.5 flex max-h-[9.5rem] flex-col gap-0.5 overflow-y-auto pr-0.5">
+              {props.employees
+                ?.filter((employee) => employee.enabled)
+                .map((employee) => (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    title={employee.name}
+                    onClick={() => props.onOpenEmployee?.(employee)}
+                    className={cn(
+                      "group flex h-8 min-w-0 items-center gap-2 rounded-[10px] px-2 text-[12.5px] font-medium text-sidebar-foreground/80",
+                      "transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground",
+                    )}
                   >
-                    {employee.avatar || "🧑‍💼"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-left">{employee.name}</span>
-                </button>
-              ))}
-          </div>
+                    <span
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[13px] leading-none"
+                      aria-hidden
+                    >
+                      {employee.avatar || "🧑‍💼"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-left">{employee.name}</span>
+                  </button>
+                ))}
+              {!props.employees || props.employees.filter((employee) => employee.enabled).length === 0 ? (
+                <p className="px-2 py-1 text-[11px] text-muted-foreground/60">
+                  {t("sidebar.employees.empty", { defaultValue: "暂无员工" })}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : null}
       <div

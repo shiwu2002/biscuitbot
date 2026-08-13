@@ -197,6 +197,25 @@ export interface Employee {
 
 export interface EmployeesPayload { employees: Employee[]; }
 
+/** 人才市场注册表目录条目（展示用；id/name/system_prompt/skills 与 Employee 对齐）。 */
+export interface TalentEmployee {
+  id: string;
+  name: string;
+  avatar?: string;
+  description?: string;
+  system_prompt?: string;
+  skills?: string[];
+  category?: string;
+  installed?: boolean;
+}
+
+export interface TalentCatalogPayload {
+  source_url: string;
+  catalog_updated_at?: string | null;
+  employees: TalentEmployee[];
+  installed_count: number;
+}
+
 /** Structured UI blob on ``progress`` WS frames; channels may add more ``kind`` values later. */
 export interface AgentUIBlob {
   kind: string;

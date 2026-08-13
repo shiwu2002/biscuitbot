@@ -87,6 +87,11 @@ from biscuitbot.webui.skills_api import (
     webui_skill_detail_payload,
     webui_skills_payload,
 )
+from biscuitbot.webui.talent_market import (
+    TalentMarketError,
+    install_talent_employee,
+    talent_catalog_payload,
+)
 from biscuitbot.webui.thread_disk import delete_webui_thread
 from biscuitbot.webui.transcript import build_webui_thread_response
 from biscuitbot.webui.workspaces import WebUIWorkspaceController
@@ -702,6 +707,10 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/webui/employees/([^/]+)/delete$", got)
         if m:
             return self._handle_webui_employee_delete(request, m.group(1))
+        if got == "/api/webui/talent-market/catalog":
+            return await self._handle_webui_talent_catalog(request)
+        if got == "/api/webui/talent-market/install":
+            return self._handle_webui_talent_install(request)
         if got == "/api/webui/sidebar-state":
             return self._handle_webui_sidebar_state(request)
         if got == "/api/webui/sidebar-state/update":
@@ -824,6 +833,49 @@ class GatewayHTTPHandler:
         except Exception:
             logger.exception("failed to delete employee '{}'", employee_id)
             return _http_error(500, "failed to delete employee")
+
+    async def _handle_webui_talent_catalog(self, request: WsRequest) -> Response:
+        """人才市场目录：拉取注册表 URL 并返回规范化 + installed 标注。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        url = _query_first(query, "url")
+        if not url:
+            return _http_error(400, "missing registry url")
+        refresh = (_query_first(query, "refresh") or "").lower() in {"1", "true", "yes"}
+        try:
+            payload = await asyncio.to_thread(
+                talent_catalog_payload, url, self.employees, force_refresh=refresh
+            )
+        except TalentMarketError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to load talent catalog")
+            return _http_error(500, "failed to load talent catalog")
+        return _http_json_response(payload)
+
+    def _handle_webui_talent_install(self, request: WsRequest) -> Response:
+        """人才市场安装：把注册表条目落库为数字员工（重复 id 幂等）。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self.employees is None:
+            return _http_error(503, "employees store unavailable")
+        values = _employee_values_from_request(request)
+        if values is None:
+            return _http_error(400, "invalid employee values")
+        query = _parse_query(request.path)
+        source_url = _query_first(query, "source_url")
+        try:
+            return _http_json_response(
+                install_talent_employee(values, self.employees, source_url=source_url)
+            )
+        except EmployeeValidationError as e:
+            return _http_error(e.status, e.message)
+        except TalentMarketError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to install talent employee")
+            return _http_error(500, "failed to install talent employee")
 
     def _handle_webui_setup_complete(self, request: WsRequest) -> Response:
         """首次引导「欢迎设置」保存：provider + api_key(+ base) + 可选 model。

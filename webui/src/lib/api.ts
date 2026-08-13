@@ -25,6 +25,7 @@ import type {
   SkillDetail,
   SkillsPayload,
   SlashCommand,
+  TalentCatalogPayload,
   TranscriptionSettingsUpdate,
   WebSearchSettingsUpdate,
   WorkspacesPayload,
@@ -344,6 +345,41 @@ export async function deleteEmployee(
     `${base}/api/webui/employees/${encodeURIComponent(id)}/delete`,
     token,
     undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 拉取人才市场注册表目录（后端带 TTL 缓存；``refresh=true`` 强制重新拉取）。 */
+export async function fetchTalentCatalog(
+  token: string,
+  url: string,
+  base: string = "",
+  refresh = false,
+): Promise<TalentCatalogPayload> {
+  const query = new URLSearchParams();
+  query.set("url", url);
+  if (refresh) query.set("refresh", "1");
+  return request<TalentCatalogPayload>(
+    `${base}/api/webui/talent-market/catalog?${query.toString()}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 从人才市场安装（下载）一名数字员工；重复 id 后端幂等返回已存在记录。 */
+export async function installTalentEmployee(
+  token: string,
+  values: EmployeeValues,
+  sourceUrl?: string,
+  base: string = "",
+): Promise<Employee & { already_existed?: boolean }> {
+  const query = new URLSearchParams();
+  if (sourceUrl) query.set("source_url", sourceUrl);
+  return request<Employee & { already_existed?: boolean }>(
+    `${base}/api/webui/talent-market/install?${query.toString()}`,
+    token,
+    { headers: employeeValuesHeader(values) },
     API_READ_TIMEOUT_MS,
   );
 }
