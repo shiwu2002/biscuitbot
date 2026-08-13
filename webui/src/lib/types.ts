@@ -210,6 +210,8 @@ export interface TalentEmployee {
 }
 
 export interface TalentCatalogPayload {
+  /** 后台是否已通过 CLI 配置注册表 URL（打包应用只读，前端无法更改）。 */
+  configured: boolean;
   source_url: string;
   catalog_updated_at?: string | null;
   employees: TalentEmployee[];

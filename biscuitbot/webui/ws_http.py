@@ -90,6 +90,7 @@ from biscuitbot.webui.skills_api import (
 from biscuitbot.webui.talent_market import (
     TalentMarketError,
     install_talent_employee,
+    read_talent_market_registry_url,
     talent_catalog_payload,
 )
 from biscuitbot.webui.thread_disk import delete_webui_thread
@@ -835,23 +836,41 @@ class GatewayHTTPHandler:
             return _http_error(500, "failed to delete employee")
 
     async def _handle_webui_talent_catalog(self, request: WsRequest) -> Response:
-        """人才市场目录：拉取注册表 URL 并返回规范化 + installed 标注。"""
+        """人才市场目录：拉取配置文件里写死的注册表 URL，返回规范化 + installed 标注。
+
+        注册表 URL 只能由后台 CLI 设置（``biscuitbot talent-market set <url>``），
+        客户端传入的 ``?url=`` 一律忽略，打包应用也因此无法更改注册表。
+        """
         if not self.check_api_token(request):
             return _http_error(401, "Unauthorized")
         query = _parse_query(request.path)
-        url = _query_first(query, "url")
-        if not url:
-            return _http_error(400, "missing registry url")
         refresh = (_query_first(query, "refresh") or "").lower() in {"1", "true", "yes"}
+
+        configured_url = read_talent_market_registry_url()
+        if not configured_url:
+            # 未配置 → 返回 configured:false，前端展示 CLI 引导空态（HTTP 200）
+            return _http_json_response(
+                {
+                    "configured": False,
+                    "source_url": "",
+                    "catalog_updated_at": None,
+                    "employees": [],
+                    "installed_count": 0,
+                }
+            )
         try:
             payload = await asyncio.to_thread(
-                talent_catalog_payload, url, self.employees, force_refresh=refresh
+                talent_catalog_payload,
+                configured_url,
+                self.employees,
+                force_refresh=refresh,
             )
         except TalentMarketError as e:
             return _http_error(e.status, e.message)
         except Exception:
             logger.exception("failed to load talent catalog")
             return _http_error(500, "failed to load talent catalog")
+        payload["configured"] = True
         return _http_json_response(payload)
 
     def _handle_webui_talent_install(self, request: WsRequest) -> Response:

@@ -349,15 +349,13 @@ export async function deleteEmployee(
   );
 }
 
-/** 拉取人才市场注册表目录（后端带 TTL 缓存；``refresh=true`` 强制重新拉取）。 */
+/** 拉取人才市场注册表目录（注册表 URL 由后台配置；``refresh=true`` 强制重新拉取）。 */
 export async function fetchTalentCatalog(
   token: string,
-  url: string,
   base: string = "",
   refresh = false,
 ): Promise<TalentCatalogPayload> {
   const query = new URLSearchParams();
-  query.set("url", url);
   if (refresh) query.set("refresh", "1");
   return request<TalentCatalogPayload>(
     `${base}/api/webui/talent-market/catalog?${query.toString()}`,

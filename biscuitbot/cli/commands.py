@@ -1984,5 +1984,115 @@ def status():
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 
+talent_market_app = typer.Typer(help="管理人才市场注册表 URL", no_args_is_help=True)
+app.add_typer(talent_market_app, name="talent-market")
+
+
+def _resolve_talent_config_path(config_path: str | None) -> Path:
+    """解析人才市场子命令的配置文件路径；同时设置全局配置路径。"""
+    from biscuitbot.config.loader import get_config_path, set_config_path
+
+    resolved = Path(config_path).expanduser().resolve() if config_path else None
+    if resolved is not None:
+        set_config_path(resolved)
+    return get_config_path()
+
+
+def _write_talent_config(path: Path, raw: dict) -> None:
+    """把人才市场配置写回配置文件，保留所有既有键（含 API Key），权限 0o600。"""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    import json as _json
+
+    with open(path, "w", encoding="utf-8") as f:
+        _json.dump(raw, f, indent=2, ensure_ascii=False)
+    try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+@talent_market_app.command("set")
+def talent_market_set(
+    url: str,
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """设置人才市场注册表 URL（写入后台配置文件；WebUI/桌面应用只读，不可修改）。"""
+    from biscuitbot.webui.talent_market import TalentMarketError, _validate_registry_url
+
+    try:
+        url = _validate_registry_url(url)
+    except TalentMarketError as e:
+        console.print(f"[red]错误：{e.message}[/red]")
+        raise typer.Exit(1)
+
+    path = _resolve_talent_config_path(config_path)
+    import json as _json
+
+    if path.exists():
+        try:
+            raw = _json.loads(path.read_text(encoding="utf-8"))
+        except Exception as e:
+            console.print(f"[red]错误：无法读取配置文件 {path}：{e}[/red]")
+            raise typer.Exit(1)
+        if not isinstance(raw, dict):
+            raw = {}
+    else:
+        raw = {}
+    gateway = raw.get("gateway")
+    if not isinstance(gateway, dict):
+        gateway = {}
+        raw["gateway"] = gateway
+    # 手术式写入：仅改这一键，绝不触碰配置文件里的其他键（含 API Key）
+    gateway["talent_market_registry_url"] = url
+    _write_talent_config(path, raw)
+    console.print(f"[green]已设置人才市场注册表：[/green]{url}")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
+@talent_market_app.command("show")
+def talent_market_show(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """显示当前人才市场注册表 URL。"""
+    from biscuitbot.webui.talent_market import read_talent_market_registry_url
+
+    path = _resolve_talent_config_path(config_path)
+    url = read_talent_market_registry_url(path)
+    if url:
+        console.print(f"人才市场注册表：{url}")
+    else:
+        console.print("人才市场注册表：[dim]未配置[/dim]")
+        console.print("提示：使用 `biscuitbot talent-market set <url>` 进行配置。")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
+@talent_market_app.command("clear")
+def talent_market_clear(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """清除人才市场注册表 URL 配置。"""
+    path = _resolve_talent_config_path(config_path)
+    import json as _json
+
+    if not path.exists():
+        console.print("人才市场注册表：[dim]未配置（配置文件不存在）[/dim]")
+        return
+    try:
+        raw = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        console.print(f"[red]错误：无法读取配置文件 {path}：{e}[/red]")
+        raise typer.Exit(1)
+    if not isinstance(raw, dict):
+        raw = {}
+    gateway = raw.get("gateway")
+    if isinstance(gateway, dict) and "talent_market_registry_url" in gateway:
+        del gateway["talent_market_registry_url"]
+        _write_talent_config(path, raw)
+        console.print("已清除人才市场注册表 URL 配置。")
+    else:
+        console.print("人才市场注册表：[dim]未配置[/dim]")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
 if __name__ == "__main__":
     app()

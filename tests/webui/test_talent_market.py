@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import httpx
 import pytest
@@ -15,6 +16,7 @@ from biscuitbot.webui.talent_market import (
     _http_get_json,
     _validate_registry_url,
     install_talent_employee,
+    read_talent_market_registry_url,
     talent_catalog_payload,
 )
 
@@ -321,3 +323,176 @@ def test_install_ignores_non_whitelisted_keys(tmp_path: Path) -> None:
     employee = result["employee"]
     assert "description" not in employee
     assert "source" not in employee
+
+
+# ---- 配置文件驱动（后台写死 + CLI 修改，WebUI 只读） -------------------------
+
+
+def _write_config(tmp_path: Path, gateway: dict | None = None) -> Path:
+    config_path = tmp_path / "config.json"
+    data: dict[str, Any] = {}
+    if gateway is not None:
+        data["gateway"] = gateway
+    config_path.write_text(json.dumps(data), encoding="utf-8")
+    return config_path
+
+
+def test_read_registry_url_from_config(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path, {"talent_market_registry_url": "https://example.com/employees.json"}
+    )
+    assert (
+        read_talent_market_registry_url(config_path)
+        == "https://example.com/employees.json"
+    )
+
+
+def test_read_registry_url_alias_key(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path, {"talentMarketRegistryUrl": "https://example.com/registry.json"}
+    )
+    assert (
+        read_talent_market_registry_url(config_path)
+        == "https://example.com/registry.json"
+    )
+
+
+def test_read_registry_url_empty_when_missing(tmp_path: Path) -> None:
+    assert read_talent_market_registry_url(_write_config(tmp_path)) == ""
+    assert read_talent_market_registry_url(tmp_path / "nope.json") == ""
+
+
+def test_read_registry_url_prefers_snake_key(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path,
+        {
+            "talent_market_registry_url": "https://a.example/x.json",
+            "talentMarketRegistryUrl": "https://b.example/y.json",
+        },
+    )
+    assert read_talent_market_registry_url(config_path) == "https://a.example/x.json"
+
+
+# ---- 目录路由：使用后台配置的 URL，忽略客户端 url 参数 -----------------------
+
+
+@pytest.fixture()
+def gateway_bus() -> Any:
+    from unittest.mock import AsyncMock, MagicMock
+
+    b = MagicMock()
+    b.publish_inbound = AsyncMock()
+    return b
+
+
+def _gateway_channel(tmp_path: Path, bus: Any) -> Any:
+    """Build a WebSocketChannel whose gateway serves the HTTP routes."""
+    from biscuitbot.channels.websocket import WebSocketChannel, WebSocketConfig
+    from biscuitbot.webui.gateway_services import build_gateway_services
+
+    parsed = WebSocketConfig.model_validate(
+        {
+            "enabled": True,
+            "allowFrom": ["*"],
+            "host": "127.0.0.1",
+            "port": 0,
+            "path": "/",
+            "websocketRequiresToken": False,
+        }
+    )
+    gateway = build_gateway_services(
+        config=parsed,
+        bus=bus,
+        session_manager=None,
+        static_dist_path=None,
+        workspace_path=tmp_path / "workspace",
+        default_restrict_to_workspace=False,
+        runtime_model_name=None,
+        runtime_surface="browser",
+        runtime_capabilities_overrides=None,
+    )
+    return WebSocketChannel({}, bus, gateway=gateway)
+
+
+def _authed_request(gateway: Any, path: str) -> Any:
+    token = gateway.tokens.issue_token(3600, api_token=True)
+    return type(
+        "FakeRequest",
+        (),
+        {"path": path, "headers": {"Authorization": f"Bearer {token}"}},
+    )()
+
+
+def test_catalog_handler_uses_configured_url_and_ignores_client_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gateway_bus: Any
+) -> None:
+    config_path = _write_config(
+        tmp_path, {"talent_market_registry_url": "https://example.com/employees.json"}
+    )
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    captured: dict[str, object] = {}
+
+    def fake_payload(url: str, store: object, *, force_refresh: bool = False) -> dict:
+        captured["url"] = url
+        captured["refresh"] = force_refresh
+        return {
+            "source_url": url,
+            "catalog_updated_at": None,
+            "employees": [],
+            "installed_count": 0,
+        }
+
+    monkeypatch.setattr(
+        "biscuitbot.webui.ws_http.talent_catalog_payload", fake_payload
+    )
+
+    import asyncio
+
+    channel = _gateway_channel(tmp_path, gateway_bus)
+    resp = asyncio.run(
+        channel.gateway.http._handle_webui_talent_catalog(
+            _authed_request(
+                channel.gateway,
+                "/api/webui/talent-market/catalog?url=https%3A%2F%2Fevil.example%2Fx.json&refresh=1",
+            )
+        )
+    )
+    assert resp.status_code == 200
+    body = json.loads(resp.body.decode("utf-8"))
+    assert body["configured"] is True
+    # 客户端传入的 url 被忽略，使用配置文件里写死的 URL
+    assert captured["url"] == "https://example.com/employees.json"
+    assert captured["refresh"] is True
+
+
+def test_catalog_handler_unconfigured_returns_configured_false(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gateway_bus: Any
+) -> None:
+    config_path = _write_config(tmp_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    called: list[str] = []
+
+    def fake_payload(url: str, store: object, *, force_refresh: bool = False) -> dict:
+        called.append(url)
+        raise AssertionError("unconfigured 时不应发起拉取")
+
+    monkeypatch.setattr(
+        "biscuitbot.webui.ws_http.talent_catalog_payload", fake_payload
+    )
+
+    import asyncio
+
+    channel = _gateway_channel(tmp_path, gateway_bus)
+    resp = asyncio.run(
+        channel.gateway.http._handle_webui_talent_catalog(
+            _authed_request(channel.gateway, "/api/webui/talent-market/catalog")
+        )
+    )
+    assert resp.status_code == 200
+    body = json.loads(resp.body.decode("utf-8"))
+    assert body["configured"] is False
+    assert body["employees"] == []
+    assert body["source_url"] == ""
+    assert called == []

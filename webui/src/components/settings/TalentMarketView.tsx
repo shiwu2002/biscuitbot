@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, Loader2, Plus, Store } from "lucide-react";
+import { Check, ChevronLeft, Loader2, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { fetchTalentCatalog, installTalentEmployee } from "@/lib/api";
 import type {
   Employee,
@@ -13,23 +12,8 @@ import type {
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 
-const TALENT_URL_STORAGE_KEY = "biscuitbot-webui.talent-market.url";
-
-function readStoredUrl(): string {
-  try {
-    return localStorage.getItem(TALENT_URL_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function storeUrl(value: string): void {
-  try {
-    localStorage.setItem(TALENT_URL_STORAGE_KEY, value);
-  } catch {
-    // ignore storage failures (private mode etc.)
-  }
-}
+/** 目录自动刷新间隔（毫秒）：30 分钟。 */
+const REFRESH_INTERVAL_MS = 30 * 60 * 1000;
 
 function talentErrorMessage(tx: (key: string, fallback: string) => string, error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -51,7 +35,6 @@ export function TalentMarketView({
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
   const { token } = useClient();
 
-  const [url, setUrl] = useState<string>(readStoredUrl);
   const [catalog, setCatalog] = useState<TalentCatalogPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
@@ -65,22 +48,19 @@ export function TalentMarketView({
   );
 
   const loadCatalog = useCallback(
-    async (forceRefresh = false) => {
-      const target = url.trim();
-      if (!target) {
-        setMessage({
-          text: tx("talentMarket.urlRequired", "请先输入注册表地址"),
-          isError: true,
-        });
-        return;
+    async (opts: { forceRefresh?: boolean; silent?: boolean } = {}) => {
+      const { forceRefresh = false, silent = false } = opts;
+      if (!silent) {
+        setLoading(true);
+        setMessage(null);
       }
-      setLoading(true);
-      setMessage(null);
       try {
-        const payload = await fetchTalentCatalog(token, target, "", forceRefresh);
+        const payload = await fetchTalentCatalog(token, "", forceRefresh);
         setCatalog(payload);
-        storeUrl(target);
-        if (payload.employees.length > 0) {
+        if (silent) {
+          // 后台自动刷新：成功后清除旧的错误提示；失败则保留旧目录并提示
+          setMessage(null);
+        } else if (payload.configured && payload.employees.length > 0) {
           setMessage({
             text: t("talentMarket.loaded", {
               count: payload.employees.length,
@@ -97,15 +77,20 @@ export function TalentMarketView({
           isError: true,
         });
       } finally {
-        setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
-    [token, url, t, tx],
+    [token, t, tx],
   );
 
-  // 进入页面时若已有历史地址，自动加载一次
+  // 进入页面立即加载一次；之后每 30 分钟自动刷新
+  // （注册表 URL 由后台配置，前端无需也不可输入）
   useEffect(() => {
-    if (readStoredUrl().trim()) void loadCatalog(false);
+    void loadCatalog({});
+    const timer = window.setInterval(() => {
+      void loadCatalog({ silent: true });
+    }, REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -156,6 +141,7 @@ export function TalentMarketView({
     }
   };
 
+  const configured = catalog ? catalog.configured : true;
   const rows = catalog?.employees ?? [];
   const hasCatalog = catalog !== null;
   const showStatus = message !== null;
@@ -183,61 +169,20 @@ export function TalentMarketView({
           <p className="mt-2 max-w-[680px] text-[13px] leading-5 text-muted-foreground">
             {tx(
               "talentMarket.description",
-              "输入一个托管数字员工目录的注册表地址（http/https JSON），查看可招聘的员工并一键下载为数字人员工，类似 MCP 工具的注册方式。",
+              "展示后台配置的注册表目录（http/https JSON），查看可招聘的数字员工并一键下载为数字人员工。注册表地址由管理员通过 CLI 配置，此处只读，每 30 分钟自动刷新。",
             )}
           </p>
         </div>
 
         <div className="space-y-7">
-          <section className="space-y-3">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-              <div className="relative flex-1">
-                <Store
-                  className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-                  aria-hidden
-                />
-                <Input
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") void loadCatalog(false);
-                  }}
-                  placeholder={tx(
-                    "talentMarket.urlPlaceholder",
-                    "https://example.com/employees.json",
-                  )}
-                  className="h-12 rounded-[14px] border-border/70 bg-card/90 pl-11 text-[15px] shadow-sm"
-                />
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  type="button"
-                  onClick={() => void loadCatalog(false)}
-                  disabled={loading}
-                  className="h-12 rounded-[14px] px-5"
-                >
-                  {loading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-                  ) : null}
-                  {tx("talentMarket.load", "加载目录")}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => void loadCatalog(true)}
-                  disabled={loading || !hasCatalog}
-                  className="h-12 rounded-[14px] px-4"
-                >
-                  {tx("talentMarket.refresh", "刷新")}
-                </Button>
-              </div>
-            </div>
-            {hasCatalog ? (
-              <p className="text-[12px] font-medium text-muted-foreground">
-                {tx("talentMarket.summary", "共 {{count}} 名员工")}
-              </p>
-            ) : null}
-          </section>
+          {configured && hasCatalog && rows.length > 0 ? (
+            <p className="text-[12px] font-medium text-muted-foreground">
+              {t("talentMarket.summary", {
+                count: rows.length,
+                defaultValue: "共 {{count}} 名员工 · 每 30 分钟自动刷新",
+              })}
+            </p>
+          ) : null}
 
           {showStatus ? (
             <div
@@ -257,15 +202,33 @@ export function TalentMarketView({
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               {t("settings.status.loading")}
             </div>
-          ) : !hasCatalog ? (
-            <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-border/60 bg-card/40 text-sm text-muted-foreground">
-              {tx("talentMarket.empty", "输入注册表地址后点击「加载目录」查看可招聘的员工")}
+          ) : hasCatalog && !catalog.configured ? (
+            <div className="rounded-[16px] border border-dashed border-border/60 bg-card/40 p-8 text-center">
+              <Terminal
+                className="mx-auto mb-3 h-7 w-7 text-muted-foreground/60"
+                aria-hidden
+              />
+              <h2 className="text-[14px] font-semibold text-foreground">
+                {tx("talentMarket.notConfiguredTitle", "人才市场尚未配置")}
+              </h2>
+              <p className="mx-auto mt-2 max-w-[520px] text-[13px] leading-5 text-muted-foreground">
+                {tx(
+                  "talentMarket.notConfiguredHint",
+                  "注册表地址需要在后台通过 CLI 配置，应用内不可更改。",
+                )}
+              </p>
+              <pre className="mx-auto mt-4 inline-block rounded-[10px] bg-muted/70 px-4 py-2 font-mono text-[12.5px] leading-6 text-foreground/80">
+                biscuitbot talent-market set{" "}
+                <span className="text-muted-foreground">
+                  {"<http(s)://.../employees.json>"}
+                </span>
+              </pre>
             </div>
-          ) : rows.length === 0 ? (
+          ) : hasCatalog && rows.length === 0 ? (
             <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-border/60 bg-card/40 text-sm text-muted-foreground">
               {tx("talentMarket.noEmployees", "该注册表中没有可招聘的员工")}
             </div>
-          ) : (
+          ) : hasCatalog ? (
             <div className="divide-y divide-border/50 overflow-hidden rounded-[16px] border border-border/60 bg-card/70 shadow-sm">
               {rows.map((entry) => {
                 const alreadyInstalled = Boolean(entry.installed || installedIds.has(entry.id));
@@ -342,7 +305,7 @@ export function TalentMarketView({
                 );
               })}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </main>

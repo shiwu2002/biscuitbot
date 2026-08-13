@@ -35,8 +35,9 @@ from loguru import logger
 from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError, _slugify
 from biscuitbot.config.paths import get_runtime_subdir
 
-# 注册表目录缓存 TTL（秒）
-_CATALOG_TTL_SECONDS = 3600
+# 注册表目录缓存 TTL（秒）：与前端「每 30 分钟自动刷新」对齐，
+# 保证页面 30 分钟一次的刷新拿到的是新鲜目录数据。
+_CATALOG_TTL_SECONDS = 1800
 # 单次拉取超时（秒）
 _FETCH_TIMEOUT_SECONDS = 15.0
 # 目录 JSON 大小上限（防御性）
@@ -102,6 +103,34 @@ def _validate_registry_url(raw: str) -> str:
             f"注册表 URL 必须为 http/https 地址：{url!r}", status=400
         )
     return url
+
+
+def read_talent_market_registry_url(config_path: Path | None = None) -> str:
+    """从配置文件读取人才市场注册表 URL。
+
+    注册表 URL 是后台写死在配置文件（``gateway.talentMarketRegistryUrl`` 或
+    ``gateway.talent_market_registry_url``）中的值，只能通过 CLI
+    ``biscuitbot talent-market set <url>`` 修改。这里直接读原始 JSON，绝不
+    触碰文件里其他键（含 API Key），也不写回任何内容。
+
+    Returns:
+        已配置的注册表 URL；未配置或文件不可读时返回空字符串。
+    """
+    from biscuitbot.config.loader import get_config_path
+
+    path = config_path or get_config_path()
+    if not path.exists():
+        return ""
+    raw = _read_json(path)
+    if raw is None:
+        return ""
+    gateway = raw.get("gateway")
+    if not isinstance(gateway, dict):
+        return ""
+    value = gateway.get("talent_market_registry_url") or gateway.get(
+        "talentMarketRegistryUrl"
+    )
+    return value if isinstance(value, str) else ""
 
 
 def _http_get_json(url: str) -> dict[str, Any]:
