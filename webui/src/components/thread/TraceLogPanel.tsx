@@ -13,7 +13,6 @@ import {
   Circle,
   Clock,
   Cpu,
-  Loader2,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -188,7 +187,7 @@ export function TraceLogPanel({ open, onOpenChange, traces, onClear }: TraceLogP
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg flex flex-col">
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+        <div className="flex items-center justify-between px-4 py-3 pr-12 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Activity className="h-4 w-4" />
             全链路追踪
@@ -201,9 +200,11 @@ export function TraceLogPanel({ open, onOpenChange, traces, onClear }: TraceLogP
         <div className="flex-1 overflow-y-auto px-4 py-2">
           {turnGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-2">
-              <Loader2 className="h-6 w-6 animate-spin opacity-50" />
-              <p className="text-sm">等待追踪事件...</p>
-              <p className="text-xs">发送消息后，这里会显示智能体的完整执行链路</p>
+              <Activity className="h-6 w-6 opacity-50" />
+              <p className="text-sm">暂无追踪记录</p>
+              <p className="text-xs px-2 text-center">
+                发送新消息后，这里会实时显示智能体的完整执行链路
+              </p>
             </div>
           ) : (
             <div className="space-y-3">

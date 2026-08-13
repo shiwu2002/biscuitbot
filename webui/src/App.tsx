@@ -339,7 +339,7 @@ function HostChrome({
           onBlur={!sidebarOpen ? onSidebarPreviewLeave : undefined}
           onMouseEnter={!sidebarOpen ? onSidebarPreviewEnter : undefined}
           onMouseLeave={!sidebarOpen ? onSidebarPreviewLeave : undefined}
-          className="host-no-drag pointer-events-auto absolute left-[88px] top-[8px] h-7 w-7 rounded-lg bg-transparent text-muted-foreground/85 shadow-none hover:bg-transparent hover:text-foreground"
+          className="host-no-drag pointer-events-auto absolute left-[76px] top-[8px] h-7 w-7 rounded-lg bg-transparent text-muted-foreground/85 shadow-none hover:bg-transparent hover:text-foreground"
         >
           <PanelLeft className="h-[15px] w-[15px]" strokeWidth={1.75} />
         </Button>

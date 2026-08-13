@@ -99,11 +99,22 @@ export function Sidebar(props: SidebarProps) {
     >
       <div
         className={cn(
-          "flex items-center px-3 pb-2.5",
+          "flex items-center gap-1 px-3 pb-2.5",
           props.hostChromeInset ? "pt-[2.85rem]" : "pt-3",
-          collapsed ? "w-14 justify-start" : "justify-between",
+          collapsed ? "w-14 justify-start" : "justify-start",
         )}
       >
+        {!collapsed && !props.hostChromeInset && (
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("sidebar.collapse")}
+            onClick={props.onCollapse}
+            className="h-7 w-7 shrink-0 rounded-lg text-muted-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground"
+          >
+            <Menu className="h-3.5 w-3.5" />
+          </Button>
+        )}
         <button
           type="button"
           aria-label={collapsed ? toggleLabel : undefined}
@@ -115,7 +126,7 @@ export function Sidebar(props: SidebarProps) {
             "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl transition-colors",
             collapsed
               ? "-ml-0.5 hover:bg-sidebar-accent/75"
-              : "pointer-events-none -ml-0.5",
+              : "pointer-events-none",
           )}
         >
           <img
@@ -125,17 +136,6 @@ export function Sidebar(props: SidebarProps) {
             draggable={false}
           />
         </button>
-        {!collapsed && !props.hostChromeInset && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={t("sidebar.collapse")}
-            onClick={props.onCollapse}
-            className="h-7 w-7 rounded-lg text-muted-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground"
-          >
-            <Menu className="h-3.5 w-3.5" />
-          </Button>
-        )}
       </div>
 
       <div
