@@ -831,7 +831,7 @@ def _patch_cli_command_runtime(
     )
     monkeypatch.setattr(
         "biscuitbot.providers.factory.build_provider_snapshot",
-        lambda _config: _test_provider_snapshot(provider_factory(_config), _config),
+        lambda _config, **_kwargs: _test_provider_snapshot(provider_factory(_config), _config),
     )
     monkeypatch.setattr(
         "biscuitbot.providers.factory.load_provider_snapshot",
@@ -981,7 +981,7 @@ def test_gateway_unbound_agent_cron_is_skipped(
     monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: provider)
     monkeypatch.setattr(
         "biscuitbot.providers.factory.build_provider_snapshot",
-        lambda _config: _test_provider_snapshot(provider, _config),
+        lambda _config, **_kwargs: _test_provider_snapshot(provider, _config),
     )
     monkeypatch.setattr(
         "biscuitbot.providers.factory.load_provider_snapshot",
@@ -1107,7 +1107,7 @@ def test_gateway_bound_cron_runs_as_session_turn(
     monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: provider)
     monkeypatch.setattr(
         "biscuitbot.providers.factory.build_provider_snapshot",
-        lambda _config: _test_provider_snapshot(provider, _config),
+        lambda _config, **_kwargs: _test_provider_snapshot(provider, _config),
     )
     monkeypatch.setattr(
         "biscuitbot.providers.factory.load_provider_snapshot",

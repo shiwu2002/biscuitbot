@@ -1,0 +1,23 @@
+[package]
+name = "biscuitbot"
+version = "0.3.1"
+description = "biscuitbot 桌面壳：启动无头 gateway sidecar 并加载其 WebUI"
+authors = ["biscuitbot"]
+edition = "2021"
+
+[lib]
+name = "biscuitbot_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+strip = true

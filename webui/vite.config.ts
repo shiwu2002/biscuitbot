@@ -31,6 +31,19 @@ export default defineConfig(({ mode }) => {
             if (id.includes("node_modules/refractor/lang/")) {
               return;
             }
+            // React/ReactDOM/scheduler 必须整体落在同一个 chunk：一旦被
+            // react-syntax-highlighter / react-markdown 等 CJS 依赖链拆分进各自
+            // chunk，就会出现两份 React 实例——react-markdown 走 B 实例的 hooks、
+            // 组件树走 A 实例，生产构建抛 "Rendered more hooks"（#310）、开发构建
+            // 抛 __SECRET_INTERNALS 未定义。这里在分 vendor chunk 之前先把 React
+            // 家族收敛进 react-vendor，其余 chunk 统一从它 import。
+            if (
+              id.includes("node_modules/react/")
+              || id.includes("node_modules/react-dom/")
+              || id.includes("node_modules/scheduler/")
+            ) {
+              return "react-vendor";
+            }
             if (
               id.includes("node_modules/react-syntax-highlighter")
               || id.includes("node_modules/refractor/core")

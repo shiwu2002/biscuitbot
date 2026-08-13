@@ -344,6 +344,29 @@ def _provider_settings_row(
     return row
 
 
+def needs_setup(config: Any) -> bool:
+    """是否处于「首次使用、未配置任何 LLM provider」状态。
+
+    与设置页的 ``_provider_settings_row`` 判定保持一致：只要有一个
+    provider 达到 configured 即视为已就绪。用于应用内欢迎设置页
+    （桌面打包版首次启动时引导小白用户配置 API Key）。
+    """
+    for spec in PROVIDERS:
+        provider_config = getattr(config.providers, spec.name, None)
+        if provider_config is None:
+            continue
+        if _provider_settings_row(spec.name, spec, provider_config)["configured"]:
+            return False
+    for provider_key, provider_config in _dynamic_provider_items(config):
+        if _provider_settings_row(
+            provider_key,
+            create_dynamic_spec(provider_key),
+            provider_config,
+        )["configured"]:
+            return False
+    return True
+
+
 def _model_catalog_kind(spec: Any) -> str:
     if spec.name in _MODEL_LIST_CATALOG_PROVIDERS:
         return "catalog"

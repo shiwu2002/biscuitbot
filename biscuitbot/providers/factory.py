@@ -18,6 +18,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from loguru import logger
+
 # 配置层的数据类型：主配置、内联 fallback 配置、模型预设
 from biscuitbot.config.schema import Config, InlineFallbackConfig, ModelPresetConfig
 from biscuitbot.providers.base import LLMProvider  # Provider 抽象基类
@@ -263,6 +265,47 @@ def build_provider_snapshot(
         context_window_tokens=min([resolved.context_window_tokens, *fallback_windows]),
         signature=provider_signature(config, preset=resolved),
     )
+
+
+def build_placeholder_snapshot(config: Config) -> ProviderSnapshot:
+    """构建未配置 Provider 时的占位快照（供首启欢迎页等场景使用）。
+
+    占位 Provider 不调用模型；用户配置 API Key 后，下一次对话会按签名
+    变化自动热替换为真实 Provider。
+    """
+    from biscuitbot.providers.placeholder import PlaceholderProvider
+
+    defaults = config.agents.defaults
+    return ProviderSnapshot(
+        provider=PlaceholderProvider(),
+        model=defaults.model,
+        context_window_tokens=defaults.context_window_tokens,
+        signature=("__placeholder__", defaults.model),
+    )
+
+
+def resolve_provider_snapshot(
+    config: Config,
+    *,
+    allow_unconfigured: bool = False,
+    preset_name: str | None = None,
+    preset: ModelPresetConfig | None = None,
+) -> ProviderSnapshot:
+    """构建 Provider 快照，未配置 Provider 时可选降级为占位快照。
+
+    ``allow_unconfigured=True`` 用于桌面端首启：网关必须先启动才能承载
+    欢迎设置页，此时没有 API Key 也允许以占位 Provider 启动；配置写入后
+    由对话层按签名变化热替换。
+    """
+    try:
+        return build_provider_snapshot(
+            config, preset_name=preset_name, preset=preset
+        )
+    except ValueError as exc:
+        if not allow_unconfigured:
+            raise
+        logger.warning("未配置 LLM Provider，以占位 Provider 启动：{}", exc)
+        return build_placeholder_snapshot(config)
 
 
 def build_vision_provider(

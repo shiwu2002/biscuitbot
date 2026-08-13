@@ -158,6 +158,13 @@ export const ChatList = memo(function ChatList({
   useEffect(() => {
     setVisibleLimit(INITIAL_VISIBLE_SESSIONS);
   }, [showArchived, sort]);
+  // 必须放在所有条件 return 之前：hooks 顺序不能随渲染结果变化，
+  // 否则首帧（loading、无会话）提前 return、数据到位后多调用一个 hook，
+  // React 会抛 "Rendered more hooks than during the previous render"（#310）。
+  const employeesById = useMemo(
+    () => new Map(employees.map((employee) => [employee.id, employee])),
+    [employees],
+  );
 
   if (loading && sessions.length === 0) {
     return (
@@ -180,10 +187,6 @@ export const ChatList = memo(function ChatList({
   const running = new Set(runningChatIds);
   const updated = new Set(updatedChatIds);
   const compact = density === "compact";
-  const employeesById = useMemo(
-    () => new Map(employees.map((employee) => [employee.id, employee])),
-    [employees],
-  );
   const firstProjectGroupIndex = limitedGroups.findIndex((group) => group.kind === "project");
 
   return (

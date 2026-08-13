@@ -19,6 +19,8 @@ import type {
   SessionAutomationsPayload,
   SettingsPayload,
   SettingsUpdate,
+  SetupCompletePayload,
+  SetupValues,
   SidebarStatePayload,
   SkillDetail,
   SkillsPayload,
@@ -678,6 +680,23 @@ export async function updateProviderSettings(
   if (update.apiType !== undefined) query.set("api_type", update.apiType);
   return request<SettingsPayload>(
     `${base}/api/settings/provider/update?${query}`,
+    token,
+  );
+}
+
+/** Complete the first-run welcome setup by persisting a provider + API key. */
+export async function completeSetup(
+  token: string,
+  values: SetupValues,
+  base: string = "",
+): Promise<SetupCompletePayload> {
+  const query = new URLSearchParams();
+  query.set("provider", values.provider);
+  query.set("api_key", values.apiKey);
+  if (values.apiBase) query.set("api_base", values.apiBase);
+  if (values.model) query.set("model", values.model);
+  return request<SetupCompletePayload>(
+    `${base}/api/webui/setup/complete?${query}`,
     token,
   );
 }

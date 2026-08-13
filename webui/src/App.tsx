@@ -14,6 +14,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SessionSearchDialog } from "@/components/SessionSearchDialog";
 import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
+import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 
 import { useSessions } from "@/hooks/useSessions";
@@ -57,6 +58,7 @@ type BootState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "auth"; failed?: boolean }
+  | { status: "setup"; token: string }
   | {
       status: "ready";
       client: BiscuitbotClient;
@@ -395,6 +397,13 @@ export default function App() {
           const boot = await fetchBootstrap("", secret);
           if (cancelled) return;
           if (secret) saveSecret(secret);
+          if (boot.needs_setup && !hasSkippedSetup()) {
+            // First run with no configured provider: show the welcome page
+            // instead of connecting a client (avoids an orphaned socket).
+            bootstrapSecretRef.current = secret;
+            setState({ status: "setup", token: boot.token });
+            return;
+          }
           const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
           const runtimeSurface = toRuntimeSurface(boot.runtime_surface);
           const runtimeHost = createRuntimeHost(runtimeSurface, boot.runtime_capabilities);
@@ -478,6 +487,14 @@ export default function App() {
       <AuthForm
         failed={!!state.failed}
         onSecret={(s) => bootstrapWithSecret(s)}
+      />
+    );
+  }
+  if (state.status === "setup") {
+    return (
+      <WelcomeSetup
+        token={state.token}
+        onDone={() => bootstrapWithSecret(bootstrapSecretRef.current)}
       />
     );
   }

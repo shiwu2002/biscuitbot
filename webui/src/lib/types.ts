@@ -316,6 +316,20 @@ export interface BootstrapResponse {
   model_name?: string | null;
   runtime_surface?: RuntimeSurface;
   runtime_capabilities?: RuntimeCapabilities;
+  needs_setup?: boolean;
+}
+
+/** Values submitted by the first-run welcome page to configure a provider. */
+export interface SetupValues {
+  provider: string;
+  apiKey: string;
+  apiBase?: string;
+  model?: string;
+}
+
+export interface SetupCompletePayload {
+  ok: boolean;
+  needs_setup: boolean;
 }
 
 export type RuntimeSurface = "browser" | "native";

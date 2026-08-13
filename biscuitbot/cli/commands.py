@@ -979,8 +979,14 @@ def _run_gateway(
     webui_runtime_surface: str = "browser",
     webui_runtime_capabilities: dict[str, Any] | None = None,
     health_server_enabled: bool = True,
+    allow_unconfigured_provider: bool = False,
 ) -> None:
-    """Shared gateway runtime; ``open_browser_url`` opens a tab once channels are up."""
+    """Shared gateway runtime; ``open_browser_url`` opens a tab once channels are up.
+
+    ``allow_unconfigured_provider`` 为桌面端首启而设：未配置任何 LLM API Key
+    时仍以占位 Provider 启动，以便网关先承载欢迎设置页；配置写入后对话层
+    会自动热替换为真实 Provider。普通 ``biscuitbot gateway`` 保持快速失败。
+    """
     from biscuitbot.agent.tools.message import MessageTool
     from biscuitbot.bus.queue import MessageBus
     from biscuitbot.bus.runtime_events import RuntimeEventBus
@@ -989,7 +995,10 @@ def _run_gateway(
     from biscuitbot.cron.service import CronJobSkippedError, CronService
     from biscuitbot.cron.session_turns import is_bound_cron_job
     from biscuitbot.cron.types import CronJob
-    from biscuitbot.providers.factory import build_provider_snapshot, load_provider_snapshot
+    from biscuitbot.providers.factory import (
+        load_provider_snapshot,
+        resolve_provider_snapshot,
+    )
     from biscuitbot.providers.image_generation import image_gen_provider_configs
     from biscuitbot.session.manager import SessionManager
     from biscuitbot.session.webui_turns import WebuiTurnCoordinator
@@ -1004,7 +1013,9 @@ def _run_gateway(
     bus = MessageBus()
     runtime_events = RuntimeEventBus()
     try:
-        provider_snapshot = build_provider_snapshot(config)
+        provider_snapshot = resolve_provider_snapshot(
+            config, allow_unconfigured=allow_unconfigured_provider
+        )
     except ValueError as exc:
         console.print(f"[red]错误：{exc}[/red]")
         raise typer.Exit(1) from exc
@@ -1529,6 +1540,17 @@ def desktop(
 
     cfg = _load_runtime_config(config_file, workspace)
     run_desktop(cfg, port=port, width=width, height=height)
+
+
+@app.command()
+def sidecar(
+    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """以无头 sidecar 方式启动网关（供桌面壳程序调用）。"""
+    from biscuitbot.desktop.sidecar import main as sidecar_main
+
+    cfg = _load_runtime_config(config_file)
+    sidecar_main(cfg)
 
 
 # ============================================================================

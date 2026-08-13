@@ -1,0 +1,11 @@
+{
+  "name": "biscuitbot-desktop-shell",
+  "version": "0.3.1",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}

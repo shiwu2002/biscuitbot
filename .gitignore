@@ -52,6 +52,12 @@ build/
 pip-wheel-metadata/
 share/python-wheels/
 
+# Desktop shell (Tauri)
+src-tauri/binaries/
+src-tauri/target/
+src-tauri/gen/
+src-tauri/node_modules/
+
 # Test & coverage
 .coverage
 .coverage.*

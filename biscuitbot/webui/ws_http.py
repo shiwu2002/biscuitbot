@@ -318,6 +318,12 @@ class GatewayHTTPHandler:
     # -- Bootstrap ----------------------------------------------------------
 
     def _handle_bootstrap(self, connection: Any, request: Any) -> Response:
+        from biscuitbot.config.loader import load_config
+        from biscuitbot.webui.settings_api import needs_setup
+
+        # needs_setup 判定基于完整 biscuitbot 配置（self.config 只是 websocket 频道配置）
+        bootstrap_config = load_config()
+
         secret = self.config.token_issue_secret.strip() or self.config.token.strip()
         if secret:
             if not _issue_route_secret_matches(request.headers, secret):
@@ -344,6 +350,7 @@ class GatewayHTTPHandler:
                 "model_name": _resolve_bootstrap_model_name(self.runtime_model_name),
                 "runtime_surface": self._runtime_surface,
                 "runtime_capabilities": self._capabilities,
+                "needs_setup": needs_setup(bootstrap_config),
             }
         )
 
@@ -699,6 +706,8 @@ class GatewayHTTPHandler:
             return self._handle_webui_sidebar_state(request)
         if got == "/api/webui/sidebar-state/update":
             return self._handle_webui_sidebar_state_update(request)
+        if got == "/api/webui/setup/complete":
+            return self._handle_webui_setup_complete(request)
         return None
 
     def _handle_commands(self, request: WsRequest) -> Response:
@@ -815,6 +824,44 @@ class GatewayHTTPHandler:
         except Exception:
             logger.exception("failed to delete employee '{}'", employee_id)
             return _http_error(500, "failed to delete employee")
+
+    def _handle_webui_setup_complete(self, request: WsRequest) -> Response:
+        """首次引导「欢迎设置」保存：provider + api_key(+ base) + 可选 model。
+
+        This is the setup flow used by the desktop first-run welcome page and is
+        also available to the browser WebUI settings. It reuses
+        ``settings_api.update_provider_settings`` so the persisted result is
+        identical to editing the settings page, then persists an optional model
+        override on ``config.agents.defaults.model``.
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from biscuitbot.config.loader import load_config, save_config
+        from biscuitbot.webui.settings_api import (
+            WebUISettingsError,
+            update_provider_settings,
+        )
+
+        query = _parse_query(request.path)
+        provider = _query_first(query, "provider")
+        api_key = _query_first(query, "api_key") or _query_first(query, "apiKey")
+        if not provider:
+            return _http_error(400, "provider is required")
+        if not (api_key or "").strip():
+            return _http_error(400, "api_key is required")
+        try:
+            update_provider_settings(query)
+            model = (_query_first(query, "model") or "").strip()
+            if model:
+                config = load_config()
+                config.agents.defaults.model = model
+                save_config(config)
+        except WebUISettingsError as e:
+            return _http_error(400, str(e))
+        except Exception:
+            logger.exception("setup/complete failed")
+            return _http_error(500, "failed to save settings")
+        return _http_json_response({"ok": True, "needs_setup": False})
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):
