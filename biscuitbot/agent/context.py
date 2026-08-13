@@ -15,6 +15,7 @@
 import base64  # 用于将图片附件编码为 base64，以便在多模态消息中内联传递
 import mimetypes  # 用于在没有显式 MIME 时推测文件类型
 import platform  # 用于获取运行时平台信息，注入身份提示
+import re  # 用于提炼员工一句话能力简介
 from pathlib import Path  # 文件路径处理
 from typing import Any, Mapping, Sequence  # 类型注解支持
 
@@ -143,13 +144,18 @@ class ContextBuilder:
             session_key: 会话 key，用于按会话过滤历史；
             unified_session: 是否使用统一会话视角读取历史；
             tool_index: 工具索引文本，追加到提示中；
-            session_metadata: 会话元数据，若绑定数字人员工则注入其 persona 并限制技能范围。
+            session_metadata: 会话元数据，若绑定数字人员工则注入其 persona（技能不手动分配，员工自主选用）。
 
         返回:
             拼接完成的系统提示字符串，各片段以分隔线连接。
         """
         root = workspace or self.workspace
         parts = [self._get_identity(channel=channel, workspace=root)]  # 身份段始终在最前
+
+        # 数字员工团队板块：让主智能体知道团队构成，可调用 invoke_employee
+        roster = self._employee_roster_section()
+        if roster:
+            parts.append(roster)
 
         # 数字人员工 persona：紧跟身份段、置于引导文件之前，使其足够醒目
         employee = self._resolve_employee(session_metadata)
@@ -176,12 +182,8 @@ class ContextBuilder:
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
 
-        # 员工绑定的技能限制摘要可见范围；未绑定时保持全局（全部技能可发现）
-        employee_skills = self._employee_skill_allowlist(session_metadata)
-        skills_summary = self.skills.build_skills_summary(
-            exclude=set(always_skills),
-            include=employee_skills,
-        )
+        # 技能不手动分配：数字员工与主智能体一样可发现全部技能，由员工自主选用
+        skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
         if skills_summary:
             parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
 
@@ -239,24 +241,46 @@ class ContextBuilder:
             return None
         return self.employees._enabled_employee(employee_id.strip())
 
-    def _employee_skill_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
-        """返回员工绑定的技能 allowlist；无员工/未绑定技能时返回 None（表示全局）。"""
-        employee = self._resolve_employee(session_metadata)
-        if employee is None:
-            return None
-        skills = employee.get("skills")
-        if not isinstance(skills, list) or not skills:
-            return None
-        return {str(s).strip() for s in skills if isinstance(s, str) and s.strip()}
-
     @staticmethod
     def _persona_section(employee: dict[str, Any]) -> str:
-        """渲染员工 persona 段：标题 + 头像 + 角色提示词。"""
+        """渲染员工 persona 段：标题（代号 + 职位）+ 头像 + 角色提示词。"""
         name = employee.get("name", "")
+        title = employee.get("title", "")
         avatar = employee.get("avatar", "")
         system_prompt = employee.get("system_prompt", "").strip()
-        heading = f"# Persona — {name}" + (f" {avatar}" if avatar else "")
+        heading = f"# Persona — {name}" + (f"（{title}）" if title else "") + (f" {avatar}" if avatar else "")
         return f"{heading}\n\n{system_prompt}"
+
+    def _employee_roster_section(self) -> str:
+        """渲染「数字员工团队」板块：列出启用员工，供主智能体调用 invoke_employee。"""
+        enabled = [e for e in self.employees.list_employees() if e.get("enabled", True)]
+        if not enabled:
+            return ""
+        lines = [
+            "## 数字员工团队（可调用）\n",
+            "你的团队有以下数字员工，需要时可使用 invoke_employee 工具点名一位协助完成任务：",
+        ]
+        for emp in enabled:
+            name = emp.get("name", "")
+            title = emp.get("title", "")
+            avatar = emp.get("avatar", "")
+            tag = f"{name}" + (f"（{title}）" if title else "")
+            line = f"- {avatar} {tag} — {self._employee_summary(emp)}" if avatar else f"- {tag} — {self._employee_summary(emp)}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _employee_summary(employee: dict[str, Any]) -> str:
+        """从 persona 首句提炼一句话能力简介（去掉「你是…」自称前缀，≤48 字）。"""
+        persona = (employee.get("system_prompt") or "").strip()
+        if not persona:
+            return ""
+        first = persona
+        for sep in ("。", "！", "？"):
+            if sep in first:
+                first = first.split(sep, 1)[0]
+        first = re.sub(r"^你是[「『]?[^，,]+[」』]?[，,]?\s*", "", first)
+        return first[:48]
 
     @staticmethod
     def _build_runtime_context(

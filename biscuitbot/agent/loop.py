@@ -564,6 +564,7 @@ class AgentLoop:
             workspace=str(self.workspace),
             bus=self.bus,
             subagent_manager=self.subagents,
+            employees=getattr(self.context, "employees", None),
             cron_service=self.cron_service,
             sessions=self.sessions,
             provider_snapshot_loader=self._provider_snapshot_loader,
@@ -812,9 +813,8 @@ class AgentLoop:
         scope = self.workspace_scopes.for_message(msg, session.metadata)
         # Always inject the Tools & Skills Index so the model can discover
         # on-demand tools by name + capability + usage_doc path.
-        # 数字人员工绑定技能时，仅在其技能范围内构建工具索引。
-        allowed_skills = self.context._employee_skill_allowlist(session.metadata)
-        tool_index = self._build_tool_index(skill_names=allowed_skills)
+        # 技能不手动分配：员工与主智能体一样可发现全部技能，由员工自主选用。
+        tool_index = self._build_tool_index(skill_names=None)
         return self.context.build_messages(
             history=history,
             current_message=image_generation_prompt(msg.content, msg.metadata),
@@ -1453,8 +1453,8 @@ class AgentLoop:
 
         # Always inject the Tools & Skills Index (same content as
         # _build_initial_messages — keeps system prompt stable across turns).
-        allowed_skills = self.context._employee_skill_allowlist(session.metadata)
-        tool_index = self._build_tool_index(skill_names=allowed_skills)
+        # 技能不手动分配：员工与主智能体一样可发现全部技能，由员工自主选用。
+        tool_index = self._build_tool_index(skill_names=None)
         messages = self.context.build_messages(
             history=history,
             current_message="" if is_subagent else msg.content,

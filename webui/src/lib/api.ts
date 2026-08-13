@@ -104,6 +104,7 @@ function automationValuesHeader(values: AutomationUpdatePayload): HeadersInit {
 export interface EmployeeValues {
   id?: string;
   name?: string;
+  title?: string;
   avatar?: string;
   system_prompt?: string;
   skills?: string[];

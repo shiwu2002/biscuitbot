@@ -188,6 +188,8 @@ export interface SkillsPayload { skills: SkillSummary[]; }
 export interface Employee {
   id: string;
   name: string;
+  /** 职位小标签（如「剪辑」），卡片上显示「代号 · 职位」。 */
+  title?: string;
   avatar?: string;
   system_prompt: string;
   skills: string[];

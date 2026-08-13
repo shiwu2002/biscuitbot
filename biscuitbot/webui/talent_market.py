@@ -51,7 +51,7 @@ _TALENT_CACHE_FILE = "registry_cache.json"
 _CHUNK_BYTES = 64 * 1024
 
 # 安装时允许落库到员工文件的字段白名单（防注入其他键）
-_INSTALL_KEYS = ("id", "name", "avatar", "system_prompt", "skills", "enabled")
+_INSTALL_KEYS = ("id", "name", "title", "avatar", "system_prompt", "skills", "enabled")
 
 
 class TalentMarketError(ValueError):
@@ -227,6 +227,7 @@ def _normalize_talent_entry(raw: Any) -> dict[str, Any] | None:
     return {
         "id": employee_id,
         "name": name,
+        "title": _str_value("title"),
         "avatar": _str_value("avatar"),
         "description": _str_value("description"),
         "system_prompt": _str_value("system_prompt"),

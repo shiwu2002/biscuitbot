@@ -458,14 +458,23 @@ class SubagentManager:
             lines.append(f"- {result.error}")
         return "\n".join(lines) or (result.error or "Error: subagent execution failed.")
 
-    def _build_subagent_prompt(self, workspace: Path | None = None) -> str:
+    def _build_subagent_prompt(
+        self,
+        workspace: Path | None = None,
+        *,
+        employee: dict[str, Any] | None = None,
+        include_skills: set[str] | None = None,
+    ) -> str:
         """Build a focused system prompt for the subagent."""
         """为子 Agent 构建聚焦的系统提示。
 
-        包含运行时上下文、工作区路径、技能摘要与防护等级。
+        包含运行时上下文、工作区路径、技能摘要与防护等级；
+        传入 ``employee`` 时追加其 persona，并按 ``include_skills`` 收窄技能摘要。
 
         参数:
-            workspace: 工作区路径（默认为主工作区）。
+            workspace: 工作区路径（默认为主工作区）；
+            employee: 数字员工记录；提供时以该员工人设执行任务；
+            include_skills: 技能 allowlist（``None`` 表示全部，与主会话语义一致）。
 
         返回:
             渲染后的系统提示字符串。
@@ -475,17 +484,86 @@ class SubagentManager:
 
         time_ctx = ContextBuilder._build_runtime_context(None, None)  # 运行时上下文
         root = workspace or self.workspace
-        skills_summary = SkillsLoader(  # 技能摘要
+        loader = SkillsLoader(  # 技能摘要
             root,
             disabled_skills=self.disabled_skills,
-        ).build_skills_summary()
-        return render_template(
+        )
+        if employee is not None:
+            skills_summary = loader.build_skills_summary(include=include_skills)
+        else:
+            skills_summary = loader.build_skills_summary()
+        prompt = render_template(
             "agent/subagent_system.md",
             time_ctx=time_ctx,
             workspace=str(root),
             skills_summary=skills_summary or "",
             guard_level=self.tools_config.guard_level,
         )
+        if employee is not None:
+            name = employee.get("name", "")
+            prompt += "\n\n" + ContextBuilder._persona_section(employee)
+            prompt += f"\n\n你现在以数字员工「{name}」的身份执行任务，完成用户的请求。"
+        return prompt
+
+    async def run_employee_inline(
+        self,
+        employee: dict[str, Any],
+        task: str,
+        *,
+        temperature: float | None = None,
+        workspace: Path | None = None,
+        include_skills: set[str] | None = None,
+    ) -> str:
+        """以指定数字员工的人设执行一次任务，**内联返回**成果文本。
+
+        与 ``_run_subagent`` 同构：构建员工提示与消息 → 调用 AgentRunner，
+        但不发布消息总线，直接把 ``final_content`` 返回给调用方（主智能体的工具）。
+
+        参数:
+            employee: 员工记录（已启用）；
+            task: 交给员工的用户任务；
+            temperature: 采样温度；
+            workspace: 工作目录（默认主工作区）；
+            include_skills: 技能 allowlist（``None`` 表示全部）。
+
+        返回:
+            员工执行完成的最终文本；出错时返回面向主智能体的错误描述。
+        """
+        root = workspace or self.workspace
+        tools = self._build_tools(workspace=root)
+        system_prompt = self._build_subagent_prompt(
+            root,
+            employee=employee,
+            include_skills=include_skills,
+        )
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": task},
+        ]
+        try:
+            result = await self.runner.run(
+                AgentRunSpec(
+                    initial_messages=messages,
+                    tools=tools,
+                    model=self.model,
+                    temperature=temperature,
+                    max_iterations=self.max_iterations,
+                    max_tool_result_chars=self.max_tool_result_chars,
+                    max_iterations_message="Task completed but no final response was generated.",
+                    finalize_on_max_iterations=False,
+                    error_message=None,
+                    fail_on_tool_error=True,
+                    workspace=root,
+                )
+            )
+        except Exception as e:  # noqa: BLE001 - 员工执行异常应转为文本返回，不让主智能体崩溃
+            logger.warning("Employee inline run failed: {}", e)
+            return f"数字员工执行失败：{e}"
+        if result.stop_reason == "tool_error":
+            return self._format_partial_progress(result) or "数字员工执行工具出错。"
+        if result.error:
+            return f"数字员工执行失败：{result.error}"
+        return (result.final_content or "").strip() or "数字员工未返回内容。"
 
     async def cancel_by_session(self, session_key: str) -> int:
         """Cancel all subagents for the given session. Returns count cancelled."""

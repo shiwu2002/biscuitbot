@@ -90,6 +90,7 @@ class ToolContext:
     workspace: str  # 工作区路径
     bus: Any | None = None  # 事件总线
     subagent_manager: Any | None = None  # 子代理管理器
+    employees: Any | None = None  # 数字人员工目录存储（invoke_employee 工具使用）
     cron_service: Any | None = None  # 定时任务服务
     sessions: Any | None = None  # 会话管理
     provider_snapshot_loader: Callable[[], Any] | None = None  # 模型快照加载器

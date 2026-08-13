@@ -102,22 +102,26 @@ class TestBuiltinSkillsTier:
         skill = next(s for s in payload["skills"] if s["name"] == "long-goal")
         assert skill["tier"] == "agent"
 
-    def test_weather_is_user_tier(self, tmp_path: Path) -> None:
-        payload = self._payload(tmp_path)
-        skill = next(s for s in payload["skills"] if s["name"] == "weather")
-        assert skill["tier"] == "user"
-
     def test_douyin_windows_is_user_tier(self, tmp_path: Path) -> None:
         payload = self._payload(tmp_path)
         skill = next((s for s in payload["skills"] if s["name"] == "douyin-windows"), None)
         assert skill is not None, "douyin-windows skill not discovered"
         assert skill["tier"] == "user"
 
-    def test_douyin_macos_is_user_tier(self, tmp_path: Path) -> None:
+    def test_douyin_playwright_is_user_tier(self, tmp_path: Path) -> None:
         payload = self._payload(tmp_path)
-        skill = next((s for s in payload["skills"] if s["name"] == "douyin-macos"), None)
-        assert skill is not None, "douyin-macos skill not discovered"
+        skill = next((s for s in payload["skills"] if s["name"] == "douyin-playwright"), None)
+        assert skill is not None, "douyin-playwright skill not discovered"
         assert skill["tier"] == "user"
+
+    def test_seedance_is_user_tier_and_requires_ark_key(self, tmp_path: Path) -> None:
+        payload = self._payload(tmp_path)
+        skill = next((s for s in payload["skills"] if s["name"] == "seedance"), None)
+        assert skill is not None, "seedance skill not discovered"
+        assert skill["tier"] == "user"
+        # 未设置 ARK_API_KEY 时技能应标记为不可用（依赖校验）。
+        assert skill["available"] is False
+        assert "ARK_API_KEY" in skill["unavailable_reason"]
 
     def test_all_builtin_skills_have_valid_tier(self, tmp_path: Path) -> None:
         payload = self._payload(tmp_path)

@@ -14,6 +14,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SessionSearchDialog } from "@/components/SessionSearchDialog";
 import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { TalentMarketView } from "@/components/settings/TalentMarketView";
+import { EmployeesView } from "@/components/settings/EmployeesView";
 import { ThreadShell } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -70,7 +71,6 @@ type BootState =
     };
 
 const SIDEBAR_STORAGE_KEY = "biscuitbot-webui.sidebar";
-const EMPLOYEE_SECTION_COLLAPSE_KEY = "biscuitbot-webui.sidebar.employee-section.v1";
 const SESSION_UPDATES_STORAGE_KEY = "biscuitbot-webui.sidebar.session-updates.v1";
 const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "biscuitbot-webui.sidebar.completed-runs.v1";
 const RESTART_STARTED_KEY = "biscuitbot-webui.restartStartedAt";
@@ -96,7 +96,6 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "apps",
   "automations",
   "skills",
-  "employees",
   "runtime",
   "advanced",
 ];
@@ -114,7 +113,6 @@ function shellViewForSettingsSection(section: SettingsSectionKey): ShellView {
     section === "apps"
     || section === "automations"
     || section === "skills"
-    || section === "employees"
   ) {
     return section;
   }
@@ -153,7 +151,7 @@ function readShellRoute(): ShellRoute {
     return { view: "skills", activeKey, settingsSection: "skills" };
   }
   if (path === "/employees") {
-    return { view: "employees", activeKey, settingsSection: "employees" };
+    return { view: "employees", activeKey, settingsSection: "overview" };
   }
   if (path === "/talent-market") {
     return { view: "talent-market", activeKey, settingsSection: "overview" };
@@ -616,20 +614,15 @@ function Shell({
   const [workspaces, setWorkspaces] = useState<WorkspacesPayload | null>(null);
   const { skills, reload: reloadSkills } = useSkills(token);
   const { employees, reload: reloadEmployees } = useEmployees(token);
-  /** 侧边栏「数字人员工」分组折叠状态（受控 + localStorage 持久化）。 */
-  const [employeeSectionCollapsed, setEmployeeSectionCollapsed] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(EMPLOYEE_SECTION_COLLAPSE_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
   const [settingsSnapshot, setSettingsSnapshot] = useState<SettingsPayload | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [draftWorkspaceScope, setDraftWorkspaceScope] =
     useState<WorkspaceScopePayload | null>(null);
   /** 新建会话时预选的数字人员工（hero 态选择；仅影响新建会话，不走路由）。 */
   const [draftEmployee, setDraftEmployee] = useState<Employee | null>(null);
+  /** 「和 TA 对话」导航到新会话空态时，hashchange 的 applyRoute 会清空 draftEmployee；
+   * 此标记让该次导航跳过清空，保留预选员工。仅由 employees 视图触发，hash 必然变化，标记必被消费。 */
+  const preserveDraftEmployeeRef = useRef(false);
   const [workspaceOverrides, setWorkspaceOverrides] =
     useState<Record<string, WorkspaceScopePayload>>({});
   const runningChatIdsRef = useRef<Set<string>>(new Set());
@@ -660,8 +653,11 @@ function Shell({
       setSettingsInitialSection(route.settingsSection);
       setWorkspaceError(null);
       if (route.view === "chat" && !route.activeKey) {
+        // 「和 TA 对话」进入新会话空态时保留预选员工；其余路径（新会话/打开空态）仍清空。
+        const preserveEmployee = preserveDraftEmployeeRef.current;
+        preserveDraftEmployeeRef.current = false;
+        if (!preserveEmployee) setDraftEmployee(null);
         setDraftWorkspaceScope(null);
-        setDraftEmployee(null);
       }
     };
     window.addEventListener("hashchange", applyRoute);
@@ -1271,25 +1267,19 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
-  /** 折叠/展开侧边栏「数字人员工」分组（受控 + localStorage 持久化）。 */
-  const toggleEmployeeSection = useCallback(() => {
-    setEmployeeSectionCollapsed((current) => {
-      const next = !current;
-      try {
-        localStorage.setItem(
-          EMPLOYEE_SECTION_COLLAPSE_KEY,
-          next ? "1" : "0",
-        );
-      } catch {
-        // ignore storage failures
-      }
-      return next;
-    });
-  }, []);
+  /** 从侧边栏「数字人员工」tab 进入员工视图（卡面展示与管理）。 */
+  const onOpenEmployees = useCallback(() => {
+    setSessionSearchOpen(false);
+    navigate({ view: "employees", activeKey, settingsSection: "overview" });
+    setMobileSidebarOpen(false);
+  }, [activeKey, navigate]);
 
-  /** 从侧边栏「数字人员工」区块进入：预选该员工并打开新会话（hero 态）。 */
+  /** 从员工视图「和 TA 对话」进入：预选该员工并打开新会话（hero 态）。 */
   const onOpenEmployee = useCallback((employee: Employee) => {
     setDraftEmployee(employee);
+    // navigate 写 hash 会触发 hashchange → applyRoute 默认清空 draftEmployee；
+    // 置位标记让这次导航保留预选员工（从 employees 视图进入，hash 必然变化，标记必被消费）。
+    preserveDraftEmployeeRef.current = true;
     setDraftWorkspaceScope(null);
     setWorkspaceError(null);
     navigate(defaultShellRoute());
@@ -1489,6 +1479,12 @@ function Shell({
       });
       return;
     }
+    if (view === "employees") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("employeesView.title", { defaultValue: "数字人员工" }),
+      });
+      return;
+    }
     document.title = activeSession
       ? t("app.documentTitle.chat", { title: headerTitle })
       : t("app.documentTitle.base");
@@ -1511,13 +1507,10 @@ function Shell({
     onOpenApps,
     onOpenAutomations,
     onOpenSkills,
-    onOpenEmployee,
-    onOpenTalentMarket,
-    employeeSectionCollapsed,
-    onToggleEmployeeSection: toggleEmployeeSection,
+    onOpenEmployees,
     employees,
     onOpenSearch: onOpenSessionSearch,
-    activeUtility: view === "apps" || view === "automations" || view === "skills" ? view : null,
+    activeUtility: view === "apps" || view === "automations" || view === "skills" || view === "employees" ? view : null,
     onToggleArchived,
     pinnedKeys: sidebarState.pinned_keys,
     archivedKeys: sidebarState.archived_keys,
@@ -1706,7 +1699,18 @@ function Shell({
                 onSelectEmployee={onSelectEmployee}
               />
             </div>
-            {view === "talent-market" ? (
+            {view === "employees" ? (
+              <div className="absolute inset-0 flex flex-col">
+                <EmployeesView
+                  employees={employees}
+                  onChanged={reloadEmployees}
+                  onPick={onOpenEmployee}
+                  onOpenTalentMarket={onOpenTalentMarket}
+                  onBackToChat={onBackToChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
+            ) : view === "talent-market" ? (
               <div className="absolute inset-0 flex flex-col">
                 <TalentMarketView
                   employees={employees}
@@ -1728,8 +1732,6 @@ function Shell({
                   onSettingsChange={setSettingsSnapshot}
                   skills={skills}
                   onSkillsDeleted={reloadSkills}
-                  employees={employees}
-                  onEmployeesChanged={reloadEmployees}
                   onWorkspaceSettingsChange={refreshWorkspaces}
                   onSectionChange={onSettingsSectionChange}
                   onLogout={onLogout}

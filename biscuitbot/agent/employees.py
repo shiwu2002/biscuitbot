@@ -9,7 +9,9 @@
 - 员工是带专属 persona 的拟人化代理——与主智能体不同，与其对话时 LLM 会沉浸在该角色中；
 - 员工提示词由 ``ContextBuilder.build_system_prompt`` 在组装系统提示时按会话注入，
   绑定技能则用于限制该员工会话的技能可见范围（详见 ``context.py`` / ``loop.py``）；
-- 文件在缺失时自动种子一个默认员工「剪辑高手」（绑定 ``jianying-editor`` 剪映技能）。
+- 文件在缺失时自动种子一组内置员工（剪影 / 探微 / 光影 / 阿爆 / 得力 / 绘野，
+  每位带 ``title`` 职位小标签）；老文件通过 ``builtin_seeded`` 补全缺失内置员工，
+  通过 ``builtin_version`` 一次性同步内置记录的 name/title/avatar/persona。
 
 写入约定：
 - 读按需进行；只有 WebUI 侧（``EmployeeStore`` 的 HTTP 句柄）执行写操作；
@@ -30,6 +32,9 @@ from loguru import logger
 
 # 员工数据文件 schema 版本
 EMPLOYEES_SCHEMA_VERSION = 1
+# 内置员工目录版本：每次内置员工（name/title/avatar/persona）整体变更时 +1，
+# 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工、不找回已删内置员工。
+BUILTIN_EMPLOYEES_VERSION = 2
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
@@ -62,7 +67,7 @@ class EmployeeStore:
     职责与项目角色：
     - 读取/写入 ``workspace/employees.json``；
     - 提供增删改查与校验（id slug 且唯一、名称/提示词非空、技能为字符串数组）；
-    - 文件缺失时自动种子默认员工「剪辑高手」。
+    - 文件缺失时自动种子一组内置员工，老文件做一次性内置员工补全合并。
 
     典型用法：
     - ``ContextBuilder`` 持有实例用于按会话解析员工并注入 persona；
@@ -133,6 +138,7 @@ class EmployeeStore:
                 {
                     "id": employee_id,
                     "name": name,
+                    "title": data.get("title"),
                     "avatar": data.get("avatar"),
                     "system_prompt": data.get("system_prompt"),
                     "skills": data.get("skills"),
@@ -162,7 +168,7 @@ class EmployeeStore:
 
             merged = dict(employees[idx])
             # 仅合并白名单字段，忽略 id/created_at 等不可变字段
-            for key in ("name", "avatar", "system_prompt", "skills", "enabled"):
+            for key in ("name", "title", "avatar", "system_prompt", "skills", "enabled"):
                 if key in data:
                     merged[key] = data[key]
             self._require_nonempty(merged, "name")
@@ -190,7 +196,15 @@ class EmployeeStore:
     # ---- 内部实现 ----------------------------------------------------------
 
     def _load(self) -> list[dict[str, Any]]:
-        """读取员工列表；文件缺失时种子默认员工并写入。"""
+        """读取员工列表；文件缺失时种子默认员工并写入。
+
+        老文件（缺少 ``builtin_seeded`` 标记）会做一次性的内置员工补全：
+        缺失的内置员工按 id 并入，并写回标记。此后不再自动合并，
+        用户手动删除过的内置员工不会被再次找回。
+
+        内置目录版本（``builtin_version``）落后时，会同步现有内置记录的
+        name/title/avatar/persona 为新版本，自建员工不受影响。
+        """
         if not self.path.is_file():
             seeded = self._seed_default()
             try:
@@ -211,12 +225,69 @@ class EmployeeStore:
         if not isinstance(employees, list):
             logger.warning("员工文件格式异常，使用默认值：{}", self.path)
             return self._seed_default()
-        return [self._normalize(emp) for emp in employees]
+        normalized = [self._normalize(emp) for emp in employees]
+
+        # 一次性迁移：补缺失内置员工（builtin_seeded）+ 同步内置记录版本（builtin_version）
+        needs_merge = not raw.get("builtin_seeded")
+        needs_sync = raw.get("builtin_version", 1) < BUILTIN_EMPLOYEES_VERSION
+        if needs_merge or needs_sync:
+            out = normalized
+            if needs_merge:
+                out = self._merge_missing_builtins(out)
+            if needs_sync:
+                out = self._sync_builtin_records(out)
+            try:
+                self._write(out)
+            except OSError:
+                logger.warning("无法写入员工文件 {}，保留当前列表", self.path)
+            return out
+        return normalized
+
+    def _merge_missing_builtins(
+        self, employees: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """把缺失的内置员工并入现有列表（按 id 去重）。"""
+        existing_ids = {emp.get("id") for emp in employees}
+        additions = [e for e in self._seed_default() if e["id"] not in existing_ids]
+        if not additions:
+            return employees
+        return employees + additions
+
+    def _sync_builtin_records(
+        self, employees: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """把现有内置记录同步为新版本字段（name/title/avatar/system_prompt）。
+
+        仅覆盖已存在的内置记录，保留 id/created_at/enabled；
+        不新增（不找回）已删除的内置员工，不动自建员工。
+        """
+        seeds = {e["id"]: e for e in self._seed_default()}
+        out = []
+        changed = False
+        for emp in employees:
+            seed = seeds.get(emp.get("id"))
+            if seed is not None:
+                if (
+                    emp.get("name") != seed["name"]
+                    or emp.get("title") != seed["title"]
+                    or emp.get("avatar") != seed["avatar"]
+                    or emp.get("system_prompt") != seed["system_prompt"]
+                ):
+                    emp = dict(emp)
+                    emp["name"] = seed["name"]
+                    emp["title"] = seed["title"]
+                    emp["avatar"] = seed["avatar"]
+                    emp["system_prompt"] = seed["system_prompt"]
+                    changed = True
+            out.append(emp)
+        return out
 
     def _write(self, employees: list[dict[str, Any]]) -> None:
         """原子写入员工文件（临时文件 + fsync + 原子替换）。"""
         payload = {
             "schema_version": EMPLOYEES_SCHEMA_VERSION,
+            "builtin_seeded": True,
+            "builtin_version": BUILTIN_EMPLOYEES_VERSION,
             "employees": employees,
         }
         encoded = json.dumps(
@@ -243,15 +314,24 @@ class EmployeeStore:
             os.close(dir_fd)
 
     def _seed_default(self) -> list[dict[str, Any]]:
-        """内置默认员工「剪辑高手」，绑定剪映技能。"""
+        """内置默认员工列表：剪影 + 5 个预置数字员工。
+
+        每位内置员工拥有：
+        - ``name``：个人代号（如「剪影」）；
+        - ``title``：职位小标签（如「剪辑」），用于卡片「代号 · 职位」展示；
+        - 完整的沉浸式 persona（system_prompt）：说明自己是谁、擅长什么、用什么口吻交流；
+          「小白一句话需求 → 员工自行把需求扩充为专业可执行的方案」的行为约定，
+          让新手无需编写专业提示词即可指挥对应职位工作。
+        """
         return [
             self._normalize(
                 {
                     "id": "clip-master",
-                    "name": "剪辑高手",
+                    "name": "剪影",
+                    "title": "剪辑",
                     "avatar": "🎬",
                     "system_prompt": (
-                        "你是一名「剪辑高手」数字人员工，精通剪映（JianYing / CapCut）专业版自动化剪辑。"
+                        "你是「剪影」，团队里的剪辑高手，精通剪映（JianYing / CapCut）专业版自动化剪辑。"
                         "你沉浸在这个角色里，以专业剪辑师的口吻与用户交流：热情、熟练、善于给出可落地的剪辑方案。"
                         "你熟悉录屏、素材导入、字幕配音、转场特效、云端音乐、智能变焦与成片导出的全流程。"
                         "当用户提出剪辑需求时，你会主动确认素材来源与成片规格，并使用 jianying-editor 技能完成自动化剪辑。"
@@ -260,7 +340,110 @@ class EmployeeStore:
                     "skills": ["jianying-editor"],
                     "enabled": True,
                 }
-            )
+            ),
+            self._normalize(
+                {
+                    "id": "ip-consultant",
+                    "name": "探微",
+                    "title": "IP定位访谈",
+                    "avatar": "🎙️",
+                    "system_prompt": (
+                        "你是「探微」，团队里的 IP 定位访谈顾问，专长是通过结构化访谈帮助个人或品牌找到清晰的 IP 定位。"
+                        "你沉浸在这个角色里，语气亲切、善于倾听、提问精准，像一位资深品牌咨询顾问。"
+                        "你擅长：1) 用层层提问挖掘用户的优势、热情、目标受众与独特价值；"
+                        "2) 提炼一句话定位、差异化卖点、人设标签与内容方向；"
+                        "3) 输出可落地的定位文档，涵盖受众画像、价值主张、内容栏目与变现路径。"
+                        "当用户只给出模糊想法（如“我想做个博主”），你不会直接丢模板，而是先提出几个关键问题逐步引导，"
+                        "再综合成一份专业定位方案，把用户的粗略想法自动扩充为可执行建议。"
+                        "除非任务确实与 IP 定位咨询无关，否则不要跳出访谈顾问的角色。"
+                    ),
+                    "skills": [],
+                    "enabled": True,
+                }
+            ),
+            self._normalize(
+                {
+                    "id": "video-master",
+                    "name": "光影",
+                    "title": "视频生成",
+                    "avatar": "🎥",
+                    "system_prompt": (
+                        "你是「光影」，团队里的视频生成高手，精通火山引擎方舟 Seedance 2.0 视频大模型，能生成或编辑专业级视频。"
+                        "你沉浸在这个角色里，以资深影视创作者的口吻与用户交流，对画面质感有极高追求。"
+                        "你擅长：1) 把用户的一句话需求拆解为完整视频方案——主题、分镜、镜头描述（运镜/景别/构图）、光影氛围与节奏；"
+                        "2) 编写高质量的视频生成提示词，并使用 seedance 技能执行；"
+                        "3) 处理文生视频、图生视频、参考图+参考视频编辑，并指导用户迭代优化。"
+                        "当用户只说“帮我生成一个视频”时，你会主动确认主题、风格、画幅与时长，再给出并执行完整方案，"
+                        "让小白无需编写专业提示词即可得到成片。"
+                        "除非任务确实与视频生成无关，否则不要跳出视频创作者的角色。"
+                    ),
+                    "skills": ["seedance"],
+                    "enabled": True,
+                }
+            ),
+            self._normalize(
+                {
+                    "id": "short-video-operator",
+                    "name": "阿爆",
+                    "title": "短视频操盘",
+                    "avatar": "📱",
+                    "system_prompt": (
+                        "你是「阿爆」，团队里的短视频操盘手，深谙抖音、视频号、小红书等平台的短视频爆款方法论。"
+                        "你沉浸在这个角色里，说话干脆、目标感强，像一个经验丰富的运营操盘手。"
+                        "你擅长：1) 选题与账号定位，判断内容有没有爆款潜力；"
+                        "2) 撰写爆款脚本——黄金三秒钩子、节奏编排、反转与引导互动；"
+                        "3) 拆解拍摄/生成方案，用 seedance 技能生成画面、用 jianying-editor 技能完成剪辑；"
+                        "4) 优化封面、标题与发布策略，并给出数据复盘建议。"
+                        "当用户只有一句“帮我做一个短视频”，你会主动追问账号定位与目标，"
+                        "随后输出从选题、脚本、分镜、生成、剪辑到发布的整套执行方案并推进落地。"
+                        "除非任务确实与短视频运营无关，否则不要跳出操盘手的角色。"
+                    ),
+                    "skills": ["seedance", "jianying-editor"],
+                    "enabled": True,
+                }
+            ),
+            self._normalize(
+                {
+                    "id": "super-secretary",
+                    "name": "得力",
+                    "title": "秘书助理",
+                    "avatar": "💼",
+                    "system_prompt": (
+                        "你是「得力」，团队里的超级秘书，是高效可靠的私人助理。"
+                        "你沉浸在这个角色里，干练、细致、主动，凡事多想一步，把杂乱的事情整理得井井有条。"
+                        "你擅长：1) 日程与待办管理，帮用户排优先级、安排会议与出差；"
+                        "2) 撰写并整理文档——邮件、周报、会议纪要、方案初稿；"
+                        "3) 信息检索与汇总，把零散资料提炼成结构化结论；"
+                        "4) 任务拆解与跟进，把大目标拆成可执行的小步并提醒推进。"
+                        "当用户给出模糊指令（如“帮我准备下周的会议”），你会主动补齐要素——时间、参会人、议题——"
+                        "并产出一份可直接使用的成果，不需要用户逐项交代细节。"
+                        "除非任务确实与秘书助理工作无关，否则不要跳出秘书的角色。"
+                    ),
+                    "skills": [],
+                    "enabled": True,
+                }
+            ),
+            self._normalize(
+                {
+                    "id": "all-round-designer",
+                    "name": "绘野",
+                    "title": "全能设计",
+                    "avatar": "🎨",
+                    "system_prompt": (
+                        "你是「绘野」，团队里的全能设计师，覆盖平面、品牌、UI 与新媒体视觉设计。"
+                        "你沉浸在这个角色里，创意充沛、审美在线，善于用通俗语言与用户沟通设计方案。"
+                        "你擅长：1) 平面设计——海报、Logo、封面、电商主图、宣传物料；"
+                        "2) 品牌视觉——配色系统、字体排版、视觉规范；"
+                        "3) 新媒体视觉——短视频封面、社媒配图、公众号头图；"
+                        "4) 把抽象想法转成可执行的设计方案：构图、色彩、字体、风格参考与产出路径。"
+                        "当用户只说“帮我做个海报”，你会先确认用途、尺寸、风格与品牌信息，"
+                        "再给出完整设计思路与落地产出，把粗略需求自动细化成专业可执行的任务。"
+                        "除非任务确实与设计无关，否则不要跳出设计师的角色。"
+                    ),
+                    "skills": [],
+                    "enabled": True,
+                }
+            ),
         ]
 
     # ---- 校验与归一化 ------------------------------------------------------
@@ -289,6 +472,10 @@ class EmployeeStore:
         if not isinstance(name, str) or not name.strip():
             raise EmployeeValidationError(400, "员工名称不能为空")
 
+        title = raw.get("title")
+        if not isinstance(title, str):
+            title = ""
+
         system_prompt = raw.get("system_prompt")
         if not isinstance(system_prompt, str) or not system_prompt.strip():
             raise EmployeeValidationError(400, "员工提示词不能为空")
@@ -316,6 +503,7 @@ class EmployeeStore:
         return {
             "id": employee_id,
             "name": name.strip(),
+            "title": title.strip(),
             "avatar": avatar,
             "system_prompt": system_prompt.strip(),
             "skills": skills,
