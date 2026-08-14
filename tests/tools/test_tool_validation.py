@@ -454,6 +454,71 @@ def test_cast_params_array_items() -> None:
     assert result["nums"] == [1, 2, 3]
 
 
+def test_cast_params_array_string_parses_to_list() -> None:
+    """部分模型把数组参数序列化成 JSON 字符串（如 image_urls），需先反序列化。"""
+    tool = CastTestTool(
+        {
+            "type": "object",
+            "properties": {
+                "urls": {"type": "array", "items": {"type": "string"}},
+            },
+        }
+    )
+    result = tool.cast_params({"urls": '["/a.png", "/b.png"]'})
+    assert result["urls"] == ["/a.png", "/b.png"]
+    assert tool.validate_params(result) == []
+
+
+def test_cast_params_array_string_recurses_items() -> None:
+    """JSON 字符串数组反序列化后，元素仍需按 items schema 递归强转。"""
+    tool = CastTestTool(
+        {
+            "type": "object",
+            "properties": {
+                "nums": {"type": "array", "items": {"type": "integer"}},
+            },
+        }
+    )
+    result = tool.cast_params({"nums": '["1", "2", "3"]'})
+    assert result["nums"] == [1, 2, 3]
+
+
+def test_cast_params_array_string_invalid_preserved() -> None:
+    """非法的 `[` 字符串原样保留，交由校验阶段拒绝。"""
+    tool = CastTestTool(
+        {
+            "type": "object",
+            "properties": {
+                "urls": {"type": "array", "items": {"type": "string"}},
+            },
+        }
+    )
+    result = tool.cast_params({"urls": "[not json]"})
+    assert result["urls"] == "[not json]"
+    assert any("urls should be array" in e for e in tool.validate_params(result))
+
+
+def test_cast_params_object_string_parses_to_dict() -> None:
+    """对象参数同样可能是 JSON 字符串，反序列化后再递归转换。"""
+    tool = CastTestTool(
+        {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "port": {"type": "integer"},
+                        "debug": {"type": "boolean"},
+                    },
+                },
+            },
+        }
+    )
+    result = tool.cast_params({"config": '{"port": "8080", "debug": "true"}'})
+    assert result["config"]["port"] == 8080
+    assert result["config"]["debug"] is True
+
+
 def test_cast_params_nested_object() -> None:
     tool = CastTestTool(
         {

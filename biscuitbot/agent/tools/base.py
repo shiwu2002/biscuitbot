@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import json
 import typing
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -371,10 +372,36 @@ class Tool(ABC):
                 return False
             return val
 
+        # 数组：部分模型会把数组参数序列化成 JSON 字符串（如 image_urls），
+        # 先反序列化再递归转换每个元素
+        if t == "array" and isinstance(val, str):
+            stripped = val.strip()
+            if stripped.startswith("["):
+                try:
+                    parsed = json.loads(stripped)
+                except Exception:
+                    return val
+                if isinstance(parsed, list):
+                    items = schema.get("items")
+                    return [self._cast_value(x, items) for x in parsed] if items else parsed
+            return val
+
         # 数组：递归转换每个元素
         if t == "array" and isinstance(val, list):
             items = schema.get("items")
             return [self._cast_value(x, items) for x in val] if items else val
+
+        # 对象：同样可能是 JSON 字符串，反序列化后再递归转换
+        if t == "object" and isinstance(val, str):
+            stripped = val.strip()
+            if stripped.startswith("{"):
+                try:
+                    parsed = json.loads(stripped)
+                except Exception:
+                    return val
+                if isinstance(parsed, dict):
+                    return self._cast_object(parsed, schema)
+            return val
 
         # 对象：递归转换
         if t == "object" and isinstance(val, dict):
