@@ -631,6 +631,7 @@ class AgentRunner:
                 iteration=iteration,
                 messages=messages,
                 session_key=spec.session_key,
+                model=spec.model,
             )
             await hook.before_iteration(context)
             llm_t0 = time.perf_counter()
@@ -1211,6 +1212,7 @@ class AgentRunner:
             response=response,
             usage=dict(raw_usage),
             session_key=spec.session_key,
+            model=spec.model,
         )
         clean = hook.finalize_content(context, response.content)
         if is_blank_text(clean):

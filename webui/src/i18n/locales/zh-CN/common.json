@@ -58,6 +58,46 @@
     "automations": "自动任务",
     "skills": {
       "title": "技能"
+    },
+    "dashboard": "仪表盘"
+  },
+  "dashboard": {
+    "title": "数据仪表盘",
+    "subtitle": "Token 用量与任务趋势实时洞察",
+    "backToChat": "返回聊天",
+    "loadError": "加载仪表盘数据失败，请稍后重试",
+    "mainAgent": "主智能体",
+    "updatedAt": "更新于 {{time}}",
+    "kpi": {
+      "totalTokens": "累计 Token",
+      "todayTokens": "今日 Token",
+      "completedTasks": "完成任务",
+      "monthTokens": "30 天 Token",
+      "todayTasksHint": "今日完成任务 {{count}}",
+      "completedTasksHint": "累计任务完成数",
+      "monthTasksHint": "30 天请求数 {{count}}",
+      "peakDay": "单日峰值",
+      "currentStreak": "当前连续",
+      "longestStreak": "最长连续",
+      "activeDays30": "30 天活跃",
+      "peakDayHint": "单日最高 Token 消耗",
+      "currentStreakHint": "当前连续使用天数",
+      "longestStreakHint": "历史最长连续天数",
+      "activeDays30Hint": "近 30 天有 Token 消耗的天数"
+    },
+    "charts": {
+      "tokenTrend": "Token 用量趋势",
+      "taskTrend": "任务趋势",
+      "modelDistribution": "模型分布",
+      "employeeDistribution": "员工分布"
+    },
+    "ops": {
+      "agentStatus": "智能体状态",
+      "noAgents": "暂无数字人员工，可在侧边栏添加",
+      "statusRunning": "运行中",
+      "statusIdle": "空闲",
+      "recentConversations": "最近对话",
+      "noSessions": "暂无对话记录"
     }
   },
   "settings": {
@@ -804,6 +844,23 @@
         "start": "今天从哪里开始？",
         "build": "今天一起构建什么？",
         "tackle": "我们要一起解决什么？"
+      },
+      "dashboard": {
+        "subtitle": "智能控制中心 · 实时洞察你的工作区",
+        "kpi": {
+          "employees": "数字人员工",
+          "todayChats": "今日对话",
+          "completionRate": "任务完成率",
+          "runningTasks": "运行中任务"
+        },
+        "agentStatus": "智能体状态",
+        "noAgents": "暂无数字人员工，可在侧边栏添加",
+        "statusRunning": "运行中",
+        "statusIdle": "空闲",
+        "powerLabel": "核心在线",
+        "runningTasks": "实时任务",
+        "noRunningTasks": "当前没有运行中的任务",
+        "recentConversations": "最近对话"
       },
       "quickActions": {
         "plan": {

@@ -604,6 +604,28 @@ export interface SettingsPayload {
           estimated_requests?: number;
         }
       >;
+      models?: Record<string, {
+        prompt_tokens: number;
+        completion_tokens: number;
+        cached_tokens: number;
+        total_tokens: number;
+        provider_tokens?: number;
+        estimated_tokens?: number;
+        requests: number;
+        provider_requests?: number;
+        estimated_requests?: number;
+      }>;
+      employees?: Record<string, {
+        prompt_tokens: number;
+        completion_tokens: number;
+        cached_tokens: number;
+        total_tokens: number;
+        provider_tokens?: number;
+        estimated_tokens?: number;
+        requests: number;
+        provider_requests?: number;
+        estimated_requests?: number;
+      }>;
     }>;
     total_tokens: number;
     total_tokens_30d: number;
@@ -613,6 +635,33 @@ export interface SettingsPayload {
     longest_streak_days: number;
     active_days_30d: number;
     requests_30d: number;
+    requests_total?: number;
+    today_tokens?: number;
+    today_requests?: number;
+    models_30d?: Array<{
+      key: string;
+      prompt_tokens: number;
+      completion_tokens: number;
+      cached_tokens: number;
+      total_tokens: number;
+      provider_tokens?: number;
+      estimated_tokens?: number;
+      requests: number;
+      provider_requests?: number;
+      estimated_requests?: number;
+    }>;
+    employees_30d?: Array<{
+      key: string;
+      prompt_tokens: number;
+      completion_tokens: number;
+      cached_tokens: number;
+      total_tokens: number;
+      provider_tokens?: number;
+      estimated_tokens?: number;
+      requests: number;
+      provider_requests?: number;
+      estimated_requests?: number;
+    }>;
     updated_at?: string | null;
   };
   advanced: {

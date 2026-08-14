@@ -46,6 +46,7 @@ class AgentHookContext:
     stop_reason: str | None = None  # 停止原因
     error: str | None = None  # 错误信息（若有）
     session_key: str | None = None  # 所属会话 key
+    model: str | None = None  # 本次迭代使用的模型名
 
 
 @dataclass(slots=True)

@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Moon, PanelLeft, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AnalyticsDashboardView } from "@/components/dashboard/AnalyticsDashboardView";
 import { DeleteConfirm } from "@/components/DeleteConfirm";
 import { RenameChatDialog } from "@/components/RenameChatDialog";
 import { Sidebar } from "@/components/Sidebar";
@@ -80,7 +81,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "settings" | "apps" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
+type ShellView = "chat" | "dashboard" | "settings" | "apps" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -139,6 +140,9 @@ function readShellRoute(): ShellRoute {
     : "overview";
   const activeKey = params.get("chat")?.trim() || null;
 
+  if (path === "/dashboard") {
+    return { view: "dashboard", activeKey, settingsSection: "overview" };
+  }
   if (path === "/settings") {
     return {
       view: shellViewForSettingsSection(settingsSection),
@@ -187,6 +191,9 @@ function readShellRoute(): ShellRoute {
 }
 
 function shellRouteHash(route: ShellRoute): string {
+  if (route.view === "dashboard") {
+    return "#/dashboard";
+  }
   if (route.view === "chat") {
     return route.activeKey
       ? `#/chat/${encodeURIComponent(route.activeKey)}`
@@ -1278,6 +1285,10 @@ function Shell({
     onOpenSettings("models");
   }, [onOpenSettings]);
 
+  const onOpenDashboard = useCallback(() => {
+    navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
+  }, [activeKey, navigate]);
+
   const onOpenApps = useCallback(() => {
     setSessionSearchOpen(false);
     navigate({ view: "apps", activeKey, settingsSection: "apps" });
@@ -1548,10 +1559,11 @@ function Shell({
     onOpenAutomations,
     onOpenSkills,
     onOpenEmployees,
+    onOpenDashboard,
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
-      view === "apps" || view === "automations" || view === "skills" || view === "employees" || view === "employee-chat"
+      view === "apps" || view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard"
         ? view === "employee-chat" ? "employees" : view
         : null,
     onToggleArchived,
@@ -1756,7 +1768,7 @@ function Shell({
           />
         <main
           className={cn(
-            "relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-background",
+            "relative flex h-full min-w-0 flex-1 flex-col overflow-hidden cyber-shell-bg",
             showHostChrome && hostSidebarOpen && "border-l border-border/55",
           )}
         >
@@ -1773,7 +1785,7 @@ function Shell({
               />
             </div>
             {view === "employees" ? (
-              <div className="absolute inset-0 flex flex-col bg-background">
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <EmployeesView
                   employees={employees}
                   onChanged={reloadEmployees}
@@ -1784,7 +1796,7 @@ function Shell({
                 />
               </div>
             ) : view === "employee-chat" ? (
-              <div className="absolute inset-0 flex flex-col bg-background">
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <EmployeeChatView
                   employeeId={activeKey}
                   employees={employees}
@@ -1802,7 +1814,7 @@ function Shell({
                 />
               </div>
             ) : view === "talent-market" ? (
-              <div className="absolute inset-0 flex flex-col bg-background">
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <TalentMarketView
                   employees={employees}
                   onInstalled={reloadEmployees}
@@ -1810,8 +1822,19 @@ function Shell({
                   hostChromeInset={showHostChrome}
                 />
               </div>
+            ) : view === "dashboard" ? (
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
+                <AnalyticsDashboardView
+                  employees={employees}
+                  sessions={sessions}
+                  runningChatIds={[...runningChatIds]}
+                  titleOverrides={sidebarState.title_overrides}
+                  onSelectSession={onSelectChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
             ) : view !== "chat" ? (
-              <div className="absolute inset-0 flex flex-col bg-background">
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <SettingsView
                   theme={theme}
                   initialSection={settingsInitialSection}

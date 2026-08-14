@@ -163,7 +163,7 @@ export function TalentMarketView({
             <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
             {t("settings.backToChat")}
           </button>
-          <h1 className="text-[24px] font-normal leading-tight tracking-normal text-foreground sm:text-[28px]">
+          <h1 className="text-[24px] font-normal leading-tight tracking-tight text-foreground sm:text-[28px]">
             {tx("talentMarket.title", "人才市场")}
           </h1>
           <p className="mt-2 max-w-[680px] text-[13px] leading-5 text-muted-foreground">
@@ -198,12 +198,12 @@ export function TalentMarketView({
           ) : null}
 
           {loading && !hasCatalog ? (
-            <div className="flex h-48 items-center justify-center rounded-[24px] border border-border/50 bg-card/75 text-sm text-muted-foreground shadow-[0_20px_70px_rgba(15,23,42,0.07)]">
+            <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] border border-border/50 text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
               {t("settings.status.loading")}
             </div>
           ) : hasCatalog && !catalog.configured ? (
-            <div className="rounded-[16px] border border-dashed border-border/60 bg-card/40 p-8 text-center">
+            <div className="cyber-glass-panel relative overflow-hidden rounded-[16px] border border-dashed border-border/60 p-8 text-center">
               <Terminal
                 className="mx-auto mb-3 h-7 w-7 text-muted-foreground/60"
                 aria-hidden
@@ -225,11 +225,11 @@ export function TalentMarketView({
               </pre>
             </div>
           ) : hasCatalog && rows.length === 0 ? (
-            <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-border/60 bg-card/40 text-sm text-muted-foreground">
+            <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] border border-dashed border-border/60 text-sm text-muted-foreground">
               {tx("talentMarket.noEmployees", "该注册表中没有可招聘的员工")}
             </div>
           ) : hasCatalog ? (
-            <div className="divide-y divide-border/50 overflow-hidden rounded-[16px] border border-border/60 bg-card/70 shadow-sm">
+            <div className="cyber-glass-panel relative divide-y divide-border/50 overflow-hidden rounded-[16px] border border-border/60">
               {rows.map((entry) => {
                 const alreadyInstalled = Boolean(entry.installed || installedIds.has(entry.id));
                 const missingPersona = !entry.system_prompt?.trim();

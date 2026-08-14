@@ -6,31 +6,34 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 0 0% 100%;
-    --foreground: 240 3% 12%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 240 3% 12%;
+    --card-foreground: 222 47% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 3% 12%;
-    --primary: 240 4% 16%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --popover-foreground: 222 47% 14%;
+    --primary: 214 85% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 35% 95%;
+    --secondary-foreground: 222 47% 14%;
+    --muted: 210 30% 94%;
+    --muted-foreground: 215 16% 46%;
+    --accent: 204 80% 94%;
+    --accent-foreground: 214 85% 35%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 204 40% 88%;
+    --input: 204 40% 88%;
+    --ring: 204 82% 46%;
     --radius: 0.4375rem;
-    --sidebar: 0 0% 98.5%;
-    --sidebar-foreground: 0 0% 3.9%;
-    --sidebar-accent: 0 0% 95.8%;
-    --sidebar-accent-foreground: 0 0% 9%;
-    --sidebar-border: 0 0% 89.8%;
+    --sidebar: 210 38% 97%;
+    --sidebar-foreground: 222 47% 14%;
+    --sidebar-accent: 204 70% 93%;
+    --sidebar-accent-foreground: 214 85% 35%;
+    --sidebar-border: 204 35% 88%;
+    --cyber-glow: 199 90% 55%;
+    --cyber-glow-soft: 204 82% 46%;
+    --cyber-panel-border: 199 90% 65%;
     --scrollbar-thumb: hsl(var(--muted-foreground) / 0.26);
     --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.42);
   }
@@ -61,6 +64,9 @@
     --sidebar-accent: 0 0% 15.5%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 0 0% 18%;
+    --cyber-glow: 198 90% 72%;
+    --cyber-glow-soft: 204 82% 55%;
+    --cyber-panel-border: 199 80% 60%;
     --scrollbar-thumb: hsl(var(--muted-foreground) / 0.28);
     --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.44);
   }
@@ -522,5 +528,159 @@
   }
   .scrollbar-track-transparent::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  /* Sci-fi dashboard shell background */
+  .cyber-shell-bg {
+    background:
+      radial-gradient(
+        ellipse 90% 55% at 50% -15%,
+        hsl(var(--cyber-glow) / 0.14),
+        transparent 55%
+      ),
+      radial-gradient(
+        ellipse 50% 35% at 100% 0%,
+        hsl(var(--cyber-glow-soft) / 0.1),
+        transparent 50%
+      ),
+      radial-gradient(
+        ellipse 40% 30% at 0% 100%,
+        hsl(var(--cyber-glow-soft) / 0.06),
+        transparent 45%
+      ),
+      linear-gradient(
+        180deg,
+        hsl(var(--background)) 0%,
+        hsl(210 35% 96%) 100%
+      );
+    background-attachment: fixed;
+  }
+  .dark .cyber-shell-bg {
+    background:
+      radial-gradient(
+        ellipse 80% 50% at 50% -10%,
+        hsl(var(--cyber-glow) / 0.12),
+        transparent 55%
+      ),
+      radial-gradient(
+        ellipse 45% 30% at 100% 0%,
+        hsl(var(--cyber-glow-soft) / 0.08),
+        transparent 50%
+      ),
+      linear-gradient(
+        180deg,
+        hsl(var(--background)) 0%,
+        hsl(220 20% 9%) 100%
+      );
+    background-attachment: fixed;
+  }
+
+  /* Glassmorphic dashboard panels */
+  .cyber-glass-panel {
+    background: hsl(var(--card) / 0.62);
+    -webkit-backdrop-filter: blur(14px) saturate(160%);
+    backdrop-filter: blur(14px) saturate(160%);
+    border: 1px solid hsl(var(--cyber-panel-border) / 0.28);
+    box-shadow:
+      0 0 24px hsl(var(--cyber-glow-soft) / 0.08),
+      inset 0 1px 0 hsl(var(--background) / 0.65);
+  }
+  .dark .cyber-glass-panel {
+    background: hsl(var(--card) / 0.45);
+    border-color: hsl(var(--cyber-panel-border) / 0.2);
+    box-shadow:
+      0 0 28px hsl(var(--cyber-glow-soft) / 0.1),
+      inset 0 1px 0 hsl(var(--foreground) / 0.06);
+  }
+
+  .cyber-glass-panel::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--cyber-glow) / 0.06) 0%,
+        transparent 40%,
+        transparent 100%
+      );
+  }
+
+  .cyber-kpi-icon {
+    background: linear-gradient(
+      135deg,
+      hsl(var(--cyber-glow-soft) / 0.18),
+      hsl(var(--cyber-glow) / 0.08)
+    );
+    box-shadow: 0 0 12px hsl(var(--cyber-glow-soft) / 0.2);
+  }
+
+  .cyber-nav-active {
+    background: linear-gradient(
+      90deg,
+      hsl(214 85% 42%),
+      hsl(199 90% 52%)
+    ) !important;
+    color: hsl(0 0% 100%) !important;
+    box-shadow:
+      0 0 18px hsl(var(--cyber-glow-soft) / 0.35),
+      inset 0 1px 0 hsl(0 0% 100% / 0.2) !important;
+  }
+
+  .cyber-progress-bar {
+    background: linear-gradient(
+      90deg,
+      hsl(204 82% 46%),
+      hsl(199 90% 58%)
+    );
+    box-shadow: 0 0 8px hsl(var(--cyber-glow-soft) / 0.45);
+  }
+
+  @keyframes cyber-core-pulse {
+    0%,
+    100% {
+      transform: scale(1);
+      filter: drop-shadow(0 0 20px hsl(var(--cyber-glow-soft) / 0.45))
+        drop-shadow(0 0 40px hsl(var(--cyber-glow) / 0.2));
+    }
+    50% {
+      transform: scale(1.03);
+      filter: drop-shadow(0 0 28px hsl(var(--cyber-glow-soft) / 0.55))
+        drop-shadow(0 0 56px hsl(var(--cyber-glow) / 0.28));
+    }
+  }
+  @keyframes cyber-ring-spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+  .cyber-core-orb {
+    animation: cyber-core-pulse 4.5s ease-in-out infinite;
+  }
+  .cyber-core-ring {
+    animation: cyber-ring-spin 18s linear infinite;
+  }
+  .cyber-core-ring-reverse {
+    animation: cyber-ring-spin 24s linear infinite reverse;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cyber-core-orb,
+    .cyber-core-ring,
+    .cyber-core-ring-reverse {
+      animation: none;
+    }
+  }
+
+  .cyber-status-dot-running {
+    background: hsl(142 72% 45%);
+    box-shadow: 0 0 6px hsl(142 72% 45% / 0.7);
+  }
+  .cyber-status-dot-idle {
+    background: hsl(var(--muted-foreground) / 0.45);
   }
 }

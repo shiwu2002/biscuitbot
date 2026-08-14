@@ -58,6 +58,46 @@
     "automations": "自動任務",
     "skills": {
       "title": "技能"
+    },
+    "dashboard": "儀錶板"
+  },
+  "dashboard": {
+    "title": "數據儀錶板",
+    "subtitle": "Token 用量與任務趨勢即時洞察",
+    "backToChat": "返回聊天",
+    "loadError": "載入儀錶板資料失敗，請稍後重試",
+    "mainAgent": "主智慧體",
+    "updatedAt": "更新於 {{time}}",
+    "kpi": {
+      "totalTokens": "累計 Token",
+      "todayTokens": "今日 Token",
+      "completedTasks": "完成任務",
+      "monthTokens": "30 天 Token",
+      "todayTasksHint": "今日完成任務 {{count}}",
+      "completedTasksHint": "累計任務完成數",
+      "monthTasksHint": "30 天請求數 {{count}}",
+      "peakDay": "單日峰值",
+      "currentStreak": "目前連續",
+      "longestStreak": "最長連續",
+      "activeDays30": "30 天活躍",
+      "peakDayHint": "單日最高 Token 消耗",
+      "currentStreakHint": "目前連續使用天數",
+      "longestStreakHint": "歷史最長連續天數",
+      "activeDays30Hint": "近 30 天有 Token 消耗的天數"
+    },
+    "charts": {
+      "tokenTrend": "Token 用量趨勢",
+      "taskTrend": "任務趨勢",
+      "modelDistribution": "模型分布",
+      "employeeDistribution": "員工分布"
+    },
+    "ops": {
+      "agentStatus": "智慧體狀態",
+      "noAgents": "暫無數位人員工，可在側邊欄新增",
+      "statusRunning": "執行中",
+      "statusIdle": "閒置",
+      "recentConversations": "最近對話",
+      "noSessions": "暫無對話紀錄"
     }
   },
   "settings": {
@@ -804,6 +844,23 @@
         "start": "今天從哪裡開始？",
         "build": "今天一起構建什麼？",
         "tackle": "我們要一起解決什麼？"
+      },
+      "dashboard": {
+        "subtitle": "智慧控制中心 · 即時洞察你的工作區",
+        "kpi": {
+          "employees": "數位人員工",
+          "todayChats": "今日對話",
+          "completionRate": "任務完成率",
+          "runningTasks": "執行中任務"
+        },
+        "agentStatus": "智慧體狀態",
+        "noAgents": "暫無數位人員工，可在側邊欄新增",
+        "statusRunning": "執行中",
+        "statusIdle": "空閒",
+        "powerLabel": "核心在線",
+        "runningTasks": "即時任務",
+        "noRunningTasks": "目前沒有執行中的任務",
+        "recentConversations": "最近對話"
       },
       "quickActions": {
         "plan": {

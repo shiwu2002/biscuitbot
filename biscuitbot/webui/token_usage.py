@@ -123,6 +123,77 @@ def _normalize_usage_row(row: dict[str, Any]) -> dict[str, int]:
     return {**cleaned, **requests}
 
 
+def _clean_breakdown_key(value: str | None) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned if cleaned else None
+
+
+def _accumulate_breakdown(
+    parent: dict[str, Any],
+    bucket: str,
+    key: str | None,
+    normalized: dict[str, int],
+) -> None:
+    breakdown_key = _clean_breakdown_key(key)
+    if not breakdown_key:
+        return
+    buckets = dict(parent.get(bucket) or {})
+    row = dict(buckets.get(breakdown_key) or {"requests": 0})
+    for usage_key in _USAGE_KEYS:
+        row[usage_key] = _clean_int(row.get(usage_key)) + normalized.get(usage_key, 0)
+    row["requests"] = _clean_int(row.get("requests")) + 1
+    if normalized.get("estimated_tokens", 0) > 0 and normalized.get("provider_tokens", 0) <= 0:
+        row["estimated_requests"] = _clean_int(row.get("estimated_requests")) + 1
+    else:
+        row["provider_requests"] = _clean_int(row.get("provider_requests")) + 1
+    buckets[breakdown_key] = row
+    parent[bucket] = buckets
+
+
+def _normalize_breakdown(raw: Any) -> dict[str, dict[str, int]]:
+    if not isinstance(raw, dict):
+        return {}
+    buckets: dict[str, dict[str, int]] = {}
+    for key, row in raw.items():
+        if not isinstance(row, dict):
+            continue
+        breakdown_key = _clean_breakdown_key(str(key))
+        if not breakdown_key:
+            continue
+        normalized = _normalize_usage_row(row)
+        if normalized["total_tokens"] <= 0 and normalized["requests"] <= 0:
+            continue
+        buckets[breakdown_key] = normalized
+    return buckets
+
+
+def _aggregate_breakdown(days: list[dict[str, Any]], bucket: str) -> list[dict[str, Any]]:
+    totals: dict[str, dict[str, int]] = {}
+    for row in days:
+        breakdown = row.get(bucket)
+        if not isinstance(breakdown, dict):
+            continue
+        for key, usage_row in breakdown.items():
+            breakdown_key = _clean_breakdown_key(str(key))
+            if not breakdown_key or not isinstance(usage_row, dict):
+                continue
+            normalized = _normalize_usage_row(usage_row)
+            if normalized["total_tokens"] <= 0 and normalized["requests"] <= 0:
+                continue
+            current = totals.get(breakdown_key)
+            if current is None:
+                totals[breakdown_key] = normalized
+            else:
+                for usage_key in (*_USAGE_KEYS, *_REQUEST_KEYS):
+                    current[usage_key] = _clean_int(current.get(usage_key)) + normalized[usage_key]
+    return [
+        {"key": key, **totals[key]}
+        for key in sorted(totals, key=lambda item: totals[item]["total_tokens"], reverse=True)
+    ]
+
+
 def _normalize_sources(raw: Any, fallback: dict[str, int]) -> dict[str, dict[str, int]]:
     sources: dict[str, dict[str, int]] = {}
     if isinstance(raw, dict):
@@ -163,6 +234,8 @@ def normalize_token_usage_state(raw: Any) -> dict[str, Any]:
             "date": date,
             **normalized,
             "sources": _normalize_sources(row.get("sources"), normalized),
+            "models": _normalize_breakdown(row.get("models")),
+            "employees": _normalize_breakdown(row.get("employees")),
         }
 
     state["days"] = days
@@ -223,6 +296,8 @@ def record_token_usage(
     usage: dict[str, Any] | None,
     *,
     source: str = "user",
+    model: str | None = None,
+    employee_id: str | None = None,
     timezone_name: str | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
@@ -254,6 +329,8 @@ def record_token_usage(
             source_row["provider_requests"] = _clean_int(source_row.get("provider_requests")) + 1
         sources[source_key] = source_row
         row["sources"] = sources
+        _accumulate_breakdown(row, "models", model, normalized)
+        _accumulate_breakdown(row, "employees", employee_id, normalized)
 
         state["days"][day] = row
         if len(state["days"]) > _MAX_DAYS_RETAINED:
@@ -325,6 +402,7 @@ def token_usage_payload(
         longest_streak = max(longest_streak, running_streak)
 
     all_rows = list(state["days"].values())
+    today_row = state["days"].get(today.isoformat()) or {}
     return {
         "days": day_rows,
         "total_tokens": sum(_clean_int(row.get("total_tokens")) for row in all_rows),
@@ -335,6 +413,11 @@ def token_usage_payload(
         "longest_streak_days": longest_streak,
         "active_days_30d": sum(1 for row in last_30 if _clean_int(row.get("total_tokens")) > 0),
         "requests_30d": sum(_clean_int(row.get("requests")) for row in last_30),
+        "requests_total": sum(_clean_int(row.get("requests")) for row in all_rows),
+        "today_tokens": _clean_int(today_row.get("total_tokens")),
+        "today_requests": _clean_int(today_row.get("requests")),
+        "models_30d": _aggregate_breakdown(last_30, "models"),
+        "employees_30d": _aggregate_breakdown(last_30, "employees"),
         "updated_at": state.get("updated_at"),
     }
 
@@ -342,15 +425,37 @@ def token_usage_payload(
 class TokenUsageHook(AgentHook):
     """Persist provider-reported token usage without coupling it to chat messages."""
 
-    def __init__(self, *, timezone_name: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        timezone_name: str | None = None,
+        session_manager: Any | None = None,
+    ) -> None:
         super().__init__()
         self._timezone_name = timezone_name
+        self._session_manager = session_manager
+
+    def _employee_for_session_key(self, session_key: str | None) -> str | None:
+        if not session_key or self._session_manager is None:
+            return None
+        metadata_reader = getattr(self._session_manager, "read_session_metadata", None)
+        if callable(metadata_reader):
+            data = metadata_reader(session_key)
+        else:
+            data = self._session_manager.read_session_file(session_key)
+        metadata = data.get("metadata", {}) if isinstance(data, dict) else {}
+        if not isinstance(metadata, dict):
+            return None
+        value = metadata.get("employee")
+        return value if isinstance(value, str) and value.strip() else None
 
     async def after_iteration(self, context: AgentHookContext) -> None:
         try:
             record_token_usage(
                 context.usage,
                 source=_source_from_session_key(context.session_key),
+                model=context.model,
+                employee_id=self._employee_for_session_key(context.session_key),
                 timezone_name=self._timezone_name,
             )
         except Exception:

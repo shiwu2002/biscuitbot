@@ -3,6 +3,7 @@ import {
   Archive,
   Brain,
   CalendarClock,
+  LayoutDashboard,
   Menu,
   Search,
   Settings,
@@ -41,11 +42,13 @@ interface SidebarProps {
   onOpenSkills: () => void;
   onOpenAutomations: () => void;
   onOpenSearch: () => void;
+  /** 打开仪表盘视图（Token 用量 / 图表分析）。 */
+  onOpenDashboard: () => void;
   /** 打开数字人员工视图（卡面展示与管理，原设置里的员工 tab 迁移至此）。 */
   onOpenEmployees: () => void;
   /** 数字人员工目录：用于会话行显示绑定的员工头像/代号（ChatList）。 */
   employees?: Employee[];
-  activeUtility?: "apps" | "skills" | "automations" | "employees" | null;
+  activeUtility?: "apps" | "skills" | "automations" | "employees" | "dashboard" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -148,18 +151,27 @@ export function Sidebar(props: SidebarProps) {
       >
         <SidebarActionButton
           collapsed={collapsed}
+          label={t("sidebar.dashboard", { defaultValue: "仪表盘" })}
+          onClick={props.onOpenDashboard}
+          active={props.activeUtility === "dashboard"}
+          icon={<LayoutDashboard className="h-4 w-4" />}
+        />
+        <SidebarActionButton
+          collapsed={collapsed}
           label={t("sidebar.newChat")}
           onClick={props.onNewChat}
           icon={<SquarePen className="h-4 w-4" />}
           shortcut={newChatShortcut}
           ariaKeyShortcuts="Meta+Shift+O Control+Shift+O"
         />
-        <SidebarActionButton
-          collapsed={collapsed}
-          label={t("sidebar.searchAria")}
-          onClick={props.onOpenSearch}
-          icon={<Search className="h-4 w-4" />}
-        />
+        {collapsed ? (
+          <SidebarActionButton
+            collapsed={collapsed}
+            label={t("sidebar.searchAria")}
+            onClick={props.onOpenSearch}
+            icon={<Search className="h-4 w-4" />}
+          />
+        ) : null}
         <SidebarActionButton
           collapsed={collapsed}
           label={t("sidebar.apps")}
@@ -204,7 +216,16 @@ export function Sidebar(props: SidebarProps) {
         )}
       >
         {!collapsed && (
-          <ChatList
+          <>
+            <div className="px-2 pt-1.5">
+              <SidebarActionButton
+                collapsed={false}
+                label={t("sidebar.searchAria")}
+                onClick={props.onOpenSearch}
+                icon={<Search className="h-4 w-4" />}
+              />
+            </div>
+            <ChatList
             sessions={props.sessions}
             activeKey={props.activeKey}
             loading={props.loading}
@@ -235,6 +256,7 @@ export function Sidebar(props: SidebarProps) {
               props.containActionMenus ? menuPortalContainer : undefined
             }
           />
+            </>
         )}
       </div>
       <Separator className="bg-sidebar-border/50" />
@@ -293,7 +315,8 @@ function SidebarActionButton({
         collapsed
           ? "w-9 justify-center gap-0 rounded-xl px-0"
           : "w-full justify-start gap-2 px-3 text-[12.5px]",
-        active && "bg-sidebar-accent text-sidebar-foreground shadow-[inset_0_0_0_1px_hsl(var(--sidebar-border)/0.55)]",
+        active && "cyber-nav-active shadow-none",
+        !active && "hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
         className,
       )}
     >

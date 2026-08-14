@@ -112,7 +112,7 @@ export function EmployeesView({
           </button>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
-              <h1 className="text-[24px] font-normal leading-tight tracking-normal text-foreground sm:text-[28px]">
+              <h1 className="text-[24px] font-normal leading-tight tracking-tight text-foreground sm:text-[28px]">
                 {tx("employeesView.title", "数字人员工")}
               </h1>
               <p className="mt-2 max-w-[680px] text-[13px] leading-5 text-muted-foreground">
@@ -149,7 +149,7 @@ export function EmployeesView({
         </div>
 
         {ordered.length === 0 ? (
-          <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-border/60 bg-card/40 text-sm text-muted-foreground">
+          <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] border border-dashed border-border/60 text-sm text-muted-foreground">
             <UsersRound className="mr-2 h-4 w-4" aria-hidden />
             {tx("employeesView.empty", "还没有数字人员工。")}
           </div>
@@ -174,7 +174,7 @@ export function EmployeesView({
                 >
                   {employee.avatar || "🧑‍💼"}
                 </span>
-                <div className="min-w-0 flex-1 rounded-2xl border border-border/60 bg-card px-4 py-3.5 shadow-sm transition-colors group-hover:border-border group-hover:bg-muted/40 sm:px-5 sm:py-4">
+                <div className="cyber-glass-panel relative min-w-0 flex-1 overflow-hidden rounded-2xl px-4 py-3.5 transition-colors group-hover:border-cyan-400/40 sm:px-5 sm:py-4">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                     <h3 className="text-[15px] font-semibold leading-6 text-foreground">
                       {employee.name}

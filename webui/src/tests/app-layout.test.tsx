@@ -1559,7 +1559,8 @@ describe("App layout", () => {
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
     const searchButton = within(sidebar).getByRole("button", { name: "搜索" });
     const appsButton = within(sidebar).getByRole("button", { name: "应用" });
-    expect(searchButton.compareDocumentPosition(appsButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 搜索已移入历史对话容器（导航组下方），故应位于「应用」之后
+    expect(appsButton.compareDocumentPosition(searchButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(sidebar).getByRole("button", { name: "设置" }));
 
     expect(await screen.findByRole("heading", { name: "概览" })).toBeInTheDocument();

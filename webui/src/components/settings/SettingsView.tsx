@@ -1842,7 +1842,7 @@ export function SettingsView({
         "flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row",
         showSidebar
           ? "bg-[radial-gradient(circle_at_50%_0%,hsl(var(--muted))_0%,hsl(var(--background))_42%)]"
-          : "bg-background",
+          : "cyber-shell-bg",
       )}
     >
       {showSidebar ? (
@@ -7750,7 +7750,7 @@ function SettingsSectionTitle({ children }: { children: ReactNode }) {
 
 function SettingsGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[22px] border border-border/45 bg-card/86 shadow-[0_18px_65px_rgba(15,23,42,0.075)] backdrop-blur-xl dark:border-white/10 dark:shadow-[0_18px_65px_rgba(0,0,0,0.24)]">
+    <div className="cyber-glass-panel relative overflow-hidden rounded-[22px]">
       <div className="divide-y divide-border/45">{children}</div>
     </div>
   );

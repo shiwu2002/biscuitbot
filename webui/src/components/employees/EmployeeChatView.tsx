@@ -264,7 +264,7 @@ export function EmployeeChatView({
       {/* 左侧：内嵌对话框 */}
       <div className="relative flex min-w-0 flex-1 flex-col">
         {/* 移动端压缩身份条 + 历史菜单 */}
-        <div className="border-b border-border/55 lg:hidden">
+        <div className="cyber-glass-panel relative overflow-hidden lg:hidden">
           <div className="flex items-center gap-2 px-3 py-2">
             <button
               type="button"
@@ -386,7 +386,7 @@ export function EmployeeChatView({
       {/* 右侧面板（桌面）：身份 + 技能 + 历史 */}
       <aside
         className={cn(
-          "hidden w-[300px] shrink-0 flex-col border-l border-border/55 lg:flex",
+          "cyber-glass-panel relative hidden w-[300px] shrink-0 flex-col overflow-hidden lg:flex",
           hostChromeInset && "lg:pt-[4.25rem]",
         )}
       >
