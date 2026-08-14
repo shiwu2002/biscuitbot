@@ -12,7 +12,6 @@ from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError
 BUILTIN_IDS = {
     "clip-master",
     "ip-consultant",
-    "video-master",
     "short-video-operator",
     "super-secretary",
     "all-round-designer",
@@ -58,7 +57,6 @@ class TestBuiltinSeed:
         store = _store(tmp_path)
         by_id = {e["id"]: e for e in store.list_employees()}
         assert by_id["clip-master"]["skills"] == ["jianying-editor"]
-        assert by_id["video-master"]["skills"] == ["seedance"]
         assert by_id["short-video-operator"]["skills"] == [
             "seedance",
             "jianying-editor",
@@ -122,10 +120,10 @@ class TestOneTimeMerge:
         # 首次加载：种子 + 写标记
         store.list_employees()
         # 用户删除一个内置员工
-        store.delete_employee("video-master")
+        store.delete_employee("short-video-operator")
         # 再次加载：标记已存在，不应找回被删的内置员工
         employees = store.list_employees()
-        assert "video-master" not in {e["id"] for e in employees}
+        assert "short-video-operator" not in {e["id"] for e in employees}
 
     def test_old_file_builtin_synced_to_current_version(
         self, tmp_path: Path
@@ -218,8 +216,6 @@ class TestTitleField:
         by_id = {e["id"]: e for e in store.list_employees()}
         assert by_id["clip-master"]["name"] == "阿伟"
         assert by_id["clip-master"]["title"] == "AI视频剪辑总监"
-        assert by_id["video-master"]["name"] == "沐辰"
-        assert by_id["video-master"]["title"] == "AI视频导演"
         assert by_id["short-video-operator"]["title"] == "短视频增长操盘手"
         assert by_id["super-secretary"]["title"] == "AI执行秘书"
         assert by_id["all-round-designer"]["title"] == "AI视觉设计总监"
@@ -247,7 +243,7 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         store.list_employees()
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 7
+        assert raw["builtin_version"] == 8
 
     def test_v1_file_syncs_builtin_names_and_keeps_custom(
         self, tmp_path: Path
@@ -277,7 +273,7 @@ class TestBuiltinVersionMigration:
         assert by_id["my-custom"]["name"] == "我的助理"
         assert by_id["my-custom"]["system_prompt"] == "自定义提示词"
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 7
+        assert raw["builtin_version"] == 8
 
     def test_v1_sync_updates_builtin_skills(self, tmp_path: Path) -> None:
         # 老 v1 文件：内置记录的空技能会被同步为新版绑定的技能
@@ -315,9 +311,9 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         # 先建当前版本种子，再删除一个内置员工：版本未落后时不并入已删员工
         store.list_employees()
-        store.delete_employee("video-master")
+        store.delete_employee("short-video-operator")
         employees = store.list_employees()
-        assert "video-master" not in {e["id"] for e in employees}
+        assert "short-video-operator" not in {e["id"] for e in employees}
 
     def test_stale_version_merges_missing_builtins(self, tmp_path: Path) -> None:
         """版本落后时，缺失的内置员工会被并入（含本次升级新增的）。
@@ -327,7 +323,7 @@ class TestBuiltinVersionMigration:
         """
         store = _store(tmp_path)
         store.list_employees()
-        store.delete_employee("video-master")
+        store.delete_employee("short-video-operator")
         # 模拟内置版本降级（文件里直接改旧版本），加载后并入缺失内置员工
         raw = json.loads(store.path.read_text(encoding="utf-8"))
         raw["builtin_version"] = 1
@@ -335,7 +331,7 @@ class TestBuiltinVersionMigration:
             json.dumps(raw, ensure_ascii=False), encoding="utf-8"
         )
         employees = store.list_employees()
-        assert "video-master" in {e["id"] for e in employees}
+        assert "short-video-operator" in {e["id"] for e in employees}
 
     def test_sync_preserves_user_edits_when_version_current(
         self, tmp_path: Path

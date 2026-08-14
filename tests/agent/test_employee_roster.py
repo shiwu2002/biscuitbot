@@ -22,7 +22,7 @@ def _write_empty_current(workspace: Path) -> None:
             {
                 "schema_version": 1,
                 "builtin_seeded": True,
-                "builtin_version": 7,
+                "builtin_version": 8,
                 "employees": [],
             },
             ensure_ascii=False,
@@ -37,7 +37,7 @@ class TestRosterSection:
         prompt = cb.build_system_prompt()
         assert "数字员工团队" in prompt
         assert "invoke_employee" in prompt
-        for codename in ("阿伟", "灵溪", "沐辰", "阿凯", "静娴", "达芬奇", "宫本"):
+        for codename in ("阿伟", "灵溪", "阿凯", "静娴", "达芬奇", "宫本"):
             assert codename in prompt
 
     def test_roster_hidden_when_no_enabled_employees(self, tmp_path: Path) -> None:
@@ -104,12 +104,13 @@ class TestSkillBelongsToEmployee:
         assert "seedance" not in prompt
         assert "jianying-editor" not in prompt
 
-    def test_video_employee_own_skills(self, tmp_path: Path) -> None:
+    def test_short_video_employee_own_skills(self, tmp_path: Path) -> None:
         cb = ContextBuilder(tmp_path)
         prompt = cb.build_system_prompt(
-            session_metadata={"employee": "video-master"}
+            session_metadata={"employee": "short-video-operator"}
         )
         assert "seedance" in prompt
+        assert "jianying-editor" in prompt
         assert "ip-positioning" not in prompt
         # 技能归属自己：其它员工技能（加粗技能行）不得出现在本员工会话
         assert "- **secretary**" not in prompt
@@ -126,3 +127,39 @@ class TestSkillBelongsToEmployee:
         # 无技能员工：任何技能目录名都不应出现在技能摘要中（选一个不会出现在阿伟 persona 里的）
         assert "- **secretary**" not in prompt
         assert "- **design**" not in prompt
+
+
+class TestRosterQualityWarning:
+    """名单质量预警：超过阈值时提示主智能体先 discover_employees 再 invoke_employee。"""
+
+    def test_roster_mentions_discover_employees(self, tmp_path: Path) -> None:
+        cb = ContextBuilder(tmp_path)
+        prompt = cb.build_system_prompt()
+        assert "discover_employees" in prompt
+
+    def test_no_warning_below_threshold(self, tmp_path: Path) -> None:
+        # 默认 6 个内置员工，未超过阈值 10，不追加预警
+        cb = ContextBuilder(tmp_path)
+        prompt = cb.build_system_prompt()
+        assert "路由质量阈值" not in prompt
+
+    def test_warning_present_when_over_threshold(self, tmp_path: Path) -> None:
+        # 6 个内置 + 5 个新增 = 11 个启用员工，超过阈值 → 追加预警并带人数
+        cb = ContextBuilder(tmp_path)
+        for i in range(5):
+            cb.employees.create_employee(
+                {"name": f"测试员工{i}", "system_prompt": "你是一名测试数字员工。"}
+            )
+        prompt = cb.build_system_prompt()
+        assert "路由质量阈值" in prompt
+        assert "共 11 位" in prompt
+
+    def test_warning_not_fired_at_exactly_threshold(self, tmp_path: Path) -> None:
+        # 6 + 4 = 10，恰好等于阈值（超过才预警）
+        cb = ContextBuilder(tmp_path)
+        for i in range(4):
+            cb.employees.create_employee(
+                {"name": f"边界员工{i}", "system_prompt": "你是一名测试数字员工。"}
+            )
+        prompt = cb.build_system_prompt()
+        assert "路由质量阈值" not in prompt

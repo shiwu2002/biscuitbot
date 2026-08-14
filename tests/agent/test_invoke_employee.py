@@ -71,8 +71,8 @@ class TestInvokeEmployeeTool:
 
     async def test_chinese_name_for_other_employee(self, tmp_path: Path) -> None:
         tool = self._tool(tmp_path, "成果y")
-        out = await tool.execute("沐辰", "导演分镜")
-        assert "数字员工「沐辰（AI视频导演）」" in out
+        out = await tool.execute("阿凯", "短视频增长")
+        assert "数字员工「阿凯（短视频增长操盘手）」" in out
 
     async def test_unknown_chinese_name_still_errors(self, tmp_path: Path) -> None:
         tool = self._tool(tmp_path)
