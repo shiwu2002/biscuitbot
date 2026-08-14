@@ -1773,7 +1773,7 @@ function Shell({
               />
             </div>
             {view === "employees" ? (
-              <div className="absolute inset-0 flex flex-col">
+              <div className="absolute inset-0 flex flex-col bg-background">
                 <EmployeesView
                   employees={employees}
                   onChanged={reloadEmployees}
@@ -1784,7 +1784,7 @@ function Shell({
                 />
               </div>
             ) : view === "employee-chat" ? (
-              <div className="absolute inset-0 flex flex-col">
+              <div className="absolute inset-0 flex flex-col bg-background">
                 <EmployeeChatView
                   employeeId={activeKey}
                   employees={employees}
@@ -1802,7 +1802,7 @@ function Shell({
                 />
               </div>
             ) : view === "talent-market" ? (
-              <div className="absolute inset-0 flex flex-col">
+              <div className="absolute inset-0 flex flex-col bg-background">
                 <TalentMarketView
                   employees={employees}
                   onInstalled={reloadEmployees}
@@ -1811,7 +1811,7 @@ function Shell({
                 />
               </div>
             ) : view !== "chat" ? (
-              <div className="absolute inset-0 flex flex-col">
+              <div className="absolute inset-0 flex flex-col bg-background">
                 <SettingsView
                   theme={theme}
                   initialSection={settingsInitialSection}
