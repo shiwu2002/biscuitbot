@@ -123,6 +123,7 @@ class ContextBuilder:
     _MAX_RECENT_HISTORY = 50  # 注入提示的最近历史条目上限
     _MAX_HISTORY_TOKENS = 8_000  # 最近历史区段的 token 硬上限
     _RUNTIME_CONTEXT_END = "[/Runtime Context]"  # 运行时上下文块的结束标记
+    _ROSTER_QUALITY_THRESHOLD = 10  # 启用员工数超过该值时，追加路由质量警告并建议先 discover_employees
 
     def __init__(
         self,
@@ -293,7 +294,11 @@ class ContextBuilder:
             return ""
         lines = [
             "## 数字员工团队（可调用）\n",
-            "你的团队有以下数字员工，需要时可使用 invoke_employee 工具点名一位协助完成任务：",
+            (
+                "你的团队有以下数字员工，需要时可使用 invoke_employee 工具点名一位协助完成任务。"
+                "团队规模较大时，建议先使用 discover_employees 按技能/分类检索最合适的员工，"
+                "再调用 invoke_employee，避免凭名单盲目点名。"
+            ),
         ]
         for emp in enabled:
             name = emp.get("name", "")
@@ -304,6 +309,12 @@ class ContextBuilder:
             roster_tag = f"{tag}〔代号 {emp.get('id', '')}〕"
             line = f"- {avatar} {roster_tag} — {self._employee_summary(emp)}" if avatar else f"- {roster_tag} — {self._employee_summary(emp)}"
             lines.append(line)
+        if len(enabled) > self._ROSTER_QUALITY_THRESHOLD:
+            lines.append(
+                f"\n> 注意：当前已启用数字员工共 {len(enabled)} 位，超出路由质量阈值"
+                f"（{self._ROSTER_QUALITY_THRESHOLD}）。团队过大时按名单点名容易选错，"
+                "请务必先使用 discover_employees 检索最合适的员工，再通过 invoke_employee 调用。"
+            )
         return "\n".join(lines)
 
     @staticmethod
