@@ -11,18 +11,29 @@ import { providerBrand } from "@/lib/provider-brand";
 
 const SETUP_SKIP_KEY = "biscuitbot-webui.setup-skipped";
 
-/** Pre-filled recommended model per provider (the fallback when unset). */
+/**
+ * Pre-filled recommended model per provider (the fallback when unset).
+ * 随各服务商最新模型轮换更新（2026-08）：
+ * - deepseek: deepseek-chat 已于 2026-07-24 退役 → deepseek-v4-flash
+ * - openai:   gpt-4o-mini 已退役 → gpt-5.6-terra（-mini 档位继任者）
+ * - anthropic: claude-sonnet-4-5 → claude-sonnet-5
+ * - dashscope: qwen-plus（旧版）→ qwen3.6-plus（均衡新默认）
+ * - moonshot:  moonshot-v1-8k 将于 2026-08-31 停服 → kimi-k3
+ * - zhipu:    glm-4-flash → glm-4.5-flash（免费）
+ * - stepfun:  step-1-8k 已于 2026-07-08 下线 → step-3.7-flash
+ * - google:   gemini-2.0-flash 已于 2026-03 退役 → gemini-2.5-flash（稳定版）
+ */
 const DEFAULT_MODELS: Record<string, string> = {
-  deepseek: "deepseek/deepseek-chat",
-  openai: "openai/gpt-4o-mini",
-  anthropic: "anthropic/claude-sonnet-4-5",
-  dashscope: "dashscope/qwen-plus",
-  moonshot: "moonshot/moonshot-v1-8k",
-  zhipu: "zhipu/glm-4-flash",
-  stepfun: "stepfun/step-1-8k",
+  deepseek: "deepseek/deepseek-v4-flash",
+  openai: "openai/gpt-5.6-terra",
+  anthropic: "anthropic/claude-sonnet-5",
+  dashscope: "dashscope/qwen3.6-plus",
+  moonshot: "moonshot/kimi-k3",
+  zhipu: "zhipu/glm-4.5-flash",
+  stepfun: "stepfun/step-3.7-flash",
   groq: "groq/llama-3.3-70b-versatile",
-  google: "google/gemini-2.0-flash",
-  gemini: "google/gemini-2.0-flash",
+  google: "google/gemini-2.5-flash",
+  gemini: "google/gemini-2.5-flash",
 };
 
 export function hasSkippedSetup(): boolean {

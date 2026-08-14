@@ -551,36 +551,39 @@ def _run_quick_setup(config, config_path: Path) -> None:
             provider_cfg.api_base = spec.default_api_base
 
     # --- Step 3: Select Model (with sensible defaults per provider) ---
+    # 随各服务商最新模型轮换更新（2026-08）：deepseek-chat 退役 → v4-flash；
+    # gpt-4o-mini 退役 → gpt-5.6-terra；claude-sonnet-4 → claude-sonnet-5；
+    # qwen-plus/qwen-max → qwen3.6-plus；glm-4-plus → glm-4.5-flash；
+    # kimi-k2-preview → kimi-k3；step-1/2 → step-3.7-flash。
     model_defaults = {
         "deepseek": ("deepseek/deepseek-v4-pro", [
             "deepseek/deepseek-v4-pro (推荐，综合能力最强)",
-            "deepseek/deepseek-r1 (推理模型)",
-            "deepseek/deepseek-chat (轻量快速)",
+            "deepseek/deepseek-v4-flash (轻量快速)",
         ]),
-        "openai": ("openai/gpt-4o", [
-            "openai/gpt-4o (推荐)",
-            "openai/o3 (推理模型)",
-            "openai/gpt-4o-mini (经济)",
+        "openai": ("openai/gpt-5.6-terra", [
+            "openai/gpt-5.6-terra (推荐，日常对话)",
+            "openai/gpt-5.6-sol (旗舰推理)",
+            "openai/gpt-5.6-luna (高性价比)",
         ]),
-        "anthropic": ("anthropic/claude-sonnet-4", [
-            "anthropic/claude-sonnet-4 (推荐)",
-            "anthropic/claude-opus-4-5 (最强)",
-            "anthropic/claude-haiku-4 (经济)",
+        "anthropic": ("anthropic/claude-sonnet-5", [
+            "anthropic/claude-sonnet-5 (推荐)",
+            "anthropic/claude-opus-5 (最强)",
+            "anthropic/claude-haiku-4-5 (经济)",
         ]),
-        "dashscope": ("dashscope/qwen-max", [
-            "dashscope/qwen-max (通义千问 Max 推荐)",
-            "dashscope/qwen-plus (经济)",
-            "dashscope/qwen-coder-plus (代码专用)",
+        "dashscope": ("dashscope/qwen3.6-plus", [
+            "dashscope/qwen3.6-plus (通义千问均衡推荐)",
+            "dashscope/qwen3.7-max (旗舰)",
+            "dashscope/qwen3.6-flash (经济)",
         ]),
-        "zhipu": ("zhipu/glm-4-plus", [
-            "zhipu/glm-4-plus (GLM-4 Plus 推荐)",
-            "zhipu/glm-4-flash (免费)",
+        "zhipu": ("zhipu/glm-4.5-flash", [
+            "zhipu/glm-4.5-flash (免费推荐)",
+            "zhipu/glm-5.2 (旗舰)",
         ]),
-        "moonshot": ("moonshot/kimi-k2-0711-preview", [
-            "moonshot/kimi-k2-0711-preview (Kimi K2 推荐)",
+        "moonshot": ("moonshot/kimi-k3", [
+            "moonshot/kimi-k3 (Kimi K3 推荐)",
         ]),
-        "stepfun": ("stepfun/step-2-16k", [
-            "stepfun/step-2-16k (Step-2 推荐)",
+        "stepfun": ("stepfun/step-3.7-flash", [
+            "stepfun/step-3.7-flash (Step 推荐)",
         ]),
     }
 
