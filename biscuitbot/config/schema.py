@@ -60,6 +60,17 @@ class TranscriptionConfig(Base):
     max_upload_mb: int = Field(default=25, ge=1, le=100)
 
 
+class TtsConfig(Base):
+    """语音合成（TTS）配置。"""
+
+    enabled: bool = True
+    provider: str | None = None  # 由 biscuitbot.audio.tts_registry 校验，None 默认 edge-tts
+    model: str | None = None
+    voice: str | None = None
+    rate: str | None = None  # 语速，如 "+10%" / "-10%"
+    save_dir: str = "generated/tts"  # 合成音频相对工作区的保存目录
+
+
 class DreamConfig(Base):
     """Dream 记忆整合配置。"""
 
@@ -387,6 +398,7 @@ class Config(BaseSettings):
     agents: AgentsConfig = Field(default_factory=AgentsConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     transcription: TranscriptionConfig = Field(default_factory=TranscriptionConfig)
+    tts: TtsConfig = Field(default_factory=TtsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     api: ApiConfig = Field(default_factory=ApiConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)

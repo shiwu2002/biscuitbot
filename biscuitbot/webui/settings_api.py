@@ -20,6 +20,12 @@ from biscuitbot.audio.transcription_registry import (
     resolve_transcription_provider,
     transcription_provider_names,
 )
+from biscuitbot.audio.tts import resolve_tts_config
+from biscuitbot.audio.tts_registry import (
+    get_tts_provider,
+    resolve_tts_provider,
+    tts_provider_names,
+)
 from biscuitbot.config.loader import get_config_path, load_config, save_config
 from biscuitbot.config.schema import ModelPresetConfig, ProviderConfig
 from biscuitbot.providers.image_generation import (
@@ -669,6 +675,27 @@ def _transcription_provider_rows(config: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _tts_provider_rows(config: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for name in tts_provider_names():
+        spec = get_tts_provider(name)
+        provider_config = getattr(config.providers, name, None)
+        requires_api_key = spec.requires_api_key if spec else True
+        configured = (not requires_api_key) or bool(
+            getattr(provider_config, "api_key", None)
+        )
+        label = "Edge TTS" if name == "edge-tts" else name
+        rows.append({
+            "name": name,
+            "label": label,
+            "configured": configured,
+            "api_key_hint": _mask_secret_hint(getattr(provider_config, "api_key", None)),
+            "api_base": getattr(provider_config, "api_base", None),
+            "default_api_base": spec.default_api_base if spec and spec.default_api_base else None,
+        })
+    return rows
+
+
 def _vision_provider_rows(config: Any) -> list[dict[str, Any]]:
     """List all LLM providers usable as vision credential sources."""
     rows: list[dict[str, Any]] = []
@@ -741,6 +768,7 @@ def settings_payload(
     image_config = config.tools.image_generation
     video_config = config.tools.seedance_video
     transcription = resolve_transcription_config(config)
+    tts = resolve_tts_config(config)
     search_provider = (
         search_config.provider
         if search_config.provider in _WEB_SEARCH_PROVIDER_BY_NAME
@@ -896,6 +924,16 @@ def settings_payload(
             "max_duration_sec": transcription.max_duration_sec,
             "max_upload_mb": transcription.max_upload_mb,
             "providers": _transcription_provider_rows(config),
+        },
+        "tts": {
+            "enabled": tts.enabled,
+            "provider": tts.provider,
+            "provider_configured": tts.configured,
+            "model": tts.model,
+            "voice": tts.voice,
+            "rate": tts.rate,
+            "save_dir": tts.save_dir,
+            "providers": _tts_provider_rows(config),
         },
         "runtime": {
             "config_path": str(get_config_path().expanduser()),
@@ -1693,6 +1731,62 @@ def update_transcription_settings(query: QueryParams) -> dict[str, Any]:
             raise WebUISettingsError("max_upload_mb must be between 1 and 100")
         if transcription.max_upload_mb != parsed_upload:
             transcription.max_upload_mb = parsed_upload
+            changed = True
+
+    if changed:
+        save_config(config)
+    return settings_payload()
+
+
+def update_tts_settings(query: QueryParams) -> dict[str, Any]:
+    config = load_config()
+    tts = config.tts
+    changed = False
+
+    enabled = _query_first(query, "enabled")
+    if enabled is not None:
+        parsed_enabled = _parse_bool(enabled, "enabled")
+        if tts.enabled != parsed_enabled:
+            tts.enabled = parsed_enabled
+            changed = True
+
+    provider = _query_first(query, "provider")
+    if provider is not None:
+        provider = provider.strip().lower()
+        try:
+            provider_spec = resolve_tts_provider(provider)
+        except ValueError as exc:
+            raise WebUISettingsError(str(exc)) from exc
+        provider = provider_spec.name
+        if tts.provider != provider:
+            tts.provider = provider
+            changed = True
+
+    model = _query_first(query, "model")
+    if model is not None:
+        model = model.strip() or None
+        if model is not None and len(model) > 200:
+            raise WebUISettingsError("tts model is too long")
+        if tts.model != model:
+            tts.model = model
+            changed = True
+
+    voice = _query_first(query, "voice")
+    if voice is not None:
+        voice = voice.strip() or None
+        if voice is not None and len(voice) > 200:
+            raise WebUISettingsError("tts voice is too long")
+        if tts.voice != voice:
+            tts.voice = voice
+            changed = True
+
+    rate = _query_first(query, "rate")
+    if rate is not None:
+        rate = rate.strip() or None
+        if rate is not None and len(rate) > 32:
+            raise WebUISettingsError("tts rate is too long")
+        if tts.rate != rate:
+            tts.rate = rate
             changed = True
 
     if changed:

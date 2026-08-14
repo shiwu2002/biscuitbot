@@ -35,6 +35,7 @@ from biscuitbot.webui.settings_api import (
     update_screenshot_settings,
     update_system_io_settings,
     update_transcription_settings,
+    update_tts_settings,
     update_video_generation_settings,
     update_web_search_settings,
 )
@@ -108,6 +109,8 @@ class WebUISettingsRouter:
             return self._handle_settings_system_io_update(request)
         if path == "/api/settings/transcription/update":
             return self._handle_settings_transcription_update(request)
+        if path == "/api/settings/tts/update":
+            return self._handle_settings_tts_update(request)
         if path == "/api/settings/network-safety/update":
             return self._handle_settings_network_safety_update(request)
         if path == "/api/settings/cli-apps":
@@ -302,6 +305,15 @@ class WebUISettingsRouter:
             return self._unauthorized()
         try:
             payload = update_transcription_settings(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(self._with_restart_state(payload))
+
+    def _handle_settings_tts_update(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = update_tts_settings(self._query(request))
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload))
