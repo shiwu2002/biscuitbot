@@ -19,6 +19,7 @@ from biscuitbot.webui.settings_api import (
     update_provider_settings,
     update_system_io_settings,
     update_transcription_settings,
+    update_tts_settings,
 )
 
 DYNAMIC_PROVIDER_NAME = "my-company-api"
@@ -413,6 +414,77 @@ def test_update_transcription_settings_writes_top_level_only(
     assert saved.transcription.max_upload_mb == 20
     assert payload["transcription"]["provider"] == "groq"
     assert payload["transcription"]["provider_configured"] is True
+
+
+def test_settings_payload_includes_tts_config(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.tts.provider = "openai"
+    config.providers.openai.api_key = "sk-test"
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = settings_payload()
+
+    tts = payload["tts"]
+    assert tts["enabled"] is True
+    assert tts["provider"] == "openai"
+    assert tts["provider_configured"] is True
+    assert tts["model"] == "gpt-4o-mini-tts"
+    assert tts["voice"] == "alloy"
+    assert tts["save_dir"] == "generated/tts"
+    names = {row["name"] for row in tts["providers"]}
+    assert names == {"openai", "dashscope", "edge-tts"}
+    edge = next(row for row in tts["providers"] if row["name"] == "edge-tts")
+    assert edge["label"] == "Edge TTS"
+    assert edge["configured"] is True
+
+
+def test_update_tts_settings_writes_top_level_only(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config()
+    config.tts.provider = "edge-tts"
+    config.tts.rate = "-20%"
+    config.providers.dashscope.api_key = "ds-test"
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = update_tts_settings(
+        {
+            "enabled": ["true"],
+            "provider": ["dashscope"],
+            "model": ["cosyvoice-v2"],
+            "voice": ["longwan"],
+            "rate": ["+10%"],
+        }
+    )
+
+    saved = load_config(config_path)
+    assert saved.tts.enabled is True
+    assert saved.tts.provider == "dashscope"
+    assert saved.tts.model == "cosyvoice-v2"
+    assert saved.tts.voice == "longwan"
+    assert saved.tts.rate == "+10%"
+    assert payload["tts"]["provider"] == "dashscope"
+    assert payload["tts"]["voice"] == "longwan"
+
+
+def test_update_tts_settings_unknown_provider_rejected(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    with pytest.raises(WebUISettingsError, match="TTS provider"):
+        update_tts_settings({"provider": ["nope"]})
 
 
 def test_update_transcription_settings_validates_language(

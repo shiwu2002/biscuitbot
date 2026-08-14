@@ -546,6 +546,23 @@ export interface SettingsPayload {
       default_api_base?: string | null;
     }>;
   };
+  tts?: {
+    enabled: boolean;
+    provider: string;
+    provider_configured: boolean;
+    model: string;
+    voice: string;
+    rate: string | null;
+    save_dir: string;
+    providers: Array<{
+      name: string;
+      label: string;
+      configured: boolean;
+      api_key_hint?: string | null;
+      api_base?: string | null;
+      default_api_base?: string | null;
+    }>;
+  };
   runtime: {
     config_path: string;
     workspace_path: string;
@@ -879,6 +896,14 @@ export interface TranscriptionSettingsUpdate {
   language: string;
   maxDurationSec: number;
   maxUploadMb: number;
+}
+
+export interface TtsSettingsUpdate {
+  enabled: boolean;
+  provider: string;
+  model: string;
+  voice: string;
+  rate: string;
 }
 
 export interface SlashCommand {

@@ -102,6 +102,7 @@ import {
   updateSettings,
   updateSystemIoSettings,
   updateTranscriptionSettings,
+  updateTtsSettings,
   updateVideoGenerationSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
@@ -134,6 +135,7 @@ import type {
   SystemIoSettingsUpdate,
   SkillSummary,
   TranscriptionSettingsUpdate,
+  TtsSettingsUpdate,
   VideoGenerationSettingsUpdate,
   WebSearchSettingsUpdate,
   WebuiDefaultAccessMode,
@@ -147,6 +149,7 @@ export type SettingsSectionKey =
   | "video"
   | "vision"
   | "voice"
+  | "tts"
   | "browser"
   | "apps"
   | "automations"
@@ -432,6 +435,25 @@ const DEFAULT_TRANSCRIPTION_SETTINGS: NonNullable<SettingsPayload["transcription
   providers: [],
 };
 
+const DEFAULT_TTS_FORM: TtsSettingsUpdate = {
+  enabled: true,
+  provider: "edge-tts",
+  model: "",
+  voice: "",
+  rate: "",
+};
+
+const DEFAULT_TTS_SETTINGS: NonNullable<SettingsPayload["tts"]> = {
+  enabled: true,
+  provider: "edge-tts",
+  provider_configured: true,
+  model: "",
+  voice: "zh-CN-XiaoxiaoNeural",
+  rate: null,
+  save_dir: "generated/tts",
+  providers: [],
+};
+
 const DEFAULT_NETWORK_SAFETY_FORM: NetworkSafetySettingsUpdate = {
   webuiAllowLocalServiceAccess: true,
   webuiDefaultAccessMode: "default",
@@ -529,6 +551,17 @@ function transcriptionFormFromPayload(payload: SettingsPayload): TranscriptionSe
   };
 }
 
+function ttsFormFromPayload(payload: SettingsPayload): TtsSettingsUpdate {
+  const tts = payload.tts ?? DEFAULT_TTS_SETTINGS;
+  return {
+    enabled: tts.enabled,
+    provider: tts.provider,
+    model: tts.model,
+    voice: tts.voice,
+    rate: tts.rate ?? "",
+  };
+}
+
 function networkSafetyFormFromPayload(payload: SettingsPayload): NetworkSafetySettingsUpdate {
   const rawGuardLevel = payload.advanced.guard_level ?? "standard";
   const guardLevel: GuardLevel =
@@ -602,6 +635,7 @@ export function SettingsView({
   const [imageGenerationSaving, setImageGenerationSaving] = useState(false);
   const [videoGenerationSaving, setVideoGenerationSaving] = useState(false);
   const [transcriptionSaving, setTranscriptionSaving] = useState(false);
+  const [ttsSaving, setTtsSaving] = useState(false);
   const [networkSafetySaving, setNetworkSafetySaving] = useState(false);
   const [screenshotSaving, setScreenshotSaving] = useState(false);
   const [systemIoSaving, setSystemIoSaving] = useState(false);
@@ -657,6 +691,9 @@ export function SettingsView({
   const [transcriptionForm, setTranscriptionForm] = useState<TranscriptionSettingsUpdate>(
     () => initialSettings ? transcriptionFormFromPayload(initialSettings) : DEFAULT_TRANSCRIPTION_FORM,
   );
+  const [ttsForm, setTtsForm] = useState<TtsSettingsUpdate>(
+    () => initialSettings ? ttsFormFromPayload(initialSettings) : DEFAULT_TTS_FORM,
+  );
   const [networkSafetyForm, setNetworkSafetyForm] = useState<NetworkSafetySettingsUpdate>(() =>
     initialSettings ? networkSafetyFormFromPayload(initialSettings) : DEFAULT_NETWORK_SAFETY_FORM,
   );
@@ -693,6 +730,7 @@ export function SettingsView({
     setScreenshotForm(screenshotFormFromPayload(payload));
     setSystemIoForm(systemIoFormFromPayload(payload));
     setTranscriptionForm(transcriptionFormFromPayload(payload));
+    setTtsForm(ttsFormFromPayload(payload));
     setNetworkSafetyForm(networkSafetyFormFromPayload(payload));
     if (payload.restart_required_sections) {
       setPendingRestartSections(pendingRestartSectionsFromPayload(payload));
@@ -941,6 +979,18 @@ export function SettingsView({
       transcriptionForm.maxUploadMb !== transcription.max_upload_mb
     );
   }, [settings, transcriptionForm]);
+
+  const ttsDirty = useMemo(() => {
+    if (!settings) return false;
+    const tts = settings.tts ?? DEFAULT_TTS_SETTINGS;
+    return (
+      ttsForm.enabled !== tts.enabled ||
+      ttsForm.provider !== tts.provider ||
+      ttsForm.model !== tts.model ||
+      ttsForm.voice !== tts.voice ||
+      ttsForm.rate !== (tts.rate ?? "")
+    );
+  }, [settings, ttsForm]);
 
   const networkSafetyDirty = useMemo(() => {
     if (!settings) return false;
@@ -1220,6 +1270,20 @@ export function SettingsView({
       setError((err as Error).message);
     } finally {
       setTranscriptionSaving(false);
+    }
+  };
+
+  const saveTtsSettings = async () => {
+    if (!settings || !ttsDirty || ttsSaving) return;
+    setTtsSaving(true);
+    try {
+      const payload = await updateTtsSettings(token, ttsForm);
+      applyPayload(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setTtsSaving(false);
     }
   };
 
@@ -1580,6 +1644,18 @@ export function SettingsView({
           requiresRestartPending={pendingRestartSections.browser}
         />
       ) : null}
+      {sub === "tts" ? (
+        <TtsSettings
+          settings={settings}
+          form={ttsForm}
+          dirty={ttsDirty}
+          saving={ttsSaving}
+          onChangeForm={setTtsForm}
+          onSave={saveTtsSettings}
+          onOpenProviders={() => selectSection("models")}
+          showBrandLogos={localPrefs.brandLogos}
+        />
+      ) : null}
     </div>
   );
 
@@ -1875,7 +1951,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
 ];
 
 /** 「模型」父标签家族的 section（含未上线的文生视频占位）。 */
-const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "image", "video", "vision", "voice"];
+const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "image", "video", "vision", "voice", "tts"];
 /** 「系统」父标签家族的 section。 */
 const SYSTEM_TAB_KEYS: SettingsSectionKey[] = ["runtime", "systemIo", "advanced"];
 
@@ -1893,6 +1969,7 @@ const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallbac
   { key: "video", labelKey: "settings.subtabs.model.video", fallback: "文生视频" },
   { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视图理解" },
   { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "ASR" },
+  { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "TTS" },
 ];
 
 /** 系统 tab 二级切换条。 */
@@ -3599,6 +3676,121 @@ function TranscriptionSettings({
           onSave={onSave}
           onRestart={onRestart}
           isRestarting={isRestarting}
+        />
+      </SettingsGroup>
+    </section>
+  );
+}
+
+function TtsSettings({
+  settings,
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onOpenProviders,
+  showBrandLogos,
+}: {
+  settings: SettingsPayload;
+  form: TtsSettingsUpdate;
+  dirty: boolean;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<TtsSettingsUpdate>>;
+  onSave: () => void;
+  onOpenProviders: () => void;
+  showBrandLogos: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const tts = settings.tts ?? DEFAULT_TTS_SETTINGS;
+  const selectedProvider =
+    tts.providers.find((provider) => provider.name === form.provider) ??
+    tts.providers[0];
+  const providerConfigured = !!selectedProvider?.configured;
+
+  return (
+    <section>
+      <SettingsSectionTitle>{tx("settings.sections.tts", "Text to speech")}</SettingsSectionTitle>
+      <SettingsGroup>
+        <SettingsRow
+          title={tx("settings.rows.tts", "Text-to-speech")}
+          description={tx("settings.help.tts", "Synthesize speech audio from text with the text_to_speech tool.")}
+        >
+          <ToggleButton
+            checked={form.enabled}
+            onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
+            ariaLabel={tx("settings.rows.tts", "Text-to-speech")}
+            label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.ttsProvider", "Provider")}
+          description={tx("settings.help.ttsProvider", "Uses the matching provider credentials from Providers.")}
+        >
+          <ProviderPicker
+            providers={tts.providers}
+            value={form.provider}
+            emptyLabel={tx("settings.voice.selectProvider", "Select provider")}
+            showProviderLogos={showBrandLogos}
+            onChange={(provider) => onChangeForm((prev) => ({ ...prev, provider }))}
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.ttsProviderStatus", "Provider status")}
+          description={tx("settings.help.ttsProviderStatus", "API keys stay under providers, not in TTS settings. edge-tts needs no key.")}
+        >
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <StatusPill tone={providerConfigured ? "success" : "neutral"}>
+              {providerConfigured
+                ? tx("settings.values.configured", "Configured")
+                : tx("settings.values.notConfigured", "Not configured")}
+            </StatusPill>
+            {!providerConfigured ? (
+              <Button size="sm" variant="outline" onClick={onOpenProviders} className="rounded-full">
+                {tx("settings.voice.configureProvider", "Configure provider")}
+              </Button>
+            ) : null}
+          </div>
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.ttsModel", "Model")}
+          description={tx("settings.help.ttsModel", "Leave as the resolved default unless your provider needs a custom model id.")}
+        >
+          <Input
+            value={form.model}
+            onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
+            className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.ttsVoice", "Voice")}
+          description={tx("settings.help.ttsVoice", "Default voice for the provider, e.g. alloy, longxiaochun or zh-CN-XiaoxiaoNeural.")}
+        >
+          <Input
+            value={form.voice}
+            onChange={(event) => onChangeForm((prev) => ({ ...prev, voice: event.target.value }))}
+            className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.ttsRate", "Rate")}
+          description={tx("settings.help.ttsRate", "Optional speed such as +10% (faster) or -20% (slower).")}
+        >
+          <Input
+            value={form.rate}
+            onChange={(event) => onChangeForm((prev) => ({ ...prev, rate: event.target.value }))}
+            placeholder={tx("settings.voice.languageAuto", "Auto")}
+            className="h-8 w-[min(180px,60vw)] rounded-full text-[13px]"
+          />
+        </SettingsRow>
+        <RestartSettingsFooter
+          dirty={dirty}
+          saving={saving}
+          pendingRestart={false}
+          dirtyMessage={tx("settings.status.unsavedTts", "Save changes — applies immediately, no restart needed.")}
+          pendingMessage={tx("settings.status.savedTts", "Saved.")}
+          onSave={onSave}
         />
       </SettingsGroup>
     </section>

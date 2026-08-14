@@ -27,6 +27,7 @@ import type {
   SlashCommand,
   TalentCatalogPayload,
   TranscriptionSettingsUpdate,
+  TtsSettingsUpdate,
   VideoGenerationSettingsUpdate,
   WebSearchSettingsUpdate,
   WorkspacesPayload,
@@ -887,6 +888,23 @@ export async function updateTranscriptionSettings(
   query.set("max_upload_mb", String(update.maxUploadMb));
   return request<SettingsPayload>(
     `${base}/api/settings/transcription/update?${query}`,
+    token,
+  );
+}
+
+export async function updateTtsSettings(
+  token: string,
+  update: TtsSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  query.set("enabled", String(update.enabled));
+  query.set("provider", update.provider);
+  query.set("model", update.model);
+  query.set("voice", update.voice);
+  query.set("rate", update.rate);
+  return request<SettingsPayload>(
+    `${base}/api/settings/tts/update?${query}`,
     token,
   );
 }

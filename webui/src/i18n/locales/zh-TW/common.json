@@ -91,7 +91,8 @@
         "image": "文生圖",
         "video": "文生影片",
         "vision": "視覺理解",
-        "asr": "ASR"
+        "asr": "ASR",
+        "tts": "TTS"
       },
       "system": {
         "runtime": "執行",
