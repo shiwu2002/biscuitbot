@@ -10,6 +10,7 @@ from biscuitbot.agent.tools.seedance_video import (
     SeedanceVideoError,
     SeedanceVideoTool,
     SeedanceVideoToolConfig,
+    _AIGC_CHARACTER_DISCLAIMER,
 )
 
 PNG_BYTES = (
@@ -100,7 +101,9 @@ def test_build_content_orders_text_and_references(tmp_path: Path) -> None:
         ["https://example.com/v.mp4"],
         ["https://example.com/a.mp3"],
     )
-    assert content[0] == {"type": "text", "text": "hello"}
+    # 文本块始终以 AIGC 虚拟角色免责声明开头，随后才是原始提示词
+    assert content[0]["type"] == "text"
+    assert content[0]["text"] == f"{_AIGC_CHARACTER_DISCLAIMER}hello"
     assert content[1]["type"] == "image_url"
     assert content[1]["role"] == "reference_image"
     assert content[1]["image_url"]["url"] == "https://example.com/a.jpg"
@@ -108,6 +111,15 @@ def test_build_content_orders_text_and_references(tmp_path: Path) -> None:
     assert content[2]["role"] == "reference_video"
     assert content[3]["type"] == "audio_url"
     assert content[3]["role"] == "reference_audio"
+
+
+@pytest.mark.parametrize("prompt", ["hello", "", "  只有空格  "])
+def test_build_content_always_prepends_aigc_disclaimer(tmp_path: Path, prompt: str) -> None:
+    tool = _tool(tmp_path)
+    content = tool._build_content(prompt, None, None, None)
+    assert content[0]["type"] == "text"
+    # 无论提示词内容如何，免责声明都必须被前置
+    assert content[0]["text"].startswith(_AIGC_CHARACTER_DISCLAIMER)
 
 
 @pytest.mark.asyncio
