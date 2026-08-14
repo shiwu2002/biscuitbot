@@ -12,6 +12,7 @@ from biscuitbot.providers.image_generation import (
     ImageGenerationError,
     OllamaImageGenerationClient,
     OpenAIImageGenerationClient,
+    VolcanoImageGenerationClient,
     ZhipuImageGenerationClient,
 )
 
@@ -508,6 +509,24 @@ async def test_openai_no_images_raises() -> None:
         await client.generate(prompt="draw", model="dall-e-3")
 
 
+@pytest.mark.asyncio
+async def test_openai_ignores_reference_images() -> None:
+    """OpenAI 基类不支持参考图：不写入 image 字段，仅告警后忽略。"""
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = OpenAIImageGenerationClient(
+        api_key="sk-openai-test",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    await client.generate(
+        prompt="draw",
+        model="dall-e-3",
+        reference_images=["ignored.png"],
+    )
+
+    assert "image" not in fake.calls[0]["json"]
+
+
 # ---------------------------------------------------------------------------
 # Zhipu
 # ---------------------------------------------------------------------------
@@ -604,4 +623,197 @@ async def test_zhipu_image_generation_rejects_reference_images() -> None:
             prompt="edit this",
             model="glm-image",
             reference_images=["ref.png"],
+        )
+
+
+# ---------------------------------------------------------------------------
+# Volcengine (火山方舟 ARK) —— Seedream 系列
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_volcengine_payload_and_response() -> None:
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        extra_headers={"X-Test": "1"},
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    response = await client.generate(
+        prompt="一只猫在月球上",
+        model="doubao-seedream-5-0-lite-260128",
+        aspect_ratio="1:1",
+    )
+
+    assert response.images == [PNG_DATA_URL]
+    call = fake.calls[0]
+    assert call["url"] == "https://ark.cn-beijing.volces.com/api/v3/images/generations"
+    assert call["headers"]["Authorization"] == "Bearer ark-test-key"
+    assert call["headers"]["X-Test"] == "1"
+    body = call["json"]
+    assert body["model"] == "doubao-seedream-5-0-lite-260128"
+    assert body["prompt"] == "一只猫在月球上"
+    assert body["response_format"] == "b64_json"
+    assert body["n"] == 1
+    assert body["size"] == "2048x2048"
+
+
+def test_volcengine_default_base_url() -> None:
+    client = VolcanoImageGenerationClient(api_key="ark-test-key")
+    assert client.api_base == "https://ark.cn-beijing.volces.com/api/v3"
+
+
+@pytest.mark.asyncio
+async def test_volcengine_requires_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ARK_API_KEY", raising=False)
+    client = VolcanoImageGenerationClient(api_key=None)
+
+    with pytest.raises(ImageGenerationError, match="火山方舟"):
+        await client.generate(prompt="draw", model="doubao-seedream-5-0-lite-260128")
+
+
+@pytest.mark.asyncio
+async def test_volcengine_uses_ark_api_key_env_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARK_API_KEY", "ark-env-secret")
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(api_key=None, client=fake)  # type: ignore[arg-type]
+
+    await client.generate(prompt="draw", model="doubao-seedream-5-0-lite-260128")
+
+    assert fake.calls[0]["headers"]["Authorization"] == "Bearer ark-env-secret"
+
+
+@pytest.mark.asyncio
+async def test_volcengine_seedream_aspect_sizes() -> None:
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    expected = {
+        "1:1": "2048x2048",
+        "16:9": "2048x1152",
+        "9:16": "1152x2048",
+        "3:4": "1536x2048",
+        "4:3": "2048x1536",
+        # 未覆盖的宽高比兜底为方形
+        "3:2": "2048x2048",
+        "21:9": "2048x2048",
+    }
+    for index, (ratio, size) in enumerate(expected.items()):
+        await client.generate(
+            prompt="draw",
+            model="doubao-seedream-5-0-lite-260128",
+            aspect_ratio=ratio,
+        )
+        assert fake.calls[index]["json"]["size"] == size
+
+
+@pytest.mark.asyncio
+async def test_volcengine_uses_explicit_size() -> None:
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    await client.generate(
+        prompt="draw",
+        model="doubao-seedream-5-0-lite-260128",
+        aspect_ratio="1:1",
+        image_size="1536x1024",
+    )
+
+    assert fake.calls[0]["json"]["size"] == "1536x1024"
+
+
+@pytest.mark.asyncio
+async def test_volcengine_strips_model_prefix() -> None:
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    await client.generate(prompt="draw", model="volcengine/doubao-seedream-5-0-lite-260128")
+
+    assert fake.calls[0]["json"]["model"] == "doubao-seedream-5-0-lite-260128"
+
+
+@pytest.mark.asyncio
+async def test_volcengine_no_images_raises() -> None:
+    fake = FakeClient(FakeResponse({"data": []}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ImageGenerationError, match="returned no images"):
+        await client.generate(prompt="draw", model="doubao-seedream-5-0-lite-260128")
+
+
+REF_DATA_URL = (
+    "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode("ascii")
+)
+
+
+@pytest.mark.asyncio
+async def test_volcengine_single_reference_image(tmp_path: Path) -> None:
+    ref = tmp_path / "ref.png"
+    ref.write_bytes(PNG_BYTES)
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    await client.generate(
+        prompt="edit this",
+        model="doubao-seedream-5-0-lite-260128",
+        reference_images=[str(ref)],
+    )
+
+    body = fake.calls[0]["json"]
+    assert body["image"] == REF_DATA_URL  # 单张参考图传 data URL 字符串
+
+
+@pytest.mark.asyncio
+async def test_volcengine_multiple_reference_images(tmp_path: Path) -> None:
+    ref1 = tmp_path / "ref1.png"
+    ref2 = tmp_path / "ref2.png"
+    ref1.write_bytes(PNG_BYTES)
+    ref2.write_bytes(PNG_BYTES)
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    await client.generate(
+        prompt="combine these",
+        model="doubao-seedream-5-0-lite-260128",
+        reference_images=[str(ref1), str(ref2)],
+    )
+
+    body = fake.calls[0]["json"]
+    assert body["image"] == [REF_DATA_URL, REF_DATA_URL]  # 多张参考图传数组
+
+
+@pytest.mark.asyncio
+async def test_volcengine_reference_image_missing_file(tmp_path: Path) -> None:
+    fake = FakeClient(FakeResponse({"data": [{"b64_json": RAW_B64}]}))
+    client = VolcanoImageGenerationClient(
+        api_key="ark-test-key",
+        client=fake,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(ImageGenerationError, match="参考图"):
+        await client.generate(
+            prompt="edit this",
+            model="doubao-seedream-5-0-lite-260128",
+            reference_images=[str(tmp_path / "missing.png")],
         )

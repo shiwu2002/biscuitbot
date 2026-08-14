@@ -300,7 +300,9 @@ class ContextBuilder:
             title = emp.get("title", "")
             avatar = emp.get("avatar", "")
             tag = f"{name}" + (f"（{title}）" if title else "")
-            line = f"- {avatar} {tag} — {self._employee_summary(emp)}" if avatar else f"- {tag} — {self._employee_summary(emp)}"
+            # 附带英文代号，方便主智能体用 invoke_employee 的 employee_id 正确点名
+            roster_tag = f"{tag}〔代号 {emp.get('id', '')}〕"
+            line = f"- {avatar} {roster_tag} — {self._employee_summary(emp)}" if avatar else f"- {roster_tag} — {self._employee_summary(emp)}"
             lines.append(line)
         return "\n".join(lines)
 

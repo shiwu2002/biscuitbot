@@ -613,6 +613,12 @@ def _validate_configured_provider(config: Any, provider: str) -> None:
         raise WebUISettingsError("provider is not configured")
 
 
+# 未注册 LLM spec 的图像生成提供商的中文展示名（如火山方舟仅用于图像，不进 LLM 列表）
+_IMAGE_GEN_PROVIDER_DISPLAY_NAMES = {
+    "volcengine": "火山方舟",
+}
+
+
 def _image_generation_provider_rows(config: Any) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for name in image_gen_provider_names():
@@ -622,11 +628,17 @@ def _image_generation_provider_rows(config: Any) -> list[dict[str, Any]]:
             _provider_configured_for_settings(spec, provider_config)
             if spec is not None and provider_config is not None
             else bool(getattr(provider_config, "api_key", None))
+            # 火山方舟支持 ARK_API_KEY 环境变量回退，命中即视为已配置
+            or (name == "volcengine" and bool(os.environ.get("ARK_API_KEY", "").strip()))
         )
         rows.append(
             {
                 "name": name,
-                "label": spec.label if spec is not None else name,
+                "label": (
+                    spec.label
+                    if spec is not None
+                    else _IMAGE_GEN_PROVIDER_DISPLAY_NAMES.get(name, name)
+                ),
                 "configured": configured,
                 "auth_type": "api_key",
                 "api_key_hint": _mask_secret_hint(

@@ -102,6 +102,7 @@ const PROVIDER_BRANDS: Record<string, ProviderBrand> = {
   ollama: brand("ollama.com", "#111827", "O"),
   openai: brand("openai.com", "#111827", "AI"),
   stepfun: brand("stepfun.com", "#10B981", "S"),
+  volcengine: brand("volcengine.com", "#3370FF", "V"),
   zhipu: brand("zhipuai.cn", "#0A87C6", "Z"),
 };
 
@@ -134,5 +135,6 @@ export function inferProviderFromModelName(modelName: string | null | undefined)
   if (/moonshot|kimi/.test(normalized)) return "moonshot";
   if (/stepfun|step-|^\s*step\s/.test(normalized)) return "stepfun";
   if (/ollama|llama/.test(normalized)) return "ollama";
+  if (/doubao|seedream|volcengine|ark/.test(normalized)) return "volcengine";
   return null;
 }

@@ -2,7 +2,7 @@
 
 本模块在 biscuitbot 项目中承担"多模态图像生成"职责：
 - 定义统一的图像生成 Provider 抽象基类（``ImageGenerationProvider``）；
-- 实现多家图像生成服务（Ollama、Gemini/Imagen、OpenAI、智谱、阿里灵积/万相、AIHubMix）的异步客户端；
+- 实现多家图像生成服务（Ollama、Gemini/Imagen、OpenAI、智谱、阿里灵积/万相、AIHubMix、火山方舟/Seedream）的异步客户端；
 - 提供图像数据 URL 转换、Provider 注册表、尺寸映射等基础工具。
 
 产品层的配置兜底、WebUI 上传校验、频道集成等逻辑位于 ``biscuitbot.audio`` 等模块，
@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio  # 异步事件循环（轮询、并发请求）
 import base64  # 二进制数据与 base64 互转（图片传输）
 import binascii  # base64 解码异常类型
+import os  # 环境变量（ARK_API_KEY 等密钥回退）
 import re  # 正则表达式（尺寸、宽高比解析）
 from abc import ABC, abstractmethod  # 抽象基类支持
 from dataclasses import dataclass  # 不可变数据类（响应结构）
@@ -714,6 +715,38 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             return model.split("/", 1)[1]
         return model
 
+    def _size_for(
+        self,
+        model: str,
+        aspect_ratio: str | None,
+        image_size: str | None,
+    ) -> str:
+        """把宽高比/显式尺寸解析为 Images API 的 size 字符串。
+
+        默认沿用 OpenAI 各模型家族的尺寸规则；子类可覆盖（如火山 Seedream
+        有自己的一套宽高比→像素尺寸映射）。
+        """
+        return _openai_size(model, aspect_ratio, image_size)
+
+    def _reference_images_body(
+        self,
+        reference_images: list[str] | None,
+        model: str,
+    ) -> Any:
+        """把参考图转换为请求载荷字段值；默认不支持参考图，仅告警后忽略。
+
+        返回值会写入 ``body["image"]``（如火山 Seedream 传 data URL 字符串
+        或数组），返回 ``None`` 表示该模型不支持参考图。
+        """
+        if reference_images:
+            logger.warning(
+                "{} does not support reference images; "
+                "ignoring {} reference image(s)",
+                model,
+                len(reference_images),
+            )
+        return None
+
     async def generate(
         self,
         *,
@@ -725,15 +758,6 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
     ) -> GeneratedImageResponse:
         if not self.api_key:
             raise ImageGenerationError(self.missing_key_message)
-
-        # DALL-E 系列不支持参考图，仅打印告警后继续
-        if reference_images:
-            logger.warning(
-                "DALL-E models do not support reference images; "
-                "ignoring {} reference image(s) for {}",
-                len(reference_images),
-                model,
-            )
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -752,9 +776,14 @@ class OpenAIImageGenerationClient(ImageGenerationProvider):
             body["response_format"] = "b64_json"
             body["n"] = 1
 
-        size = _openai_size(clean_model, aspect_ratio, image_size)
+        size = self._size_for(clean_model, aspect_ratio, image_size)
         if size:
             body["size"] = size
+
+        # 参考图（图生图）：默认不支持返回 None；支持的子类返回 image 字段值
+        reference_payload = self._reference_images_body(reference_images, clean_model)
+        if reference_payload is not None:
+            body["image"] = reference_payload
 
         body.update(self.extra_body)
         # 剔除值为 None 的字段，便于 extraBody 主动关闭默认参数（如 response_format）
@@ -1396,10 +1425,88 @@ class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
 
 
 # ---------------------------------------------------------------------------
+# Volcano Engine ARK (火山方舟) image generation —— Seedream 系列
+# ---------------------------------------------------------------------------
+
+# 火山方舟 Seedream 宽高比 → 像素尺寸映射（Seedream 5.0/4.5/4.0 文档尺寸）
+_VOLCENGINE_ASPECT_RATIO_SIZES = {
+    "1:1": "2048x2048",
+    "3:4": "1536x2048",
+    "4:3": "2048x1536",
+    "9:16": "1152x2048",
+    "16:9": "2048x1152",
+}
+
+
+class VolcanoImageGenerationClient(OpenAIImageGenerationClient):
+    """火山方舟 ARK 图像生成客户端（OpenAI 兼容 Images API，Seedream 系列）。"""
+
+    provider_name = "volcengine"
+    missing_key_message = (
+        "未配置火山方舟（ARK）密钥。请在 config.json 设置 providers.volcengine.apiKey，"
+        "或设置环境变量 ARK_API_KEY。"
+    )
+
+    def __init__(self, **kwargs: Any) -> None:
+        """构造客户端；未显式传 api_key 时回退环境变量 ARK_API_KEY。"""
+        if not kwargs.get("api_key"):
+            kwargs["api_key"] = os.environ.get("ARK_API_KEY")
+        super().__init__(**kwargs)
+
+    def _default_base_url(self) -> str:
+        return "https://ark.cn-beijing.volces.com/api/v3"
+
+    def _base_path(self) -> str:
+        return "/api/v3"
+
+    @staticmethod
+    def _strip_model_prefix(model: str) -> str:
+        """去掉已知 Provider 前缀（volcengine/、volcano/、ark/）。"""
+        for prefix in ("volcengine/", "volcano/", "ark/"):
+            if model.startswith(prefix):
+                return model.split("/", 1)[1]
+        return model
+
+    def _size_for(
+        self,
+        model: str,
+        aspect_ratio: str | None,
+        image_size: str | None,
+    ) -> str:
+        """Seedream 尺寸规则：显式 WxH 直通，否则按宽高比映射，最后兜底方形。"""
+        explicit = _normalize_openai_image_size(image_size)
+        if explicit and _openai_explicit_size_supported(explicit, supported_sizes=None):
+            return explicit  # Seedream 接受任意 WIDTHxHEIGHT
+        if aspect_ratio and aspect_ratio in _VOLCENGINE_ASPECT_RATIO_SIZES:
+            return _VOLCENGINE_ASPECT_RATIO_SIZES[aspect_ratio]
+        return "2048x2048"  # 未覆盖宽高比（3:2/2:3/21:9）兜底
+
+    def _reference_images_body(
+        self,
+        reference_images: list[str] | None,
+        model: str,
+    ) -> Any:
+        """把参考图转成 ``image`` 字段：单张传字符串，多张传数组（data URL）。
+
+        Seedream 系列支持图生图，``image`` 接受 base64 data URL 或 URL，
+        单张为字符串、多张为数组（最多 14 张）。无法读取/不支持的图片
+        由 :func:`image_path_to_data_url` 抛 ``ImageGenerationError``。
+        """
+        if not reference_images:
+            return None
+        try:
+            data_urls = [image_path_to_data_url(path) for path in reference_images]
+        except (FileNotFoundError, OSError) as exc:
+            raise ImageGenerationError(f"参考图读取失败：{exc}") from exc
+        return data_urls[0] if len(data_urls) == 1 else data_urls
+
+
+# ---------------------------------------------------------------------------
 # Provider registration —— 模块导入期注册全部图像 Provider
 # ---------------------------------------------------------------------------
 
 register_image_gen_provider(AIHubMixImageGenerationClient)
+register_image_gen_provider(VolcanoImageGenerationClient)
 register_image_gen_provider(DashScopeImageGenerationClient)
 register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)

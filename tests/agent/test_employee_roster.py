@@ -51,6 +51,13 @@ class TestRosterSection:
         prompt = cb.build_system_prompt()
         assert "阿伟（AI视频剪辑总监）" in prompt
 
+    def test_roster_shows_english_codename(self, tmp_path: Path) -> None:
+        """名单附带英文代号，便于主智能体用 employee_id 正确点名。"""
+        cb = ContextBuilder(tmp_path)
+        prompt = cb.build_system_prompt()
+        assert "阿伟（AI视频剪辑总监）〔代号 clip-master〕" in prompt
+        assert "灵溪（个人IP战略顾问）〔代号 ip-consultant〕" in prompt
+
 
 class TestPersonaHeading:
     def test_persona_heading_includes_title(self, tmp_path: Path) -> None:
@@ -104,8 +111,9 @@ class TestSkillBelongsToEmployee:
         )
         assert "seedance" in prompt
         assert "ip-positioning" not in prompt
-        assert "secretary" not in prompt
-        assert "design" not in prompt
+        # 技能归属自己：其它员工技能（加粗技能行）不得出现在本员工会话
+        assert "- **secretary**" not in prompt
+        assert "- **design**" not in prompt
 
     def test_employee_without_skills_has_no_skill_summary(self, tmp_path: Path) -> None:
         # 给一个内置员工清空技能，模拟无技能员工：技能摘要应为空（归属自己，不共享全部）
@@ -116,5 +124,5 @@ class TestSkillBelongsToEmployee:
             session_metadata={"employee": "clip-master"}
         )
         # 无技能员工：任何技能目录名都不应出现在技能摘要中（选一个不会出现在阿伟 persona 里的）
-        assert "secretary" not in prompt
-        assert "design" not in prompt
+        assert "- **secretary**" not in prompt
+        assert "- **design**" not in prompt

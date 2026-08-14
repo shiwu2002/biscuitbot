@@ -54,6 +54,32 @@ class TestInvokeEmployeeTool:
         assert "clip-master" in out  # 名单里有可用员工
         assert "阿伟" in out
 
+    async def test_chinese_name_resolves_to_employee(self, tmp_path: Path) -> None:
+        """主智能体用中文姓名点名也能正确解析（阿伟 → clip-master）。"""
+        tool = self._tool(tmp_path, "这是中文姓名调用的成果")
+        out = await tool.execute("阿伟", "帮我剪辑一段视频")
+        assert "数字员工「阿伟（AI视频剪辑总监）」" in out
+        assert "这是中文姓名调用的成果" in out
+        assert "没有可用的数字员工" not in out
+
+    async def test_chinese_name_with_title_resolves(self, tmp_path: Path) -> None:
+        """「姓名（职位）」组合形式同样可解析。"""
+        tool = self._tool(tmp_path, "成果x")
+        out = await tool.execute("灵溪（个人IP战略顾问）", "做定位咨询")
+        assert "数字员工「灵溪（个人IP战略顾问）」" in out
+        assert "没有可用的数字员工" not in out
+
+    async def test_chinese_name_for_other_employee(self, tmp_path: Path) -> None:
+        tool = self._tool(tmp_path, "成果y")
+        out = await tool.execute("沐辰", "导演分镜")
+        assert "数字员工「沐辰（AI视频导演）」" in out
+
+    async def test_unknown_chinese_name_still_errors(self, tmp_path: Path) -> None:
+        tool = self._tool(tmp_path)
+        out = await tool.execute("王五", "干活")
+        assert "没有可用的数字员工" in out
+        assert "王五" in out
+
     async def test_disabled_employee_rejected(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
         store.update_employee("clip-master", {"enabled": False})

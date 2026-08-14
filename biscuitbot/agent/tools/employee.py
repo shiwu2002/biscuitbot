@@ -62,7 +62,9 @@ def _persist_employee_result(workspace: Path, employee_id: str, content: str) ->
 
 @tool_parameters(
     tool_parameters_schema(
-        employee_id=StringSchema("要调用的数字员工 id（见系统提示「数字员工团队」板块）"),
+        employee_id=StringSchema(
+            "要调用的数字员工英文代号（如 clip-master），也可直接用中文姓名（如 阿伟）"
+        ),
         task=StringSchema("交给该数字员工的任务描述，越具体越好"),
         required=["employee_id", "task"],
     )
@@ -103,6 +105,7 @@ class InvokeEmployeeTool(Tool):
             "调用某位数字员工（数字人员工），让 TA 以自身人设执行一项任务并返回成果。"
             "适合把用户交给你的一项工作分派给更专业的团队成员（如生成视频、剪辑、定位咨询、"
             "写脚本、做设计等）。员工名单与分工见系统提示中的『数字员工团队』板块；"
+            "employee_id 使用员工英文代号（如 clip-master），也直接接受中文姓名（如 阿伟）；"
             "调用后等待员工完成，把返回的成果整理后转述给用户。"
             "若成果过长，返回的会是截断精华并附完整成果的保存路径，"
             "需要完整交付物时可读取该文件后再转述。"
@@ -115,15 +118,39 @@ class InvokeEmployeeTool(Tool):
         return f"{name}（{title}）" if title else name
 
     def _available_roster(self) -> str:
-        """列出已启用员工，供 id 填错时引导主智能体。"""
+        """列出已启用员工（英文代号·中文姓名），供调用失败时引导主智能体。"""
         if self._employees is None:
             return ""
         enabled = [
             e for e in self._employees.list_employees() if e.get("enabled", True)
         ]
-        return "\n".join(
-            f"- {e.get('id')}（{self._employee_label(e)}）" for e in enabled
-        )
+        lines = []
+        for e in enabled:
+            label = e.get("name") or ""
+            if e.get("title"):
+                label = f"{label}·{e['title']}"
+            lines.append(f"- {e.get('id')}（{label}）")
+        return "\n".join(lines)
+
+    def _resolve_employee(self, employee_id: str) -> dict[str, Any] | None:
+        """解析数字员工：优先按英文代号 id，其次接受中文姓名或「姓名（职位）」组合。
+
+        主智能体用中文与用户交流时常直接以中文姓名点名（如「阿伟」），
+        这里兜底把姓名解析回对应员工，避免调用报错。
+        """
+        if self._employees is None:
+            return None
+        employee = self._employees.get_employee(employee_id)
+        if employee is not None:
+            return employee
+        for emp in self._employees.list_employees():
+            if not emp.get("enabled", True):
+                continue
+            name = emp.get("name") or ""
+            title = emp.get("title") or ""
+            if employee_id == name or employee_id == f"{name}（{title}）":
+                return emp
+        return None
 
     async def execute(
         self,
@@ -149,10 +176,10 @@ class InvokeEmployeeTool(Tool):
         if self._manager is None or self._employees is None:
             return "调用失败：数字员工调用当前不可用（缺少员工目录或执行器）。"
 
-        employee = self._employees.get_employee(employee_id)
+        employee = self._resolve_employee(employee_id)
         if employee is None or not employee.get("enabled", True):
             return (
-                f"调用失败：没有可用的数字员工 id 为「{employee_id}」。"
+                f"调用失败：没有可用的数字员工「{employee_id}」。"
                 "可用员工：\n" + (self._available_roster() or "（无）")
             )
 
