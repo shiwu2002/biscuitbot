@@ -10,15 +10,25 @@
 员工名单与分工见系统提示中的「数字员工团队」板块；员工列表来自
 ``ToolContext.employees``（``EmployeeStore``），执行依赖
 ``ToolContext.subagent_manager.run_employee_inline``。
+
+超长成果（超过 ``_MAX_RESULT_CHARS``）会先落盘到工作区
+``.biscuitbot/tool-results/employees``，内联文本保留精华并附完整成果的
+保存路径指针，主智能体需要时可读取完整交付物。
 """
 
 from __future__ import annotations
 
+import time  # 成果文件名时间戳
+from pathlib import Path  # 文件路径类型
 from typing import TYPE_CHECKING, Any  # 类型注解
+from uuid import uuid4  # 成果文件名唯一后缀
+
+from loguru import logger  # 日志记录
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
 from biscuitbot.agent.tools.schema import StringSchema, tool_parameters_schema  # JSON Schema 类型
 from biscuitbot.security.workspace_access import current_workspace_scope  # 当前工作区作用域
+from biscuitbot.utils.helpers import atomic_write_text, ensure_dir, safe_filename  # 原子写入与目录/文件名工具
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
     from biscuitbot.agent.employees import EmployeeStore
@@ -26,6 +36,28 @@ if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
 
 # 内联返回成果的最大字符数（防御性截断，避免撑爆主会话上下文）
 _MAX_RESULT_CHARS = 12000
+# 工作区内保留的员工完整成果份数（超出后按旧到新清理，避免长期运行下目录无限膨胀）
+_EMPLOYEE_RESULT_KEEP = 50
+
+
+def _persist_employee_result(workspace: Path, employee_id: str, content: str) -> Path:
+    """把员工完整成果原子写入工作区 tool-results，返回保存路径。
+
+    超限截断时的兜底：完整成果落盘后，内联文本只保留精华 + 路径指针，
+    主智能体需要时可读取完整交付物。仅保留最近 ``_EMPLOYEE_RESULT_KEEP`` 份。
+    """
+    root = ensure_dir(workspace / ".biscuitbot" / "tool-results" / "employees")
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = root / f"{safe_filename(employee_id)}-{stamp}-{uuid4().hex[:6]}.txt"
+    atomic_write_text(path, content)
+
+    files = sorted(root.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in files[_EMPLOYEE_RESULT_KEEP:]:
+        try:
+            old.unlink(missing_ok=True)
+        except OSError:
+            pass
+    return path
 
 
 @tool_parameters(
@@ -72,6 +104,8 @@ class InvokeEmployeeTool(Tool):
             "适合把用户交给你的一项工作分派给更专业的团队成员（如生成视频、剪辑、定位咨询、"
             "写脚本、做设计等）。员工名单与分工见系统提示中的『数字员工团队』板块；"
             "调用后等待员工完成，把返回的成果整理后转述给用户。"
+            "若成果过长，返回的会是截断精华并附完整成果的保存路径，"
+            "需要完整交付物时可读取该文件后再转述。"
         )
 
     def _employee_label(self, employee: dict[str, Any]) -> str:
@@ -131,7 +165,20 @@ class InvokeEmployeeTool(Tool):
             task,
             include_skills=employee_skills,
             workspace=workspace,
+            max_result_chars=_MAX_RESULT_CHARS,
         )
         if len(content) > _MAX_RESULT_CHARS:
-            content = content[:_MAX_RESULT_CHARS] + "\n…（成果已截断）"
+            if workspace is not None:
+                try:
+                    path = _persist_employee_result(workspace, employee_id, content)
+                    rel = path.relative_to(workspace)
+                    content = (
+                        content[:_MAX_RESULT_CHARS]
+                        + f"\n…（成果已截断，完整成果已保存至 {rel}）"
+                    )
+                except Exception:  # noqa: BLE001 - 落盘失败回退硬截断，不让主智能体报错
+                    logger.warning("员工完整成果落盘失败，回退硬截断：", exc_info=True)
+                    content = content[:_MAX_RESULT_CHARS] + "\n…（成果已截断）"
+            else:
+                content = content[:_MAX_RESULT_CHARS] + "\n…（成果已截断）"
         return f"数字员工「{self._employee_label(employee)}」的成果：\n\n{content}"

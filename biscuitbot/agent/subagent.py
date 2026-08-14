@@ -513,6 +513,7 @@ class SubagentManager:
         temperature: float | None = None,
         workspace: Path | None = None,
         include_skills: set[str] | None = None,
+        max_result_chars: int | None = None,
     ) -> str:
         """以指定数字员工的人设执行一次任务，**内联返回**成果文本。
 
@@ -524,7 +525,9 @@ class SubagentManager:
             task: 交给员工的用户任务；
             temperature: 采样温度；
             workspace: 工作目录（默认主工作区）；
-            include_skills: 技能 allowlist（``None`` 表示全部）。
+            include_skills: 技能 allowlist（``None`` 表示全部）；
+            max_result_chars: 内联返回约定的文本上限（``> 0`` 时在系统提示中告知员工
+                前置结论与产出文件路径；是否截断/落盘由调用方决定）。
 
         返回:
             员工执行完成的最终文本；出错时返回面向主智能体的错误描述。
@@ -536,6 +539,13 @@ class SubagentManager:
             employee=employee,
             include_skills=include_skills,
         )
+        if max_result_chars and max_result_chars > 0:
+            system_prompt += (
+                "\n\n【内联返回约定】你的最终回复会被完整保存，但内联回主智能体的文本"
+                f"有 {max_result_chars} 字符上限。请把最重要的结论、交付物和产出文件路径"
+                "放在最前面；产出的文件请写入当前工作区，并在回复中给出文件路径，"
+                "方便主智能体按需读取完整成果。"
+            )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": task},

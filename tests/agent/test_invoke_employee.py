@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from biscuitbot.agent.employees import EmployeeStore
@@ -89,6 +90,35 @@ class TestInvokeEmployeeTool:
         assert "（成果已截断）" in out
         assert len(out) < 30000
 
+    async def test_long_result_persisted_with_pointer(self, tmp_path: Path) -> None:
+        """绑定工作区时，超限成果落盘到 tool-results，内联文本保留精华并附路径。"""
+        from biscuitbot.security.workspace_access import (
+            bind_workspace_scope,
+            build_workspace_scope,
+            reset_workspace_scope,
+        )
+
+        ws = tmp_path / "ws"
+        tool = self._tool(tmp_path, "长" * 30000)
+        token = bind_workspace_scope(build_workspace_scope(ws, "restricted"))
+        try:
+            out = await tool.execute("clip-master", "干活")
+        finally:
+            reset_workspace_scope(token)
+        assert "（成果已截断" in out
+        assert "完整成果已保存至" in out
+        assert "数字员工" in out
+        saved = list((ws / ".biscuitbot" / "tool-results" / "employees").glob("*.txt"))
+        assert len(saved) == 1
+        assert len(saved[0].read_text(encoding="utf-8")) == 30000  # 完整成果未丢
+
+    async def test_long_result_no_scope_falls_back_to_hard_truncate(self, tmp_path: Path) -> None:
+        """无工作区作用域时回退硬截断，不落盘、不报错。"""
+        tool = self._tool(tmp_path, "长" * 30000)
+        out = await tool.execute("clip-master", "干活")
+        assert "（成果已截断）" in out
+        assert "完整成果已保存至" not in out
+
     def test_enabled_gating(self) -> None:
         assert InvokeEmployeeTool.enabled(MagicMock(subagent_manager=None, employees=None)) is False
         assert InvokeEmployeeTool.enabled(MagicMock(subagent_manager=object(), employees=object())) is True
@@ -98,6 +128,7 @@ class TestRunEmployeeInline:
     def _manager_with_fake_result(self, tmp_path: Path, result: object) -> SubagentManager:
         mgr = _manager(tmp_path)
         mgr._build_tools = MagicMock(return_value=MagicMock())
+        mgr.runner = MagicMock()  # runner 整体替换，run 为 AsyncMock，便于断言调用
         mgr.runner.run = AsyncMock(return_value=result)
         return mgr
 
@@ -132,6 +163,45 @@ class TestRunEmployeeInline:
         )
         out = await mgr.run_employee_inline({"id": "x", "name": "剪影", "title": "剪辑"}, "任务")
         assert out == "视频已完成"
+
+    async def test_inline_contract_appended_when_cap_passed(self, tmp_path: Path) -> None:
+        """传入 max_result_chars 时，系统提示追加内联返回约定（含上限数字）。"""
+        mgr = self._manager_with_fake_result(
+            tmp_path,
+            SimpleNamespace(
+                final_content="ok",
+                stop_reason="end_turn",
+                error=None,
+                tool_events=[],
+            ),
+        )
+        await mgr.run_employee_inline(
+            {"id": "x", "name": "剪影", "title": "剪辑"},
+            "任务",
+            max_result_chars=12000,
+        )
+        run_mock: Any = mgr.runner.run  # 运行时是 AsyncMock
+        spec = run_mock.call_args.args[0]
+        system_content = spec.initial_messages[0]["content"]
+        assert "内联返回约定" in system_content
+        assert "12000" in system_content
+
+    async def test_no_contract_when_cap_not_passed(self, tmp_path: Path) -> None:
+        """不传 max_result_chars 时，系统提示不含内联返回约定。"""
+        mgr = self._manager_with_fake_result(
+            tmp_path,
+            SimpleNamespace(
+                final_content="ok",
+                stop_reason="end_turn",
+                error=None,
+                tool_events=[],
+            ),
+        )
+        await mgr.run_employee_inline({"id": "x", "name": "剪影", "title": "剪辑"}, "任务")
+        run_mock: Any = mgr.runner.run  # 运行时是 AsyncMock
+        spec = run_mock.call_args.args[0]
+        system_content = spec.initial_messages[0]["content"]
+        assert "内联返回约定" not in system_content
 
     async def test_returns_error_text_on_failure(self, tmp_path: Path) -> None:
         mgr = self._manager_with_fake_result(
