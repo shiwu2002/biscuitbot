@@ -95,6 +95,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "video",
   "vision",
   "voice",
+  "tts",
   "browser",
   "apps",
   "automations",

@@ -1731,6 +1731,7 @@ export function SettingsView({
       case "video":
       case "vision":
       case "voice":
+      case "tts":
         return renderModelsTab(activeSection, settings);
       case "browser":
         return (
