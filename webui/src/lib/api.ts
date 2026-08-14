@@ -27,6 +27,7 @@ import type {
   SlashCommand,
   TalentCatalogPayload,
   TranscriptionSettingsUpdate,
+  VideoGenerationSettingsUpdate,
   WebSearchSettingsUpdate,
   WorkspacesPayload,
   WebuiThreadPersistedPayload,
@@ -813,6 +814,25 @@ export async function updateImageGenerationSettings(
   query.set("max_images_per_turn", String(update.maxImagesPerTurn));
   return request<SettingsPayload>(
     `${base}/api/settings/image-generation/update?${query}`,
+    token,
+  );
+}
+
+export async function updateVideoGenerationSettings(
+  token: string,
+  update: VideoGenerationSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  query.set("enabled", String(update.enabled));
+  query.set("model", update.model);
+  query.set("default_ratio", update.defaultRatio);
+  query.set("default_duration", String(update.defaultDuration));
+  query.set("default_resolution", update.defaultResolution);
+  query.set("generate_audio", String(update.generateAudio));
+  query.set("watermark", String(update.watermark));
+  return request<SettingsPayload>(
+    `${base}/api/settings/video-generation/update?${query}`,
     token,
   );
 }

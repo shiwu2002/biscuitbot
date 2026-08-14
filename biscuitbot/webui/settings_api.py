@@ -66,6 +66,7 @@ _BROWSER_RESTART_BEHAVIOR_BY_SECTION = {
     "runtime": "engineRestart",
     "browser": "engineRestart",
     "image": "engineRestart",
+    "video": "engineRestart",
     "apps": "engineRestart",
     "systemIo": "engineRestart",
     "advanced": "appRestart",
@@ -123,6 +124,21 @@ _IMAGE_GENERATION_ASPECT_RATIOS = {
     "2:3",
     "21:9",
 }
+
+# 视频生成（Seedance）可选项 —— 与 seedance_video.py 的约束保持一致。
+_VIDEO_RATIO_OPTIONS = {
+    "16:9",
+    "9:16",
+    "1:1",
+    "4:3",
+    "3:4",
+    "21:9",
+    "adaptive",
+}
+_VIDEO_RESOLUTION_OPTIONS = {"480p", "720p", "1080p", "4K"}
+_VIDEO_DURATION_MIN = 4
+_VIDEO_DURATION_MAX = 30
+
 _CONTEXT_WINDOW_TOKEN_OPTIONS = {65_536, 262_144}
 _MODEL_CONFIGURATION_SLUG_RE = re.compile(r"[^a-z0-9_-]+")
 _ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -711,6 +727,7 @@ def settings_payload(
 
     search_config = config.tools.web.search
     image_config = config.tools.image_generation
+    video_config = config.tools.seedance_video
     transcription = resolve_transcription_config(config)
     search_provider = (
         search_config.provider
@@ -813,6 +830,20 @@ def settings_payload(
             "max_images_per_turn": image_config.max_images_per_turn,
             "save_dir": image_config.save_dir,
             "providers": image_providers,
+        },
+        "video_generation": {
+            "enabled": video_config.enabled,
+            "api_key_configured": bool(
+                (video_config.api_key or "").strip()
+                or os.environ.get("ARK_API_KEY", "").strip()
+            ),
+            "model": video_config.model,
+            "default_ratio": video_config.default_ratio,
+            "default_duration": video_config.default_duration,
+            "default_resolution": video_config.default_resolution,
+            "generate_audio": video_config.generate_audio,
+            "watermark": video_config.watermark,
+            "save_dir": video_config.save_dir,
         },
         "screenshot": {
             "enabled": config.tools.screenshot.enable,
@@ -1396,6 +1427,101 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
         )
         if not selected_provider or not selected_provider["configured"]:
             raise WebUISettingsError("image generation provider is not configured")
+
+    if changed:
+        save_config(config)
+    return settings_payload(requires_restart=changed)
+
+
+def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
+    config = load_config()
+    video_config = config.tools.seedance_video
+    changed = False
+
+    enabled = _query_first(query, "enabled")
+    if enabled is not None:
+        parsed_enabled = _parse_bool(enabled, "enabled")
+        if video_config.enabled != parsed_enabled:
+            video_config.enabled = parsed_enabled
+            changed = True
+
+    model = _query_first(query, "model")
+    if model is not None:
+        model = model.strip()
+        if not model:
+            raise WebUISettingsError("video generation model is required")
+        if len(model) > 200:
+            raise WebUISettingsError("video generation model is too long")
+        if video_config.model != model:
+            video_config.model = model
+            changed = True
+
+    default_ratio = _query_first_alias(query, "default_ratio", "defaultRatio")
+    if default_ratio is not None:
+        default_ratio = default_ratio.strip()
+        if default_ratio not in _VIDEO_RATIO_OPTIONS:
+            raise WebUISettingsError("unsupported video generation aspect ratio")
+        if video_config.default_ratio != default_ratio:
+            video_config.default_ratio = default_ratio
+            changed = True
+
+    default_duration = _query_first_alias(query, "default_duration", "defaultDuration")
+    if default_duration is not None:
+        try:
+            parsed_duration = int(default_duration)
+        except ValueError:
+            raise WebUISettingsError("default_duration must be an integer") from None
+        if parsed_duration < _VIDEO_DURATION_MIN or parsed_duration > _VIDEO_DURATION_MAX:
+            raise WebUISettingsError("default_duration must be between 4 and 30")
+        if video_config.default_duration != parsed_duration:
+            video_config.default_duration = parsed_duration
+            changed = True
+
+    default_resolution = _query_first_alias(query, "default_resolution", "defaultResolution")
+    if default_resolution is not None:
+        default_resolution = default_resolution.strip()
+        if default_resolution:
+            if default_resolution not in _VIDEO_RESOLUTION_OPTIONS:
+                raise WebUISettingsError("unsupported video generation resolution")
+            parsed_resolution = default_resolution
+        else:
+            # 空值 = 模型自动决定（对应 default_resolution=None）。
+            parsed_resolution = None
+        if video_config.default_resolution != parsed_resolution:
+            video_config.default_resolution = parsed_resolution
+            changed = True
+
+    generate_audio = _query_first_alias(query, "generate_audio", "generateAudio")
+    if generate_audio is not None:
+        parsed_audio = _parse_bool(generate_audio, "generate_audio")
+        if video_config.generate_audio != parsed_audio:
+            video_config.generate_audio = parsed_audio
+            changed = True
+
+    watermark = _query_first_alias(query, "watermark", "watermark")
+    if watermark is not None:
+        parsed_watermark = _parse_bool(watermark, "watermark")
+        if video_config.watermark != parsed_watermark:
+            video_config.watermark = parsed_watermark
+            changed = True
+
+    save_dir = _query_first_alias(query, "save_dir", "saveDir")
+    if save_dir is not None:
+        save_dir = save_dir.strip()
+        if not save_dir:
+            raise WebUISettingsError("video generation save dir is required")
+        if len(save_dir) > 200:
+            raise WebUISettingsError("video generation save dir is too long")
+        if video_config.save_dir != save_dir:
+            video_config.save_dir = save_dir
+            changed = True
+
+    if video_config.enabled:
+        has_key = bool((video_config.api_key or "").strip()) or bool(
+            os.environ.get("ARK_API_KEY", "").strip()
+        )
+        if not has_key:
+            raise WebUISettingsError("seedance api key is required to enable video generation")
 
     if changed:
         save_config(config)

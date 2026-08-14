@@ -92,12 +92,15 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "appearance",
   "models",
   "image",
+  "video",
+  "vision",
   "voice",
   "browser",
   "apps",
   "automations",
   "skills",
   "runtime",
+  "systemIo",
   "advanced",
 ];
 

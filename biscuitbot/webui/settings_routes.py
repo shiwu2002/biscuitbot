@@ -35,6 +35,7 @@ from biscuitbot.webui.settings_api import (
     update_screenshot_settings,
     update_system_io_settings,
     update_transcription_settings,
+    update_video_generation_settings,
     update_web_search_settings,
 )
 from biscuitbot.webui.version_check import check_for_update
@@ -99,6 +100,8 @@ class WebUISettingsRouter:
             return self._handle_settings_web_search_update(request)
         if path == "/api/settings/image-generation/update":
             return self._handle_settings_image_generation_update(request)
+        if path == "/api/settings/video-generation/update":
+            return self._handle_settings_video_generation_update(request)
         if path == "/api/settings/screenshot/update":
             return self._handle_settings_screenshot_update(request)
         if path == "/api/settings/system-io/update":
@@ -266,6 +269,15 @@ class WebUISettingsRouter:
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="image"))
+
+    def _handle_settings_video_generation_update(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = update_video_generation_settings(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(self._with_restart_state(payload, section="video"))
 
     def _handle_settings_screenshot_update(self, request: WsRequest) -> Response:
         if not self._authorized(request):

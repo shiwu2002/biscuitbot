@@ -11,7 +11,8 @@
   绑定技能则用于限制该员工会话的技能可见范围（详见 ``context.py`` / ``loop.py``）；
 - 文件在缺失时自动种子一组内置员工（阿伟 / 灵溪 / 沐辰 / 阿凯 / 静娴 / 达芬奇 / 宫本，
   每位带 ``title`` 职位小标签）；老文件通过 ``builtin_seeded`` 补全缺失内置员工，
-  通过 ``builtin_version`` 一次性同步内置记录的 name/title/avatar/persona。
+  通过 ``builtin_version`` 在版本落后时一次性同步内置目录：并入本次新增的内置员工，
+  并刷新已有内置记录的 name/title/avatar/persona。
 
 写入约定：
 - 读按需进行；只有 WebUI 侧（``EmployeeStore`` 的 HTTP 句柄）执行写操作；
@@ -33,8 +34,9 @@ from loguru import logger
 # 员工数据文件 schema 版本
 EMPLOYEES_SCHEMA_VERSION = 1
 # 内置员工目录版本：每次内置员工（name/title/avatar/persona/skills）整体变更时 +1，
-# 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工、不找回已删内置员工。
-BUILTIN_EMPLOYEES_VERSION = 6
+# 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工。
+# 注意：版本落后时会把本次新增的内置员工并入现有文件（不区分是否曾被用户删除）。
+BUILTIN_EMPLOYEES_VERSION = 7
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
@@ -206,10 +208,10 @@ class EmployeeStore:
         """读取员工列表；文件缺失时种子默认员工并写入。
 
         老文件（缺少 ``builtin_seeded`` 标记）会做一次性的内置员工补全：
-        缺失的内置员工按 id 并入，并写回标记。此后不再自动合并，
-        用户手动删除过的内置员工不会被再次找回。
+        缺失的内置员工按 id 并入，并写回标记。
 
-        内置目录版本（``builtin_version``）落后时，会同步现有内置记录的
+        内置目录版本（``builtin_version``）落后时，先并入本次新增的内置员工
+        （避免新增的内置员工在旧文件上永远不出现），再同步现有内置记录的
         name/title/avatar/persona 为新版本，自建员工不受影响。
         """
         if not self.path.is_file():
@@ -239,8 +241,8 @@ class EmployeeStore:
         needs_sync = raw.get("builtin_version", 1) < BUILTIN_EMPLOYEES_VERSION
         if needs_merge or needs_sync:
             out = normalized
-            if needs_merge:
-                out = self._merge_missing_builtins(out)
+            # 初次种子补全或版本落后时，都把缺失的内置员工并入（含本次升级新增的）
+            out = self._merge_missing_builtins(out)
             if needs_sync:
                 out = self._sync_builtin_records(out)
             try:
@@ -266,7 +268,7 @@ class EmployeeStore:
         """把现有内置记录同步为新版本字段（name/title/avatar/system_prompt/skills）。
 
         仅覆盖已存在的内置记录，保留 id/created_at/enabled；
-        不新增（不找回）已删除的内置员工，不动自建员工。
+        不新增记录（新增由调用方先经 ``_merge_missing_builtins`` 并入），不动自建员工。
         """
         seeds = {e["id"]: e for e in self._seed_default()}
         out = []

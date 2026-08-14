@@ -85,6 +85,20 @@
       "automations": "自動任務",
       "skills": "技能"
     },
+    "subtabs": {
+      "model": {
+        "llm": "LLM",
+        "image": "文生圖",
+        "video": "文生影片",
+        "vision": "視覺理解",
+        "asr": "ASR"
+      },
+      "system": {
+        "runtime": "執行",
+        "systemIo": "系統 IO",
+        "advanced": "安全"
+      }
+    },
     "sections": {
       "interface": "介面",
       "ai": "AI",
@@ -95,6 +109,8 @@
       "presets": "預設",
       "imageGeneration": "圖片生成",
       "imageDefaults": "預設值",
+      "videoGeneration": "影片生成",
+      "videoDefaults": "生成參數",
         "vision": "視覺",
       "visionCapture": "截圖",
       "webSearch": "網頁搜尋",
@@ -139,6 +155,15 @@
       "defaultImageSize": "預設尺寸",
       "maxImagesPerTurn": "每輪最大圖片數",
       "imageSaveDir": "儲存目錄",
+      "videoGeneration": "影片生成",
+      "videoProviderStatus": "金鑰狀態",
+      "videoModel": "影片模型",
+      "videoRatio": "畫面比例",
+      "videoDuration": "時長",
+      "videoResolution": "解析度",
+      "videoGenerateAudio": "生成音軌",
+      "videoWatermark": "浮水印",
+      "videoSaveDir": "儲存目錄",
       "screenshot": "截圖",
       "visionModel": "API 憑證來源",
       "visionModelOverride": "視覺理解模型",
@@ -192,6 +217,14 @@
       "defaultAspectRatio": "提示詞未指定比例時使用。",
       "defaultImageSize": "傳送給支援此選項的供應商的尺寸提示。",
       "maxImagesPerTurn": "單次 generate_image 請求可生成的圖片上限。",
+      "videoGeneration": "在對話中暴露影片生成能力（當 Seedance 金鑰已設定時）。",
+      "videoProviderStatus": "Seedance API 金鑰由 config.json 維護。",
+      "videoModel": "傳送給 Seedance 的影片模型名稱。",
+      "videoRatio": "提示詞未指定時使用的預設畫面比例。",
+      "videoDuration": "產生的影片時長（秒），4–30。",
+      "videoResolution": "提示詞未指定時使用的預設解析度；「模型自動決定」交由模型選擇。",
+      "videoGenerateAudio": "產生帶音軌的影片。",
+      "videoWatermark": "為產生的影片加上浮水印。",
       "screenshot": "允許智能體擷取螢幕截圖以理解目前螢幕狀態。",
       "visionModel": "選擇一個模型預設，為上方的視覺模型提供 API 金鑰和介面位址。",
       "visionModelOverride": "用於解讀截圖的多模態模型 ID（如 gpt-4o、qwen-vl-max、claude-3-5-sonnet）。留空則使用預設的預設模型。",
@@ -365,7 +398,9 @@
     "providers": {
       "searchPlaceholder": "搜尋供應商",
       "noMatches": "沒有符合的供應商。",
-      "saveProvider": "儲存供應商"
+      "keyStatus": "金鑰狀態",
+      "readOnlyHint": "金鑰與位址由內部設定檔（config.json）統一維護，此處僅展示狀態。",
+      "readOnlyDescription": "已設定的供應商金鑰與位址由內部設定檔（config.json）統一維護，此處僅展示設定狀態。"
     },
     "image": {
       "selectProvider": "選擇供應商",
@@ -373,6 +408,12 @@
       "selectSize": "選擇尺寸",
       "configureProvider": "配置供應商",
       "missingCredential": "啟用圖片生成前請先配置此供應商。"
+    },
+    "video": {
+      "selectRatio": "選擇畫面比例",
+      "selectResolution": "選擇解析度",
+      "resolutionAuto": "模型自動決定",
+      "missingCredential": "在 config.json 設定 Seedance 金鑰後再啟用影片生成。"
     },
     "vision": {
       "selectModel": "選擇模型",

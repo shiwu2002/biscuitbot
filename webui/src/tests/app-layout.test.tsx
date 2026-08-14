@@ -101,6 +101,17 @@ function baseSettingsPayload() {
       save_dir: "generated",
       providers: [],
     },
+    video_generation: {
+      enabled: false,
+      api_key_configured: false,
+      model: "doubao-seedance",
+      default_ratio: "16:9",
+      default_duration: 6,
+      default_resolution: null,
+      generate_audio: true,
+      watermark: false,
+      save_dir: "generated/videos",
+    },
     screenshot: {
       enabled: false,
       max_width: 1920,
@@ -1480,6 +1491,17 @@ describe("App layout", () => {
                   },
                 ],
               },
+              video_generation: {
+                enabled: false,
+                api_key_configured: false,
+                model: "doubao-seedance",
+                default_ratio: "16:9",
+                default_duration: 6,
+                default_resolution: null,
+                generate_audio: true,
+                watermark: false,
+                save_dir: "generated/videos",
+              },
               screenshot: {
                 enabled: false,
                 max_width: 1920,
@@ -1557,10 +1579,11 @@ describe("App layout", () => {
     );
     expect(within(settingsNav).getByRole("button", { name: "模型" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "提供商" })).not.toBeInTheDocument();
-    expect(within(settingsNav).getByRole("button", { name: "图片" })).toBeInTheDocument();
+    // 侧边栏收敛为 5 个顶层标签：概览/外观/模型/网页/系统；图片、安全等并入二级子区
+    expect(within(settingsNav).getByRole("button", { name: "系统" })).toBeInTheDocument();
     expect(within(settingsNav).getByRole("button", { name: "网页" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "应用" })).not.toBeInTheDocument();
-    expect(within(settingsNav).getByRole("button", { name: "安全" })).toBeInTheDocument();
+    expect(within(settingsNav).queryByRole("button", { name: "安全" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
     fireEvent.click(within(settingsNav).getByRole("button", { name: "外观" }));
     expect(screen.getByText("品牌 Logo")).toBeInTheDocument();
@@ -1611,23 +1634,26 @@ describe("App layout", () => {
       expect(providerLabel).toBeTruthy();
       fireEvent.click(providerLabel!);
     };
+    // 收权后：提供商列表只读，展开仅展示密钥状态与地址，无编辑/保存入口。
     clickProviderRow("OpenAI");
-    fireEvent.click(screen.getByRole("button", { name: "编辑" }));
-    fireEvent.change(screen.getByPlaceholderText("留空则保留当前 key"), {
-      target: { value: "unsaved-openai-key" },
-    });
-    clickProviderRow("OpenRouter");
-    clickProviderRow("OpenAI");
+    expect(screen.getByText("密钥状态")).toBeInTheDocument();
     expect(screen.getByText("open••••-key")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("unsaved-openai-key")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("留空则保留当前 key")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/此处仅展示状态/),
+    ).toBeInTheDocument();
     clickProviderRow("Ant Ling");
-    expect(screen.getByDisplayValue("https://api.ant-ling.com/v1")).toBeInTheDocument();
+    expect(screen.getByText("https://api.ant-ling.com/v1")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("https://api.ant-ling.com/v1")).not.toBeInTheDocument();
     clickProviderRow("Atomic Chat");
-    expect(screen.getByDisplayValue("http://localhost:1337/v1")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "保存提供商" })).toBeEnabled();
+    expect(screen.getByText("http://localhost:1337/v1")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("http://localhost:1337/v1")).not.toBeInTheDocument();
 
-    fireEvent.click(within(settingsNav).getByRole("button", { name: "图片" }));
-    expect(screen.getByRole("heading", { name: "图片" })).toBeInTheDocument();
+    // 图片生成是「模型」tab 的二级子区（文生图），经子区切换条进入
+    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }));
+    expect(screen.getByRole("heading", { name: "模型" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "图片生成" })).toBeInTheDocument();
     expect(screen.getByText("提供商状态")).toBeInTheDocument();
     expect(screen.getByDisplayValue("openai/gpt-5.4-image-2")).toBeInTheDocument();
@@ -1697,7 +1723,8 @@ describe("App layout", () => {
     expect(await screen.findByRole("heading", { name: "模型" })).toBeInTheDocument();
     expect(window.location.hash).toBe("#/settings?section=models");
 
-    fireEvent.click(within(settingsNav).getByRole("button", { name: "语音" }));
+    // 语音（ASR）是「模型」tab 的二级子区，经子区切换条进入
+    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "ASR" }));
 
     expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
     expect(window.location.hash).toBe("#/settings?section=voice");
@@ -1822,6 +1849,17 @@ describe("App layout", () => {
                     default_api_base: "https://openrouter.ai/api/v1",
                   },
                 ],
+              },
+              video_generation: {
+                enabled: false,
+                api_key_configured: false,
+                model: "doubao-seedance",
+                default_ratio: "16:9",
+                default_duration: 6,
+                default_resolution: null,
+                generate_audio: true,
+                watermark: false,
+                save_dir: "generated/videos",
               },
               screenshot: {
                 enabled: false,

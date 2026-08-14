@@ -46,7 +46,6 @@ import {
   RotateCcw,
   Search,
   Server,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -89,8 +88,6 @@ import {
   fetchMcpPresets,
   fetchProviderModels,
   importMcpConfig,
-  loginProviderOAuth,
-  logoutProviderOAuth,
   runAutomationAction,
   runCliAppAction,
   runMcpPresetAction,
@@ -101,11 +98,11 @@ import {
   updateMcpServerTools,
   updateModelConfiguration,
   updateNetworkSafetySettings,
-  updateProviderSettings,
   updateScreenshotSettings,
   updateSettings,
   updateSystemIoSettings,
   updateTranscriptionSettings,
+  updateVideoGenerationSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
 import { notifyCliAppsChanged } from "@/lib/cli-app-events";
@@ -137,6 +134,7 @@ import type {
   SystemIoSettingsUpdate,
   SkillSummary,
   TranscriptionSettingsUpdate,
+  VideoGenerationSettingsUpdate,
   WebSearchSettingsUpdate,
   WebuiDefaultAccessMode,
 } from "@/lib/types";
@@ -146,6 +144,7 @@ export type SettingsSectionKey =
   | "appearance"
   | "models"
   | "image"
+  | "video"
   | "vision"
   | "voice"
   | "browser"
@@ -191,7 +190,7 @@ interface ModelConfigurationDraft {
   model: string;
 }
 
-type PendingRestartSection = "runtime" | "browser" | "image" | "vision" | "systemIo";
+type PendingRestartSection = "runtime" | "browser" | "image" | "video" | "vision" | "systemIo";
 type PendingRestartSections = Record<PendingRestartSection, boolean>;
 type RestartAwarePayload = {
   requires_restart?: boolean;
@@ -199,8 +198,6 @@ type RestartAwarePayload = {
   runtime_surface?: SettingsPayload["runtime_surface"];
   runtime_capabilities?: SettingsPayload["runtime_capabilities"];
 };
-type ProviderApiType = "auto" | "chat_completions" | "responses";
-type ProviderForm = { apiKey: string; apiBase: string; apiType: ProviderApiType };
 type CustomMcpTransport = "stdio" | "streamableHttp" | "sse";
 
 const CONTEXT_WINDOW_TOKEN_OPTIONS = [65_536, 262_144] as const;
@@ -252,11 +249,6 @@ const DEFAULT_LOCAL_PREFS: LocalPreferences = {
   codeWrap: true,
   brandLogos: true,
 };
-const OPENAI_API_TYPE_OPTIONS: Array<{ value: ProviderApiType; label: string }> = [
-  { value: "auto", label: "Auto" },
-  { value: "chat_completions", label: "Chat Completions" },
-  { value: "responses", label: "Responses" },
-];
 
 const LOCAL_UNCONFIGURED_PROVIDER_ORDER = new Map(
   ["vllm", "ollama", "lm_studio", "atomic_chat", "ovms"].map((name, index) => [
@@ -267,10 +259,13 @@ const LOCAL_UNCONFIGURED_PROVIDER_ORDER = new Map(
 
 const IMAGE_ASPECT_RATIO_OPTIONS = ["1:1", "3:4", "9:16", "4:3", "16:9", "3:2", "2:3", "21:9"];
 const IMAGE_SIZE_OPTIONS = ["1K", "2K", "4K", "1024x1024", "1536x1024", "1024x1536"];
+const VIDEO_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"];
+const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"];
 const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   runtime: false,
   browser: false,
   image: false,
+  video: false,
   vision: false,
   systemIo: false,
 };
@@ -393,6 +388,16 @@ const DEFAULT_IMAGE_GENERATION_FORM: ImageGenerationSettingsUpdate = {
   maxImagesPerTurn: 4,
 };
 
+const DEFAULT_VIDEO_GENERATION_FORM: VideoGenerationSettingsUpdate = {
+  enabled: false,
+  model: "doubao-seedance-2-5-260628",
+  defaultRatio: "16:9",
+  defaultDuration: 5,
+  defaultResolution: "",
+  generateAudio: false,
+  watermark: true,
+};
+
 const DEFAULT_SCREENSHOT_FORM: ScreenshotSettingsUpdate = {
   enabled: false,
   visionModel: null,
@@ -482,6 +487,18 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
   };
 }
 
+function videoGenerationFormFromPayload(payload: SettingsPayload): VideoGenerationSettingsUpdate {
+  return {
+    enabled: payload.video_generation.enabled,
+    model: payload.video_generation.model,
+    defaultRatio: payload.video_generation.default_ratio,
+    defaultDuration: payload.video_generation.default_duration,
+    defaultResolution: payload.video_generation.default_resolution ?? "",
+    generateAudio: payload.video_generation.generate_audio,
+    watermark: payload.video_generation.watermark,
+  };
+}
+
 function screenshotFormFromPayload(payload: SettingsPayload): ScreenshotSettingsUpdate {
   return {
     enabled: payload.screenshot.enabled,
@@ -536,6 +553,7 @@ function pendingRestartSectionsFromPayload(payload: SettingsPayload): PendingRes
     runtime: sections.includes("runtime"),
     browser: sections.includes("browser"),
     image: sections.includes("image"),
+    video: sections.includes("video"),
     vision: sections.includes("vision"),
     systemIo: sections.includes("systemIo"),
   };
@@ -580,9 +598,9 @@ export function SettingsView({
   });
   const [cliAppsAction, setCliAppsAction] = useState<string | null>(null);
   const [mcpPresetAction, setMcpPresetAction] = useState<string | null>(null);
-  const [providerSaving, setProviderSaving] = useState<string | null>(null);
   const [webSearchSaving, setWebSearchSaving] = useState(false);
   const [imageGenerationSaving, setImageGenerationSaving] = useState(false);
+  const [videoGenerationSaving, setVideoGenerationSaving] = useState(false);
   const [transcriptionSaving, setTranscriptionSaving] = useState(false);
   const [networkSafetySaving, setNetworkSafetySaving] = useState(false);
   const [screenshotSaving, setScreenshotSaving] = useState(false);
@@ -611,9 +629,6 @@ export function SettingsView({
   const [mcpFieldValues, setMcpFieldValues] = useState<Record<string, Record<string, string>>>({});
   const [customMcpForm, setCustomMcpForm] = useState<CustomMcpForm>(DEFAULT_CUSTOM_MCP_FORM);
   const [mcpConfigImport, setMcpConfigImport] = useState("");
-  const [providerForms, setProviderForms] = useState<Record<string, ProviderForm>>({});
-  const [visibleProviderKeys, setVisibleProviderKeys] = useState<Record<string, boolean>>({});
-  const [editingProviderKeys, setEditingProviderKeys] = useState<Record<string, boolean>>({});
   const [pendingRestartSections, setPendingRestartSections] = useState<PendingRestartSections>(
     EMPTY_PENDING_RESTART_SECTIONS,
   );
@@ -626,6 +641,12 @@ export function SettingsView({
       initialSettings
         ? imageGenerationFormFromPayload(initialSettings)
         : DEFAULT_IMAGE_GENERATION_FORM,
+  );
+  const [videoGenerationForm, setVideoGenerationForm] = useState<VideoGenerationSettingsUpdate>(
+    () =>
+      initialSettings
+        ? videoGenerationFormFromPayload(initialSettings)
+        : DEFAULT_VIDEO_GENERATION_FORM,
   );
   const [screenshotForm, setScreenshotForm] = useState<ScreenshotSettingsUpdate>(() =>
     initialSettings ? screenshotFormFromPayload(initialSettings) : DEFAULT_SCREENSHOT_FORM,
@@ -668,6 +689,7 @@ export function SettingsView({
     setForm(agentDraftFromPayload(payload));
     setWebSearchForm((prev) => webSearchFormFromPayload(payload, prev));
     setImageGenerationForm(imageGenerationFormFromPayload(payload));
+    setVideoGenerationForm(videoGenerationFormFromPayload(payload));
     setScreenshotForm(screenshotFormFromPayload(payload));
     setSystemIoForm(systemIoFormFromPayload(payload));
     setTranscriptionForm(transcriptionFormFromPayload(payload));
@@ -834,21 +856,6 @@ export function SettingsView({
     }
   }, [localPrefs]);
 
-  useEffect(() => {
-    if (!settings) return;
-    setProviderForms((prev) => {
-      const next = { ...prev };
-      for (const provider of settings.providers) {
-        next[provider.name] = {
-          apiKey: next[provider.name]?.apiKey ?? "",
-          apiBase: next[provider.name]?.apiBase ?? provider.api_base ?? provider.default_api_base ?? "",
-          apiType: next[provider.name]?.apiType ?? provider.api_type ?? "auto",
-        };
-      }
-      return next;
-    });
-  }, [settings]);
-
   const modelDirty = useMemo(() => {
     if (!settings) return false;
     const activePresetName = modelPresetValue(settings);
@@ -886,6 +893,20 @@ export function SettingsView({
       imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn
     );
   }, [imageGenerationForm, settings]);
+
+  const videoGenerationDirty = useMemo(() => {
+    if (!settings) return false;
+    return (
+      videoGenerationForm.enabled !== settings.video_generation.enabled ||
+      videoGenerationForm.model !== settings.video_generation.model ||
+      videoGenerationForm.defaultRatio !== settings.video_generation.default_ratio ||
+      videoGenerationForm.defaultDuration !== settings.video_generation.default_duration ||
+      videoGenerationForm.defaultResolution !==
+        (settings.video_generation.default_resolution ?? "") ||
+      videoGenerationForm.generateAudio !== settings.video_generation.generate_audio ||
+      videoGenerationForm.watermark !== settings.video_generation.watermark
+    );
+  }, [videoGenerationForm, settings]);
 
   const screenshotDirty = useMemo(() => {
     if (!settings) return false;
@@ -1130,6 +1151,24 @@ export function SettingsView({
     }
   };
 
+  const saveVideoGenerationSettings = async () => {
+    if (!settings || !videoGenerationDirty || videoGenerationSaving) return;
+    setVideoGenerationSaving(true);
+    try {
+      const payload = await updateVideoGenerationSettings(token, videoGenerationForm);
+      applyPayload(payload);
+      if (payload.requires_restart) {
+        setPendingRestartSections((prev) => ({ ...prev, video: true }));
+      }
+      await maybeRestartHostEngine(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setVideoGenerationSaving(false);
+    }
+  };
+
   const saveScreenshotSettings = async () => {
     if (!settings || !screenshotDirty || screenshotSaving) return;
     setScreenshotSaving(true);
@@ -1202,67 +1241,6 @@ export function SettingsView({
     }
   };
 
-  const saveProvider = async (providerName: string) => {
-    if (providerSaving) return;
-    const provider = settings?.providers.find((item) => item.name === providerName);
-    if (!provider) return;
-    if (provider.auth_type === "oauth") return;
-    const providerForm = providerForms[providerName] ?? { apiKey: "", apiBase: "", apiType: "auto" };
-    const apiKey = providerForm.apiKey.trim();
-    const apiKeyRequired = provider.api_key_required ?? true;
-    if (!provider.configured && apiKeyRequired && !apiKey) {
-      setError(t("settings.byok.apiKeyRequired"));
-      return;
-    }
-    setProviderSaving(providerName);
-    try {
-      const payload = await updateProviderSettings(token, {
-        provider: providerName,
-        apiKey: apiKey || undefined,
-        apiBase: providerForm.apiBase.trim(),
-        apiType: providerForm.apiType,
-      });
-      applyPayload(payload);
-      if (payload.requires_restart) {
-        setPendingRestartSections((prev) => ({ ...prev, image: true }));
-      }
-      await maybeRestartHostEngine(payload);
-      setProviderForms((prev) => ({
-        ...prev,
-        [providerName]: {
-          apiKey: "",
-          apiBase: providerForm.apiBase.trim(),
-          apiType: providerForm.apiType,
-        },
-      }));
-      setVisibleProviderKeys((prev) => ({ ...prev, [providerName]: false }));
-      setEditingProviderKeys((prev) => ({ ...prev, [providerName]: false }));
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setProviderSaving(null);
-    }
-  };
-
-  const runProviderOAuth = async (providerName: string, action: "login" | "logout") => {
-    if (providerSaving) return;
-    setProviderSaving(providerName);
-    try {
-      const payload =
-        action === "login"
-          ? await loginProviderOAuth(token, providerName)
-          : await logoutProviderOAuth(token, providerName);
-      applyPayload(payload);
-      setExpandedProvider(providerName);
-      setError(null);
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setProviderSaving(null);
-    }
-  };
-
   const saveWebSearch = async () => {
     if (!settings || webSearchSaving) return;
     const provider = settings.web_search.providers.find((item) => item.name === webSearchForm.provider);
@@ -1320,25 +1298,9 @@ export function SettingsView({
     }
   };
 
-  const resetProviderDraft = useCallback((providerName: string) => {
-    const provider = settings?.providers.find((item) => item.name === providerName);
-    if (!provider) return;
-    setProviderForms((prev) => ({
-      ...prev,
-      [providerName]: {
-        apiKey: "",
-        apiBase: provider.api_base ?? provider.default_api_base ?? "",
-        apiType: provider.api_type ?? "auto",
-      },
-    }));
-    setVisibleProviderKeys((prev) => ({ ...prev, [providerName]: false }));
-    setEditingProviderKeys((prev) => ({ ...prev, [providerName]: false }));
-  }, [settings]);
-
   const handleToggleProvider = useCallback((providerName: string) => {
-    if (expandedProvider) resetProviderDraft(expandedProvider);
     setExpandedProvider(expandedProvider === providerName ? null : providerName);
-  }, [expandedProvider, resetProviderDraft]);
+  }, [expandedProvider]);
 
   const resetWebSearchDraft = useCallback(() => {
     if (!settings) return;
@@ -1367,29 +1329,6 @@ export function SettingsView({
     setWebSearchKeyVisible(false);
     setWebSearchKeyEditing(false);
   }, [settings]);
-
-  const toggleProviderKeyVisibility = (providerName: string) => {
-    const isVisible = visibleProviderKeys[providerName];
-    setVisibleProviderKeys((prev) => ({ ...prev, [providerName]: !isVisible }));
-  };
-
-  const toggleProviderKeyEditing = (providerName: string) => {
-    setEditingProviderKeys((prev) => {
-      const nextEditing = !prev[providerName];
-      if (!nextEditing) {
-        setProviderForms((forms) => ({
-          ...forms,
-          [providerName]: {
-            apiKey: "",
-            apiBase: forms[providerName]?.apiBase ?? "",
-            apiType: forms[providerName]?.apiType ?? "auto",
-          },
-        }));
-        setVisibleProviderKeys((visible) => ({ ...visible, [providerName]: false }));
-      }
-      return { ...prev, [providerName]: nextEditing };
-    });
-  };
 
   const handleCliAppAction = async (
     action: "install" | "update" | "uninstall" | "test",
@@ -1557,6 +1496,139 @@ export function SettingsView({
     }
   };
 
+  /** 「模型」tab：二级切换条 + 各子区面板（LLM / 文生图 / 文生视频占位 / 视图理解 / ASR）。 */
+  const renderModelsTab = (sub: SettingsSectionKey, settings: SettingsPayload) => (
+    <div className="space-y-8">
+      <SettingsSubTabs tabs={MODEL_SUB_TABS} active={sub} onSelect={selectSection} />
+      {sub === "models" ? (
+        <div className="space-y-8">
+          <ModelsSettings
+            token={token}
+            form={form}
+            setForm={setForm}
+            settings={settings}
+            dirty={modelDirty}
+            saving={saving}
+            showBrandLogos={localPrefs.brandLogos}
+            onSave={saveModelSettings}
+            onCreateConfiguration={openModelConfigurationDialog}
+          />
+          <ProvidersSettings
+            settings={settings}
+            expandedProvider={expandedProvider}
+            query={providerQuery}
+            showBrandLogos={localPrefs.brandLogos}
+            onQueryChange={setProviderQuery}
+            onToggleProvider={handleToggleProvider}
+          />
+        </div>
+      ) : null}
+      {sub === "image" ? (
+        <ImageGenerationSettings
+          settings={settings}
+          form={imageGenerationForm}
+          dirty={imageGenerationDirty}
+          saving={imageGenerationSaving}
+          onChangeForm={setImageGenerationForm}
+          onSave={saveImageGenerationSettings}
+          onOpenProviders={() => selectSection("models")}
+          showBrandLogos={localPrefs.brandLogos}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.image}
+        />
+      ) : null}
+      {sub === "video" ? (
+        <VideoGenerationSettings
+          settings={settings}
+          form={videoGenerationForm}
+          dirty={videoGenerationDirty}
+          saving={videoGenerationSaving}
+          onChangeForm={setVideoGenerationForm}
+          onSave={saveVideoGenerationSettings}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.video}
+        />
+      ) : null}
+      {sub === "vision" ? (
+        <VisionSettings
+          settings={settings}
+          form={screenshotForm}
+          dirty={screenshotDirty}
+          saving={screenshotSaving}
+          onChangeForm={setScreenshotForm}
+          onSave={saveScreenshotSettings}
+          onOpenModels={() => selectSection("models")}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.vision}
+        />
+      ) : null}
+      {sub === "voice" ? (
+        <TranscriptionSettings
+          settings={settings}
+          form={transcriptionForm}
+          dirty={transcriptionDirty}
+          saving={transcriptionSaving}
+          onChangeForm={setTranscriptionForm}
+          onSave={saveTranscriptionSettings}
+          onOpenProviders={() => selectSection("models")}
+          showBrandLogos={localPrefs.brandLogos}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.browser}
+        />
+      ) : null}
+    </div>
+  );
+
+  /** 「系统」tab：二级切换条 + 各子区面板（运行 / 系统IO / 安全）。 */
+  const renderSystemTab = (sub: SettingsSectionKey, settings: SettingsPayload) => (
+    <div className="space-y-8">
+      <SettingsSubTabs tabs={SYSTEM_SUB_TABS} active={sub} onSelect={selectSection} />
+      {sub === "runtime" ? (
+        <RuntimeSettings
+          form={form}
+          setForm={setForm}
+          settings={settings}
+          dirty={runtimeDirty}
+          saving={saving}
+          onSave={saveRuntimeSettings}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.runtime}
+        />
+      ) : null}
+      {sub === "systemIo" ? (
+        <SystemIoSettings
+          settings={settings}
+          form={systemIoForm}
+          dirty={systemIoDirty}
+          saving={systemIoSaving}
+          onChangeForm={setSystemIoForm}
+          onSave={saveSystemIoSettings}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.systemIo}
+        />
+      ) : null}
+      {sub === "advanced" ? (
+        <AdvancedSettings
+          form={networkSafetyForm}
+          dirty={networkSafetyDirty}
+          saving={networkSafetySaving}
+          isNativeHostSurface={(settings.surface ?? settings.runtime_surface) === "native"}
+          onChangeForm={setNetworkSafetyForm}
+          onSave={saveNetworkSafetySettings}
+          onRestart={restartViaSettingsSurface}
+          isRestarting={isRestarting || hostEngineApplying}
+          requiresRestartPending={pendingRestartSections.runtime}
+        />
+      ) : null}
+    </div>
+  );
+
   const renderSection = () => {
     if (!settings) return null;
     switch (activeSection) {
@@ -1579,116 +1651,11 @@ export function SettingsView({
           />
         );
       case "models":
-        return (
-          <div className="space-y-8">
-            <ModelsSettings
-              token={token}
-              form={form}
-              setForm={setForm}
-              settings={settings}
-              dirty={modelDirty}
-              saving={saving}
-              showBrandLogos={localPrefs.brandLogos}
-              providerSaving={providerSaving}
-              onProviderOAuthLogin={(provider) => runProviderOAuth(provider, "login")}
-              onSave={saveModelSettings}
-              onCreateConfiguration={openModelConfigurationDialog}
-            />
-            <ProvidersSettings
-              settings={settings}
-              expandedProvider={expandedProvider}
-              providerForms={providerForms}
-              visibleProviderKeys={visibleProviderKeys}
-              editingProviderKeys={editingProviderKeys}
-              providerSaving={providerSaving}
-              query={providerQuery}
-              showBrandLogos={localPrefs.brandLogos}
-              onQueryChange={setProviderQuery}
-              onToggleProvider={handleToggleProvider}
-              onToggleProviderKey={toggleProviderKeyVisibility}
-              onToggleProviderKeyEditing={toggleProviderKeyEditing}
-              onChangeProviderForm={(provider, value) =>
-                setProviderForms((prev) => ({
-                  ...prev,
-                  [provider]: {
-                    apiKey: prev[provider]?.apiKey ?? "",
-                    apiBase: prev[provider]?.apiBase ?? "",
-                    apiType: prev[provider]?.apiType ?? "auto",
-                    ...value,
-                  },
-                }))
-              }
-              onSaveProvider={saveProvider}
-              onProviderOAuthLogin={(provider) => runProviderOAuth(provider, "login")}
-              onProviderOAuthLogout={(provider) => runProviderOAuth(provider, "logout")}
-              onResetProviderDraft={resetProviderDraft}
-              imageProviderRestartPending={pendingRestartSections.image}
-              onRestart={restartViaSettingsSurface}
-              isRestarting={isRestarting || hostEngineApplying}
-            />
-          </div>
-        );
       case "image":
-        return (
-          <ImageGenerationSettings
-            settings={settings}
-            form={imageGenerationForm}
-            dirty={imageGenerationDirty}
-            saving={imageGenerationSaving}
-            onChangeForm={setImageGenerationForm}
-            onSave={saveImageGenerationSettings}
-            onOpenProviders={() => selectSection("models")}
-            showBrandLogos={localPrefs.brandLogos}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.image}
-          />
-        );
+      case "video":
       case "vision":
-        return (
-          <VisionSettings
-            settings={settings}
-            form={screenshotForm}
-            dirty={screenshotDirty}
-            saving={screenshotSaving}
-            onChangeForm={setScreenshotForm}
-            onSave={saveScreenshotSettings}
-            onOpenModels={() => selectSection("models")}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.vision}
-          />
-        );
-      case "systemIo":
-        return (
-          <SystemIoSettings
-            settings={settings}
-            form={systemIoForm}
-            dirty={systemIoDirty}
-            saving={systemIoSaving}
-            onChangeForm={setSystemIoForm}
-            onSave={saveSystemIoSettings}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.systemIo}
-          />
-        );
       case "voice":
-        return (
-          <TranscriptionSettings
-            settings={settings}
-            form={transcriptionForm}
-            dirty={transcriptionDirty}
-            saving={transcriptionSaving}
-            onChangeForm={setTranscriptionForm}
-            onSave={saveTranscriptionSettings}
-            onOpenProviders={() => selectSection("models")}
-            showBrandLogos={localPrefs.brandLogos}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.browser}
-          />
-        );
+        return renderModelsTab(activeSection, settings);
       case "browser":
         return (
           <WebSettings
@@ -1784,33 +1751,9 @@ export function SettingsView({
       case "skills":
         return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
       case "runtime":
-        return (
-          <RuntimeSettings
-            form={form}
-            setForm={setForm}
-            settings={settings}
-            dirty={runtimeDirty}
-            saving={saving}
-            onSave={saveRuntimeSettings}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.runtime}
-          />
-        );
+      case "systemIo":
       case "advanced":
-        return (
-          <AdvancedSettings
-            form={networkSafetyForm}
-            dirty={networkSafetyDirty}
-            saving={networkSafetySaving}
-            isNativeHostSurface={(settings.surface ?? settings.runtime_surface) === "native"}
-            onChangeForm={setNetworkSafetyForm}
-            onSave={saveNetworkSafetySettings}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.runtime}
-          />
-        );
+        return renderSystemTab(activeSection, settings);
       default:
         return null;
     }
@@ -1888,7 +1831,10 @@ export function SettingsView({
               </p>
             ) : null}
             <h1 className="text-[24px] font-normal leading-tight tracking-normal text-foreground sm:text-[28px]">
-              {text(`settings.nav.${activeSection}`, titleForSection(activeSection))}
+              {text(
+                `settings.nav.${topLevelSection(activeSection)}`,
+                titleForSection(topLevelSection(activeSection)),
+              )}
             </h1>
           </div>
 
@@ -1919,17 +1865,41 @@ export function SettingsView({
   );
 }
 
+/** 侧边栏顶层标签：概览 / 外观 / 模型 / 网页 / 系统。模型与系统各自带二级子区。 */
 const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fallback: string }> = [
   { key: "overview", icon: Activity, fallback: "Overview" },
   { key: "appearance", icon: Palette, fallback: "Appearance" },
   { key: "models", icon: SlidersHorizontal, fallback: "Models" },
-  { key: "image", icon: ImageIcon, fallback: "Image" },
-  { key: "vision", icon: Eye, fallback: "Vision" },
-  { key: "voice", icon: Mic, fallback: "Voice" },
   { key: "browser", icon: Globe2, fallback: "Web" },
   { key: "runtime", icon: Server, fallback: "System" },
-  { key: "systemIo", icon: Cpu, fallback: "System IO" },
-  { key: "advanced", icon: ShieldCheck, fallback: "Security" },
+];
+
+/** 「模型」父标签家族的 section（含未上线的文生视频占位）。 */
+const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "image", "video", "vision", "voice"];
+/** 「系统」父标签家族的 section。 */
+const SYSTEM_TAB_KEYS: SettingsSectionKey[] = ["runtime", "systemIo", "advanced"];
+
+/** 子区 section → 顶层标签键（侧边栏高亮与页头标题归一化用）。 */
+function topLevelSection(section: SettingsSectionKey): SettingsSectionKey {
+  if (MODEL_TAB_KEYS.includes(section)) return "models";
+  if (SYSTEM_TAB_KEYS.includes(section)) return "runtime";
+  return section;
+}
+
+/** 模型 tab 二级切换条（子区键即 section key，点选即 selectSection）。 */
+const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }> = [
+  { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM" },
+  { key: "image", labelKey: "settings.subtabs.model.image", fallback: "文生图" },
+  { key: "video", labelKey: "settings.subtabs.model.video", fallback: "文生视频" },
+  { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视图理解" },
+  { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "ASR" },
+];
+
+/** 系统 tab 二级切换条。 */
+const SYSTEM_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }> = [
+  { key: "runtime", labelKey: "settings.subtabs.system.runtime", fallback: "运行" },
+  { key: "systemIo", labelKey: "settings.subtabs.system.systemIo", fallback: "系统 IO" },
+  { key: "advanced", labelKey: "settings.subtabs.system.advanced", fallback: "安全" },
 ];
 
 function visibleWebuiDefaultAccessMode(mode: string | null | undefined): WebuiDefaultAccessMode {
@@ -1980,7 +1950,7 @@ function SettingsSidebar({
         className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:block md:space-y-1 md:overflow-visible md:px-0 md:pb-0"
       >
         {SETTINGS_NAV_ITEMS.map(({ key, icon: Icon, fallback }) => {
-          const active = key === activeSection;
+          const active = topLevelSection(key) === topLevelSection(activeSection);
           return (
             <button
               key={key}
@@ -2015,6 +1985,45 @@ function SettingsSidebar({
         ) : null}
       </div>
     </aside>
+  );
+}
+
+/** 模型/系统 tab 内的二级切换条。子区键即 section key，onSelect 直接复用 selectSection。 */
+function SettingsSubTabs({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }>;
+  active: SettingsSectionKey;
+  onSelect: (section: SettingsSectionKey) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      data-testid="settings-subtabs"
+      className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:px-0"
+    >
+      {tabs.map((tab) => {
+        const selected = tab.key === active;
+        return (
+          <button
+            key={tab.key}
+            type="button"
+            aria-current={selected ? "true" : undefined}
+            onClick={() => onSelect(tab.key)}
+            className={cn(
+              "flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-colors",
+              selected
+                ? "bg-muted/90 text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.025)]"
+                : "text-muted-foreground/78 hover:bg-muted/45 hover:text-foreground",
+            )}
+          >
+            {t(tab.labelKey, { defaultValue: tab.fallback })}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2584,8 +2593,6 @@ function ModelsSettings({
   dirty,
   saving,
   showBrandLogos,
-  providerSaving,
-  onProviderOAuthLogin,
   onSave,
   onCreateConfiguration,
 }: {
@@ -2596,8 +2603,6 @@ function ModelsSettings({
   dirty: boolean;
   saving: boolean;
   showBrandLogos: boolean;
-  providerSaving: string | null;
-  onProviderOAuthLogin: (provider: string) => void;
   onSave: () => void;
   onCreateConfiguration: () => void;
 }) {
@@ -2614,10 +2619,6 @@ function ModelsSettings({
     : "";
   const selectedPreset =
     settings.model_presets.find((preset) => preset.name === form.modelPreset) ?? null;
-  const selectedProvider = settings.providers.find((provider) => provider.name === form.provider);
-  const selectedProviderNeedsSignIn =
-    selectedProvider?.auth_type === "oauth" && !selectedProvider.configured;
-  const selectedProviderSigningIn = providerSaving === selectedProvider?.name;
   const selectedProviderConfigured = settingsProviderConfigured(settings, form.provider);
   const modelFieldsMissing =
     !form.model.trim() ||
@@ -2689,30 +2690,6 @@ function ModelsSettings({
               }
             />
           </SettingsRow>
-          {selectedProviderNeedsSignIn ? (
-            <SettingsRow
-              title={tx("settings.oauth.signInRequired", "Sign in required")}
-              description={tx(
-                "settings.oauth.signInBeforeSaving",
-                "Sign in before saving this OAuth provider as the active model provider.",
-              )}
-            >
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => selectedProvider && onProviderOAuthLogin(selectedProvider.name)}
-                disabled={!selectedProvider?.oauth_login_supported || selectedProviderSigningIn}
-                className="rounded-full"
-              >
-                {selectedProviderSigningIn ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-                ) : null}
-                {selectedProviderSigningIn
-                  ? tx("settings.oauth.signingIn", "Signing in...")
-                  : tx("settings.oauth.signIn", "Sign in")}
-              </Button>
-            </SettingsRow>
-          ) : null}
           <SettingsRow
             title={t("settings.rows.model")}
             description={t("settings.help.model")}
@@ -2751,12 +2728,7 @@ function ModelsSettings({
             dirty={dirty}
             saving={saving}
             saved={false}
-            disabled={selectedProviderNeedsSignIn || modelFieldsMissing}
-            message={
-              selectedProviderNeedsSignIn
-                ? tx("settings.oauth.signInBeforeSaving", "Sign in before saving this OAuth provider as the active model provider.")
-                : undefined
-            }
+            disabled={modelFieldsMissing}
             onSave={onSave}
           />
         </SettingsGroup>
@@ -2768,45 +2740,17 @@ function ModelsSettings({
 function ProvidersSettings({
   settings,
   expandedProvider,
-  providerForms,
-  visibleProviderKeys,
-  editingProviderKeys,
-  providerSaving,
   query,
   showBrandLogos,
   onQueryChange,
   onToggleProvider,
-  onToggleProviderKey,
-  onToggleProviderKeyEditing,
-  onChangeProviderForm,
-  onSaveProvider,
-  onProviderOAuthLogin,
-  onProviderOAuthLogout,
-  onResetProviderDraft,
-  imageProviderRestartPending,
-  onRestart,
-  isRestarting,
 }: {
   settings: SettingsPayload;
   expandedProvider: string | null;
-  providerForms: Record<string, ProviderForm>;
-  visibleProviderKeys: Record<string, boolean>;
-  editingProviderKeys: Record<string, boolean>;
-  providerSaving: string | null;
   query: string;
   showBrandLogos: boolean;
   onQueryChange: (query: string) => void;
   onToggleProvider: (provider: string) => void;
-  onToggleProviderKey: (provider: string) => void;
-  onToggleProviderKeyEditing: (provider: string) => void;
-  onChangeProviderForm: (provider: string, value: Partial<ProviderForm>) => void;
-  onSaveProvider: (provider: string) => void;
-  onProviderOAuthLogin: (provider: string) => void;
-  onProviderOAuthLogout: (provider: string) => void;
-  onResetProviderDraft: (provider: string) => void;
-  imageProviderRestartPending: boolean;
-  onRestart?: () => void;
-  isRestarting?: boolean;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
@@ -2819,21 +2763,7 @@ function ProvidersSettings({
   const filteredUnconfigured = filterProviders(unconfiguredProviders, query);
   const renderProviderRow = (provider: SettingsPayload["providers"][number]) => {
     const expanded = expandedProvider === provider.name;
-    const form = providerForms[provider.name] ?? {
-      apiKey: "",
-      apiBase: provider.api_base ?? provider.default_api_base ?? "",
-      apiType: provider.api_type ?? "auto",
-    };
-    const saving = providerSaving === provider.name;
     const isOauthProvider = provider.auth_type === "oauth";
-    const keyVisible = !!visibleProviderKeys[provider.name];
-    const editingKey = !provider.configured || !!editingProviderKeys[provider.name];
-    const apiKeyRequired = provider.api_key_required ?? true;
-    const apiKey = form.apiKey.trim();
-    const apiBase = form.apiBase.trim();
-    const missingRequiredApiKey = !isOauthProvider && apiKeyRequired && !provider.configured && !apiKey;
-    const missingOptionalCredential =
-      !isOauthProvider && !apiKeyRequired && !provider.configured && !apiKey && !apiBase;
     return (
       <div key={provider.name} className="divide-y divide-border/45">
         <button
@@ -2867,176 +2797,24 @@ function ProvidersSettings({
         </button>
 
         {expanded ? (
-          <div className="space-y-3 bg-muted/18 px-4 py-4 sm:px-5">
-            {isOauthProvider ? (
-              <div className="flex flex-col gap-3 rounded-[18px] border border-border/45 bg-background/75 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="min-w-0">
-                  <p className="text-[13px] font-semibold text-foreground">
-                    {tx("settings.oauth.authentication", "OAuth authentication")}
-                  </p>
-                  <p className="mt-1 truncate text-[12px] text-muted-foreground">
-                    {provider.configured
-                      ? t("settings.oauth.signedInAs", {
-                          account: provider.oauth_account || provider.label,
-                          defaultValue: "Signed in as {{account}}",
-                        })
-                      : tx("settings.oauth.signInHelp", "Sign in from this device; no API key is stored in config.")}
-                  </p>
-                </div>
-                <div className="flex shrink-0 justify-end gap-2">
-                  {provider.configured ? (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => onProviderOAuthLogout(provider.name)}
-                      disabled={saving}
-                      className="rounded-full"
-                    >
-                      {tx("settings.oauth.signOut", "Sign out")}
-                    </Button>
-                  ) : null}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onProviderOAuthLogin(provider.name)}
-                    disabled={saving || !provider.oauth_login_supported}
-                    className="rounded-full"
-                  >
-                    {saving ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-                    {saving
-                      ? tx("settings.oauth.signingIn", "Signing in...")
-                      : provider.configured
-                        ? tx("settings.oauth.signInAgain", "Sign in again")
-                        : tx("settings.oauth.signIn", "Sign in")}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <>
-            <label className="block space-y-1.5">
-              <span className="text-[12px] font-medium text-muted-foreground">
-                {t("settings.byok.apiKey")}
-              </span>
-              <div className="relative">
-                {editingKey ? (
-                  <>
-                    <Input
-                      type={keyVisible ? "text" : "password"}
-                      value={form.apiKey}
-                      onChange={(event) =>
-                        onChangeProviderForm(provider.name, { apiKey: event.target.value })
-                      }
-                      placeholder={
-                        provider.configured
-                          ? t("settings.byok.apiKeyConfiguredPlaceholder")
-                          : t("settings.byok.apiKeyPlaceholder")
-                      }
-                      className="h-9 rounded-full pr-11 text-[13px]"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onToggleProviderKey(provider.name)}
-                      aria-label={
-                        keyVisible
-                          ? t("settings.byok.hideApiKey")
-                          : t("settings.byok.showApiKey")
-                      }
-                      className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      {keyVisible ? (
-                        <EyeOff className="h-3.5 w-3.5" aria-hidden />
-                      ) : (
-                        <Eye className="h-3.5 w-3.5" aria-hidden />
-                      )}
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex h-9 items-center rounded-full border border-input bg-background px-3 pr-11 text-[13px] text-muted-foreground">
-                      {provider.api_key_hint ?? t("settings.byok.configuredKeyHint")}
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onToggleProviderKeyEditing(provider.name)}
-                      aria-label={t("settings.actions.edit")}
-                      className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    </Button>
-                  </>
-                )}
-              </div>
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-[12px] font-medium text-muted-foreground">
-                {t("settings.byok.apiBase")}
-              </span>
-              <Input
-                value={form.apiBase}
-                onChange={(event) =>
-                  onChangeProviderForm(provider.name, { apiBase: event.target.value })
-                }
-                placeholder={provider.default_api_base ?? t("settings.byok.apiBasePlaceholder")}
-                className="h-9 rounded-full text-[13px]"
-              />
-            </label>
-            {provider.name === "openai" ? (
-              <label className="block space-y-1.5">
-                <span className="text-[12px] font-medium text-muted-foreground">
-                  {tx("settings.byok.apiType", "API type")}
-                </span>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-9 w-full justify-between rounded-full px-3 text-[13px]"
-                    >
-                      <span>
-                        {OPENAI_API_TYPE_OPTIONS.find((option) => option.value === form.apiType)?.label ??
-                          form.apiType}
-                      </span>
-                      <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[220px]">
-                    {OPENAI_API_TYPE_OPTIONS.map((option) => (
-                      <DropdownMenuItem
-                        key={option.value}
-                        onSelect={() => onChangeProviderForm(provider.name, { apiType: option.value })}
-                      >
-                        {option.label}
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </label>
-            ) : null}
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => onResetProviderDraft(provider.name)}
-                className="rounded-full"
-              >
-                {t("settings.actions.cancel")}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => onSaveProvider(provider.name)}
-                disabled={saving || missingRequiredApiKey || missingOptionalCredential}
-                className="rounded-full"
-              >
-                {saving ? t("settings.actions.saving") : tx("settings.providers.saveProvider", "Save provider")}
-              </Button>
+          <div className="space-y-3 rounded-[18px] border border-border/45 bg-background/75 px-4 py-3 sm:px-5">
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                {tx("settings.providers.keyStatus", "密钥状态")}
+              </p>
+              <p className="mt-1 text-[13px] text-foreground">
+                {provider.api_key_hint ??
+                  (provider.configured
+                    ? t("settings.byok.configured")
+                    : t("settings.byok.notConfigured"))}
+              </p>
             </div>
-              </>
-            )}
+            <p className="text-[12px] leading-5 text-muted-foreground">
+              {tx(
+                "settings.providers.readOnlyHint",
+                "密钥与地址由内部配置文件（config.json）统一维护，此处仅展示状态。",
+              )}
+            </p>
           </div>
         ) : null}
       </div>
@@ -3045,31 +2823,11 @@ function ProvidersSettings({
   return (
     <div className="space-y-6">
       <p className="max-w-[42rem] text-[13px] leading-6 text-muted-foreground">
-        {t("settings.byok.description")}
+        {tx(
+          "settings.providers.readOnlyDescription",
+          "已配置的提供商密钥与地址由内部配置文件（config.json）统一维护，此处仅展示配置状态。",
+        )}
       </p>
-      {imageProviderRestartPending && onRestart ? (
-        <div className="flex min-h-[48px] items-center justify-between gap-3 border-y border-border/55 py-3">
-          <p className="text-[13px] leading-5 text-muted-foreground">
-            {tx("settings.status.imageProviderRestart", "Image provider changes saved. Restart when ready.")}
-          </p>
-          <div className="shrink-0">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={onRestart}
-              disabled={isRestarting}
-              className="rounded-full"
-            >
-              {isRestarting ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : (
-                <RotateCcw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              )}
-              {isRestarting ? t("app.system.restarting") : t("app.system.restart")}
-            </Button>
-          </div>
-        </div>
-      ) : null}
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <Input
@@ -3252,6 +3010,177 @@ function ImageGenerationSettings({
             }
             dirtyMessage={tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")}
             pendingMessage={tx("settings.status.savedRestartApply", "Saved. Restart when ready.")}
+            onSave={onSave}
+            onRestart={onRestart}
+            isRestarting={isRestarting}
+          />
+        </SettingsGroup>
+      </section>
+    </div>
+  );
+}
+
+function VideoGenerationSettings({
+  settings,
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onRestart,
+  isRestarting,
+  requiresRestartPending,
+}: {
+  settings: SettingsPayload;
+  form: VideoGenerationSettingsUpdate;
+  dirty: boolean;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<VideoGenerationSettingsUpdate>>;
+  onSave: () => void;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+  requiresRestartPending: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const apiKeyConfigured = settings.video_generation.api_key_configured;
+  const missingCredential = form.enabled && !apiKeyConfigured;
+  const ratioOptions = optionRowsWithCurrent(
+    VIDEO_RATIO_OPTIONS.map((value) => ({ name: value, label: value })),
+    form.defaultRatio,
+  );
+  const resolutionOptions = optionRowsWithCurrent(
+    [
+      { name: "", label: tx("settings.video.resolutionAuto", "模型自动决定") },
+      ...VIDEO_RESOLUTION_OPTIONS.map((value) => ({ name: value, label: value })),
+    ],
+    form.defaultResolution,
+  );
+
+  return (
+    <div className="space-y-7">
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.videoGeneration", "视频生成")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.videoGeneration", "视频生成")}
+            description={tx("settings.help.videoGeneration", "在对话中暴露视频生成能力（当 Seedance 密钥已配置时）。")}
+          >
+            <ToggleButton
+              checked={form.enabled}
+              onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
+              ariaLabel={tx("settings.rows.videoGeneration", "视频生成")}
+              label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoProviderStatus", "密钥状态")}
+            description={tx("settings.help.videoProviderStatus", "Seedance API 密钥由 config.json 维护。")}
+          >
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <StatusPill tone={apiKeyConfigured ? "success" : "neutral"}>
+                {apiKeyConfigured
+                  ? tx("settings.values.configured", "已配置")
+                  : tx("settings.values.notConfigured", "未配置")}
+              </StatusPill>
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
+      </section>
+
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.videoDefaults", "生成参数")}</SettingsSectionTitle>
+        <SettingsGroup>
+          <SettingsRow
+            title={tx("settings.rows.videoModel", "视频模型")}
+            description={tx("settings.help.videoModel", "发送给 Seedance 的视频模型名称。")}
+          >
+            <Input
+              value={form.model}
+              onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
+              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoRatio", "画面比例")}
+            description={tx("settings.help.videoRatio", "提示未指定时使用的默认画面比例。")}
+          >
+            <ProviderPicker
+              providers={ratioOptions}
+              value={form.defaultRatio}
+              emptyLabel={tx("settings.video.selectRatio", "选择画面比例")}
+              onChange={(defaultRatio) => onChangeForm((prev) => ({ ...prev, defaultRatio }))}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoDuration", "时长")}
+            description={tx("settings.help.videoDuration", "生成的视频时长（秒），4–30。")}
+          >
+            <NumberInput
+              value={form.defaultDuration}
+              min={4}
+              max={30}
+              onChange={(defaultDuration) =>
+                onChangeForm((prev) => ({ ...prev, defaultDuration }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoResolution", "分辨率")}
+            description={tx("settings.help.videoResolution", "提示未指定时使用的默认分辨率；「模型自动决定」交由模型选择。")}
+          >
+            <ProviderPicker
+              providers={resolutionOptions}
+              value={form.defaultResolution}
+              emptyLabel={tx("settings.video.selectResolution", "选择分辨率")}
+              onChange={(defaultResolution) =>
+                onChangeForm((prev) => ({ ...prev, defaultResolution }))
+              }
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoGenerateAudio", "生成音轨")}
+            description={tx("settings.help.videoGenerateAudio", "生成带音轨的视频。")}
+          >
+            <ToggleButton
+              checked={form.generateAudio}
+              onChange={(generateAudio) =>
+                onChangeForm((prev) => ({ ...prev, generateAudio }))
+              }
+              ariaLabel={tx("settings.rows.videoGenerateAudio", "生成音轨")}
+              label={form.generateAudio ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoWatermark", "水印")}
+            description={tx("settings.help.videoWatermark", "为生成的视频添加水印。")}
+          >
+            <ToggleButton
+              checked={form.watermark}
+              onChange={(watermark) => onChangeForm((prev) => ({ ...prev, watermark }))}
+              ariaLabel={tx("settings.rows.videoWatermark", "水印")}
+              label={form.watermark ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+          <ReadOnlyRow
+            title={tx("settings.rows.videoSaveDir", "保存目录")}
+            value={settings.video_generation.save_dir}
+          />
+          <RestartSettingsFooter
+            dirty={dirty}
+            saving={saving}
+            pendingRestart={requiresRestartPending}
+            disabled={missingCredential}
+            message={
+              missingCredential
+                ? tx(
+                    "settings.video.missingCredential",
+                    "在 config.json 配置 Seedance 密钥后再启用视频生成。",
+                  )
+                : undefined
+            }
+            dirtyMessage={tx("settings.status.restartAfterSaving", "保存更改，就绪后重启。")}
+            pendingMessage={tx("settings.status.savedRestartApply", "已保存。就绪后重启。")}
             onSave={onSave}
             onRestart={onRestart}
             isRestarting={isRestarting}

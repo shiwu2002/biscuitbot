@@ -22,7 +22,7 @@ def _write_empty_current(workspace: Path) -> None:
             {
                 "schema_version": 1,
                 "builtin_seeded": True,
-                "builtin_version": 6,
+                "builtin_version": 7,
                 "employees": [],
             },
             ensure_ascii=False,

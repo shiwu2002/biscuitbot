@@ -490,6 +490,17 @@ export interface SettingsPayload {
       default_api_base?: string | null;
     }>;
   };
+  video_generation: {
+    enabled: boolean;
+    api_key_configured: boolean;
+    model: string;
+    default_ratio: string;
+    default_duration: number;
+    default_resolution: string | null;
+    generate_audio: boolean;
+    watermark: boolean;
+    save_dir: string;
+  };
   screenshot: {
     enabled: boolean;
     max_width: number;
@@ -613,7 +624,7 @@ export interface SettingsPayload {
     duplicate_similarity_threshold: number;
   };
   requires_restart: boolean;
-  restart_required_sections?: Array<"runtime" | "browser" | "image" | "vision" | "systemIo">;
+  restart_required_sections?: Array<"runtime" | "browser" | "image" | "video" | "vision" | "systemIo">;
   version?: {
     current: string;
   };
@@ -835,6 +846,16 @@ export interface ImageGenerationSettingsUpdate {
   defaultAspectRatio: string;
   defaultImageSize: string;
   maxImagesPerTurn: number;
+}
+
+export interface VideoGenerationSettingsUpdate {
+  enabled: boolean;
+  model: string;
+  defaultRatio: string;
+  defaultDuration: number;
+  defaultResolution: string;
+  generateAudio: boolean;
+  watermark: boolean;
 }
 
 export interface ScreenshotSettingsUpdate {

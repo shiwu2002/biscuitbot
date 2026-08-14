@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SettingsView } from "@/components/settings/SettingsView";
+import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { ClientProvider } from "@/providers/ClientProvider";
 import type { SettingsPayload } from "@/lib/types";
 
@@ -70,6 +70,17 @@ function settingsPayload(): SettingsPayload {
       max_images_per_turn: 4,
       save_dir: "generated",
       providers: [],
+    },
+    video_generation: {
+      enabled: false,
+      api_key_configured: false,
+      model: "doubao-seedance",
+      default_ratio: "16:9",
+      default_duration: 6,
+      default_resolution: null,
+      generate_audio: true,
+      watermark: false,
+      save_dir: "generated/videos",
     },
     screenshot: {
       enabled: false,
@@ -180,7 +191,7 @@ const installedAnyGen = {
 
 function renderSettingsView(
   options: {
-    initialSection?: "overview" | "apps" | "automations" | "advanced" | "models";
+    initialSection?: SettingsSectionKey;
     initialSettings?: SettingsPayload;
     showSidebar?: boolean;
     onSettingsChange?: (payload: SettingsPayload) => void;
@@ -514,7 +525,11 @@ describe("SettingsView Apps catalog", () => {
     });
     expect(configurationButton).toHaveTextContent("未配置");
     expect(configurationButton).toHaveTextContent("OpenAI Codex · openai-codex/gpt-5.1-codex");
-    expect(await screen.findByRole("button", { name: "登录" })).toBeInTheDocument();
+    // 收权后：OAuth 提供商以只读状态展示，不再提供登录/登出按钮。
+    const providerRow = await screen.findByRole("button", { name: /OpenAI Codex/ });
+    expect(within(providerRow).getByText("未登录")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "登录" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
   });
 
   it("keeps unsigned OAuth providers out of the active provider picker", async () => {
@@ -996,5 +1011,230 @@ describe("SettingsView Apps catalog", () => {
         }),
       ),
     );
+  });
+});
+
+describe("SettingsView 标签合并与二级子区", () => {
+  beforeEach(() => {
+    // 挂起 fetch：SettingsView 以 initialSettings 渲染，不发起真实网络请求
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("侧边栏收敛为 5 个顶层标签，子区不再出现在侧边栏", () => {
+    renderSettingsView({
+      initialSection: "overview",
+      initialSettings: settingsPayload(),
+      showSidebar: true,
+    });
+    const nav = screen.getByRole("navigation", { name: "设置分区" });
+    for (const label of ["概览", "外观", "模型", "网页", "系统"]) {
+      expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+    for (const gone of ["图片", "视觉", "语音", "系统 IO", "安全"]) {
+      expect(within(nav).queryByRole("button", { name: gone })).not.toBeInTheDocument();
+    }
+  });
+
+  it("模型 tab 二级切换条可在 LLM/文生图/文生视频/视图理解/ASR 间切换", async () => {
+    renderSettingsView({ initialSection: "models", initialSettings: settingsPayload() });
+    const subtabs = within(screen.getByTestId("settings-subtabs"));
+    expect(subtabs.getByRole("button", { name: "LLM" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByText("当前配置")).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "文生图" }));
+    expect(subtabs.getByRole("button", { name: "文生图" })).toHaveAttribute("aria-current", "true");
+    expect(await screen.findByRole("switch", { name: "图片生成" })).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "文生视频" }));
+    expect(subtabs.getByRole("button", { name: "文生视频" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(await screen.findByRole("switch", { name: "视频生成" })).toBeInTheDocument();
+    expect(screen.getByText("画面比例")).toBeInTheDocument();
+    expect(screen.getByText("时长")).toBeInTheDocument();
+    expect(screen.getByText("分辨率")).toBeInTheDocument();
+    expect(screen.getByText("生成音轨")).toBeInTheDocument();
+    expect(screen.getByText("水印")).toBeInTheDocument();
+    expect(screen.getByText("保存目录")).toBeInTheDocument();
+    expect(screen.getByText("密钥状态")).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "视图理解" }));
+    expect(subtabs.getByRole("button", { name: "视图理解" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(await screen.findByRole("switch", { name: "截图" })).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "ASR" }));
+    expect(subtabs.getByRole("button", { name: "ASR" })).toHaveAttribute("aria-current", "true");
+    expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
+  });
+
+  it("image 深链落到模型 tab 的文生图子区，父标签高亮", () => {
+    renderSettingsView({
+      initialSection: "image",
+      initialSettings: settingsPayload(),
+      showSidebar: true,
+    });
+    expect(screen.getByRole("button", { name: "模型" })).toHaveAttribute("aria-current", "page");
+    expect(
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }),
+    ).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("switch", { name: "图片生成" })).toBeInTheDocument();
+  });
+
+  it("voice 深链落到模型 tab 的 ASR 子区", () => {
+    renderSettingsView({
+      initialSection: "voice",
+      initialSettings: settingsPayload(),
+      showSidebar: true,
+    });
+    expect(screen.getByRole("button", { name: "模型" })).toHaveAttribute("aria-current", "page");
+    expect(
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "ASR" }),
+    ).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("heading", { name: "语音识别" })).toBeInTheDocument();
+  });
+
+  it("文生视频子区渲染真面板并保存设置，返回视频重启桶", async () => {
+    const payload: SettingsPayload = {
+      ...settingsPayload(),
+      video_generation: {
+        ...settingsPayload().video_generation,
+        api_key_configured: true,
+      },
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/settings") return jsonResponse(payload);
+      if (url === "/api/settings/cli-apps") return jsonResponse({ apps: [], installed_count: 0 });
+      if (url === "/api/settings/mcp-presets") return jsonResponse({ presets: [], installed_count: 0 });
+      if (url.startsWith("/api/settings/video-generation/update")) {
+        return jsonResponse({
+          ...payload,
+          video_generation: { ...payload.video_generation, enabled: true },
+          requires_restart: true,
+          restart_required_sections: ["video"],
+        });
+      }
+      return { ok: false, status: 404, json: async () => ({}) } as Response;
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderSettingsView({ initialSection: "models", initialSettings: payload });
+
+    const subtabs = within(screen.getByTestId("settings-subtabs"));
+    fireEvent.click(subtabs.getByRole("button", { name: "文生视频" }));
+
+    expect(await screen.findByRole("switch", { name: "视频生成" })).toBeInTheDocument();
+    expect(screen.getByDisplayValue("doubao-seedance")).toBeInTheDocument();
+    expect(screen.getByText("16:9")).toBeInTheDocument();
+    expect(screen.getByText("generated/videos")).toBeInTheDocument();
+    // 视频面板不含密钥/地址编辑字段
+    expect(screen.queryByPlaceholderText(/apiKey|api key|留空则保留当前 key/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("switch", { name: "视频生成" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/settings/video-generation/update"),
+        expect.objectContaining({
+          headers: { Authorization: "Bearer tok" },
+        }),
+      ),
+    );
+    expect(await screen.findByText("已保存。准备好后重启。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /重启/ })).toBeInTheDocument();
+  });
+
+  it("LLM 子区提供商列表只读：无编辑/保存入口，展开仅展示密钥状态", async () => {
+    const payload: SettingsPayload = {
+      ...settingsPayload(),
+      agent: {
+        ...settingsPayload().agent,
+        provider: "openai",
+        resolved_provider: "openai",
+      },
+      model_presets: [
+        {
+          ...settingsPayload().model_presets[0],
+          model: "openai/gpt-4o",
+          provider: "openai",
+        },
+      ],
+      providers: [
+        {
+          name: "openai",
+          label: "OpenAI",
+          configured: true,
+          auth_type: "api_key",
+          api_key_required: true,
+          api_key_hint: "sk-o••••hint",
+          api_base: null,
+          default_api_base: "https://api.openai.com/v1",
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "/api/settings") return jsonResponse(payload);
+        if (url === "/api/settings/cli-apps") return jsonResponse({ apps: [], installed_count: 0 });
+        if (url === "/api/settings/mcp-presets") return jsonResponse({ presets: [], installed_count: 0 });
+        return { ok: false, status: 404, json: async () => ({}) } as Response;
+      }),
+    );
+
+    renderSettingsView({ initialSection: "models", initialSettings: payload });
+
+    // 提供商行按钮以其地址为副标题，可作为唯一定位点
+    const providerCaption = await screen.findByText("https://api.openai.com/v1");
+    expect(providerCaption).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
+
+    fireEvent.click(providerCaption);
+    expect(screen.getByText("sk-o••••hint")).toBeInTheDocument();
+    expect(screen.getByText(/此处仅展示状态/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
+  });
+
+  it("系统 tab 二级切换条可在 运行/系统IO/安全 间切换", async () => {
+    renderSettingsView({ initialSection: "runtime", initialSettings: settingsPayload() });
+    const subtabs = within(screen.getByTestId("settings-subtabs"));
+    expect(subtabs.getByRole("button", { name: "运行" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByText("Bot 名称")).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "系统 IO" }));
+    expect(subtabs.getByRole("button", { name: "系统 IO" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    );
+    expect(await screen.findByRole("switch", { name: "系统 IO" })).toBeInTheDocument();
+
+    fireEvent.click(subtabs.getByRole("button", { name: "安全" }));
+    expect(subtabs.getByRole("button", { name: "安全" })).toHaveAttribute("aria-current", "true");
+    expect(await screen.findByText("WebUI 安全")).toBeInTheDocument();
+  });
+
+  it("systemIo 深链落到系统 tab 的 系统IO 子区，父标签高亮", () => {
+    renderSettingsView({
+      initialSection: "systemIo",
+      initialSettings: settingsPayload(),
+      showSidebar: true,
+    });
+    expect(screen.getByRole("button", { name: "系统" })).toHaveAttribute("aria-current", "page");
+    expect(
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "系统 IO" }),
+    ).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("switch", { name: "系统 IO" })).toBeInTheDocument();
   });
 });

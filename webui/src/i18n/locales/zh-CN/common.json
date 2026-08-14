@@ -85,6 +85,20 @@
       "automations": "自动任务",
       "skills": "技能"
     },
+    "subtabs": {
+      "model": {
+        "llm": "LLM",
+        "image": "文生图",
+        "video": "文生视频",
+        "vision": "视图理解",
+        "asr": "ASR"
+      },
+      "system": {
+        "runtime": "运行",
+        "systemIo": "系统 IO",
+        "advanced": "安全"
+      }
+    },
     "sections": {
       "interface": "界面",
       "ai": "AI",
@@ -95,6 +109,8 @@
       "presets": "预设",
       "imageGeneration": "图片生成",
       "imageDefaults": "默认值",
+      "videoGeneration": "视频生成",
+      "videoDefaults": "生成参数",
       "vision": "视觉",
       "visionCapture": "截图",
       "webSearch": "网页搜索",
@@ -160,6 +176,15 @@
       "defaultImageSize": "默认尺寸",
       "maxImagesPerTurn": "每轮最大图片数",
       "imageSaveDir": "保存目录",
+      "videoGeneration": "视频生成",
+      "videoProviderStatus": "密钥状态",
+      "videoModel": "视频模型",
+      "videoRatio": "画面比例",
+      "videoDuration": "时长",
+      "videoResolution": "分辨率",
+      "videoGenerateAudio": "生成音轨",
+      "videoWatermark": "水印",
+      "videoSaveDir": "保存目录",
       "screenshot": "截图",
       "visionModel": "API 凭据来源",
       "visionModelOverride": "视觉理解模型",
@@ -215,6 +240,14 @@
       "defaultAspectRatio": "当提示词没有指定比例时使用。",
       "defaultImageSize": "发送给支持此选项的提供商的尺寸提示。",
       "maxImagesPerTurn": "单次 generate_image 请求可生成的图片上限。",
+      "videoGeneration": "在对话中暴露视频生成能力（当 Seedance 密钥已配置时）。",
+      "videoProviderStatus": "Seedance API 密钥由 config.json 维护。",
+      "videoModel": "发送给 Seedance 的视频模型名称。",
+      "videoRatio": "提示未指定时使用的默认画面比例。",
+      "videoDuration": "生成的视频时长（秒），4–30。",
+      "videoResolution": "提示未指定时使用的默认分辨率；「模型自动决定」交由模型选择。",
+      "videoGenerateAudio": "生成带音轨的视频。",
+      "videoWatermark": "为生成的视频添加水印。",
       "screenshot": "允许智能体截取屏幕截图以理解当前屏幕状态。",
       "visionModel": "选择一个模型预设，为上方的视觉模型提供 API 密钥和接口地址。",
       "visionModelOverride": "用于解读截图的多模态模型 ID（如 gpt-4o、qwen-vl-max、claude-3-5-sonnet）。留空则使用预设的默认模型。",
@@ -480,7 +513,9 @@
     "providers": {
       "searchPlaceholder": "搜索提供商",
       "noMatches": "没有匹配的提供商。",
-      "saveProvider": "保存提供商"
+      "keyStatus": "密钥状态",
+      "readOnlyHint": "密钥与地址由内部配置文件（config.json）统一维护，此处仅展示状态。",
+      "readOnlyDescription": "已配置的提供商密钥与地址由内部配置文件（config.json）统一维护，此处仅展示配置状态。"
     },
     "legal": {
       "thirdPartyBrands": "产品名称、Logo 和品牌归各自所有者所有；此处仅用于识别，不代表背书或合作。"
@@ -491,6 +526,12 @@
       "selectSize": "选择尺寸",
       "configureProvider": "配置提供商",
       "missingCredential": "启用图片生成前请先配置此提供商。"
+    },
+    "video": {
+      "selectRatio": "选择画面比例",
+      "selectResolution": "选择分辨率",
+      "resolutionAuto": "模型自动决定",
+      "missingCredential": "在 config.json 配置 Seedance 密钥后再启用视频生成。"
     },
     "vision": {
       "selectModel": "选择模型",
