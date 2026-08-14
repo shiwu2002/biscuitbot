@@ -194,6 +194,7 @@ export function EmployeeChatView({
   const handleEmbeddedCreateChat = useCallback(
     async (
       workspaceScope?: WorkspaceScopePayload | null,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 保持 onCreateChat 接口签名
       _employeeId?: string | null,
     ): Promise<string | null> => {
       if (!employeeId) return null;
