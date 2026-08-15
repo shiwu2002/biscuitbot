@@ -1577,10 +1577,11 @@ describe("App layout", () => {
     );
     expect(within(settingsNav).getByRole("button", { name: "模型" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "提供商" })).not.toBeInTheDocument();
-    // 侧边栏收敛为 5 个顶层标签：概览/外观/模型/网页/系统；图片、安全等并入二级子区
+    // 侧边栏顶层标签：概览/外观/模型/网页/应用/渠道/系统；图片、安全等并入二级子区
     expect(within(settingsNav).getByRole("button", { name: "系统" })).toBeInTheDocument();
     expect(within(settingsNav).getByRole("button", { name: "网页" })).toBeInTheDocument();
-    expect(within(settingsNav).queryByRole("button", { name: "应用" })).not.toBeInTheDocument();
+    expect(within(settingsNav).getByRole("button", { name: "应用" })).toBeInTheDocument();
+    expect(within(settingsNav).getByRole("button", { name: "渠道" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "安全" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();
     fireEvent.click(within(settingsNav).getByRole("button", { name: "外观" }));
