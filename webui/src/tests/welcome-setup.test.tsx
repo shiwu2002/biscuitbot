@@ -98,7 +98,7 @@ describe("WelcomeSetup", () => {
     // Recommended model is pre-filled for the chosen provider.
     expect(
       (screen.getByPlaceholderText("留空则使用默认模型") as HTMLInputElement).value,
-    ).toBe("deepseek/deepseek-chat");
+    ).toBe("deepseek/deepseek-v4-flash");
   });
 
   it("keeps the submit button disabled until a key is entered", async () => {
@@ -132,7 +132,7 @@ describe("WelcomeSetup", () => {
         provider: "openai",
         apiKey: "sk-test",
         apiBase: "https://api.openai.com/v1",
-        model: "openai/gpt-4o-mini",
+        model: "openai/gpt-5.6-terra",
       });
     });
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));

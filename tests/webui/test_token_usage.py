@@ -61,6 +61,8 @@ def test_record_token_usage_aggregates_by_local_day(tmp_path, monkeypatch) -> No
                     "estimated_requests": 0,
                 }
             },
+            "models": {},
+            "employees": {},
         }
     ]
 

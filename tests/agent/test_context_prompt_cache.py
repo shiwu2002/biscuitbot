@@ -322,24 +322,24 @@ def test_default_soul_template_contains_execution_rules() -> None:
     assert "multi-step tasks" in soul
 
 
-def test_channel_format_hint_telegram(tmp_path) -> None:
-    """Telegram channel should get messaging-app format hint."""
+def test_channel_format_hint_messaging_app(tmp_path) -> None:
+    """Weixin/QQ messaging channels should get the messaging-app format hint."""
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
-    prompt = builder.build_system_prompt(channel="telegram")
+    prompt = builder.build_system_prompt(channel="weixin")
     assert "Format Hint" in prompt
     assert "messaging app" in prompt
 
 
-def test_channel_format_hint_whatsapp(tmp_path) -> None:
-    """WhatsApp should get plain-text format hint."""
+def test_channel_format_hint_terminal(tmp_path) -> None:
+    """MoChat channel should get the terminal format hint."""
     workspace = _make_workspace(tmp_path)
     builder = ContextBuilder(workspace)
 
-    prompt = builder.build_system_prompt(channel="whatsapp")
+    prompt = builder.build_system_prompt(channel="mochat")
     assert "Format Hint" in prompt
-    assert "plain text only" in prompt
+    assert "terminal" in prompt
 
 
 def test_channel_format_hint_absent_for_unknown(tmp_path) -> None:
@@ -361,7 +361,7 @@ def test_build_messages_passes_channel_to_system_prompt(tmp_path) -> None:
 
     messages = builder.build_messages(
         history=[], current_message="hi",
-        channel="telegram", chat_id="123",
+        channel="weixin", chat_id="123",
     )
     system = messages[0]["content"]
     assert "Format Hint" in system

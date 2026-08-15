@@ -1369,11 +1369,11 @@ def test_set_tool_context_passes_thread_session_key_to_spawn(tmp_path: Path) -> 
 
 
 @pytest.mark.asyncio
-async def test_system_subagent_followup_uses_thread_session_and_slack_metadata(tmp_path: Path) -> None:
+async def test_system_subagent_followup_uses_thread_session_and_origin_metadata(tmp_path: Path) -> None:
     loop = _make_full_loop(tmp_path)
     loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]
 
-    thread_session = loop.sessions.get_or_create("slack:C123:1700.42")
+    thread_session = loop.sessions.get_or_create("weixin:C123:1700.42")
     thread_session.add_message("user", "thread question")
     loop.sessions.save(thread_session)
 
@@ -1395,24 +1395,21 @@ async def test_system_subagent_followup_uses_thread_session_and_slack_metadata(t
         InboundMessage(
             channel="system",
             sender_id="subagent",
-            chat_id="slack:C123",
+            chat_id="weixin:C123",
             content="subagent result",
-            session_key_override="slack:C123:1700.42",
+            session_key_override="weixin:C123:1700.42",
             metadata={"subagent_task_id": "sub-1", "origin_message_id": "msg-123"},
         )
     )
 
     assert outbound is not None
-    assert outbound.channel == "slack"
+    assert outbound.channel == "weixin"
     assert outbound.chat_id == "C123"
-    assert outbound.metadata == {
-        "slack": {"thread_ts": "1700.42"},
-        "origin_message_id": "msg-123",
-    }
+    assert outbound.metadata == {"origin_message_id": "msg-123"}
     assert "thread question" in seen["initial_messages"][1]["content"]
 
-    loop.sessions.invalidate("slack:C123:1700.42")
-    persisted = loop.sessions.get_or_create("slack:C123:1700.42")
+    loop.sessions.invalidate("weixin:C123:1700.42")
+    persisted = loop.sessions.get_or_create("weixin:C123:1700.42")
     assert any(m.get("subagent_task_id") == "sub-1" for m in persisted.messages)
 
 

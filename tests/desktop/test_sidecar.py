@@ -22,6 +22,13 @@ from biscuitbot.desktop import app as desktop_app
 from biscuitbot.desktop import sidecar
 
 
+def _free_port() -> int:
+    """Return an ephemeral port that is currently free on 127.0.0.1."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("127.0.0.1", 0))
+        return int(s.getsockname()[1])
+
+
 def test_resolve_websocket_endpoint_defaults_to_ws_port(tmp_path, monkeypatch) -> None:
     cfg = Config()
     host, port = desktop_app.resolve_websocket_endpoint(cfg)
@@ -68,7 +75,8 @@ def test_ensure_runtime_persists_default_config_and_enables_websocket(
 
 
 def test_pick_free_port_prefers_configured_port() -> None:
-    assert sidecar.pick_free_port(8765, host="127.0.0.1") == 8765
+    free = _free_port()
+    assert sidecar.pick_free_port(free, host="127.0.0.1", start=free, end=free + 5) == free
 
 
 def test_parent_vanished_detects_reparent(tmp_path, monkeypatch) -> None:
@@ -110,12 +118,13 @@ def test_parent_vanished_watches_env_shell_pid() -> None:
 
 def test_pick_free_port_scans_when_preferred_is_busy() -> None:
     s = socket.socket()
-    s.bind(("127.0.0.1", 8765))
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
     s.listen(1)
     try:
-        chosen = sidecar.pick_free_port(8765, host="127.0.0.1")
-        assert chosen != 8765
-        assert 8765 <= chosen <= 8800
+        chosen = sidecar.pick_free_port(port, host="127.0.0.1", start=port, end=port + 10)
+        assert chosen != port
+        assert port <= chosen <= port + 10
     finally:
         s.close()
 

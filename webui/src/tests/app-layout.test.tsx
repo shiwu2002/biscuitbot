@@ -303,12 +303,9 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const appsButton = within(sidebar).getByRole("button", { name: "应用" });
     const skillsButton = within(sidebar).getByRole("button", { name: "技能" });
     const automationsButton = within(sidebar).getByRole("button", { name: "自动任务" });
 
-    expect(appsButton.compareDocumentPosition(skillsButton) & Node.DOCUMENT_POSITION_FOLLOWING)
-      .toBeTruthy();
     expect(
       skillsButton.compareDocumentPosition(automationsButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1558,9 +1555,9 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
     const searchButton = within(sidebar).getByRole("button", { name: "搜索" });
-    const appsButton = within(sidebar).getByRole("button", { name: "应用" });
-    // 搜索已移入历史对话容器（导航组下方），故应位于「应用」之后
-    expect(appsButton.compareDocumentPosition(searchButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const employeesButton = within(sidebar).getByRole("button", { name: "数字人员工" });
+    // 搜索已移入历史对话容器（导航组下方），故应位于「数字人员工」之后
+    expect(employeesButton.compareDocumentPosition(searchButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(sidebar).getByRole("button", { name: "设置" }));
 
     expect(await screen.findByRole("heading", { name: "概览" })).toBeInTheDocument();
@@ -1729,31 +1726,6 @@ describe("App layout", () => {
 
     expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
     expect(window.location.hash).toBe("#/settings?section=voice");
-  });
-
-  it("opens Apps from the main sidebar without replacing the sidebar", async () => {
-    mockFetchRoutes({
-      "/api/settings": baseSettingsPayload(),
-      "/api/settings/cli-apps": { apps: [], installed_count: 0, catalog_updated_at: "2026-04-18" },
-      "/api/settings/mcp-presets": { presets: [], installed_count: 0 },
-    });
-
-    render(<App />);
-
-    await waitFor(() => expect(connectSpy).toHaveBeenCalled());
-    const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const appsButton = within(sidebar).getByRole("button", { name: "应用" });
-
-    fireEvent.click(appsButton);
-
-    expect(await screen.findByRole("heading", { name: "应用" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "侧边栏导航" })).toBeInTheDocument();
-    expect(screen.queryByRole("navigation", { name: "设置分区" })).not.toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "应用" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(document.title).toBe("应用 · biscuitbot");
   });
 
   it("returns from settings to the blank start page when no session was active", async () => {
