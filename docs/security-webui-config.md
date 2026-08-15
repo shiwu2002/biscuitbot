@@ -100,7 +100,7 @@ biscuitbot 的安全机制分为两层：
 
 ## 6. 凭据保护
 
-- **配置文件权限**：加载配置时尽力 `chmod 0o600`（Windows 上为 no-op）。涉及 [loader.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/loader.py)（line 149）、[websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py)（line 484）及 whatsapp/weixin/matrix 等渠道状态文件。
+- **配置文件权限**：加载配置时尽力 `chmod 0o600`（Windows 上为 no-op）。涉及 [loader.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/config/loader.py)（line 149）、[websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py)（line 484）及 weixin 等渠道状态文件。
 - **HTTP token 仅限 Authorization 头**：[gateway_tokens.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/webui/gateway_tokens.py) 中 `check_api_token` 仅从 `Authorization` 头读取 token，query-param token 仅保留给 WebSocket 握手（浏览器限制）。token 形如 `nbwt_<secrets.token_urlsafe(32)>`。
 - **无 secret 时 localhost-only**：[websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py) 的 `wildcard_host_requires_auth` 校验——当 `host` 为 `0.0.0.0` 或 `::`（全接口）时，必须设置 `token` 或 `token_issue_secret`，否则启动报错，防止未认证暴露。
 

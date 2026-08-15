@@ -25,7 +25,7 @@ class CronPayload:
     message: str = ""
     # Legacy delivery fields used by pre-session-bound cron jobs.
     deliver: bool = False
-    channel: str | None = None  # e.g. "whatsapp"
+    channel: str | None = None  # e.g. "weixin"
     to: str | None = None  # e.g. phone number
     channel_meta: dict[str, Any] = field(default_factory=dict)
     session_key: str | None = None  # original session key for correct session recording

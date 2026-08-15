@@ -27,11 +27,11 @@ RUNTIME_CONTROL_MCP_RELOAD = "mcp_reload"  # 请求重新加载 MCP 工具集
 class InboundMessage:
     """从聊天渠道接收到的入站消息。
 
-    封装来自 Telegram/Discord/Slack 等渠道的用户消息，包含发送者、内容、媒体
+    封装来自微信/飞书/QQ 等渠道的用户消息，包含发送者、内容、媒体
     以及渠道特有元数据，作为智能体处理流程的输入。
     """
 
-    channel: str  # 渠道标识：telegram, discord, slack, whatsapp
+    channel: str  # 渠道标识：weixin、feishu、qq 等
     sender_id: str  # 发送者唯一标识
     chat_id: str  # 聊天/会话标识
     content: str  # 消息文本内容

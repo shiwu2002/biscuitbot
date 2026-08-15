@@ -5062,18 +5062,12 @@ const AUTOMATION_CHANNEL_LABELS: Record<string, string> = {
   api: "API",
   cli: "CLI",
   dingtalk: "DingTalk",
-  discord: "Discord",
   email: "Email",
   feishu: "Feishu",
-  matrix: "Matrix",
-  msteams: "Microsoft Teams",
   qq: "QQ",
-  slack: "Slack",
-  telegram: "Telegram",
   wechat: "WeChat",
   wecom: "WeCom",
   weixin: "WeChat",
-  whatsapp: "WhatsApp",
 };
 
 function parseAutomationSearchQuery(query: string): AutomationSearchToken[] {

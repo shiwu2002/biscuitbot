@@ -89,10 +89,7 @@ pip install biscuitbot
 
 # 可选依赖按需安装
 pip install 'biscuitbot[api]'      # OpenAI 兼容 API 服务器
-pip install 'biscuitbot[discord]'  # Discord 频道
 pip install 'biscuitbot[wecom]'    # 企业微信频道
-pip install 'biscuitbot[msteams]'  # Microsoft Teams 频道
-pip install 'biscuitbot[matrix]'   # Matrix 频道
 pip install 'biscuitbot[weixin]'   # 微信频道
 
 # 开发模式安装

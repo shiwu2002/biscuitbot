@@ -94,7 +94,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 
 ## 7. Channel 系统概览
 
-Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/) 目录。当前内置 **16 个** channel 模块，通过 [registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/registry.py) 的自动发现机制加载，并支持经 `entry_points` 注册的外部插件。
+Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/) 目录。当前内置 **9 个** channel 模块，通过 [registry.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/registry.py) 的自动发现机制加载，并支持经 `entry_points` 注册的外部插件。
 
 ## 8. BaseChannel 抽象基类
 
@@ -107,7 +107,7 @@ Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volume
 ### 流式接口（默认空实现，按需覆写）
 
 - `send_delta(chat_id, delta, metadata)` —— 投递流式文本块；状态化实现须按 `_stream_id` 而非仅 `chat_id` 缓存。
-- `send_reasoning_delta(...)` / `send_reasoning_end(...)` —— 推理/思考内容流，平台可用原生低强调控件渲染（Slack context block、Telegram 折叠引用、Discord subtext 等）。
+- `send_reasoning_delta(...)` / `send_reasoning_end(...)` —— 推理/思考内容流，平台可用原生低强调控件渲染（如折叠引用、subtext 等）。
 - `send_file_edit_events(...)` —— 结构化实时文件编辑事件，富界面可借此展示编辑进度。
 - `supports_streaming` 属性：配置启用 streaming 且子类覆写了 `send_delta` 时为真。
 
@@ -138,18 +138,11 @@ Channel 子系统适配各聊天平台，核心位于 [channels/](file:///Volume
 | 名称 | 文件 | 说明 |
 |------|------|------|
 | dingtalk | [dingtalk.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/dingtalk.py) | 钉钉机器人 |
-| discord | [discord.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/discord.py) | Discord |
 | email | [email.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/email.py) | 电子邮件（IMAP/SMTP） |
 | feishu | [feishu.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/feishu.py) | 飞书 |
-| matrix | [matrix.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/matrix.py) | Matrix 协议 |
 | mochat | [mochat.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/mochat.py) | MoChat |
-| msteams | [msteams.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/msteams.py) | Microsoft Teams |
 | napcat | [napcat.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/napcat.py) | NapCat（QQ 协议） |
 | qq | [qq.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/qq.py) | QQ |
-| signal | [signal.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/signal.py) | Signal |
-| slack | [slack.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/slack.py) | Slack |
-| telegram | [telegram.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/telegram.py) | Telegram |
 | websocket | [websocket.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/websocket.py) | WebSocket（WebUI 网关） |
 | wecom | [wecom.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/wecom.py) | 企业微信 |
 | weixin | [weixin.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/weixin.py) | 微信 |
-| whatsapp | [whatsapp.py](file:///Volumes/data/hczkAgent/nanobot/biscuitbot/channels/whatsapp.py) | WhatsApp |

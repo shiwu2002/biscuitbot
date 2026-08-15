@@ -43,10 +43,10 @@ class _FakePlugin(BaseChannel):
         return True
 
 
-class _FakeTelegram(BaseChannel):
-    """Plugin that tries to shadow built-in telegram."""
-    name = "telegram"
-    display_name = "Fake Telegram"
+class _FakeWeixin(BaseChannel):
+    """Plugin that tries to shadow built-in weixin."""
+    name = "weixin"
+    display_name = "Fake WeChat"
 
     async def start(self) -> None:
         pass
@@ -198,12 +198,12 @@ def test_discover_enabled_imports_only_enabled_builtins():
 def test_discover_all_builtin_shadows_plugin():
     from biscuitbot.channels.registry import discover_all
 
-    ep = _make_entry_point("telegram", _FakeTelegram)
+    ep = _make_entry_point("weixin", _FakeWeixin)
     with patch(_EP_TARGET, return_value=[ep]):
         result = discover_all()
 
-    assert "telegram" in result
-    assert result["telegram"] is not _FakeTelegram
+    assert "weixin" in result
+    assert result["weixin"] is not _FakeWeixin
 
 
 # ---------------------------------------------------------------------------
@@ -449,8 +449,8 @@ async def test_manager_skips_disabled_plugin():
 
 def test_builtin_channel_default_config():
     """Built-in channels expose default_config() returning a dict with 'enabled': False."""
-    from biscuitbot.channels.telegram import TelegramChannel
-    cfg = TelegramChannel.default_config()
+    from biscuitbot.channels.weixin import WeixinChannel
+    cfg = WeixinChannel.default_config()
     assert isinstance(cfg, dict)
     assert cfg["enabled"] is False
     assert "token" in cfg
@@ -458,9 +458,9 @@ def test_builtin_channel_default_config():
 
 def test_builtin_channel_init_from_dict():
     """Built-in channels accept a raw dict and convert to Pydantic internally."""
-    from biscuitbot.channels.telegram import TelegramChannel
+    from biscuitbot.channels.weixin import WeixinChannel
     bus = MessageBus()
-    ch = TelegramChannel({"enabled": False, "token": "test-tok", "allowFrom": ["*"]}, bus)
+    ch = WeixinChannel({"enabled": False, "token": "test-tok", "allowFrom": ["*"]}, bus)
     assert ch.config.token == "test-tok"
     assert ch.config.allow_from == ["*"]
 

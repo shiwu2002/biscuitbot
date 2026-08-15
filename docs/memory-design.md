@@ -110,7 +110,7 @@ class MemoryStore:
 每行一个 JSON 对象：
 
 ```json
-{"cursor": 1, "timestamp": "2026-06-24 10:00", "content": "用户询问了部署流程", "session_key": "telegram:12345"}
+{"cursor": 1, "timestamp": "2026-06-24 10:00", "content": "用户询问了部署流程", "session_key": "weixin:12345"}
 ```
 
 | 字段 | 类型 | 说明 |

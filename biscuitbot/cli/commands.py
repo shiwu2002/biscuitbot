@@ -1871,7 +1871,7 @@ def channels_status(
 
 @channels_app.command("login")
 def channels_login(
-    channel_name: str = typer.Argument(..., help="频道名称（如 weixin、whatsapp）"),
+    channel_name: str = typer.Argument(..., help="频道名称（如 weixin、feishu）"),
     force: bool = typer.Option(False, "--force", "-f", help="强制重新认证（即使已登录）"),
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):

@@ -27,7 +27,7 @@ class RequestContext:
 
     该对象不可变（frozen），包含渠道、会话 ID 等请求级信息。
     """
-    channel: str  # 消息渠道（如 slack、web 等）
+    channel: str  # 消息渠道（如 weixin、web 等）
     chat_id: str  # 会话 ID
     message_id: str | None = None  # 消息 ID
     session_key: str | None = None  # 会话键，用于关联持久化会话
