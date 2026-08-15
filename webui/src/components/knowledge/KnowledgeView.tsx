@@ -141,12 +141,6 @@ export function KnowledgeView({
               <h1 className="text-[24px] font-normal leading-tight tracking-tight text-foreground sm:text-[28px]">
                 {tx("knowledge.title", "知识库")}
               </h1>
-              <p className="mt-2 max-w-[680px] text-[13px] leading-5 text-muted-foreground">
-                {tx(
-                  "knowledge.description",
-                  "上传文档或图片。文档会被抽取文本、图片由多模态模型生成描述并建立索引，智能体可通过 search_knowledge 检索并读取它们。",
-                )}
-              </p>
             </div>
             <Button
               type="button"
