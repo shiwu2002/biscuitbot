@@ -92,6 +92,20 @@ describe("EmployeesView 数字人员工视图", () => {
     expect(onPick).not.toHaveBeenCalled();
   });
 
+  it("内置员工不显示编辑按钮，仅可删除", () => {
+    render(
+      <ClientProvider client={{} as never} token="tok">
+        <EmployeesView
+          employees={[{ ...CLIP_MASTER, builtin: true }]}
+          onBackToChat={vi.fn()}
+        />
+      </ClientProvider>,
+    );
+    expect(screen.queryByText("编辑")).not.toBeInTheDocument();
+    expect(screen.getByText("删除")).toBeInTheDocument();
+    expect(screen.getByText("内置")).toBeInTheDocument();
+  });
+
   it("creates an employee with codename, title and persona", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ ...CLIP_MASTER }));
     vi.stubGlobal("fetch", fetchMock);

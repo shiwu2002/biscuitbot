@@ -154,7 +154,7 @@ export function EmployeesView({
             {tx("employeesView.empty", "还没有数字人员工。")}
           </div>
         ) : (
-          <div className="mx-auto flex max-w-[49.5rem] flex-col gap-5">
+          <div className="grid grid-cols-2 gap-4 md:gap-5 lg:grid-cols-3">
             {ordered.map((employee) => (
               <article
                 key={employee.id}
@@ -164,56 +164,68 @@ export function EmployeesView({
                   name: employee.name,
                 })}
                 className={cn(
-                  "group flex min-w-0 cursor-pointer items-start gap-3 sm:gap-4",
+                  "cyber-glass-panel group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-2xl p-4 transition-colors group-hover:border-cyan-400/40 sm:aspect-square",
                   !employee.enabled && "opacity-70",
                 )}
               >
-                <span
-                  className="mt-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-[20px] leading-none"
-                  aria-hidden
-                >
-                  {employee.avatar || "🧑‍💼"}
-                </span>
-                <div className="cyber-glass-panel relative min-w-0 flex-1 overflow-hidden rounded-2xl px-4 py-3.5 transition-colors group-hover:border-cyan-400/40 sm:px-5 sm:py-4">
-                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    <h3 className="text-[15px] font-semibold leading-6 text-foreground">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-[22px] leading-none"
+                    aria-hidden
+                  >
+                    {employee.avatar || "🧑‍💼"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-[15px] font-semibold leading-6 text-foreground">
                       {employee.name}
                     </h3>
                     {employee.title ? (
-                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground/80">
+                      <p className="truncate text-[11px] leading-4 text-muted-foreground/80">
                         {employee.title}
-                      </span>
+                      </p>
                     ) : null}
-                    {employee.enabled ? (
-                      <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 dark:text-emerald-300">
-                        {tx("employeesView.enabled", "启用")}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground">
-                        {tx("employeesView.disabled", "停用")}
-                      </span>
-                    )}
                   </div>
-                  <div className="mt-2 whitespace-pre-line text-[13px] leading-6 text-muted-foreground">
-                    {employee.system_prompt?.trim()
-                      ? employee.system_prompt
-                      : tx("employeesView.noPersona", "该员工暂无角色提示词")}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center justify-end gap-1.5">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      disabled={!onPick}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPick?.(employee);
-                      }}
-                      className="h-8 rounded-[9px] px-3 text-[12.5px]"
-                    >
-                      <MessageCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                      {tx("employeesView.chat", "和 TA 对话")}
-                    </Button>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                  {employee.builtin ? (
+                    <span className="rounded-full bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-cyan-700 dark:text-cyan-300">
+                      {tx("employeesView.builtin", "内置")}
+                    </span>
+                  ) : null}
+                  {employee.enabled ? (
+                    <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-emerald-700 dark:text-emerald-300">
+                      {tx("employeesView.enabled", "启用")}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold leading-none text-muted-foreground">
+                      {tx("employeesView.disabled", "停用")}
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-2.5 line-clamp-4 whitespace-pre-line text-[12.5px] leading-5 text-muted-foreground">
+                  {employee.system_prompt?.trim()
+                    ? employee.system_prompt
+                    : tx("employeesView.noPersona", "该员工暂无角色提示词")}
+                </p>
+
+                <div className="mt-auto flex items-center justify-end gap-1.5 pt-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    disabled={!onPick}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onPick?.(employee);
+                    }}
+                    className="h-8 rounded-[9px] px-3 text-[12.5px]"
+                  >
+                    <MessageCircle className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                    {tx("employeesView.chat", "和 TA 对话")}
+                  </Button>
+                  {!employee.builtin ? (
                     <Button
                       type="button"
                       size="sm"
@@ -227,24 +239,24 @@ export function EmployeesView({
                       <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
                       {tx("employeesView.edit", "编辑")}
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      title={t("settings.employees.delete", {
-                        name: employee.name,
-                        defaultValue: "删除员工 {{name}}",
-                      })}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteTarget(employee);
-                      }}
-                      className="h-8 rounded-[9px] px-3 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                      {tx("employeesView.delete", "删除")}
-                    </Button>
-                  </div>
+                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    title={t("settings.employees.delete", {
+                      name: employee.name,
+                      defaultValue: "删除员工 {{name}}",
+                    })}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget(employee);
+                    }}
+                    className="h-8 rounded-[9px] px-3 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                    {tx("employeesView.delete", "删除")}
+                  </Button>
                 </div>
               </article>
             ))}

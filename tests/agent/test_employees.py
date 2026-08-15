@@ -147,17 +147,16 @@ class TestOneTimeMerge:
         assert clip["title"] == "AI视频剪辑总监"
         assert "阿伟" in clip["system_prompt"]
 
-    def test_edited_builtin_persona_preserved_when_version_current(
-        self, tmp_path: Path
-    ) -> None:
-        # 版本已是最新时，用户对内置员工的编辑不会被覆盖
+    def test_builtin_employee_cannot_be_updated(self, tmp_path: Path) -> None:
+        # 内置数字人员工不可修改（只能删除），修改返回 403
         store = _store(tmp_path)
-        store.list_employees()  # 触发 seed，写入 v3 标记
-        custom = "用户改过的剪影提示词"
-        store.update_employee("clip-master", {"system_prompt": custom})
-        employees = store.list_employees()
-        clip = next(e for e in employees if e["id"] == "clip-master")
-        assert clip["system_prompt"] == custom
+        store.list_employees()  # 触发 seed
+        with pytest.raises(EmployeeValidationError) as exc:
+            store.update_employee("clip-master", {"system_prompt": "自定义提示词"})
+        assert exc.value.status == 403
+        # 内置记录未被改动
+        clip = store.get_employee("clip-master")
+        assert clip is not None and clip["name"] == "阿伟"
 
     def test_marker_is_set_after_merge(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
@@ -184,10 +183,20 @@ class TestCrudAgainstBuiltins:
         ids = {e["id"] for e in store.list_employees()}
         assert BUILTIN_IDS <= ids
 
-    def test_update_builtin(self, tmp_path: Path) -> None:
+    def test_update_builtin_rejected(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
-        updated = store.update_employee("ip-consultant", {"name": "IP 顾问"})
-        assert updated["name"] == "IP 顾问"
+        with pytest.raises(EmployeeValidationError) as exc:
+            store.update_employee("ip-consultant", {"name": "IP 顾问"})
+        assert exc.value.status == 403
+
+    def test_builtin_flag_marked(self, tmp_path: Path) -> None:
+        store = _store(tmp_path)
+        by_id = {e["id"]: e for e in store.list_employees()}
+        assert by_id["clip-master"]["builtin"] is True
+        emp = store.create_employee(
+            {"name": "专属助理", "system_prompt": "我是你的专属助理。"}
+        )
+        assert emp["builtin"] is False
 
     def test_delete_and_recreate_builtin(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
@@ -336,10 +345,13 @@ class TestBuiltinVersionMigration:
     def test_sync_preserves_user_edits_when_version_current(
         self, tmp_path: Path
     ) -> None:
+        # 版本已是最新时，自建员工的编辑不会被同步覆盖
         store = _store(tmp_path)
         store.list_employees()
-        store.update_employee("clip-master", {"name": "剪影改", "title": "剪辑改"})
-        employees = store.list_employees()
-        clip = next(e for e in employees if e["id"] == "clip-master")
-        assert clip["name"] == "剪影改"
-        assert clip["title"] == "剪辑改"
+        emp = store.create_employee(
+            {"name": "专属助理", "title": "助理", "system_prompt": "我是你的专属助理。"}
+        )
+        store.update_employee(emp["id"], {"name": "专属助理改", "title": "助理改"})
+        by_id = {e["id"]: e for e in store.list_employees()}
+        assert by_id[emp["id"]]["name"] == "专属助理改"
+        assert by_id[emp["id"]]["title"] == "助理改"

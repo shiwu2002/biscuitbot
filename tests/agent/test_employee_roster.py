@@ -117,16 +117,15 @@ class TestSkillBelongsToEmployee:
         assert "- **design**" not in prompt
 
     def test_employee_without_skills_has_no_skill_summary(self, tmp_path: Path) -> None:
-        # 给一个内置员工清空技能，模拟无技能员工：技能摘要应为空（归属自己，不共享全部）
-        store = _store(tmp_path)
-        store.update_employee("clip-master", {"skills": []})
+        # 宫本（screenwriter）是内置的无技能员工：技能摘要应为空（归属自己，不共享全部）
         cb = ContextBuilder(tmp_path)
         prompt = cb.build_system_prompt(
-            session_metadata={"employee": "clip-master"}
+            session_metadata={"employee": "screenwriter"}
         )
-        # 无技能员工：任何技能目录名都不应出现在技能摘要中（选一个不会出现在阿伟 persona 里的）
+        # 无技能员工：任何技能目录名都不应出现在技能摘要中
         assert "- **secretary**" not in prompt
         assert "- **design**" not in prompt
+        assert "- **jianying-editor**" not in prompt
 
 
 class TestRosterQualityWarning:

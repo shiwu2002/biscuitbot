@@ -194,6 +194,8 @@ export interface Employee {
   system_prompt: string;
   skills: string[];
   enabled: boolean;
+  /** 内置数字人员工不可修改，只能删除。 */
+  builtin?: boolean;
   created_at: string;
 }
 

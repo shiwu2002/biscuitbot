@@ -43,6 +43,20 @@ _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 # id 允许的字符：小写字母、数字、-、_（slug）
 _VALID_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 
+# 内置数字人员工 id 集合：这些员工不可修改，只能删除。
+# 与 ``_seed_default`` 里的内置 id 一一对应（避免在此处派生自 _seed_default，
+# 否则会与 _normalize 的 builtin 判定形成递归依赖）。
+BUILTIN_EMPLOYEE_IDS = frozenset(
+    {
+        "clip-master",
+        "ip-consultant",
+        "short-video-operator",
+        "super-secretary",
+        "all-round-designer",
+        "screenwriter",
+    }
+)
+
 
 class EmployeeValidationError(Exception):
     """员工数据校验失败时抛出（含 HTTP 状态码）。"""
@@ -154,8 +168,10 @@ class EmployeeStore:
     def update_employee(self, employee_id: str, data: dict[str, Any]) -> dict[str, Any]:
         """更新员工（部分字段合并；id 不可变更）。
 
+        内置数字人员工不可修改，只能删除（返回 403）。
+
         异常:
-            EmployeeValidationError: 员工不存在或校验失败。
+            EmployeeValidationError: 员工不存在、校验失败或试图修改内置员工。
         """
         employee_id = str(employee_id or "").strip()
         data = dict(data or {})
@@ -167,6 +183,10 @@ class EmployeeStore:
             )
             if idx is None:
                 raise EmployeeValidationError(404, f"员工不存在：{employee_id}")
+
+            # 内置数字人员工不可修改（只能删除），防止其内置 persona/技能被覆盖。
+            if employees[idx].get("builtin"):
+                raise EmployeeValidationError(403, "内置数字人员工不可修改，只能删除")
 
             merged = dict(employees[idx])
             # 仅合并白名单字段，忽略 id/created_at 等不可变字段
@@ -1102,5 +1122,6 @@ class EmployeeStore:
             "system_prompt": system_prompt.strip(),
             "skills": skills,
             "enabled": enabled,
+            "builtin": employee_id in BUILTIN_EMPLOYEE_IDS,
             "created_at": created_at,
         }

@@ -82,11 +82,14 @@ class TestInvokeEmployeeTool:
 
     async def test_disabled_employee_rejected(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
-        store.update_employee("clip-master", {"enabled": False})
+        store.create_employee(
+            {"id": "writer", "name": "写作助手", "system_prompt": "你是写作助手数字人员工。"}
+        )
+        store.update_employee("writer", {"enabled": False})
         manager = _manager(tmp_path)
         manager.run_employee_inline = AsyncMock(return_value="x")
         tool = InvokeEmployeeTool(subagent_manager=manager, employees=store)
-        out = await tool.execute("clip-master", "干活")
+        out = await tool.execute("writer", "干活")
         assert "没有可用的数字员工" in out
 
     async def test_empty_task_rejected(self, tmp_path: Path) -> None:
