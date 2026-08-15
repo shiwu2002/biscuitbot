@@ -107,7 +107,7 @@ class EmailChannel(BaseChannel):
     """
 
     name = "email"
-    display_name = "Email"
+    display_name = "邮件"
     _IMAP_MONTHS = (  # IMAP 日期搜索使用的英文月份缩写
         "Jan",
         "Feb",

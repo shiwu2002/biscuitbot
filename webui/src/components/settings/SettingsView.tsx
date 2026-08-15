@@ -13,6 +13,7 @@ import {
   Activity,
   ArrowUpCircle,
   ArrowUpDown,
+  Blocks,
   Bot,
   Brain,
   Check,
@@ -110,7 +111,7 @@ import {
   updateVideoGenerationSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
-import type { ChannelRow } from "@/lib/api";
+import type { ChannelRow, ChannelsPayload } from "@/lib/api";
 import { notifyCliAppsChanged } from "@/lib/cli-app-events";
 import { getHostApi } from "@/lib/runtime";
 import { notifyMcpPresetsChanged } from "@/lib/mcp-preset-events";
@@ -1962,6 +1963,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "appearance", icon: Palette, fallback: "Appearance" },
   { key: "models", icon: SlidersHorizontal, fallback: "Models" },
   { key: "browser", icon: Globe2, fallback: "Web" },
+  { key: "apps", icon: Blocks, fallback: "Apps" },
   { key: "channels", icon: MessageSquareText, fallback: "Channels" },
   { key: "runtime", icon: Server, fallback: "System" },
 ];
@@ -7766,6 +7768,7 @@ function ChannelsSettings({
   const [error, setError] = useState<string | null>(null);
   const [requiresRestart, setRequiresRestart] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [configuring, setConfiguring] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -7796,6 +7799,11 @@ function ChannelsSettings({
 
   const handleToggle = async (channel: ChannelRow, enabled: boolean) => {
     if (toggling) return;
+    // 首次启用未配置渠道：先弹出凭据表单，而非直接启用。
+    if (enabled && !channel.configured && channel.fields.length > 0) {
+      setConfiguring(channel.name);
+      return;
+    }
     setToggling(channel.name);
     try {
       const payload = await updateChannelSettings(token, {
@@ -7846,14 +7854,7 @@ function ChannelsSettings({
       <SettingsGroup>
         {rows.map((channel) => (
           <div key={channel.name}>
-            <SettingsRow
-              title={channel.display_name}
-              description={
-                channel.configured
-                  ? undefined
-                  : tx("settings.channels.needsConfig", "需在 config.json 中配置凭证")
-              }
-            >
+            <SettingsRow title={channel.display_name}>
               <div className="flex items-center gap-2.5">
                 <StatusPill tone={channel.enabled ? "success" : "neutral"}>
                   {channel.enabled
@@ -7870,6 +7871,18 @@ function ChannelsSettings({
                 />
               </div>
             </SettingsRow>
+            {configuring === channel.name ? (
+              <ChannelConfigForm
+                channel={channel}
+                token={token}
+                onCancel={() => setConfiguring(null)}
+                onSaved={(payload) => {
+                  setChannels(payload.channels);
+                  if (payload.requires_restart) setRequiresRestart(true);
+                  setConfiguring(null);
+                }}
+              />
+            ) : null}
             {channel.has_qr_login ? (
               <div className="px-4 pb-4 sm:px-5">
                 <WechatBridge token={token} onConfirmed={refresh} />
@@ -7893,6 +7906,115 @@ function ChannelsSettings({
           )}
         />
       ) : null}
+    </div>
+  );
+}
+
+function ChannelConfigForm({
+  channel,
+  token,
+  onCancel,
+  onSaved,
+}: {
+  channel: ChannelRow;
+  token: string;
+  onCancel: () => void;
+  onSaved: (payload: ChannelsPayload) => void;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+
+  const [values, setValues] = useState<Record<string, string | boolean>>(() =>
+    Object.fromEntries(channel.fields.map((field) => [field.key, field.value])),
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = await updateChannelSettings(token, {
+        channel: channel.name,
+        enabled: true,
+        values,
+      });
+      onSaved(payload);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="px-4 pb-4 sm:px-5">
+      <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
+        <div className="mb-1 text-[13px] font-medium">
+          {tx("settings.channels.configureTitle", "配置 {name}").replace(
+            "{name}",
+            channel.display_name,
+          )}
+        </div>
+        <div className="mb-4 text-[12px] text-muted-foreground">
+          {tx("settings.channels.configureHelp", "填写接入所需的凭据，保存后启用。")}
+        </div>
+        <div className="space-y-3">
+          {channel.fields.map((field) =>
+            field.type === "boolean" ? (
+              <div
+                key={field.key}
+                className="flex items-center justify-between gap-3"
+              >
+                <span className="text-[13px]">{field.label}</span>
+                <ToggleButton
+                  checked={Boolean(values[field.key])}
+                  onChange={(checked) =>
+                    setValues((prev) => ({ ...prev, [field.key]: checked }))
+                  }
+                  label={field.label}
+                />
+              </div>
+            ) : (
+              <label key={field.key} className="block">
+                <span className="mb-1 block text-[12px] font-medium text-muted-foreground">
+                  {field.label}
+                </span>
+                <Input
+                  type={field.secret ? "password" : "text"}
+                  value={String(values[field.key] ?? "")}
+                  onChange={(event) =>
+                    setValues((prev) => ({
+                      ...prev,
+                      [field.key]: event.target.value,
+                    }))
+                  }
+                  autoComplete="off"
+                  className="h-10 rounded-full px-4 text-[14px]"
+                />
+              </label>
+            ),
+          )}
+        </div>
+        {error ? (
+          <div className="mt-3 text-[12px] text-destructive">{error}</div>
+        ) : null}
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onCancel}
+            disabled={saving}
+          >
+            {tx("settings.channels.cancel", "取消")}
+          </Button>
+          <Button size="sm" onClick={save} disabled={saving}>
+            {saving
+              ? tx("settings.channels.saving", "保存中…")
+              : tx("settings.channels.save", "保存并启用")}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

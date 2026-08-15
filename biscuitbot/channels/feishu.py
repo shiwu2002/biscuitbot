@@ -342,7 +342,7 @@ class FeishuChannel(BaseChannel):
     """
 
     name = "feishu"
-    display_name = "Feishu"
+    display_name = "飞书"
 
     _STREAM_EDIT_INTERVAL = 0.5  # CardKit 流式更新之间的节流间隔（秒）
 

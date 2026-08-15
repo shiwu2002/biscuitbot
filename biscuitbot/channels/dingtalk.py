@@ -189,7 +189,7 @@ class DingTalkChannel(BaseChannel):
     """
 
     name = "dingtalk"
-    display_name = "DingTalk"
+    display_name = "钉钉"
     _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}  # 图片扩展名集合
     _AUDIO_EXTS = {".amr", ".mp3", ".wav", ".ogg", ".m4a", ".aac"}  # 音频扩展名集合
     _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}  # 视频扩展名集合

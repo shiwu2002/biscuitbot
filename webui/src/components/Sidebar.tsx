@@ -8,7 +8,6 @@ import {
   Search,
   Settings,
   SquarePen,
-  Blocks,
   UsersRound,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -38,7 +37,6 @@ interface SidebarProps {
   onRequestRenameProject: (projectKey: string, label: string) => void;
   onNewChatInProject: (projectPath: string, projectName: string) => void;
   onOpenSettings: () => void;
-  onOpenApps: () => void;
   onOpenSkills: () => void;
   onOpenAutomations: () => void;
   onOpenSearch: () => void;
@@ -48,7 +46,7 @@ interface SidebarProps {
   onOpenEmployees: () => void;
   /** 数字人员工目录：用于会话行显示绑定的员工头像/代号（ChatList）。 */
   employees?: Employee[];
-  activeUtility?: "apps" | "skills" | "automations" | "employees" | "dashboard" | null;
+  activeUtility?: "skills" | "automations" | "employees" | "dashboard" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -172,13 +170,6 @@ export function Sidebar(props: SidebarProps) {
             icon={<Search className="h-4 w-4" />}
           />
         ) : null}
-        <SidebarActionButton
-          collapsed={collapsed}
-          label={t("sidebar.apps")}
-          onClick={props.onOpenApps}
-          active={props.activeUtility === "apps"}
-          icon={<Blocks className="h-4 w-4" />}
-        />
         <SidebarActionButton
           collapsed={collapsed}
           label={t("sidebar.skills.title")}

@@ -81,7 +81,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "dashboard" | "settings" | "apps" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
+type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -117,8 +117,7 @@ function defaultShellRoute(): ShellRoute {
 
 function shellViewForSettingsSection(section: SettingsSectionKey): ShellView {
   if (
-    section === "apps"
-    || section === "automations"
+    section === "automations"
     || section === "skills"
   ) {
     return section;
@@ -152,7 +151,8 @@ function readShellRoute(): ShellRoute {
     };
   }
   if (path === "/apps") {
-    return { view: "apps", activeKey, settingsSection: "apps" };
+    // 应用入口已并入设置页：深链重定向到设置内的「应用」分区。
+    return { view: "settings", activeKey, settingsSection: "apps" };
   }
   if (path === "/automations") {
     return { view: "automations", activeKey, settingsSection: "automations" };
@@ -1290,12 +1290,6 @@ function Shell({
     navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
   }, [activeKey, navigate]);
 
-  const onOpenApps = useCallback(() => {
-    setSessionSearchOpen(false);
-    navigate({ view: "apps", activeKey, settingsSection: "apps" });
-    setMobileSidebarOpen(false);
-  }, [activeKey, navigate]);
-
   const onOpenAutomations = useCallback(() => {
     setSessionSearchOpen(false);
     navigate({ view: "automations", activeKey, settingsSection: "automations" });
@@ -1498,12 +1492,6 @@ function Shell({
       });
       return;
     }
-    if (view === "apps") {
-      document.title = t("app.documentTitle.chat", {
-        title: t("settings.nav.apps", { defaultValue: "Apps" }),
-      });
-      return;
-    }
     if (view === "automations") {
       document.title = t("app.documentTitle.chat", {
         title: t("settings.nav.automations", { defaultValue: "Automations" }),
@@ -1556,7 +1544,6 @@ function Shell({
     onRequestRenameProject,
     onNewChatInProject,
     onOpenSettings,
-    onOpenApps,
     onOpenAutomations,
     onOpenSkills,
     onOpenEmployees,
@@ -1564,7 +1551,7 @@ function Shell({
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
-      view === "apps" || view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard"
+      view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard"
         ? view === "employee-chat" ? "employees" : view
         : null,
     onToggleArchived,

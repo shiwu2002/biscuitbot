@@ -289,7 +289,7 @@ class MochatChannel(BaseChannel):
     """Mochat 渠道，使用 socket.io 连接，失败时降级为轮询工作线程。"""
 
     name = "mochat"
-    display_name = "Mochat"
+    display_name = "MoChat"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:

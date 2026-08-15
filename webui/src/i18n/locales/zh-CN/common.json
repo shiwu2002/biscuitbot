@@ -175,7 +175,11 @@
       "enabled": "已启用",
       "disabled": "已禁用",
       "notConfigured": "未配置",
-      "needsConfig": "需在 config.json 中配置凭证",
+      "configureTitle": "配置 {name}",
+      "configureHelp": "填写接入所需的凭据，保存后启用。",
+      "save": "保存并启用",
+      "saving": "保存中…",
+      "cancel": "取消",
       "restartHint": "渠道启用状态将在网关重启后生效。"
     },
     "models": {

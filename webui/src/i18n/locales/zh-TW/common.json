@@ -175,7 +175,11 @@
       "enabled": "已啟用",
       "disabled": "已停用",
       "notConfigured": "未設定",
-      "needsConfig": "需在 config.json 中設定憑證",
+      "configureTitle": "設定 {name}",
+      "configureHelp": "填寫接入所需的憑證，儲存後啟用。",
+      "save": "儲存並啟用",
+      "saving": "儲存中…",
+      "cancel": "取消",
       "restartHint": "渠道啟用狀態將在閘道重新啟動後生效。"
     },
     "rows": {

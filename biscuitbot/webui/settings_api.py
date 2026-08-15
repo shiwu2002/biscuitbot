@@ -389,6 +389,123 @@ def needs_setup(config: Any) -> bool:
     return True
 
 
+_CHANNEL_FIELD_LABELS: dict[str, dict[str, str]] = {
+    # 钉钉：Stream Mode 机器人
+    "dingtalk": {
+        "clientId": "AppKey（Client ID）",
+        "clientSecret": "AppSecret（Client Secret）",
+    },
+    # 飞书：开放平台应用
+    "feishu": {
+        "appId": "应用 ID（App ID）",
+        "appSecret": "应用密钥（App Secret）",
+        "encryptKey": "事件加密密钥（Encrypt Key）",
+        "verificationToken": "事件验证令牌（Verification Token）",
+    },
+    # 企业微信：AI 机器人
+    "wecom": {
+        "botId": "机器人 ID（Bot ID）",
+        "secret": "机器人密钥（Secret）",
+        "welcomeMessage": "欢迎语（可选）",
+    },
+    # QQ 开放平台
+    "qq": {
+        "appId": "应用 ID（App ID）",
+        "secret": "应用密钥（Secret）",
+        "mediaDir": "媒体缓存目录（可选）",
+    },
+    # NapCat（QQ 协议）
+    "napcat": {
+        "wsUrl": "WebSocket 地址",
+        "accessToken": "访问令牌（Access Token）",
+    },
+    # MoChat
+    "mochat": {
+        "socketUrl": "Socket.IO 地址（可选）",
+        "clawToken": "鉴权令牌（Token）",
+        "agentUserId": "机器人用户 ID",
+    },
+    # 邮件（IMAP 收 / SMTP 发）
+    "email": {
+        "consentGranted": "我已授权机器人读取并处理邮箱",
+        "imapHost": "IMAP 服务器",
+        "imapUsername": "IMAP 用户名",
+        "imapPassword": "IMAP 密码",
+        "smtpHost": "SMTP 服务器",
+        "smtpUsername": "SMTP 用户名",
+        "smtpPassword": "SMTP 密码",
+        "fromAddress": "发件人地址",
+    },
+    # WebSocket
+    "websocket": {
+        "token": "访问令牌（Token，可选）",
+        "tokenIssuePath": "令牌签发路径（可选）",
+        "tokenIssueSecret": "令牌签发密钥（可选）",
+        "unixSocketPath": "Unix Socket 路径（可选）",
+        "sslCertfile": "SSL 证书路径（可选）",
+        "sslKeyfile": "SSL 私钥路径（可选）",
+    },
+}
+
+
+def _is_secret_key(key: str) -> bool:
+    """渠道配置字段是否为敏感凭据（前端用密码输入框渲染）。"""
+    lowered = key.lower()
+    return (
+        any(token in lowered for token in ("secret", "token", "password"))
+        or lowered.endswith("key")
+    )
+
+
+def _humanize_field_key(key: str) -> str:
+    """把 snake_case 字段名转成可读标签（未命中中文标签表时的兜底）。"""
+    return key.replace("_", " ").strip()
+
+
+def _channel_field_schema(name: str, cls: type, section: Any) -> list[dict[str, Any]]:
+    """返回渠道需要用户填写的凭据字段（用于 WebUI 配置表单）。
+
+    以 ``default_config()`` 的默认值为基线：仅暴露默认值为空字符串、需要用户
+    填写的字段，外加 ``consent_granted``（布尔授权）。``enabled``、嵌套 dict、
+    列表白名单、以及已有合理默认值的字段不进入表单（仍可在 config.json 维护）。
+    """
+    if not hasattr(cls, "default_config"):
+        return []
+    default = cls.default_config()
+    if not isinstance(default, dict):
+        return []
+    if isinstance(section, dict):
+        data = section
+    elif hasattr(section, "model_dump"):
+        data = section.model_dump(by_alias=True)
+    else:
+        data = {}
+
+    labels = _CHANNEL_FIELD_LABELS.get(name, {})
+    fields: list[dict[str, Any]] = []
+    for key, default_value in default.items():
+        if key == "enabled":
+            continue
+        if isinstance(default_value, bool):
+            if key not in ("consent_granted", "consentGranted"):
+                continue
+            field_type = "boolean"
+        elif default_value == "":
+            field_type = "string"
+        else:
+            continue  # None / 非空默认值 / 数值 / 列表 / 字典 —— 不进表单
+
+        current = data.get(key, default_value)
+        fields.append({
+            "key": key,
+            "label": labels.get(key, _humanize_field_key(key)),
+            "type": field_type,
+            "secret": _is_secret_key(key),
+            "value": "" if current is None else current,
+        })
+    return fields
+
+
 def channels_payload() -> dict[str, Any]:
     """列出所有可连接渠道及其启用/配置状态。
 
@@ -413,6 +530,8 @@ def channels_payload() -> dict[str, Any]:
             "enabled": bool(enabled),
             "configured": _channel_configured(section, cls),
             "has_qr_login": name == "weixin",
+            # 微信走扫码登录，其余渠道暴露需填写的凭据字段供前端渲染表单。
+            "fields": [] if name == "weixin" else _channel_field_schema(name, cls, section),
         })
     return {"channels": rows}
 
@@ -441,24 +560,50 @@ def _channel_configured(section: Any, cls: type) -> bool:
     return False
 
 
-def update_channel_settings(query: QueryParams) -> dict[str, Any]:
-    """切换渠道的 ``enabled`` 标志并持久化。
+def _coerce_channel_value(raw: str, default_value: Any, key: str) -> Any:
+    """把 query 字符串归一化为渠道配置字段的目标类型。"""
+    if isinstance(default_value, bool):
+        return _parse_bool(raw, key)
+    if isinstance(default_value, int):
+        try:
+            return int(raw.strip())
+        except ValueError:
+            raise WebUISettingsError(f"{key} must be an integer") from None
+    if isinstance(default_value, list):
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    return raw  # str / None
 
-    渠道名称校验通过 ``discover_all()``（内置 + 插件），未知渠道报错。修改
-    需重启网关后由 ``ChannelManager._init_channels`` 生效，故返回
-    ``requires_restart``。
+
+def update_channel_settings(query: QueryParams) -> dict[str, Any]:
+    """切换渠道启用状态并写入凭据字段，持久化到 config.json。
+
+    渠道名称校验通过 ``discover_all()``（内置 + 插件），未知渠道报错。除
+    ``enabled`` 外，其余 query 参数按渠道 ``default_config()`` 的字段类型归一化
+    后写入对应渠道配置。修改需重启网关后由 ``ChannelManager._init_channels``
+    生效，故返回 ``requires_restart``。
     """
     from biscuitbot.channels.registry import discover_all
 
     name = (_query_first(query, "channel") or "").strip().lower()
     if not name:
         raise WebUISettingsError("channel is required")
-    if name not in discover_all():
+    all_channels = discover_all()
+    if name not in all_channels:
         raise WebUISettingsError("unknown channel")
+    cls = all_channels[name]
 
     config = load_config()
     section = getattr(config.channels, name, None)
     changed = False
+
+    def _current_value(key: str, default: Any) -> Any:
+        if isinstance(section, dict):
+            return section.get(key, default)
+        if section is not None:
+            return getattr(section, key, default)
+        return default
+
+    # 1) enabled 标志
     enabled_raw = _query_first(query, "enabled")
     if enabled_raw is not None:
         enabled = _parse_bool(enabled_raw, "enabled")
@@ -471,8 +616,29 @@ def update_channel_settings(query: QueryParams) -> dict[str, Any]:
                 section.enabled = enabled
                 changed = True
         else:
-            setattr(config.channels, name, {"enabled": enabled})
+            section = {"enabled": enabled}
+            setattr(config.channels, name, section)
             changed = True
+
+    # 2) 凭据字段（default_config 中的空字符串 / consent_granted 字段）
+    default = cls.default_config() if hasattr(cls, "default_config") else {}
+    if isinstance(default, dict):
+        for key, default_value in default.items():
+            if key == "enabled":
+                continue
+            raw = _query_first(query, key)
+            if raw is None:
+                continue
+            coerced = _coerce_channel_value(raw, default_value, key)
+            if _current_value(key, default_value) != coerced:
+                if section is None:
+                    section = {}
+                    setattr(config.channels, name, section)
+                if isinstance(section, dict):
+                    section[key] = coerced
+                else:
+                    setattr(section, key, coerced)
+                changed = True
 
     if changed:
         save_config(config)

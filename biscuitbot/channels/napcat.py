@@ -73,7 +73,7 @@ class NapcatChannel(BaseChannel):
     """Napcat / OneBot v11 渠道。"""
 
     name = "napcat"
-    display_name = "Napcat (QQ)"
+    display_name = "NapCat（QQ）"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:

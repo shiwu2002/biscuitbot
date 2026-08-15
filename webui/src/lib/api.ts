@@ -775,13 +775,23 @@ export async function pollWeixinLoginStatus(
   );
 }
 
-/** 单个渠道：名称 + 展示名 + 启用/已配置状态。 */
+/** 渠道配置表单字段（后端从渠道 default_config 推导出的凭据字段）。 */
+export interface ChannelField {
+  key: string;
+  label: string;
+  type: "string" | "boolean";
+  secret: boolean;
+  value: string | boolean;
+}
+
+/** 单个渠道：名称 + 展示名 + 启用/已配置状态 + 配置表单字段。 */
 export interface ChannelRow {
   name: string;
   display_name: string;
   enabled: boolean;
   configured: boolean;
   has_qr_login: boolean;
+  fields: ChannelField[];
 }
 
 /** 渠道列表载荷。 */
@@ -799,12 +809,21 @@ export async function fetchChannels(
 
 export async function updateChannelSettings(
   token: string,
-  update: { channel: string; enabled: boolean },
+  update: {
+    channel: string;
+    enabled: boolean;
+    values?: Record<string, string | boolean>;
+  },
   base: string = "",
 ): Promise<ChannelsPayload> {
   const query = new URLSearchParams();
   query.set("channel", update.channel);
   query.set("enabled", String(update.enabled));
+  if (update.values) {
+    for (const [key, value] of Object.entries(update.values)) {
+      query.set(key, String(value));
+    }
+  }
   return request<ChannelsPayload>(
     `${base}/api/settings/channels/update?${query}`,
     token,

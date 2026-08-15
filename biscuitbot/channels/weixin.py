@@ -149,7 +149,7 @@ class WeixinChannel(BaseChannel):
     """
 
     name = "weixin"
-    display_name = "WeChat"
+    display_name = "微信"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:

@@ -96,7 +96,7 @@ class WecomChannel(BaseChannel):
     """
 
     name = "wecom"
-    display_name = "WeCom"
+    display_name = "企业微信"
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
