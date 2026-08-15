@@ -25,6 +25,8 @@ from biscuitbot.webui.settings_api import (
     channels_payload,
     create_model_configuration,
     decorate_settings_payload,
+    delete_knowledge_document,
+    knowledge_documents_payload,
     provider_models_payload,
     settings_payload,
     settings_usage_payload,
@@ -119,6 +121,10 @@ class WebUISettingsRouter:
             return self._handle_settings_channels(request)
         if path == "/api/settings/channels/update":
             return self._handle_settings_channels_update(request)
+        if path == "/api/settings/knowledge":
+            return self._handle_settings_knowledge(request)
+        if path == "/api/settings/knowledge/delete":
+            return self._handle_settings_knowledge_delete(request)
         if path == "/api/settings/cli-apps":
             return await self._handle_settings_cli_apps(request)
         if path == "/api/settings/cli-apps/install":
@@ -346,6 +352,20 @@ class WebUISettingsRouter:
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="channels"))
+
+    def _handle_settings_knowledge(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        return self._json_response(knowledge_documents_payload())
+
+    def _handle_settings_knowledge_delete(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = delete_knowledge_document(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(payload)
 
     async def _handle_settings_cli_apps(self, request: WsRequest) -> Response:
         if not self._authorized(request):

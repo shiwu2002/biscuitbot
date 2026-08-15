@@ -57,9 +57,13 @@
     "apps": "应用",
     "automations": "自动任务",
     "skills": {
-      "title": "技能"
+      "title": "技能中心"
     },
-    "dashboard": "仪表盘"
+    "dashboard": "数据概览",
+    "knowledge": "个人知识",
+    "employees": {
+      "title": "数字员工"
+    }
   },
   "dashboard": {
     "title": "数据仪表盘",
@@ -1200,5 +1204,17 @@
       "usePath": "使用路径",
       "absolutePathRequired": "请输入这台机器上的绝对文件夹路径。"
     }
+  },
+  "knowledge": {
+    "loading": "加载知识库…",
+    "title": "知识库",
+    "description": "上传文档或图片。文档会被抽取文本、图片由多模态模型生成描述并建立索引，智能体可通过 search_knowledge 检索并读取它们。",
+    "upload": "上传文件",
+    "empty": "还没有上传任何文档。点击上方「上传文件」开始。",
+    "image": "图片",
+    "document": "文档",
+    "size": "大小",
+    "delete": "删除",
+    "deleteConfirm": "确认删除"
   }
 }

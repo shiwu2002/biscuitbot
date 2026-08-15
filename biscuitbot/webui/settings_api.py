@@ -34,6 +34,7 @@ from biscuitbot.providers.image_generation import (
 )
 from biscuitbot.providers.registry import PROVIDERS, create_dynamic_spec, find_by_name
 from biscuitbot.security.workspace_access import workspace_sandbox_status
+from biscuitbot.utils.knowledge_index import delete_document, list_documents
 from biscuitbot.webui.token_usage import token_usage_payload
 from biscuitbot.webui.workspaces import (
     read_webui_default_access_mode,
@@ -2079,3 +2080,19 @@ def update_system_io_settings(query: QueryParams) -> dict[str, Any]:
     if changed:
         save_config(config)
     return settings_payload(requires_restart=changed)
+
+
+def knowledge_documents_payload() -> dict[str, Any]:
+    """列出知识库文档（由 WebUI 设置页「知识库」区使用）。"""
+    config = load_config()
+    return {"documents": list_documents(config.workspace_path)}
+
+
+def delete_knowledge_document(query: QueryParams) -> dict[str, Any]:
+    """删除知识库中的一个文档，返回更新后的文档列表。"""
+    name = (_query_first(query, "name") or "").strip()
+    if not name:
+        raise WebUISettingsError("name is required")
+    config = load_config()
+    delete_document(config.workspace_path, name)
+    return {"documents": list_documents(config.workspace_path)}

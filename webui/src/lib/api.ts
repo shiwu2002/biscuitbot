@@ -7,6 +7,7 @@ import type {
   CliAppsPayload,
   FilePreviewPayload,
   ImageGenerationSettingsUpdate,
+  KnowledgeDocument,
   McpPresetsPayload,
   ModelConfigurationCreate,
   ModelConfigurationUpdate,
@@ -826,6 +827,31 @@ export async function updateChannelSettings(
   }
   return request<ChannelsPayload>(
     `${base}/api/settings/channels/update?${query}`,
+    token,
+  );
+}
+
+/** 知识库文档列表载荷。 */
+export interface KnowledgeDocumentsPayload {
+  documents: KnowledgeDocument[];
+}
+
+export async function fetchKnowledgeDocuments(
+  token: string,
+  base: string = "",
+): Promise<KnowledgeDocumentsPayload> {
+  return request<KnowledgeDocumentsPayload>(`${base}/api/settings/knowledge`, token);
+}
+
+export async function deleteKnowledgeDocument(
+  token: string,
+  name: string,
+  base: string = "",
+): Promise<KnowledgeDocumentsPayload> {
+  const query = new URLSearchParams();
+  query.set("name", name);
+  return request<KnowledgeDocumentsPayload>(
+    `${base}/api/settings/knowledge/delete?${query}`,
     token,
   );
 }

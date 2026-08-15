@@ -1,6 +1,7 @@
 import type {
   ConnectionStatus,
   InboundEvent,
+  KnowledgeDocument,
   Outbound,
   OutboundCliAppMention,
   OutboundImageGeneration,
@@ -102,6 +103,12 @@ interface PendingTranscription {
   timer: ReturnType<typeof setTimeout>;
 }
 
+interface PendingKnowledgeUpload {
+  resolve: (doc: KnowledgeDocument) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 export interface BiscuitbotClientOptions {
   url: string;
   reconnect?: boolean;
@@ -140,6 +147,7 @@ export class BiscuitbotClient {
   private goalStateByChatId = new Map<string, GoalStateWsPayload>();
   private pendingNewChat: PendingNewChat | null = null;
   private pendingTranscriptions = new Map<string, PendingTranscription>();
+  private pendingKnowledgeUploads = new Map<string, PendingKnowledgeUpload>();
   // Frames queued while the socket is not yet OPEN
   private sendQueue: Outbound[] = [];
   private reconnectAttempts = 0;
@@ -354,6 +362,28 @@ export class BiscuitbotClient {
     });
   }
 
+  /** Upload a file into the personal knowledge base; resolves with the indexed doc. */
+  uploadKnowledgeFile(
+    filename: string,
+    dataUrl: string,
+    timeoutMs: number = 120_000,
+  ): Promise<KnowledgeDocument> {
+    const requestId = crypto.randomUUID();
+    return new Promise<KnowledgeDocument>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingKnowledgeUploads.delete(requestId);
+        reject(new Error("knowledge upload timed out"));
+      }, timeoutMs);
+      this.pendingKnowledgeUploads.set(requestId, { resolve, reject, timer });
+      this.queueSend({
+        type: "knowledge_upload",
+        request_id: requestId,
+        filename,
+        data_url: dataUrl,
+      });
+    });
+  }
+
   /** Ask the server to create a non-destructive fork before a user-message index. */
   forkChat(
     sourceChatId: string,
@@ -504,6 +534,16 @@ export class BiscuitbotClient {
       return;
     }
 
+    if (parsed.event === "knowledge_upload_result") {
+      this.resolveKnowledgeUpload(parsed.request_id, parsed.doc);
+      return;
+    }
+
+    if (parsed.event === "knowledge_upload_error") {
+      this.rejectKnowledgeUpload(parsed.request_id, parsed.detail || "error");
+      return;
+    }
+
     if (parsed.event === "session_updated") {
       this.emitSessionUpdate(
         parsed.chat_id,
@@ -594,6 +634,7 @@ export class BiscuitbotClient {
       this.pendingNewChat = null;
     }
     this.rejectAllTranscriptions("socket closed");
+    this.rejectAllKnowledgeUploads("socket closed");
     // Surface structured reasons *before* reconnect logic so the UI can
     // display the error even while the client transparently reconnects.
     // Browsers populate ``CloseEvent.code`` with the wire-level close code;
@@ -647,6 +688,34 @@ export class BiscuitbotClient {
       clearTimeout(pending.timer);
       pending.reject(new Error(detail));
       this.pendingTranscriptions.delete(requestId);
+    }
+  }
+
+  private resolveKnowledgeUpload(requestId: string, doc: KnowledgeDocument): void {
+    const pending = this.pendingKnowledgeUploads.get(requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingKnowledgeUploads.delete(requestId);
+    pending.resolve(doc);
+  }
+
+  private rejectKnowledgeUpload(requestId: string | undefined, detail: string): void {
+    if (!requestId) {
+      this.rejectAllKnowledgeUploads(detail);
+      return;
+    }
+    const pending = this.pendingKnowledgeUploads.get(requestId);
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    this.pendingKnowledgeUploads.delete(requestId);
+    pending.reject(new Error(detail));
+  }
+
+  private rejectAllKnowledgeUploads(detail: string): void {
+    for (const [requestId, pending] of this.pendingKnowledgeUploads) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(detail));
+      this.pendingKnowledgeUploads.delete(requestId);
     }
   }
 

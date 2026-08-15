@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import {
   Archive,
+  BookOpen,
   Brain,
   CalendarClock,
   LayoutDashboard,
@@ -44,9 +45,11 @@ interface SidebarProps {
   onOpenDashboard: () => void;
   /** 打开数字人员工视图（卡面展示与管理，原设置里的员工 tab 迁移至此）。 */
   onOpenEmployees: () => void;
+  /** 打开个人知识库视图（上传/检索文档与图片）。 */
+  onOpenKnowledge: () => void;
   /** 数字人员工目录：用于会话行显示绑定的员工头像/代号（ChatList）。 */
   employees?: Employee[];
-  activeUtility?: "skills" | "automations" | "employees" | "dashboard" | null;
+  activeUtility?: "skills" | "automations" | "employees" | "dashboard" | "knowledge" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -149,7 +152,7 @@ export function Sidebar(props: SidebarProps) {
       >
         <SidebarActionButton
           collapsed={collapsed}
-          label={t("sidebar.dashboard", { defaultValue: "仪表盘" })}
+          label={t("sidebar.dashboard", { defaultValue: "数据概览" })}
           onClick={props.onOpenDashboard}
           active={props.activeUtility === "dashboard"}
           icon={<LayoutDashboard className="h-4 w-4" />}
@@ -186,10 +189,17 @@ export function Sidebar(props: SidebarProps) {
         />
         <SidebarActionButton
           collapsed={collapsed}
-          label={t("sidebar.employees.title", { defaultValue: "数字人员工" })}
+          label={t("sidebar.employees.title", { defaultValue: "数字员工" })}
           onClick={props.onOpenEmployees}
           active={props.activeUtility === "employees"}
           icon={<UsersRound className="h-4 w-4" />}
+        />
+        <SidebarActionButton
+          collapsed={collapsed}
+          label={t("sidebar.knowledge", { defaultValue: "个人知识" })}
+          onClick={props.onOpenKnowledge}
+          active={props.activeUtility === "knowledge"}
+          icon={<BookOpen className="h-4 w-4" />}
         />
         {props.archivedCount ? (
           <SidebarActionButton
@@ -313,7 +323,7 @@ function SidebarActionButton({
     >
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center transition-transform duration-300 ease-out",
+          "flex w-4 shrink-0 items-center justify-center transition-transform duration-300 ease-out",
           collapsed ? "translate-x-0" : "translate-x-0",
         )}
         aria-hidden
@@ -322,7 +332,7 @@ function SidebarActionButton({
       </span>
       <span
         className={cn(
-          "min-w-0 overflow-hidden truncate whitespace-nowrap transition-[max-width,opacity,transform] duration-200 ease-out",
+          "min-w-0 overflow-hidden truncate whitespace-nowrap tracking-wide transition-[max-width,opacity,transform] duration-200 ease-out",
           collapsed
             ? "max-w-0 -translate-x-1 opacity-0"
             : "max-w-[12rem] translate-x-0 opacity-100",

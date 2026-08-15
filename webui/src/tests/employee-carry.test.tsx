@@ -119,7 +119,7 @@ describe("和 TA 对话自动携带数字员工", () => {
 
     // 侧边栏 → 数字人员工 tab
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    fireEvent.click(within(sidebar).getByRole("button", { name: "数字人员工" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "数字员工" }));
     await screen.findByRole("heading", { name: "数字人员工" });
 
     // 点「和 TA 对话」→ 跳转到该员工的专属对话页（技能 + 历史会话 + 开始新对话）

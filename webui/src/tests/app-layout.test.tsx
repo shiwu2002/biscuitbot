@@ -303,7 +303,7 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const skillsButton = within(sidebar).getByRole("button", { name: "技能" });
+    const skillsButton = within(sidebar).getByRole("button", { name: "技能中心" });
     const automationsButton = within(sidebar).getByRole("button", { name: "自动任务" });
 
     expect(
@@ -349,7 +349,7 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const skillsButton = within(sidebar).getByRole("button", { name: "技能" });
+    const skillsButton = within(sidebar).getByRole("button", { name: "技能中心" });
 
     fireEvent.click(skillsButton);
 
@@ -359,7 +359,7 @@ describe("App layout", () => {
     expect(screen.getByText("缺少：CLI: gh")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "侧边栏导航" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "设置分区" })).not.toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "技能" })).toHaveAttribute(
+    expect(within(sidebar).getByRole("button", { name: "技能中心" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -368,7 +368,7 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "返回聊天" }));
     expect(await screen.findByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
 
-    fireEvent.click(within(sidebar).getByRole("button", { name: "技能" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "技能中心" }));
     expect(await screen.findByRole("heading", { name: "技能" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "查看 github 详情" }));
@@ -1555,8 +1555,8 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
     const searchButton = within(sidebar).getByRole("button", { name: "搜索" });
-    const employeesButton = within(sidebar).getByRole("button", { name: "数字人员工" });
-    // 搜索已移入历史对话容器（导航组下方），故应位于「数字人员工」之后
+    const employeesButton = within(sidebar).getByRole("button", { name: "数字员工" });
+    // 搜索已移入历史对话容器（导航组下方），故应位于「数字员工」之后
     expect(employeesButton.compareDocumentPosition(searchButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.click(within(sidebar).getByRole("button", { name: "设置" }));
 

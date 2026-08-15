@@ -57,9 +57,13 @@
     "apps": "應用",
     "automations": "自動任務",
     "skills": {
-      "title": "技能"
+      "title": "技能中心"
     },
-    "dashboard": "儀錶板"
+    "dashboard": "數據概覽",
+    "knowledge": "個人知識",
+    "employees": {
+      "title": "數字員工"
+    }
   },
   "dashboard": {
     "title": "數據儀錶板",
@@ -153,7 +157,7 @@
       "imageDefaults": "預設值",
       "videoGeneration": "影片生成",
       "videoDefaults": "生成參數",
-        "vision": "視覺",
+      "vision": "視覺",
       "visionCapture": "截圖",
       "webSearch": "網頁搜尋",
       "webBehavior": "行為",
@@ -1200,5 +1204,17 @@
       "usePath": "使用路徑",
       "absolutePathRequired": "請輸入這台機器上的絕對資料夾路徑。"
     }
+  },
+  "knowledge": {
+    "loading": "載入知識庫…",
+    "title": "知識庫",
+    "description": "上傳文件或圖片。文件會被抽取文字、圖片由多模態模型產生描述並建立索引，智能體可透過 search_knowledge 檢索並讀取它們。",
+    "upload": "上傳文件",
+    "empty": "還沒有上傳任何文件。點擊上方「上傳文件」開始。",
+    "image": "圖片",
+    "document": "文件",
+    "size": "大小",
+    "delete": "刪除",
+    "deleteConfirm": "確認刪除"
   }
 }

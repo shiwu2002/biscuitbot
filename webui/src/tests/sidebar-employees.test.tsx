@@ -49,7 +49,7 @@ describe("Sidebar 数字人员工入口", () => {
   it("renders the 数字人员工 tab", () => {
     renderSidebar();
     expect(
-      screen.getByRole("button", { name: "数字人员工" }),
+      screen.getByRole("button", { name: "数字员工" }),
     ).toBeInTheDocument();
   });
 
@@ -57,13 +57,13 @@ describe("Sidebar 数字人员工入口", () => {
     const onOpenEmployees = vi.fn();
     renderSidebar({ onOpenEmployees });
 
-    fireEvent.click(screen.getByRole("button", { name: "数字人员工" }));
+    fireEvent.click(screen.getByRole("button", { name: "数字员工" }));
     expect(onOpenEmployees).toHaveBeenCalledTimes(1);
   });
 
   it("marks the tab active when the employees view is open", () => {
     renderSidebar({ activeUtility: "employees" });
-    const button = screen.getByRole("button", { name: "数字人员工" });
+    const button = screen.getByRole("button", { name: "数字员工" });
     expect(button).toHaveAttribute("aria-current", "page");
   });
 });

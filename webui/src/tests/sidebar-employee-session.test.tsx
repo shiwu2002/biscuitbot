@@ -170,7 +170,7 @@ describe("侧边栏历史会话点击跳转到对应员工专属页", () => {
 
     // 侧边栏进入员工视图
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    fireEvent.click(within(sidebar).getByText("数字人员工"));
+    fireEvent.click(within(sidebar).getByText("数字员工"));
 
     // 员工视图卡片出现，点击卡片本体
     expect(await screen.findByText("阿伟")).toBeInTheDocument();

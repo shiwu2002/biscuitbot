@@ -64,6 +64,7 @@ from biscuitbot.webui.http_utils import (
 from biscuitbot.webui.http_utils import (
     query_first as _query_first,  # 查询参数取首值
 )
+from biscuitbot.webui.knowledge_ws import webui_knowledge_upload_event  # 知识库上传 WebSocket 事件
 from biscuitbot.webui.mcp_presets_api import normalize_mcp_preset_mentions  # MCP 预设提及归一化
 from biscuitbot.webui.transcription_ws import webui_transcription_event  # 转录 WebSocket 事件
 from biscuitbot.webui.websocket_logging import websockets_server_logger  # WebSocket 服务端日志器
@@ -777,6 +778,10 @@ class WebSocketChannel(BaseChannel):
             return
         if t == "transcribe_audio":
             event, payload = await webui_transcription_event(envelope)
+            await self._send_event(connection, event, **payload)
+            return
+        if t == "knowledge_upload":
+            event, payload = await webui_knowledge_upload_event(envelope)
             await self._send_event(connection, event, **payload)
             return
         if t == "message":

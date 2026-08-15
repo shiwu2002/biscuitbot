@@ -1068,6 +1068,12 @@ export type InboundEvent =
       detail?: string;
       provider?: string;
     }
+  | { event: "knowledge_upload_result"; request_id: string; doc: KnowledgeDocument }
+  | {
+      event: "knowledge_upload_error";
+      request_id?: string;
+      detail?: string;
+    }
   | {
       event: "agent_trace";
       chat_id: string;
@@ -1079,6 +1085,16 @@ export type InboundEvent =
       detail?: Record<string, unknown>;
     }
   | { event: "error"; chat_id?: string; detail?: string; reason?: string };
+
+/** A single entry in the personal knowledge base. */
+export interface KnowledgeDocument {
+  doc_id: string;
+  kind: "image" | "document" | string;
+  caption: string;
+  preview?: string;
+  size?: number | null;
+  indexed_at?: string;
+}
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.
  *
@@ -1155,6 +1171,7 @@ export type Outbound =
   | { type: "set_workspace_scope"; chat_id: string; workspace_scope: WorkspaceScopePayload }
   | { type: "set_employee"; chat_id: string; employee?: string }
   | { type: "transcribe_audio"; request_id: string; data_url: string; duration_ms?: number }
+  | { type: "knowledge_upload"; request_id: string; filename: string; data_url: string }
   | {
       type: "message";
       chat_id: string;

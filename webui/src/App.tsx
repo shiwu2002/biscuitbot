@@ -17,6 +17,7 @@ import { SettingsView, type SettingsSectionKey } from "@/components/settings/Set
 import { TalentMarketView } from "@/components/settings/TalentMarketView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
+import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -81,7 +82,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market";
+type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market" | "knowledge";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -142,6 +143,9 @@ function readShellRoute(): ShellRoute {
 
   if (path === "/dashboard") {
     return { view: "dashboard", activeKey, settingsSection: "overview" };
+  }
+  if (path === "/knowledge") {
+    return { view: "knowledge", activeKey, settingsSection: "overview" };
   }
   if (path === "/settings") {
     return {
@@ -1316,6 +1320,13 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
+  /** 从侧边栏「知识库」tab 进入个人知识库视图。 */
+  const onOpenKnowledge = useCallback(() => {
+    setSessionSearchOpen(false);
+    navigate({ view: "knowledge", activeKey, settingsSection: "overview" });
+    setMobileSidebarOpen(false);
+  }, [activeKey, navigate]);
+
   /** 从员工视图「和 TA 对话」进入：跳转到该员工的专属对话页（技能 + 历史会话）。 */
   const onOpenEmployee = useCallback((employee: Employee) => {
     setSessionSearchOpen(false);
@@ -1516,6 +1527,12 @@ function Shell({
       });
       return;
     }
+    if (view === "knowledge") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("sidebar.knowledge", { defaultValue: "知识库" }),
+      });
+      return;
+    }
     if (view === "employee-chat") {
       const employee = employees.find((e) => e.id === activeKey);
       document.title = t("app.documentTitle.chat", {
@@ -1547,11 +1564,12 @@ function Shell({
     onOpenAutomations,
     onOpenSkills,
     onOpenEmployees,
+    onOpenKnowledge,
     onOpenDashboard,
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
-      view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard"
+      view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard" || view === "knowledge"
         ? view === "employee-chat" ? "employees" : view
         : null,
     onToggleArchived,
@@ -1818,6 +1836,13 @@ function Shell({
                   runningChatIds={[...runningChatIds]}
                   titleOverrides={sidebarState.title_overrides}
                   onSelectSession={onSelectChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
+            ) : view === "knowledge" ? (
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
+                <KnowledgeView
+                  onBackToChat={onBackToChat}
                   hostChromeInset={showHostChrome}
                 />
               </div>
