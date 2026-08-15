@@ -123,7 +123,8 @@
       "mcp": "MCP",
       "apps": "應用",
       "automations": "自動任務",
-      "skills": "技能"
+      "skills": "技能",
+      "channels": "渠道"
     },
     "subtabs": {
       "model": {
@@ -166,7 +167,16 @@
       "hostSafety": "App 安全",
       "voiceInput": "語音辨識",
       "systemIo": "系統 IO",
-      "systemIoActions": "操作"
+      "systemIoActions": "操作",
+      "channels": "渠道"
+    },
+    "channels": {
+      "loading": "載入渠道…",
+      "enabled": "已啟用",
+      "disabled": "已停用",
+      "notConfigured": "未設定",
+      "needsConfig": "需在 config.json 中設定憑證",
+      "restartHint": "渠道啟用狀態將在閘道重新啟動後生效。"
     },
     "rows": {
       "theme": "主題",

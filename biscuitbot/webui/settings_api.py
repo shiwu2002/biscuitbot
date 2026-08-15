@@ -389,6 +389,99 @@ def needs_setup(config: Any) -> bool:
     return True
 
 
+def channels_payload() -> dict[str, Any]:
+    """列出所有可连接渠道及其启用/配置状态。
+
+    复用 CLI ``channels_status``（biscuitbot/cli/commands.py）的枚举方式：
+    ``discover_all()`` 拿到内置 + 插件渠道类，再从 ``config.channels.<name>``
+    读取启用状态。此处不做渠道的实时运行状态（需桥接主进程 ChannelManager）。
+    """
+    from biscuitbot.channels.registry import discover_all
+
+    config = load_config()
+    rows: list[dict[str, Any]] = []
+    for name, cls in sorted(discover_all().items()):
+        section = getattr(config.channels, name, None)
+        enabled = (
+            section.get("enabled", False)
+            if isinstance(section, dict)
+            else getattr(section, "enabled", False)
+        )
+        rows.append({
+            "name": name,
+            "display_name": cls.display_name,
+            "enabled": bool(enabled),
+            "configured": _channel_configured(section, cls),
+            "has_qr_login": name == "weixin",
+        })
+    return {"channels": rows}
+
+
+def _channel_configured(section: Any, cls: type) -> bool:
+    """渠道是否有任一非默认凭据字段（用于「已配置」状态提示）。
+
+    以渠道 ``default_config()`` 的空值作为基线：只要某个基线为空/缺失的字段
+    现在有值，即认为已配置。仅 ``enabled`` 不计入。
+    """
+    if section is None:
+        return False
+    if isinstance(section, dict):
+        data = section
+    elif hasattr(section, "model_dump"):
+        data = section.model_dump(by_alias=True)
+    else:
+        return False
+    default = cls.default_config() if hasattr(cls, "default_config") else {}
+    empty = (None, "", [], {}, False)
+    for key, value in data.items():
+        if key == "enabled":
+            continue
+        if default.get(key) in empty and value not in empty:
+            return True
+    return False
+
+
+def update_channel_settings(query: QueryParams) -> dict[str, Any]:
+    """切换渠道的 ``enabled`` 标志并持久化。
+
+    渠道名称校验通过 ``discover_all()``（内置 + 插件），未知渠道报错。修改
+    需重启网关后由 ``ChannelManager._init_channels`` 生效，故返回
+    ``requires_restart``。
+    """
+    from biscuitbot.channels.registry import discover_all
+
+    name = (_query_first(query, "channel") or "").strip().lower()
+    if not name:
+        raise WebUISettingsError("channel is required")
+    if name not in discover_all():
+        raise WebUISettingsError("unknown channel")
+
+    config = load_config()
+    section = getattr(config.channels, name, None)
+    changed = False
+    enabled_raw = _query_first(query, "enabled")
+    if enabled_raw is not None:
+        enabled = _parse_bool(enabled_raw, "enabled")
+        if isinstance(section, dict):
+            if section.get("enabled", False) != enabled:
+                section["enabled"] = enabled
+                changed = True
+        elif section is not None:
+            if getattr(section, "enabled", False) != enabled:
+                section.enabled = enabled
+                changed = True
+        else:
+            setattr(config.channels, name, {"enabled": enabled})
+            changed = True
+
+    if changed:
+        save_config(config)
+
+    payload = channels_payload()
+    payload["requires_restart"] = changed
+    return payload
+
+
 def _model_catalog_kind(spec: Any) -> str:
     if spec.name in _MODEL_LIST_CATALOG_PROVIDERS:
         return "catalog"

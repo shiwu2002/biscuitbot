@@ -5,6 +5,7 @@ import { Eye, EyeOff, Loader2, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { WechatBridge } from "@/components/wechat/WechatBridge";
 import { completeSetup, fetchSettings } from "@/lib/api";
 import type { SettingsPayload } from "@/lib/types";
 import { providerBrand } from "@/lib/provider-brand";
@@ -363,6 +364,8 @@ export function WelcomeSetup({
                 </label>
               </div>
             ) : null}
+
+            <WechatBridge token={token} />
 
             {submitError ? (
               <p className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-center text-[13px] text-destructive">

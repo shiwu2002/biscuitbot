@@ -738,6 +738,79 @@ export async function completeSetup(
   );
 }
 
+/** 微信扫码登录：一张登录二维码（qrcode_id 用于后续轮询）。 */
+export interface WeixinLoginQr {
+  qrcode_id: string;
+  qr_content: string;
+}
+
+/** 微信扫码登录：单次轮询结果，状态机同原生 weixin 渠道。 */
+export interface WeixinLoginStatus {
+  status: string;
+  confirmed?: boolean;
+  expired?: boolean;
+  enabled?: boolean;
+  bot_id?: string;
+  user_id?: string;
+  error?: string;
+}
+
+export async function fetchWeixinLoginQr(
+  token: string,
+  base: string = "",
+): Promise<WeixinLoginQr> {
+  return request<WeixinLoginQr>(`${base}/api/webui/weixin/login-qr`, token);
+}
+
+export async function pollWeixinLoginStatus(
+  token: string,
+  qrcodeId: string,
+  base: string = "",
+): Promise<WeixinLoginStatus> {
+  const query = new URLSearchParams();
+  query.set("qrcode", qrcodeId);
+  return request<WeixinLoginStatus>(
+    `${base}/api/webui/weixin/login-status?${query}`,
+    token,
+  );
+}
+
+/** 单个渠道：名称 + 展示名 + 启用/已配置状态。 */
+export interface ChannelRow {
+  name: string;
+  display_name: string;
+  enabled: boolean;
+  configured: boolean;
+  has_qr_login: boolean;
+}
+
+/** 渠道列表载荷。 */
+export interface ChannelsPayload {
+  channels: ChannelRow[];
+  requires_restart?: boolean;
+}
+
+export async function fetchChannels(
+  token: string,
+  base: string = "",
+): Promise<ChannelsPayload> {
+  return request<ChannelsPayload>(`${base}/api/settings/channels`, token);
+}
+
+export async function updateChannelSettings(
+  token: string,
+  update: { channel: string; enabled: boolean },
+  base: string = "",
+): Promise<ChannelsPayload> {
+  const query = new URLSearchParams();
+  query.set("channel", update.channel);
+  query.set("enabled", String(update.enabled));
+  return request<ChannelsPayload>(
+    `${base}/api/settings/channels/update?${query}`,
+    token,
+  );
+}
+
 export async function loginProviderOAuth(
   token: string,
   provider: string,

@@ -35,6 +35,7 @@ import {
   Layers,
   Loader2,
   LogOut,
+  MessageSquareText,
   Mic,
   Moon,
   PauseCircle,
@@ -58,6 +59,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { WechatBridge } from "@/components/wechat/WechatBridge";
 import { SkillsCatalogSettings } from "@/components/settings/SkillsCatalogSettings";
 import { TokenUsageHeatmap } from "@/components/settings/TokenUsageHeatmap";
 import { Button } from "@/components/ui/button";
@@ -82,6 +84,7 @@ import {
   checkVersion,
   createModelConfiguration,
   fetchAutomations,
+  fetchChannels,
   fetchSettings,
   fetchSettingsUsage,
   fetchCliApps,
@@ -94,6 +97,7 @@ import {
   saveCustomMcpServer,
   selfUpdate,
   updateAutomation,
+  updateChannelSettings,
   updateImageGenerationSettings,
   updateMcpServerTools,
   updateModelConfiguration,
@@ -106,6 +110,7 @@ import {
   updateVideoGenerationSettings,
   updateWebSearchSettings,
 } from "@/lib/api";
+import type { ChannelRow } from "@/lib/api";
 import { notifyCliAppsChanged } from "@/lib/cli-app-events";
 import { getHostApi } from "@/lib/runtime";
 import { notifyMcpPresetsChanged } from "@/lib/mcp-preset-events";
@@ -156,6 +161,7 @@ export type SettingsSectionKey =
   | "skills"
   | "runtime"
   | "systemIo"
+  | "channels"
   | "advanced";
 
 type LocalDensity = "comfortable" | "compact";
@@ -1827,6 +1833,14 @@ export function SettingsView({
         );
       case "skills":
         return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
+      case "channels":
+        return (
+          <ChannelsSettings
+            token={token}
+            onRestart={restartViaSettingsSurface}
+            isRestarting={isRestarting || hostEngineApplying}
+          />
+        );
       case "runtime":
       case "systemIo":
       case "advanced":
@@ -1948,6 +1962,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "appearance", icon: Palette, fallback: "Appearance" },
   { key: "models", icon: SlidersHorizontal, fallback: "Models" },
   { key: "browser", icon: Globe2, fallback: "Web" },
+  { key: "channels", icon: MessageSquareText, fallback: "Channels" },
   { key: "runtime", icon: Server, fallback: "System" },
 ];
 
@@ -7737,6 +7752,154 @@ function OverviewListRow({
         />
       </span>
     </button>
+  );
+}
+
+function ChannelsSettings({
+  token,
+  onRestart,
+  isRestarting,
+}: {
+  token: string;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+
+  const [channels, setChannels] = useState<ChannelRow[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [requiresRestart, setRequiresRestart] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const payload = await fetchChannels(token);
+      setChannels(payload.channels);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await fetchChannels(token);
+        if (!cancelled) setChannels(payload.channels);
+      } catch (e) {
+        if (!cancelled) setError((e as Error).message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+
+  const handleToggle = async (channel: ChannelRow, enabled: boolean) => {
+    if (toggling) return;
+    setToggling(channel.name);
+    try {
+      const payload = await updateChannelSettings(token, {
+        channel: channel.name,
+        enabled,
+      });
+      setChannels(payload.channels);
+      if (payload.requires_restart) setRequiresRestart(true);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SettingsGroup>
+        <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {tx("settings.channels.loading", "加载渠道…")}
+        </div>
+      </SettingsGroup>
+    );
+  }
+
+  if (error && !channels) {
+    return (
+      <SettingsGroup>
+        <SettingsRow title={t("settings.status.loadError")}>
+          <span className="max-w-[520px] text-sm text-muted-foreground">{error}</span>
+        </SettingsRow>
+      </SettingsGroup>
+    );
+  }
+
+  const rows = channels ?? [];
+
+  return (
+    <div className="space-y-4">
+      {error ? (
+        <div className="rounded-[18px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+          {error}
+        </div>
+      ) : null}
+
+      <SettingsGroup>
+        {rows.map((channel) => (
+          <div key={channel.name}>
+            <SettingsRow
+              title={channel.display_name}
+              description={
+                channel.configured
+                  ? undefined
+                  : tx("settings.channels.needsConfig", "需在 config.json 中配置凭证")
+              }
+            >
+              <div className="flex items-center gap-2.5">
+                <StatusPill tone={channel.enabled ? "success" : "neutral"}>
+                  {channel.enabled
+                    ? tx("settings.channels.enabled", "已启用")
+                    : channel.configured
+                      ? tx("settings.channels.disabled", "已禁用")
+                      : tx("settings.channels.notConfigured", "未配置")}
+                </StatusPill>
+                <ToggleButton
+                  checked={channel.enabled}
+                  onChange={(checked) => handleToggle(channel, checked)}
+                  ariaLabel={channel.display_name}
+                  label={channel.display_name}
+                />
+              </div>
+            </SettingsRow>
+            {channel.has_qr_login ? (
+              <div className="px-4 pb-4 sm:px-5">
+                <WechatBridge token={token} onConfirmed={refresh} />
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </SettingsGroup>
+
+      {requiresRestart ? (
+        <RestartSettingsFooter
+          dirty={false}
+          saving={false}
+          pendingRestart
+          onSave={() => {}}
+          onRestart={onRestart}
+          isRestarting={isRestarting}
+          pendingMessage={tx(
+            "settings.channels.restartHint",
+            "渠道启用状态将在网关重启后生效。",
+          )}
+        />
+      ) : null}
+    </div>
   );
 }
 

@@ -103,6 +103,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "skills",
   "runtime",
   "systemIo",
+  "channels",
   "advanced",
 ];
 

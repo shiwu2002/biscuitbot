@@ -22,12 +22,14 @@ from biscuitbot.webui.http_utils import query_first as _query_first
 from biscuitbot.webui.mcp_presets_api import mcp_presets_settings_action
 from biscuitbot.webui.settings_api import (
     WebUISettingsError,
+    channels_payload,
     create_model_configuration,
     decorate_settings_payload,
     provider_models_payload,
     settings_payload,
     settings_usage_payload,
     update_agent_settings,
+    update_channel_settings,
     update_image_generation_settings,
     update_model_configuration,
     update_network_safety_settings,
@@ -113,6 +115,10 @@ class WebUISettingsRouter:
             return self._handle_settings_tts_update(request)
         if path == "/api/settings/network-safety/update":
             return self._handle_settings_network_safety_update(request)
+        if path == "/api/settings/channels":
+            return self._handle_settings_channels(request)
+        if path == "/api/settings/channels/update":
+            return self._handle_settings_channels_update(request)
         if path == "/api/settings/cli-apps":
             return await self._handle_settings_cli_apps(request)
         if path == "/api/settings/cli-apps/install":
@@ -326,6 +332,20 @@ class WebUISettingsRouter:
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="runtime"))
+
+    def _handle_settings_channels(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        return self._json_response(channels_payload())
+
+    def _handle_settings_channels_update(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = update_channel_settings(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(self._with_restart_state(payload, section="channels"))
 
     async def _handle_settings_cli_apps(self, request: WsRequest) -> Response:
         if not self._authorized(request):

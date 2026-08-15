@@ -461,6 +461,85 @@ class WeixinChannel(BaseChannel):
             print(f"\nLogin URL: {url}\n")
 
     # ------------------------------------------------------------------
+    # WebUI 扫码登录（非阻塞，供引导界面逐次轮询）
+    # ------------------------------------------------------------------
+
+    async def fetch_login_qr(self) -> dict[str, str]:
+        """获取一张登录二维码，返回待编码进二维码的字符串（不进入阻塞轮询）。
+
+        供 WebUI 引导界面调用：一次性拿到 ``qrcode_id`` 与 ``qr_content``，
+        前端用任意二维码库把 ``qr_content`` 渲染成二维码供用户扫描。
+        """
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(6, connect=15),
+                follow_redirects=True,
+            )
+        qrcode_id, qr_content = await self._fetch_qr_code()
+        return {"qrcode_id": qrcode_id, "qr_content": qr_content}
+
+    async def poll_login_qr(self, qrcode_id: str) -> dict[str, Any]:
+        """单次轮询登录状态（供 WebUI 前端定时调用）。
+
+        返回字典：``status`` 为 wait / scaned_but_redirect / confirmed / expired，
+        confirmed 时附带 ``bot_id`` / ``user_id`` 并已持久化 token；expired 时附带
+        ``expired=True``。scaned_but_redirect 会就地更新 base_url 供后续轮询。
+
+        ``get_qrcode_status`` 是长轮询端点：状态有变化时立即返回，无变化时挂起
+        直至超时（服务端也可能直接断开）。超时/断连都归一化为 ``wait``，由前端
+        继续下一轮轮询。
+        """
+        if self._client is None:
+            # 确认后 close() 会清掉临时 client；前端此时可能还有一次在途轮询，
+            # 直接视为「等待」而非抛错，避免 502。
+            return {"status": "wait"}
+        try:
+            status_data = await self._api_get_with_base(
+                base_url=self.config.base_url,
+                endpoint="ilink/bot/get_qrcode_status",
+                params={"qrcode": qrcode_id},
+                auth=False,
+            )
+        except (httpx.TimeoutException, httpx.TransportError, ValueError):
+            # 长轮询无状态变化时超时，或服务端关闭连接/返回空体：视为仍等待扫码。
+            return {"status": "wait"}
+        status = str(status_data.get("status", ""))
+        result: dict[str, Any] = {"status": status}
+
+        if status == "confirmed":
+            token = status_data.get("bot_token", "")
+            base_url = status_data.get("baseurl", "")
+            if token:
+                self._token = token
+                if base_url:
+                    self.config.base_url = base_url
+                self._save_state()
+                result.update({
+                    "confirmed": True,
+                    "bot_id": status_data.get("ilink_bot_id", ""),
+                    "user_id": status_data.get("ilink_user_id", ""),
+                })
+            else:
+                result.update({"confirmed": False, "error": "no bot_token in response"})
+        elif status == "scaned_but_redirect":
+            redirect_host = str(status_data.get("redirect_host", "") or "").strip()
+            if redirect_host:
+                if not (redirect_host.startswith("http://") or redirect_host.startswith("https://")):
+                    redirect_host = f"https://{redirect_host}"
+                if redirect_host != self.config.base_url:
+                    self.config.base_url = redirect_host
+        elif status == "expired":
+            result["expired"] = True
+
+        return result
+
+    async def close_login_client(self) -> None:
+        """关闭扫码登录用的临时 HTTP 客户端。"""
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+
+    # ------------------------------------------------------------------
     # 渠道生命周期
     # ------------------------------------------------------------------
 

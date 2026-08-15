@@ -189,6 +189,10 @@ class GatewayHTTPHandler:
         self._log = log
         self._runtime_surface = runtime_surface
 
+        from biscuitbot.webui.weixin_login import WeixinLoginManager
+
+        self._weixin_login = WeixinLoginManager()
+
         from biscuitbot.webui.settings_api import runtime_capabilities as _rc
         from biscuitbot.webui.settings_routes import WebUISettingsRouter
 
@@ -718,6 +722,10 @@ class GatewayHTTPHandler:
             return self._handle_webui_sidebar_state_update(request)
         if got == "/api/webui/setup/complete":
             return self._handle_webui_setup_complete(request)
+        if got == "/api/webui/weixin/login-qr":
+            return await self._handle_webui_weixin_login_qr(request)
+        if got == "/api/webui/weixin/login-status":
+            return await self._handle_webui_weixin_login_status(request)
         return None
 
     def _handle_commands(self, request: WsRequest) -> Response:
@@ -933,6 +941,64 @@ class GatewayHTTPHandler:
             logger.exception("setup/complete failed")
             return _http_error(500, "failed to save settings")
         return _http_json_response({"ok": True, "needs_setup": False})
+
+    async def _handle_webui_weixin_login_qr(self, request: WsRequest) -> Response:
+        """微信扫码登录：获取一张登录二维码。
+
+        返回 ``{"qrcode_id", "qr_content"}``，前端据此渲染二维码并开始轮询
+        :meth:`_handle_webui_weixin_login_status`。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        try:
+            result = await self._weixin_login.fetch_qr()
+        except Exception:
+            logger.exception("failed to fetch weixin login qr")
+            return _http_error(502, "failed to fetch weixin login qr")
+        return _http_json_response(result)
+
+    async def _handle_webui_weixin_login_status(self, request: WsRequest) -> Response:
+        """微信扫码登录：单次轮询登录状态。
+
+        ``?qrcode=<id>`` 对应 :meth:`_handle_webui_weixin_login_qr` 返回的
+        ``qrcode_id``。状态机同原生 ``weixin`` 渠道：``wait`` / ``scaned_but_redirect``
+        / ``confirmed`` / ``expired``。确认后 token 已由渠道写入
+        ``~/.biscuitbot/weixin/account.json``，此处额外把 ``channels.weixin.enabled``
+        置真并保存配置，网关重启后微信渠道即自动生效。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        qrcode_id = _query_first(query, "qrcode")
+        if not qrcode_id:
+            return _http_error(400, "qrcode is required")
+        try:
+            result = await self._weixin_login.poll(qrcode_id)
+        except Exception:
+            logger.exception("failed to poll weixin login status")
+            return _http_error(502, "failed to poll weixin login status")
+
+        if result.get("confirmed"):
+            from biscuitbot.config.loader import load_config, save_config
+
+            try:
+                config = load_config()
+                wx = getattr(config.channels, "weixin", None)
+                if wx is None:
+                    setattr(config.channels, "weixin", {"enabled": True})
+                elif isinstance(wx, dict):
+                    wx["enabled"] = True
+                else:
+                    wx.enabled = True
+                save_config(config)
+            except Exception:
+                logger.exception("failed to enable weixin channel")
+                result["enabled"] = False
+            else:
+                result["enabled"] = True
+                await self._weixin_login.close()
+
+        return _http_json_response(result)
 
     def _handle_webui_sidebar_state(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):
