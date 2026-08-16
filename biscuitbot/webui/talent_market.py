@@ -218,11 +218,7 @@ def _normalize_talent_entry(raw: Any) -> dict[str, Any] | None:
         value = raw.get(key)
         return value if isinstance(value, str) else ""
 
-    skills_raw = raw.get("skills")
-    if not isinstance(skills_raw, list):
-        skills: list[str] = []
-    else:
-        skills = [str(s).strip() for s in skills_raw if isinstance(s, str) and s.strip()]
+    skills = _flatten_skill_names(raw.get("skills"))
 
     return {
         "id": employee_id,
@@ -284,6 +280,99 @@ def talent_catalog_payload(
     }
 
 
+def _flatten_skill_names(skills_raw: Any) -> list[str]:
+    """把 ``skills`` 字段展平为技能名列表（兼容字符串与 bundle 对象两种形式）。"""
+    if not isinstance(skills_raw, list):
+        return []
+    names: list[str] = []
+    for item in skills_raw:
+        if isinstance(item, str):
+            name = item.strip()
+        elif isinstance(item, dict):
+            raw_name = item.get("name")
+            name = raw_name.strip() if isinstance(raw_name, str) else ""
+        else:
+            continue
+        if name:
+            names.append(name)
+    return names
+
+
+def _parse_skill_spec(
+    skills_raw: Any,
+) -> tuple[list[str], dict[str, dict[str, str]]]:
+    """解析 ``skills`` 字段，返回 ``(技能名列表, {技能名: {相对路径: 内容}})``。
+
+    条目可以是：
+    - 字符串：仅技能名（引用已存在的内置/工作区技能）；
+    - 对象 ``{"name": ..., "files": {相对路径: 文本内容}}``：随员工下载的自带技能，
+      ``files`` 中必须含 ``SKILL.md``，其余文件按相对路径落盘到
+      ``workspace/skills/<name>/``。
+    """
+    names: list[str] = []
+    bundled: dict[str, dict[str, str]] = {}
+    if not isinstance(skills_raw, list):
+        return names, bundled
+    for item in skills_raw:
+        if isinstance(item, str):
+            name = item.strip()
+            if name:
+                names.append(name)
+        elif isinstance(item, dict):
+            raw_name = item.get("name")
+            name = raw_name.strip() if isinstance(raw_name, str) else ""
+            files = item.get("files")
+            if name and isinstance(files, dict):
+                text_files = {
+                    str(k): str(v)
+                    for k, v in files.items()
+                    if isinstance(k, str) and isinstance(v, str)
+                }
+                if text_files:
+                    bundled[name] = text_files
+                    names.append(name)
+    return names, bundled
+
+
+def _find_raw_entry(registry: dict[str, Any], employee_id: str) -> dict[str, Any] | None:
+    """在注册表原始 JSON 中按 id 定位条目；未找到返回 None。"""
+    raw_rows = registry.get("employees")
+    if not isinstance(raw_rows, list):
+        raw_rows = registry.get("talent")
+    if not isinstance(raw_rows, list):
+        return None
+    for raw in raw_rows:
+        if not isinstance(raw, dict):
+            continue
+        rid = raw.get("id")
+        if not isinstance(rid, str) or not rid.strip():
+            rid = _slugify(str(raw.get("name") or "")) or "employee"
+        if rid == employee_id:
+            return raw
+    return None
+
+
+def _install_bundled_skills(
+    store: EmployeeStore,
+    employee_id: str,
+    bundled: dict[str, dict[str, str]],
+) -> list[str]:
+    """把自带技能文件写入工作区并记录归属，返回落盘的技能名列表。"""
+    from biscuitbot.agent.skill_owners import SkillOwnershipStore, write_skill_files
+
+    owners = SkillOwnershipStore(store.workspace)
+    installed: list[str] = []
+    for name, files in bundled.items():
+        try:
+            write_skill_files(store.workspace, name, files)
+        except Exception as e:  # noqa: BLE001 - 单个技能失败不阻断整个安装
+            logger.warning("talent-market 技能 {} 落盘失败，跳过：{}", name, e)
+            continue
+        owners.set_owner(name, employee_id)
+        installed.append(name)
+    return installed
+
+
 def install_talent_employee(
     values: dict[str, Any],
     store: EmployeeStore,
@@ -292,15 +381,35 @@ def install_talent_employee(
 ) -> dict[str, Any]:
     """把注册表条目落库为数字员工；重复 id 幂等返回已存在记录。
 
-    返回: ``{"employee": {...}, "already_existed": bool}``。
+    若 ``source_url`` 提供且条目携带自带技能（bundle 对象），会先把技能文件写入
+    ``workspace/skills/<name>/`` 并记录归属（随员工一起下载），再落库员工。
+
+    返回: ``{"employee": {...}, "already_existed": bool, "installed_skills": [...]}``。
     """
     data = {key: values.get(key) for key in _INSTALL_KEYS if key in values}
+    employee_id = str(data.get("id") or "").strip()
+
+    # 以注册表为权威来源解析自带技能（含文件内容），前端只回传技能名。
+    bundled: dict[str, dict[str, str]] = {}
+    if source_url and employee_id:
+        try:
+            registry = _fetch_talent_catalog(source_url)
+            raw_entry = _find_raw_entry(registry, employee_id)
+            if raw_entry is not None:
+                names, bundled = _parse_skill_spec(raw_entry.get("skills"))
+                data["skills"] = names
+        except TalentMarketError:
+            logger.warning(
+                "talent-market 安装时无法拉取注册表，跳过技能下载：{}", source_url
+            )
+
+    installed_skills = _install_bundled_skills(store, employee_id, bundled) if employee_id else []
+
     try:
         employee = store.create_employee(data)
     except EmployeeValidationError as e:
         if e.status == 409:
             # 幂等：id 已存在 → 返回现存员工，不当作错误
-            employee_id = str(data.get("id") or "").strip()
             existing = store.get_employee(employee_id) if employee_id else None
             if existing is not None:
                 logger.info(
@@ -308,11 +417,19 @@ def install_talent_employee(
                     employee_id,
                     source_url or "unknown",
                 )
-                return {"employee": existing, "already_existed": True}
+                return {
+                    "employee": existing,
+                    "already_existed": True,
+                    "installed_skills": installed_skills,
+                }
         raise
     logger.debug(
         "talent-market 安装员工：{}（来源 {}）",
         employee.get("id"),
         source_url or "unknown",
     )
-    return {"employee": employee, "already_existed": False}
+    return {
+        "employee": employee,
+        "already_existed": False,
+        "installed_skills": installed_skills,
+    }

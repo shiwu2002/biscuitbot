@@ -87,21 +87,55 @@ def _description(metadata: dict[str, Any] | None, fallback: str) -> str:
     return value.strip() if isinstance(value, str) and value.strip() else fallback
 
 
-def delete_workspace_skill(workspace_path: Path, name: str) -> dict[str, Any]:
+def delete_workspace_skill(
+    workspace_path: Path,
+    name: str,
+    *,
+    employee_store: Any | None = None,
+) -> dict[str, Any]:
     """Delete a workspace skill directory.
 
     Only skills whose source is ``workspace`` (i.e. living under
     ``workspace/skills/<name>/``) can be deleted.  Built-in skills are
     read-only.
 
+    A skill that is bundled with a digital employee (recorded in
+    ``workspace/skill_owners.json``) cannot be deleted while that employee
+    still exists; deleting the employee cascades and removes its bundled
+    skills automatically.
+
+    Args:
+        employee_store: Optional ``EmployeeStore`` used to check whether a
+            skill's owning employee still exists.  When omitted, an owned
+            skill is treated as in-use and cannot be deleted.
+
     Raises:
-        SkillDeletionError: On validation failure, missing skill, or
-            attempts to delete a built-in skill.
+        SkillDeletionError: On validation failure, missing skill, attempt to
+            delete a built-in skill, or a skill still owned by a live employee.
     """
     if not name or "/" in name or "\\" in name or ".." in name or "\x00" in name:
         raise SkillDeletionError(400, "invalid skill name")
     if not name.replace("-", "").replace("_", "").isalnum():
         raise SkillDeletionError(400, "invalid skill name")
+
+    # 归属校验：员工未删除时，其自带技能不可单独删除。
+    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+
+    owners = SkillOwnershipStore(workspace_path)
+    owner_id = owners.owner_of(name)
+    if owner_id is not None:
+        owner_exists = True
+        if employee_store is not None:
+            try:
+                owner_exists = employee_store.get_employee(owner_id) is not None
+            except Exception:
+                owner_exists = True
+        if owner_exists:
+            raise SkillDeletionError(
+                409, f"skill '{name}' is bundled with employee '{owner_id}'"
+            )
+        # 归属员工已删除：清理 stale 归属记录后继续删除
+        owners.remove_owner(name)
 
     loader = SkillsLoader(workspace_path)
     entries = loader.list_skills(filter_unavailable=False)

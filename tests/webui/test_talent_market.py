@@ -325,6 +325,82 @@ def test_install_ignores_non_whitelisted_keys(tmp_path: Path) -> None:
     assert "source" not in employee
 
 
+def test_install_downloads_bundled_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+
+    store = _store(tmp_path)
+    registry = {
+        "schema": "talent-market.v1",
+        "employees": [
+            {
+                "id": "bundled-bot",
+                "name": "带技能员工",
+                "system_prompt": "你是带技能员工。",
+                "skills": [
+                    "web_search",
+                    {
+                        "name": "my-bundled",
+                        "files": {
+                            "SKILL.md": "---\nname: my-bundled\n---\n\n# My",
+                            "refs/guide.md": "# guide",
+                        },
+                    },
+                ],
+            }
+        ],
+    }
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._http_get_json",
+        lambda url, **kwargs: registry,
+    )
+    result = install_talent_employee(
+        {
+            "id": "bundled-bot",
+            "name": "带技能员工",
+            "system_prompt": "你是带技能员工。",
+            "skills": ["web_search", "my-bundled"],
+        },
+        store,
+        source_url="https://example.com/registry.json",
+    )
+    assert result["installed_skills"] == ["my-bundled"]
+    workspace = store.workspace
+    assert (workspace / "skills" / "my-bundled" / "SKILL.md").exists()
+    assert (workspace / "skills" / "my-bundled" / "refs" / "guide.md").exists()
+    assert store.get_employee("bundled-bot")["skills"] == ["web_search", "my-bundled"]
+    assert SkillOwnershipStore(workspace).owner_of("my-bundled") == "bundled-bot"
+
+
+def test_catalog_flattens_bundled_skill_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    registry = {
+        "employees": [
+            {
+                "id": "bundled-bot",
+                "name": "带技能员工",
+                "system_prompt": "p",
+                "skills": [
+                    "web_search",
+                    {"name": "my-bundled", "files": {"SKILL.md": "# My"}},
+                ],
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._http_get_json",
+        lambda url, **kwargs: registry,
+    )
+    payload = talent_catalog_payload("https://example.com/registry.json", store)
+    entry = payload["employees"][0]
+    # 展示层把 bundle 对象展平为技能名，且不泄露文件内容
+    assert entry["skills"] == ["web_search", "my-bundled"]
+    assert "files" not in entry
+
+
 # ---- 配置文件驱动（后台写死 + CLI 修改，WebUI 只读） -------------------------
 
 

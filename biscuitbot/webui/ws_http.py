@@ -774,7 +774,11 @@ class GatewayHTTPHandler:
             return _http_error(401, "Unauthorized")
         name = unquote(raw_name)
         try:
-            result = delete_workspace_skill(self.skills_workspace_path, name)
+            result = delete_workspace_skill(
+                self.skills_workspace_path,
+                name,
+                employee_store=self.employees,
+            )
         except SkillDeletionError as e:
             return _http_error(e.status, e.message)
         except Exception:

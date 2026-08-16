@@ -219,6 +219,44 @@ class TestCrudAgainstBuiltins:
         assert exc.value.status == 409
 
 
+class TestBundledSkillCascade:
+    def test_delete_employee_cascades_bundled_skills(self, tmp_path: Path) -> None:
+        from biscuitbot.agent.skill_owners import SkillOwnershipStore, write_skill_files
+
+        store = _store(tmp_path)
+        emp = store.create_employee(
+            {"id": "talent-bot", "name": "人才员工", "system_prompt": "你是人才员工。"}
+        )
+        workspace = store.workspace
+        write_skill_files(
+            workspace,
+            "bundled-a",
+            {"SKILL.md": "---\n---\n\n# Bundled A", "refs/guide.md": "# guide"},
+        )
+        owners = SkillOwnershipStore(workspace)
+        owners.set_owner("bundled-a", emp["id"])
+        assert (workspace / "skills" / "bundled-a" / "SKILL.md").exists()
+
+        result = store.delete_employee(emp["id"])
+        assert result["deleted_skills"] == ["bundled-a"]
+        assert not (workspace / "skills" / "bundled-a").exists()
+        assert owners.owner_of("bundled-a") is None
+
+    def test_delete_employee_keeps_unowned_skills(self, tmp_path: Path) -> None:
+        from biscuitbot.agent.skill_owners import write_skill_files
+
+        store = _store(tmp_path)
+        emp = store.create_employee(
+            {"id": "talent-bot", "name": "人才员工", "system_prompt": "你是人才员工。"}
+        )
+        workspace = store.workspace
+        write_skill_files(workspace, "standalone", {"SKILL.md": "---\n---\n\n# Standalone"})
+
+        store.delete_employee(emp["id"])
+        # 未归属该员工的技能不受影响
+        assert (workspace / "skills" / "standalone" / "SKILL.md").exists()
+
+
 class TestTitleField:
     def test_seed_records_have_codenames_and_titles(self, tmp_path: Path) -> None:
         store = _store(tmp_path)

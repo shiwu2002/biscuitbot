@@ -210,6 +210,9 @@ class EmployeeStore:
     def delete_employee(self, employee_id: str) -> dict[str, Any]:
         """删除员工。已删除员工对应的历史会话不受影响（回退全局行为）。
 
+        删除员工时会级联删除其「自带技能」（bundled skills，即随员工从人才市场
+        下载的技能），并清理对应的归属记录。
+
         异常:
             EmployeeValidationError: 员工不存在。
         """
@@ -220,7 +223,30 @@ class EmployeeStore:
             if len(remaining) == len(employees):
                 raise EmployeeValidationError(404, f"员工不存在：{employee_id}")
             self._write(remaining)
-        return {"deleted": True, "id": employee_id}
+        deleted_skills = self._delete_owned_skills(employee_id)
+        return {"deleted": True, "id": employee_id, "deleted_skills": deleted_skills}
+
+    def _delete_owned_skills(self, employee_id: str) -> list[str]:
+        """级联删除该员工「自带」的技能目录，并清理归属记录。
+
+        技能归属与文件落盘由 ``biscuitbot.agent.skill_owners`` 管理；这里只做
+        级联触发，失败仅记录日志、不影响员工删除本身（尽量幂等）。
+        """
+        from biscuitbot.agent.skill_owners import (
+            SkillOwnershipStore,
+            delete_skill_directory,
+        )
+
+        owners = SkillOwnershipStore(self.workspace)
+        owned = owners.clear_employee(employee_id)
+        deleted: list[str] = []
+        for name in owned:
+            try:
+                if delete_skill_directory(self.workspace, name):
+                    deleted.append(name)
+            except OSError:
+                logger.warning("级联删除员工 {} 的自带技能 {} 失败", employee_id, name)
+        return deleted
 
     # ---- 内部实现 ----------------------------------------------------------
 

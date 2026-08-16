@@ -130,3 +130,40 @@ def test_delete_workspace_skill_keeps_other_skills(tmp_path: Path) -> None:
     entries = webui_skills_payload(workspace)["skills"]
     names = [entry["name"] for entry in entries]
     assert names == ["beta"]
+
+
+def test_delete_bundled_skill_blocked_while_employee_exists(
+    tmp_path: Path, _isolated_builtin_skills: Path
+) -> None:
+    from biscuitbot.agent.employees import EmployeeStore
+    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+
+    workspace = _workspace_with_skill(tmp_path, "bundled-a")
+    store = EmployeeStore(workspace)
+    emp = store.create_employee(
+        {"id": "owner", "name": "Owner", "system_prompt": "你是员工。"}
+    )
+    SkillOwnershipStore(workspace).set_owner("bundled-a", emp["id"])
+
+    with pytest.raises(SkillDeletionError) as exc_info:
+        delete_workspace_skill(workspace, "bundled-a", employee_store=store)
+    assert exc_info.value.status == 409
+    # 员工仍存在，技能目录不能被删除
+    assert (workspace / "skills" / "bundled-a" / "SKILL.md").exists()
+
+
+def test_delete_bundled_skill_allowed_for_stale_owner(
+    tmp_path: Path, _isolated_builtin_skills: Path
+) -> None:
+    from biscuitbot.agent.employees import EmployeeStore
+    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+
+    workspace = _workspace_with_skill(tmp_path, "bundled-a")
+    store = EmployeeStore(workspace)
+    # 归属记录指向一个已不存在的员工（stale），应允许删除并清理归属
+    SkillOwnershipStore(workspace).set_owner("bundled-a", "ghost")
+
+    result = delete_workspace_skill(workspace, "bundled-a", employee_store=store)
+    assert result["deleted"] is True
+    assert not (workspace / "skills" / "bundled-a").exists()
+    assert SkillOwnershipStore(workspace).owner_of("bundled-a") is None
