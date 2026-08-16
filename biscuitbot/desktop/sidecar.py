@@ -130,10 +130,61 @@ def _watch_pid() -> int | None:
     return None
 
 
+def _windows_process_alive(pid: int) -> bool:
+    """Windows 存活探测，不依赖调用进程是否持有控制台。
+
+    打包后的 sidecar 是 ``--windowed``（无控制台）进程。``os.kill(pid, 0)`` 在
+    Windows 上 signal 0 即 ``CTRL_C_EVENT``，最终走 ``GenerateConsoleCtrlEvent``，
+    在无控制台进程里对**任意** PID（无论死活）都会失败 ``ERROR_INVALID_HANDLE``，
+    因此不能用作存活探测。这里改用 ``OpenProcess(SYNCHRONIZE)`` +
+    ``WaitForSingleObject``，与控制台无关。
+
+    仅在进程**确定**已退出（``OpenProcess`` 报 ``ERROR_INVALID_PARAMETER``，或句柄
+    已置信号）时返回 False；任何含糊的失败都返回 True——对看门狗而言，误判“已死”
+    会提前杀掉 sidecar，而误判“仍活”最多留下无害的孤儿进程。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    SYNCHRONIZE = 0x00100000
+    WAIT_OBJECT_0 = 0x00000000
+    WAIT_TIMEOUT = 0x00000102
+    ERROR_INVALID_PARAMETER = 87
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        err = ctypes.get_last_error()
+        if err == ERROR_INVALID_PARAMETER:
+            return False
+        # 访问被拒或其它错误：保守视为存活。
+        return True
+    try:
+        result = kernel32.WaitForSingleObject(handle, 0)
+        if result == WAIT_OBJECT_0:
+            return False
+        return True  # WAIT_TIMEOUT（仍在运行）或 WAIT_FAILED（保守视为存活）
+    finally:
+        kernel32.CloseHandle(handle)
+
+
 def _process_alive(pid: int) -> bool:
-    """以 signal 0 探测进程是否存在（跨平台，无需权限）。"""
+    """返回 PID 对应进程是否仍存活。
+
+    POSIX 下 ``os.kill(pid, 0)`` 是标准存活探测；Windows 下不能用它（signal 0
+    是 ``CTRL_C_EVENT``，无控制台进程必然失败），改走 :func:`_windows_process_alive`。
+    """
     if pid <= 0:
         return False
+    if os.name == "nt":
+        return _windows_process_alive(pid)
     try:
         os.kill(pid, 0)
         return True

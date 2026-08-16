@@ -31,21 +31,17 @@ if ! .venv/bin/pyinstaller --version >/dev/null 2>&1; then
 fi
 
 echo "==> 3/5 打包 gateway sidecar（PyInstaller one-file）"
-# 与 Python 解释器无关的运行时第三方依赖（渠道 SDK / GUI）被剔除；
-# prompt_toolkit 在 cli/commands.py 顶部被导入，必须保留。
+# 与 Python 解释器无关的运行时第三方依赖（GUI）被剔除；prompt_toolkit 在
+# cli/commands.py 顶部被导入，必须保留。渠道 SDK（lark_oapi / dingtalk_stream /
+# socketio / botpy 等）不要剔除：渠道模块是动态导入的，需 --collect-submodules
+# biscuitbot.channels 显式收集，并保留其依赖的 SDK。
 EXCLUDES=(
   --exclude-module telegram
   --exclude-module telegram.ext
   --exclude-module slack_sdk
-  --exclude-module lark_oapi
   --exclude-module discord
   --exclude-module matrix_nio
-  --exclude-module python_socketio
-  --exclude-module socketio
-  --exclude-module qq_botpy
   --exclude-module wechatpy
-  --exclude-module dingtalk_stream
-  --exclude-module wecom_aibot_sdk_python
   --exclude-module pywebview
   --exclude-module questionary
   --exclude-module pymupdf
@@ -62,6 +58,7 @@ TRIPLE="$(rustc -vV 2>/dev/null | sed -n 's/^host: //p' || echo 'aarch64-apple-d
 
 .venv/bin/pyinstaller --noconfirm --clean --onefile --windowed \
   --paths "$ROOT" \
+  --collect-submodules biscuitbot.channels \
   --name biscuitbot-sidecar \
   --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
   --add-data "biscuitbot/templates:biscuitbot/templates" \

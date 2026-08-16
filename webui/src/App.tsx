@@ -51,7 +51,7 @@ import type {
 } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchSettings, fetchWorkspaces } from "@/lib/api";
+import { fetchSettings, fetchWorkspaces, requestEngineRestart } from "@/lib/api";
 import {
   createRuntimeHost,
   getHostApi,
@@ -562,12 +562,16 @@ export default function App() {
 
   const handleNativeEngineRestart = async (): Promise<string> => {
     const hostApi = getHostApi();
-    if (!hostApi?.restartEngine) {
-      throw new Error("native engine restart is unavailable");
+    if (hostApi?.restartEngine) {
+      await hostApi.restartEngine();
+      const refreshed = await refreshReadyClient(state.client, state.runtimeSurface);
+      return refreshed.token;
     }
-    await hostApi.restartEngine();
-    const refreshed = await refreshReadyClient(state.client, state.runtimeSurface);
-    return refreshed.token;
+    // 打包壳未注入 window.biscuitbotHost：走后端 HTTP 兜底。sidecar 响应后会
+    // 退出进程，Tauri 壳自动重新拉起并导航回 WebUI（整页刷新），这里直接返回
+    // 当前 token，无需在重启窗口内再刷新客户端。
+    await requestEngineRestart(state.token);
+    return state.token;
   };
 
   return (

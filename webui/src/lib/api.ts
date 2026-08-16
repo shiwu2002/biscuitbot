@@ -739,6 +739,14 @@ export async function completeSetup(
   );
 }
 
+/** 请求后端重启引擎（打包桌面端兜底：宿主未注入 biscuitbotHost 时使用）。 */
+export async function requestEngineRestart(
+  token: string,
+  base: string = "",
+): Promise<void> {
+  await request<{ ok: boolean }>(`${base}/api/desktop/restart`, token);
+}
+
 /** 微信扫码登录：一张登录二维码（qrcode_id 用于后续轮询）。 */
 export interface WeixinLoginQr {
   qrcode_id: string;

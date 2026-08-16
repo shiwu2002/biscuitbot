@@ -12,7 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import mimetypes
+import os
 import re
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -726,7 +728,24 @@ class GatewayHTTPHandler:
             return await self._handle_webui_weixin_login_qr(request)
         if got == "/api/webui/weixin/login-status":
             return await self._handle_webui_weixin_login_status(request)
+        if got == "/api/desktop/restart":
+            return self._handle_desktop_restart(request)
         return None
+
+    def _handle_desktop_restart(self, request: WsRequest) -> Response:
+        """打包桌面端：请求重启无头 gateway（引擎重启兜底通道）。
+
+        桌面壳没有注入 ``window.biscuitbotHost``，前端无法直接调用宿主的
+        ``restartEngine``，改为走后端 HTTP。响应返回后退出进程，Tauri 壳监听到
+        子进程退出会重新拉起 sidecar 并导航回 WebUI（整页刷新）。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._runtime_surface != "native":
+            return _http_error(400, "engine restart is only available in the native desktop runtime")
+        # 延迟退出，确保 JSON 响应先写回前端；os._exit 直接结束进程，跳过优雅清理。
+        threading.Timer(0.2, os._exit, args=(0,)).start()
+        return _http_json_response({"ok": True, "restarting": True})
 
     def _handle_commands(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

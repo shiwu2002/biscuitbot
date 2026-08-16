@@ -52,19 +52,17 @@ if (-not (Test-Path $PyInstaller)) {
 Write-Info "==> 3/5 打包 gateway sidecar（PyInstaller one-file）"
 # 剔除与 Python 解释器无关的运行时第三方依赖（渠道 SDK / GUI）；
 # prompt_toolkit 在 cli/commands.py 顶部被导入，必须保留。
+# 注意：不要剔除渠道 SDK（lark_oapi / dingtalk_stream / socketio / botpy 等）——
+# 渠道模块是动态导入的（见 biscuitbot/channels/registry.py），PyInstaller 静态
+# 分析看不到，必须用 --collect-submodules biscuitbot.channels 显式收集，并保留
+# 其依赖的 SDK，否则打包后桌面端会缺渠道。
 $Excludes = @(
     "--exclude-module", "telegram",
     "--exclude-module", "telegram.ext",
     "--exclude-module", "slack_sdk",
-    "--exclude-module", "lark_oapi",
     "--exclude-module", "discord",
     "--exclude-module", "matrix_nio",
-    "--exclude-module", "python_socketio",
-    "--exclude-module", "socketio",
-    "--exclude-module", "qq_botpy",
     "--exclude-module", "wechatpy",
-    "--exclude-module", "dingtalk_stream",
-    "--exclude-module", "wecom_aibot_sdk_python",
     "--exclude-module", "pywebview",
     "--exclude-module", "questionary",
     "--exclude-module", "pymupdf",
@@ -76,8 +74,9 @@ $Excludes = @(
 $TripleLine = & rustc -vV 2>$null | Select-String '^host: '
 $Triple = if ($TripleLine) { ($TripleLine -split ": ")[1].Trim() } else { "x86_64-pc-windows-msvc" }
 
-& $PyInstaller --noconfirm --clean --onefile --windowed `
+& $VenvPython -m PyInstaller --noconfirm --clean --onefile --windowed `
     --paths "$Root" `
+    --collect-submodules biscuitbot.channels `
     --name biscuitbot-sidecar `
     --add-data "biscuitbot/web/dist;biscuitbot/web/dist" `
     --add-data "biscuitbot/templates;biscuitbot/templates" `
