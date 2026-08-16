@@ -44,11 +44,11 @@ def test_mcp_presets_payload_lists_supported_cards(tmp_path, monkeypatch: pytest
     assert browserbase["required_fields"][0]["configured"] is False
     assert "browserbaseApiKey" not in browserbase["connection_summary"]
     manifest = browserbase["manifest"]
-    assert manifest["schema"] == "agent-app.v1"
+    assert manifest["schema"] == "capability.v1"
     assert manifest["id"] == "browserbase"
     assert manifest["source"] == "mcp-preset"
-    assert manifest["capabilities"][0]["type"] == "mcp"
-    assert manifest["capabilities"][0]["transport"] == "streamableHttp"
+    assert manifest["runtime"] == "mcp"
+    assert manifest["execution"]["transport"] == "streamableHttp"
     assert manifest["install"]["strategy"] == "config"
     assert manifest["remove"]["verification"] == ["config_absent"]
     assert manifest["trust"]["review_status"] == "builtin_preset"
@@ -322,9 +322,9 @@ def test_custom_mcp_server_writes_config_and_catalog_row(
     assert row["source"] == "custom"
     assert row["transport"] == "stdio"
     assert row["connection_summary"] == "node server.js"
-    assert row["manifest"]["schema"] == "agent-app.v1"
+    assert row["manifest"]["schema"] == "capability.v1"
     assert row["manifest"]["source"] == "mcp-custom"
-    assert row["manifest"]["capabilities"][0]["command"] == "node"
+    assert row["manifest"]["execution"]["command"] == "node"
     assert "server.js" not in str(row["manifest"])
     assert "docs-secret-value" not in str(payload)
     config = load_config()

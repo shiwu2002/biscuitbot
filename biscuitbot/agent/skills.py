@@ -21,6 +21,8 @@ from pathlib import Path  # 路径处理
 
 import yaml  # 解析 SKILL.md 的 YAML frontmatter
 
+from typing import Any  # 能力视图返回类型的注解
+
 # Default builtin skills directory (relative to this file)
 BUILTIN_SKILLS_DIR = Path(__file__).parent.parent / "skills"  # 内置技能目录（相对本文件的上级的 skills/）
 
@@ -244,21 +246,23 @@ class SkillsLoader:
         return available, "" if available else self._get_missing_requirements(meta)
 
     def get_skill_requirements(self, name: str) -> dict[str, list[str]]:
-        """Return explicit command/env requirements and currently missing entries."""
-        """返回技能的显式命令/环境变量依赖及当前缺失项。
+        """Return explicit command/env/pkg requirements and currently missing entries."""
+        """返回技能的显式命令/环境变量/包依赖及当前缺失项。
 
         参数:
             name: 技能名。
 
         返回:
-            包含 bins/env/missing_bins/missing_env 四个列表的字典。
+            包含 bins/env/pkgs/missing_bins/missing_env 五个列表的字典。
         """
-        requires = self._get_skill_meta(name).get("requires", {})
-        bins = [str(value) for value in requires.get("bins", [])]
-        env = [str(value) for value in requires.get("env", [])]
+        capability = self.get_skill_capability(name)
+        reqs = capability["requirements"]
+        bins = reqs.get("bins", [])
+        env = reqs.get("env", [])
         return {
             "bins": bins,
             "env": env,
+            "pkgs": reqs.get("pkgs", []),
             "missing_bins": [value for value in bins if not shutil.which(value)],
             "missing_env": [value for value in env if not os.environ.get(value)],
         }
@@ -379,3 +383,56 @@ class SkillsLoader:
         for key, value in parsed.items():
             metadata[str(key)] = value
         return metadata
+
+    def get_skill_capability(self, name: str) -> dict[str, Any]:
+        """Return the unified capability view of a skill's frontmatter.
+
+        Maps optional ``runtime`` / ``execution`` / ``provisioning`` /
+        ``requirements`` frontmatter fields, plus the legacy
+        ``metadata.biscuitbot.requires.{bins,env,pkgs}`` block, onto the single
+        capability vocabulary consumed by ``CapabilityRegistry``.
+
+        参数:
+            name: 技能名。
+
+        返回:
+            含 runtime/execution/provisioning/requirements 的字典；
+            runtime 缺省为 "prompt"。
+        """
+        meta = self.get_skill_metadata(name) or {}
+        biscuitbot = self._parse_biscuitbot_metadata(meta.get("metadata"))
+
+        runtime = str(meta.get("runtime") or biscuitbot.get("runtime") or "prompt").strip().lower()
+
+        execution = meta.get("execution") or biscuitbot.get("execution")
+        if not isinstance(execution, dict):
+            execution = {}
+
+        provisioning = meta.get("provisioning") or biscuitbot.get("provisioning")
+        if not isinstance(provisioning, dict):
+            provisioning = {}
+
+        # 兼容旧 requires（biscuitbot metadata 内）与可选顶层 requirements。
+        requires = biscuitbot.get("requires") or {}
+        if not isinstance(requires, dict):
+            requires = {}
+        explicit = meta.get("requirements")
+        if not isinstance(explicit, dict):
+            explicit = {}
+
+        def _str_list(value: object) -> list[str]:
+            if not isinstance(value, list):
+                return []
+            return [str(item) for item in value]
+
+        return {
+            "runtime": runtime,
+            "execution": execution,
+            "provisioning": provisioning,
+            "requirements": {
+                "bins": _str_list(explicit.get("bins", requires.get("bins"))),
+                "env": _str_list(explicit.get("env", requires.get("env"))),
+                "pkgs": _str_list(explicit.get("pkgs", requires.get("pkgs"))),
+                "models": _str_list(explicit.get("models")),
+            },
+        }

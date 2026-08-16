@@ -82,7 +82,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "employees" | "employee-chat" | "talent-market" | "knowledge";
+type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "knowledge";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -100,6 +100,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "tts",
   "browser",
   "apps",
+  "capabilities",
   "automations",
   "skills",
   "runtime",
@@ -120,6 +121,7 @@ function shellViewForSettingsSection(section: SettingsSectionKey): ShellView {
   if (
     section === "automations"
     || section === "skills"
+    || section === "capabilities"
   ) {
     return section;
   }
@@ -162,7 +164,11 @@ function readShellRoute(): ShellRoute {
     return { view: "automations", activeKey, settingsSection: "automations" };
   }
   if (path === "/skills") {
-    return { view: "skills", activeKey, settingsSection: "skills" };
+    // 旧「技能」深链重定向到统一能力目录。
+    return { view: "capabilities", activeKey, settingsSection: "capabilities" };
+  }
+  if (path === "/capabilities") {
+    return { view: "capabilities", activeKey, settingsSection: "capabilities" };
   }
   if (path === "/employees") {
     return { view: "employees", activeKey, settingsSection: "overview" };
@@ -1304,9 +1310,9 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
-  const onOpenSkills = useCallback(() => {
+  const onOpenCapabilities = useCallback(() => {
     setSessionSearchOpen(false);
-    navigate({ view: "skills", activeKey, settingsSection: "skills" });
+    navigate({ view: "capabilities", activeKey, settingsSection: "capabilities" });
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
@@ -1519,6 +1525,12 @@ function Shell({
       });
       return;
     }
+    if (view === "capabilities") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("settings.nav.capabilities", { defaultValue: "能力" }),
+      });
+      return;
+    }
     if (view === "talent-market") {
       document.title = t("app.documentTitle.chat", {
         title: t("talentMarket.title", { defaultValue: "人才市场" }),
@@ -1566,14 +1578,14 @@ function Shell({
     onNewChatInProject,
     onOpenSettings,
     onOpenAutomations,
-    onOpenSkills,
+    onOpenCapabilities,
     onOpenEmployees,
     onOpenKnowledge,
     onOpenDashboard,
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
-      view === "automations" || view === "skills" || view === "employees" || view === "employee-chat" || view === "dashboard" || view === "knowledge"
+      view === "automations" || view === "skills" || view === "capabilities" || view === "employees" || view === "employee-chat" || view === "dashboard" || view === "knowledge"
         ? view === "employee-chat" ? "employees" : view
         : null,
     onToggleArchived,

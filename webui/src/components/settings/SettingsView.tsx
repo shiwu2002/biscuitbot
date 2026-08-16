@@ -62,6 +62,7 @@ import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { WechatBridge } from "@/components/wechat/WechatBridge";
 import { SkillsCatalogSettings } from "@/components/settings/SkillsCatalogSettings";
+import { CapabilitiesView } from "@/components/settings/CapabilitiesView";
 import { TokenUsageHeatmap } from "@/components/settings/TokenUsageHeatmap";
 import { Button } from "@/components/ui/button";
 import {
@@ -158,6 +159,7 @@ export type SettingsSectionKey =
   | "tts"
   | "browser"
   | "apps"
+  | "capabilities"
   | "automations"
   | "skills"
   | "runtime"
@@ -1836,6 +1838,8 @@ export function SettingsView({
         );
       case "skills":
         return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
+      case "capabilities":
+        return <CapabilitiesView onSkillsDeleted={onSkillsDeleted} />;
       case "channels":
         return (
           <ChannelsSettings
@@ -1964,6 +1968,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
   { key: "models", icon: SlidersHorizontal, fallback: "Models" },
   { key: "browser", icon: Globe2, fallback: "Web" },
   { key: "apps", icon: Blocks, fallback: "Apps" },
+  { key: "capabilities", icon: Sparkles, fallback: "Capabilities" },
   { key: "channels", icon: MessageSquareText, fallback: "Channels" },
   { key: "runtime", icon: Server, fallback: "System" },
 ];

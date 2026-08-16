@@ -8,7 +8,7 @@ import type { Employee } from "@/lib/types";
 function renderSidebar(overrides: {
   employees?: Employee[];
   onOpenEmployees?: () => void;
-  activeUtility?: "apps" | "skills" | "automations" | "employees" | null;
+  activeUtility?: "skills" | "capabilities" | "automations" | "employees" | "dashboard" | "knowledge" | null;
 } = {}) {
   const mockClient = {
     status: "idle",
@@ -28,11 +28,12 @@ function renderSidebar(overrides: {
     onRequestRenameProject: vi.fn(),
     onNewChatInProject: vi.fn(),
     onOpenSettings: vi.fn(),
-    onOpenApps: vi.fn(),
-    onOpenSkills: vi.fn(),
+    onOpenCapabilities: vi.fn(),
     onOpenAutomations: vi.fn(),
     onOpenSearch: vi.fn(),
+    onOpenDashboard: vi.fn(),
     onOpenEmployees: overrides.onOpenEmployees ?? vi.fn(),
+    onOpenKnowledge: vi.fn(),
     onToggleArchived: vi.fn(),
     onCollapse: vi.fn(),
     employees: overrides.employees,

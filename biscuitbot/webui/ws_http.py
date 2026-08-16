@@ -89,6 +89,10 @@ from biscuitbot.webui.skills_api import (
     webui_skill_detail_payload,
     webui_skills_payload,
 )
+from biscuitbot.webui.capabilities_api import (
+    capabilities_payload,
+    capability_detail_payload,
+)
 from biscuitbot.webui.talent_market import (
     TalentMarketError,
     install_talent_employee,
@@ -705,6 +709,11 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/webui/skills/([^/]+)$", got)
         if m:
             return self._handle_webui_skill_detail(request, m.group(1))
+        if got == "/api/webui/capabilities":
+            return self._handle_webui_capabilities(request)
+        m = re.match(r"^/api/webui/capabilities/([^/]+)$", got)
+        if m:
+            return self._handle_webui_capability_detail(request, m.group(1))
         if got == "/api/webui/employees":
             return self._handle_webui_employees(request)
         if got == "/api/webui/employees/create":
@@ -786,6 +795,32 @@ class GatewayHTTPHandler:
         )
         if payload is None:
             return _http_error(404, "skill not found")
+        return _http_json_response(payload)
+
+    def _handle_webui_capabilities(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        query = _parse_query(request.path)
+        kind = _query_first(query, "kind")
+        return _http_json_response(
+            capabilities_payload(
+                self.skills_workspace_path,
+                disabled_skills=self.disabled_skills,
+                kind=kind,
+            )
+        )
+
+    def _handle_webui_capability_detail(self, request: WsRequest, raw_id: str) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        capability_id = unquote(raw_id)
+        payload = capability_detail_payload(
+            self.skills_workspace_path,
+            capability_id,
+            disabled_skills=self.disabled_skills,
+        )
+        if payload is None:
+            return _http_error(404, "capability not found")
         return _http_json_response(payload)
 
     def _handle_webui_skill_delete(self, request: WsRequest, raw_name: str) -> Response:

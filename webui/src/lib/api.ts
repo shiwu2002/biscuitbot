@@ -1,6 +1,8 @@
 import type {
   AutomationsPayload,
   AutomationUpdatePayload,
+  CapabilitiesPayload,
+  CapabilityDetail,
   ChatSummary,
   Employee,
   EmployeesPayload,
@@ -296,6 +298,36 @@ export async function deleteSkill(
   return request<{ deleted: boolean; name: string }>(
     `${base}/api/webui/skills/${encodeURIComponent(name)}/delete`,
     token,
+  );
+}
+
+/** 统一能力目录（``kind`` 可选过滤 runtime：prompt / process / mcp）。 */
+export async function fetchCapabilities(
+  token: string,
+  kind?: string,
+  base: string = "",
+): Promise<CapabilitiesPayload> {
+  const query = new URLSearchParams();
+  if (kind) query.set("kind", kind);
+  const suffix = query.toString() ? `?${query.toString()}` : "";
+  return request<CapabilitiesPayload>(
+    `${base}/api/webui/capabilities${suffix}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+export async function fetchCapabilityDetail(
+  token: string,
+  id: string,
+  base: string = "",
+): Promise<CapabilityDetail> {
+  return request<CapabilityDetail>(
+    `${base}/api/webui/capabilities/${encodeURIComponent(id)}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
   );
 }
 

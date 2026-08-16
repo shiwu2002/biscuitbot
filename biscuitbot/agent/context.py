@@ -203,14 +203,20 @@ class ContextBuilder:
             if always_content:
                 parts.append(f"# Active Skills\n\n{always_content}")
 
-        # 技能归属自己：绑定数字员工时技能摘要只列该员工自己的技能；主会话共享全部
-        employee_skills = self._employee_skill_allowlist(session_metadata)
+        # 能力归属自己：绑定数字员工时技能摘要只列该员工自己的能力；主会话共享全部
+        employee_skills = self._employee_capability_allowlist(session_metadata)
         if employee_skills is not None:
             skills_summary = self.skills.build_skills_summary(include=employee_skills)
         else:
             skills_summary = self.skills.build_skills_summary(exclude=set(always_skills))
         if skills_summary:
             parts.append(render_template("agent/skills_section.md", skills_summary=skills_summary))
+
+        # 绑定员工的 process / mcp 能力运行时行：prompt 技能已走 skills summary，
+        # 这里补 CLI 应用 / MCP 服务器的可用性提示，让员工会话知道这些工具可用。
+        capability_lines = self._employee_capability_runtime_lines(session_metadata)
+        if capability_lines:
+            parts.append("# Capabilities\n\n" + "\n".join(capability_lines))
 
         if include_memory_recent_history:
             entries = self.memory.read_recent_history_for_prompt(
@@ -266,16 +272,60 @@ class ContextBuilder:
             return None
         return self.employees._enabled_employee(employee_id.strip())
 
-    def _employee_skill_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
-        """返回绑定员工的技能 allowlist；未绑定员工时返回 None（主会话共享全部技能）。
+    def _employee_capability_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
+        """返回绑定员工的能力 allowlist；未绑定员工时返回 None（主会话共享全部能力）。
 
-        绑定员工时返回其 ``skills`` 集合（可为空集，表示该员工没有自己的技能，
-        此时技能摘要不显示任何技能——技能归属自己，而非共享全部）。
+        ``employee["skills"]`` 语义已升级为「capability id 列表」——可含 prompt
+        技能名、process 应用名、mcp 服务器名。绑定员工时返回该集合（可为空集，
+        表示该员工没有自己的任何能力，此时能力摘要不显示任何条目——能力归属自己，
+        而非共享全部）。
         """
         employee = self._resolve_employee(session_metadata)
         if employee is None:
             return None
         return set(employee.get("skills") or [])
+
+    def _employee_skill_allowlist(self, session_metadata: Mapping[str, Any] | None) -> set[str] | None:
+        """旧名别名：语义同 :meth:`_employee_capability_allowlist`，保留兼容。"""
+        return self._employee_capability_allowlist(session_metadata)
+
+    def _employee_capability_runtime_lines(self, session_metadata: Mapping[str, Any] | None) -> list[str]:
+        """为绑定员工注入 process / mcp 能力运行时行；prompt 技能走 skills summary。
+
+        主会话（未绑定员工）返回空列表——CLI 应用 / MCP 的提及标注由消息级
+        ``runtime_lines`` 负责，这里只补齐「员工绑定了某个应用 / MCP 服务器」时
+        模型应知晓的可用性提示。无匹配能力时不产生任何行。
+        """
+        employee = self._resolve_employee(session_metadata)
+        if employee is None:
+            return []
+        allowlist = set(employee.get("skills") or [])
+        if not allowlist:
+            return []
+
+        lines: list[str] = []
+        try:
+            from biscuitbot.apps.cli import CliAppManager
+
+            cli_names = set(CliAppManager(workspace=self.workspace).installed_names())
+        except Exception:
+            cli_names = set()
+        for name in sorted(allowlist & cli_names):
+            lines.append(
+                f"CLI App: @{name} (installed; tool=run_cli_app; "
+                f"skill=skills/cli-app-{name}/SKILL.md)"
+            )
+
+        try:
+            from biscuitbot.config.loader import load_config
+
+            mcp_names = set(load_config().tools.mcp_servers)
+        except Exception:
+            mcp_names = set()
+        for name in sorted(allowlist & mcp_names):
+            lines.append(f"MCP Server: @{name} (configured; tools prefixed mcp_{name}_*)")
+
+        return lines
 
     @staticmethod
     def _persona_section(employee: dict[str, Any]) -> str:

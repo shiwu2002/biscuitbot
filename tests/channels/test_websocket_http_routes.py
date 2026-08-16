@@ -424,6 +424,7 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
         assert detail_body["requirements"] == {
             "bins": ["definitely-missing-biscuitbot-skill-cli"],
             "env": ["DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV"],
+            "pkgs": [],
             "missing_bins": ["definitely-missing-biscuitbot-skill-cli"],
             "missing_env": ["DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV"],
         }

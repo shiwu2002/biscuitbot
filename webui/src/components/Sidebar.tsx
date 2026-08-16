@@ -2,12 +2,12 @@ import { useState, type ReactNode } from "react";
 import {
   Archive,
   BookOpen,
-  Brain,
   CalendarClock,
   LayoutDashboard,
   Menu,
   Search,
   Settings,
+  Sparkles,
   SquarePen,
   UsersRound,
 } from "lucide-react";
@@ -38,7 +38,7 @@ interface SidebarProps {
   onRequestRenameProject: (projectKey: string, label: string) => void;
   onNewChatInProject: (projectPath: string, projectName: string) => void;
   onOpenSettings: () => void;
-  onOpenSkills: () => void;
+  onOpenCapabilities: () => void;
   onOpenAutomations: () => void;
   onOpenSearch: () => void;
   /** 打开仪表盘视图（Token 用量 / 图表分析）。 */
@@ -49,7 +49,7 @@ interface SidebarProps {
   onOpenKnowledge: () => void;
   /** 数字人员工目录：用于会话行显示绑定的员工头像/代号（ChatList）。 */
   employees?: Employee[];
-  activeUtility?: "skills" | "automations" | "employees" | "dashboard" | "knowledge" | null;
+  activeUtility?: "skills" | "capabilities" | "automations" | "employees" | "dashboard" | "knowledge" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -175,10 +175,10 @@ export function Sidebar(props: SidebarProps) {
         ) : null}
         <SidebarActionButton
           collapsed={collapsed}
-          label={t("sidebar.skills.title")}
-          onClick={props.onOpenSkills}
-          active={props.activeUtility === "skills"}
-          icon={<Brain className="h-4 w-4" />}
+          label={t("sidebar.capabilities.title", { defaultValue: "能力" })}
+          onClick={props.onOpenCapabilities}
+          active={props.activeUtility === "capabilities"}
+          icon={<Sparkles className="h-4 w-4" />}
         />
         <SidebarActionButton
           collapsed={collapsed}

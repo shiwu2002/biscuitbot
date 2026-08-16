@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from biscuitbot.apps.protocol import app_manifest, compact_dict
+from biscuitbot.apps.protocol import capability_manifest, compact_dict
 from biscuitbot.config.paths import get_runtime_subdir
 from biscuitbot.security.workspace_policy import is_path_within
 
@@ -632,14 +632,8 @@ class CliAppManager:
         entry_point = str(app.get("entry_point") or "")
         strategy = self._strategy(app)
         skill_path = f"skills/{_safe_skill_name(name)}/SKILL.md"
-        capabilities = [
-            compact_dict({
-                "type": "cli",
-                "entry_point": entry_point,
-                "package": self._package_ref(app),
-            }),
-            {"type": "skill", "path": skill_path},
-        ]
+        skill_installed = self._skill_path(name).is_file()
+
         install_supported = self._install_supported(app)
         install = compact_dict({
             "supported": install_supported,
@@ -657,8 +651,17 @@ class CliAppManager:
                 else ["biscuitbot_state_absent", "managed_paths_absent"]
             ),
         })
-        return app_manifest(
-            app_id=name,
+
+        # 统一安装模型：install_cmd/package_manager → provisioning.installers。
+        install_cmd = str(app.get("install_cmd") or "")
+        installers = (
+            [compact_dict({"platform": "any", "manager": strategy, "command": install_cmd})]
+            if install_cmd and strategy not in {"bundled", "unsupported"}
+            else []
+        )
+
+        return capability_manifest(
+            capability_id=name,
             display_name=str(app.get("display_name") or name),
             version=str(app.get("version") or ""),
             description=_catalog_description(app),
@@ -666,7 +669,18 @@ class CliAppManager:
             source=self._manifest_source(app),
             logo_url=logo_url,
             brand_color=brand_color,
-            capabilities=capabilities,
+            runtime="process",
+            instructions={
+                "source": "skill_md" if skill_installed else "generated",
+                "path": skill_path,
+                "available": skill_installed,
+            },
+            execution=compact_dict({
+                "entry_point": entry_point,
+                "package": self._package_ref(app),
+            }),
+            requirements={},
+            provisioning=compact_dict({"strategy": strategy, "installers": installers}),
             install=install,
             remove=remove,
             trust={

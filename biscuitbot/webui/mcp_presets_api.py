@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping
 
 from biscuitbot.agent.tools.registry import ToolRegistry
-from biscuitbot.apps.protocol import app_manifest, compact_dict
+from biscuitbot.apps.protocol import capability_manifest, compact_dict
 from biscuitbot.config.loader import load_config, resolve_config_env_vars, save_config
 from biscuitbot.config.paths import get_runtime_subdir
 from biscuitbot.config.schema import MCPServerConfig
@@ -681,18 +681,15 @@ def _preset_manifest(preset: McpPreset, *, logo_url: str) -> dict[str, Any]:
         })
         for field in preset.fields
     ]
-    capabilities = [
-        compact_dict({
-            "type": "mcp",
-            "transport": preset.transport,
-            "command": server.command if server and server.command else None,
-            "args": list(server.args) if server and server.command else None,
-            "url": _connection_summary(server) if server and server.url else None,
-            "fields": field_specs,
-        })
-    ]
-    return app_manifest(
-        app_id=preset.name,
+    execution = compact_dict({
+        "transport": preset.transport,
+        "command": server.command if server and server.command else None,
+        "args": list(server.args) if server and server.command else None,
+        "url": _connection_summary(server) if server and server.url else None,
+        "fields": field_specs,
+    })
+    return capability_manifest(
+        capability_id=preset.name,
         display_name=preset.display_name,
         description=preset.description,
         category=preset.category,
@@ -700,7 +697,11 @@ def _preset_manifest(preset: McpPreset, *, logo_url: str) -> dict[str, Any]:
         docs_url=preset.docs_url,
         logo_url=logo_url,
         brand_color=preset.brand_color,
-        capabilities=capabilities,
+        runtime="mcp",
+        instructions={"source": "none", "path": None, "available": False},
+        execution=execution,
+        requirements={},
+        provisioning=compact_dict({"strategy": "config", "installers": []}),
         install=compact_dict({
             "supported": preset.install_supported,
             "strategy": "config",
@@ -724,21 +725,22 @@ def _preset_manifest(preset: McpPreset, *, logo_url: str) -> dict[str, Any]:
 def _custom_manifest(name: str, cfg: MCPServerConfig) -> dict[str, Any]:
     transport = cfg.type or ("stdio" if cfg.command else "streamableHttp")
     managed_paths: list[str] = []
-    return app_manifest(
-        app_id=name,
+    return capability_manifest(
+        capability_id=name,
         display_name=name,
         description="Custom MCP server from biscuitbot config.",
         category="custom",
         source="mcp-custom",
         brand_color="#64748B",
-        capabilities=[
-            compact_dict({
-                "type": "mcp",
-                "transport": transport,
-                "command": cfg.command or None,
-                "url": _connection_summary(cfg) if cfg.url else None,
-            })
-        ],
+        runtime="mcp",
+        instructions={"source": "none", "path": None, "available": False},
+        execution=compact_dict({
+            "transport": transport,
+            "command": cfg.command or None,
+            "url": _connection_summary(cfg) if cfg.url else None,
+        }),
+        requirements={},
+        provisioning=compact_dict({"strategy": "config", "installers": []}),
         install=compact_dict({
             "supported": True,
             "strategy": "config",

@@ -298,46 +298,72 @@ describe("App layout", () => {
     expect(asideClassNames.some((cls) => cls.includes("lg:block"))).toBe(true);
   });
 
-  it("places Automations after Skills in the main sidebar", async () => {
+  it("places Automations after Capabilities in the main sidebar", async () => {
     render(<App />);
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const skillsButton = within(sidebar).getByRole("button", { name: "技能中心" });
+    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力" });
     const automationsButton = within(sidebar).getByRole("button", { name: "自动任务" });
 
     expect(
-      skillsButton.compareDocumentPosition(automationsButton) &
+      capabilitiesButton.compareDocumentPosition(automationsButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 
-  it("opens Skills from the main sidebar", async () => {
+  it("opens Capabilities from the main sidebar", async () => {
     mockFetchRoutes({
       "/api/settings": baseSettingsPayload(),
-      "/api/settings/cli-apps": { apps: [], installed_count: 0, catalog_updated_at: "2026-04-18" },
-      "/api/settings/mcp-presets": { presets: [], installed_count: 0 },
-      "/api/webui/skills": {
-        skills: [
-          { name: "cron", description: "Schedule reminders.", source: "builtin", available: true },
+      "/api/webui/skills": { skills: [] },
+      "/api/webui/capabilities": {
+        capabilities: [
           {
+            id: "cron",
+            name: "cron",
+            display_name: "cron",
+            description: "Schedule reminders.",
+            source: "builtin",
+            runtime: "prompt",
+            installed: true,
+            available: true,
+            unavailable_reason: "",
+            install_supported: false,
+            skill_installed: true,
+          },
+          {
+            id: "github",
             name: "github",
+            display_name: "github",
             description: "Work with GitHub.",
             source: "builtin",
+            runtime: "prompt",
+            installed: true,
             available: false,
             unavailable_reason: "CLI: gh",
+            install_supported: false,
+            skill_installed: true,
           },
         ],
+        installed_count: 2,
       },
-      "/api/webui/skills/github": {
+      "/api/webui/capabilities/github": {
+        id: "github",
         name: "github",
+        display_name: "github",
         description: "Work with GitHub.",
         source: "builtin",
+        runtime: "prompt",
+        installed: true,
         available: false,
         unavailable_reason: "CLI: gh",
+        install_supported: false,
+        skill_installed: true,
+        requires: "CLI: gh",
         requirements: {
           bins: ["gh"],
           env: [],
+          pkgs: [],
           missing_bins: ["gh"],
           missing_env: [],
         },
@@ -349,36 +375,33 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const skillsButton = within(sidebar).getByRole("button", { name: "技能中心" });
+    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力" });
 
-    fireEvent.click(skillsButton);
+    fireEvent.click(capabilitiesButton);
 
-    expect(await screen.findByRole("heading", { name: "技能" })).toBeInTheDocument();
-    expect(screen.getByText("cron")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "能力" })).toBeInTheDocument();
+    expect(await screen.findByText("cron")).toBeInTheDocument();
     expect(screen.getByText("github")).toBeInTheDocument();
     expect(screen.getByText("缺少：CLI: gh")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "侧边栏导航" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "设置分区" })).not.toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "技能中心" })).toHaveAttribute(
+    expect(within(sidebar).getByRole("button", { name: "能力" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("技能 · biscuitbot");
+    expect(document.title).toBe("能力 · biscuitbot");
 
     fireEvent.click(screen.getByRole("button", { name: "返回聊天" }));
     expect(await screen.findByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
 
-    fireEvent.click(within(sidebar).getByRole("button", { name: "技能中心" }));
-    expect(await screen.findByRole("heading", { name: "技能" })).toBeInTheDocument();
+    fireEvent.click(within(sidebar).getByRole("button", { name: "能力" }));
+    expect(await screen.findByRole("heading", { name: "能力" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "查看 github 详情" }));
 
-    expect(await screen.findByRole("heading", { name: "github" })).toBeInTheDocument();
-    expect(screen.getByText("不可用原因")).toBeInTheDocument();
-    expect(screen.getAllByText("CLI: gh").length).toBeGreaterThan(0);
-    expect(screen.getByText("缺 CLI")).toBeInTheDocument();
+    expect(await screen.findByText("原始 SKILL.md")).toBeInTheDocument();
     fireEvent.click(screen.getByText("原始 SKILL.md"));
-    expect(screen.getByText(/Use GitHub CLI/)).toBeInTheDocument();
+    expect(await screen.findByText(/Use GitHub CLI/)).toBeInTheDocument();
   });
 
   it("opens Automations from the main sidebar", async () => {

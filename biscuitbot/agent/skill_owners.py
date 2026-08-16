@@ -18,6 +18,11 @@
     {"schema_version": 1, "owners": {"<skill_name>": "<employee_id>"}}
 
 仅记录「自带技能」的归属；未在 registry 中出现的技能视为普通工作区技能。
+
+统一能力模型（capability.v1）下，这里的 ``<skill_name>`` 是 capability id 的
+子集——只覆盖落盘为 ``workspace/skills/<name>/`` 的 prompt（及内置应用型）能力；
+CLI 应用与 MCP 服务器的归属分别由 ``installed.json`` 与 ``config.tools.mcp_servers``
+承担，不在本注册表内。
 """
 
 from __future__ import annotations

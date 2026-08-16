@@ -180,6 +180,57 @@ export interface SkillDetail extends SkillSummary {
 
 export interface SkillsPayload { skills: SkillSummary[]; }
 
+/** 统一能力模型（capability.v1）：技能 / CLI 应用 / MCP 预设的单一抽象。 */
+export type CapabilityRuntime = "prompt" | "process" | "mcp" | string;
+
+export interface CapabilityRequirements {
+  bins: string[];
+  env: string[];
+  pkgs: string[];
+  models: string[];
+  missing_bins?: string[];
+  missing_env?: string[];
+}
+
+export interface CapabilityProvisioning {
+  strategy?: string;
+  installers?: Array<{ platform?: string; manager?: string; command?: string }>;
+}
+
+export interface CapabilityInfo {
+  id: string;
+  name: string;
+  display_name: string;
+  description: string;
+  icon?: string | null;
+  category: string;
+  tags: string[];
+  runtime: CapabilityRuntime;
+  source: string;
+  status: string;
+  installed: boolean;
+  available: boolean;
+  unavailable_reason?: string;
+  install_supported: boolean;
+  skill_installed: boolean;
+  requires: string;
+  tier?: string | null;
+  logo_url?: string | null;
+  brand_color?: string | null;
+  docs_url?: string | null;
+  requirements?: CapabilityRequirements;
+  provisioning?: CapabilityProvisioning;
+}
+
+export interface CapabilityDetail extends CapabilityInfo {
+  raw_markdown?: string;
+}
+
+export interface CapabilitiesPayload {
+  capabilities: CapabilityInfo[];
+  installed_count: number;
+}
+
 /** 数字人员工（Digital Employee）目录条目。
  *
  * 员工是带专属 persona 的拟人化代理：与主智能体不同，与其对话时 LLM 会沉浸

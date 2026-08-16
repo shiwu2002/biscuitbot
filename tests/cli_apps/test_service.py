@@ -139,11 +139,11 @@ def test_payload_merges_catalog_and_marks_unsupported_installs(tmp_path: Path) -
     assert apps["suno"]["install_supported"] is True
     assert apps["gimp"]["logo_url"]
     gimp_manifest = apps["gimp"]["manifest"]
-    assert gimp_manifest["schema"] == "agent-app.v1"
+    assert gimp_manifest["schema"] == "capability.v1"
     assert gimp_manifest["id"] == "gimp"
     assert gimp_manifest["source"] == "cli-anything:harness"
-    assert gimp_manifest["capabilities"][0]["type"] == "cli"
-    assert gimp_manifest["capabilities"][0]["entry_point"] == "cli-anything-gimp"
+    assert gimp_manifest["runtime"] == "process"
+    assert gimp_manifest["execution"]["entry_point"] == "cli-anything-gimp"
     assert gimp_manifest["install"]["verification"] == ["entry_point_available"]
     assert "entry_point_absent" in gimp_manifest["remove"]["verification"]
     assert gimp_manifest["trust"]["review_status"] == "catalog_entry"

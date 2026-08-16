@@ -59,6 +59,9 @@
     "skills": {
       "title": "技能中心"
     },
+    "capabilities": {
+      "title": "能力"
+    },
     "dashboard": "数据概览",
     "knowledge": "个人知识",
     "employees": {
@@ -128,6 +131,7 @@
       "apps": "应用",
       "automations": "自动任务",
       "skills": "技能",
+      "capabilities": "能力",
       "channels": "渠道"
     },
     "subtabs": {
@@ -770,6 +774,47 @@
       "unavailableReasonLabel": "不可用原因",
       "rawInstructions": "原始 SKILL.md",
       "rawInstructionsEmpty": "没有原始说明。",
+      "detailDescription": "{{name}} 的详情。"
+    },
+    "capabilities": {
+      "description": "统一能力目录：查看此 agent 可加载的指令技能、CLI 应用与 MCP 服务器。",
+      "caption": "{{installed}} 个已安装 · 共 {{total}} 个",
+      "loading": "正在加载能力...",
+      "empty": "没有符合此筛选的能力。",
+      "kindAll": "全部",
+      "kindSkill": "技能",
+      "kindApp": "应用",
+      "kindMcp": "MCP",
+      "runtimePrompt": "技能",
+      "runtimeProcess": "应用",
+      "runtimeMcp": "MCP",
+      "available": "可用",
+      "unavailable": "不可用",
+      "unavailableReason": "缺少：{{reason}}",
+      "install": "安装",
+      "uninstall": "卸载",
+      "test": "测试",
+      "enable": "启用",
+      "remove": "移除",
+      "delete": "删除",
+      "openDetails": "查看 {{name}} 详情",
+      "loadingDetail": "正在加载能力详情...",
+      "loadFailed": "无法加载能力详情。",
+      "descriptionTitle": "描述",
+      "requirements": "需求",
+      "commands": "命令",
+      "environment": "环境变量",
+      "rawInstructions": "原始 SKILL.md",
+      "rawInstructionsEmpty": "没有原始说明。",
+      "sourceWorkspace": "自定义",
+      "sourceBuiltin": "内置",
+      "sourceCliAnything": "CLI-Anything",
+      "sourceMcpPreset": "MCP 预设",
+      "deleteTitle": "删除能力",
+      "deleteConfirm": "确定要删除能力「{{name}}」吗？此操作无法撤销。",
+      "deleteCancel": "取消",
+      "deleteConfirmButton": "删除",
+      "deleting": "正在删除...",
       "detailDescription": "{{name}} 的详情。"
     },
     "voice": {
