@@ -50,8 +50,8 @@ class ImageGenerationToolConfig(Base):
     默认宽高比/尺寸、每轮最大生成数与 artifact 保存目录。
     """
     enabled: bool = False  # 是否启用图像生成工具
-    provider: str = "openai"  # 图像生成提供商名称
-    model: str = "openai/gpt-5.4-image-2"  # 默认使用的图像生成模型
+    provider: str = "volcengine"  # 图像生成提供商名称（默认火山方舟）
+    model: str = "doubao-seedream-5-0-lite-260128"  # 默认使用的图像生成模型（火山 Seedream）
     default_aspect_ratio: str = "1:1"  # 默认输出宽高比
     default_image_size: str = "1K"  # 默认输出尺寸提示
     max_images_per_turn: int = Field(default=4, ge=1, le=8)  # 每轮最大生成图片数（1-8）
@@ -94,6 +94,7 @@ class ImageGenerationTool(Tool):
         "Generate or edit images and persist them as artifacts (returns paths)."
     )
     _usage_md = "docs/generate_image.md"  # 工具使用说明文档路径
+    _scopes = {"core", "subagent"}  # 主 Agent 与子 Agent（员工）均可出参考图
 
     config_key = "image_generation"  # 配置键名
 

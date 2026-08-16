@@ -123,6 +123,7 @@ class SubagentManager:
         max_iterations: int | None = None,
         max_concurrent_subagents: int | None = None,
         llm_wall_timeout_for_session: Callable[[str | None], float | None] | None = None,
+        image_generation_provider_configs: dict[str, Any] | None = None,
     ):
         defaults = AgentDefaults()  # Agent 默认配置
         self.provider = provider  # LLM 提供商
@@ -130,6 +131,7 @@ class SubagentManager:
         self.bus = bus  # 消息总线
         self.model = model or provider.get_default_model()  # 模型名
         self.tools_config = tools_config or ToolsConfig()  # 工具配置
+        self.image_generation_provider_configs = dict(image_generation_provider_configs or {})  # 图像生成供应商配置
         self.max_tool_result_chars = max_tool_result_chars  # 工具结果最大字符数
         self.restrict_to_workspace = restrict_to_workspace  # 是否限制在工作区内
         self.disabled_skills = set(disabled_skills or [])  # 被禁用的技能名集合
@@ -156,6 +158,7 @@ class SubagentManager:
             exec=self.tools_config.exec,
             web=self.tools_config.web,
             file=self.tools_config.file,
+            image_generation=self.tools_config.image_generation,
             restrict_to_workspace=self.restrict_to_workspace,
         )
 
@@ -180,6 +183,7 @@ class SubagentManager:
         ctx = ToolContext(
             config=cfg,
             workspace=str(root.resolve()),
+            image_generation_provider_configs=self.image_generation_provider_configs,
             file_state_store=FileStates(),
             workspace_sandbox=workspace_sandbox_status(
                 restrict_to_workspace=cfg.restrict_to_workspace,

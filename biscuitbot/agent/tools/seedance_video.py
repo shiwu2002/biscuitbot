@@ -84,7 +84,7 @@ class SeedanceVideoToolConfig(Base):
     enabled: bool = False  # 是否启用视频生成工具
     api_key: str | None = None  # 显式 API Key；缺省回退到环境变量 ARK_API_KEY
     base_url: str = _DEFAULT_BASE_URL  # 方舟 base URL
-    model: str = _MODEL_2_5  # 默认模型（2.5），可配成 2.0 或 Endpoint ID
+    model: str = _MODEL_2_0  # 默认模型（2.0），可配成 2.5 或 Endpoint ID
     default_ratio: str = "16:9"  # 默认画幅
     default_duration: int = Field(default=5, ge=_MIN_DURATION, le=_MAX_DURATION)  # 默认时长（秒）
     default_resolution: str | None = None  # 默认清晰度，None 表示交给模型

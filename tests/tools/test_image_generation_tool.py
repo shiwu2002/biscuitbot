@@ -36,6 +36,12 @@ class FakeImageClient:
         return GeneratedImageResponse(images=[PNG_DATA_URL], content="", raw={})
 
 
+def test_image_generation_defaults_use_volcengine_seedream() -> None:
+    cfg = ImageGenerationToolConfig()
+    assert cfg.provider == "volcengine"
+    assert cfg.model == "doubao-seedream-5-0-lite-260128"
+
+
 @pytest.mark.asyncio
 async def test_generate_image_tool_stores_artifact_and_source_images(
     tmp_path: Path,
@@ -51,7 +57,12 @@ async def test_generate_image_tool_stores_artifact_and_source_images(
     ref.write_bytes(PNG_BYTES)
     tool = ImageGenerationTool(
         workspace=tmp_path,
-        config=ImageGenerationToolConfig(enabled=True, max_images_per_turn=2),
+        config=ImageGenerationToolConfig(
+            enabled=True,
+            max_images_per_turn=2,
+            provider="openai",
+            model="openai/gpt-5.4-image-2",
+        ),
         provider_config=ProviderConfig(api_key="sk-or-test"),
     )
 
@@ -81,7 +92,7 @@ async def test_generate_image_tool_stores_artifact_and_source_images(
 async def test_generate_image_tool_reports_missing_key(tmp_path: Path) -> None:
     tool = ImageGenerationTool(
         workspace=tmp_path,
-        config=ImageGenerationToolConfig(enabled=True),
+        config=ImageGenerationToolConfig(enabled=True, provider="openai"),
         provider_config=ProviderConfig(),
     )
 

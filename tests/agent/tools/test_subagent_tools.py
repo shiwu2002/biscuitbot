@@ -482,3 +482,48 @@ async def test_drain_pending_timeout(tmp_path):
         await hang_task
     except asyncio.CancelledError:
         pass
+
+
+def test_subagent_registers_generate_image_when_enabled(tmp_path):
+    """generate_image 放权后：image_generation 启用时，子 Agent 应加载该工具并拿到 provider 配置。"""
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.agent.tools.image_generation import ImageGenerationToolConfig
+    from biscuitbot.bus.queue import MessageBus
+    from biscuitbot.config.schema import ToolsConfig
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=MessageBus(),
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        tools_config=ToolsConfig(
+            image_generation=ImageGenerationToolConfig(enabled=True, provider="openai"),
+        ),
+        image_generation_provider_configs={"openai": MagicMock()},
+    )
+
+    tools = mgr._build_tools()
+    assert tools.has("generate_image")
+    tool = tools.get("generate_image")
+    assert list(tool.provider_configs.keys()) == ["openai"]
+
+
+def test_subagent_skips_generate_image_when_disabled(tmp_path):
+    """image_generation 未启用时，子 Agent 不应注册 generate_image（沿用 enabled 门控）。"""
+    from biscuitbot.agent.subagent import SubagentManager
+    from biscuitbot.bus.queue import MessageBus
+
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+
+    mgr = SubagentManager(
+        provider=provider,
+        workspace=tmp_path,
+        bus=MessageBus(),
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+    )
+
+    assert not mgr._build_tools().has("generate_image")

@@ -1726,6 +1726,27 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
             image_config.max_images_per_turn = parsed_max
             changed = True
 
+    api_key = _query_first_alias(query, "api_key", "apiKey")
+    api_base = _query_first_alias(query, "api_base", "apiBase")
+    if api_key is not None or api_base is not None:
+        target_provider = image_config.provider
+        provider_config = getattr(config.providers, target_provider, None)
+        if provider_config is None and find_by_name(target_provider) is None:
+            # 图像专用提供商（如火山方舟）不在 LLM 字段里，首次配置时动态新建条目
+            provider_config = ProviderConfig()
+            config.providers.model_extra[target_provider] = provider_config
+        if provider_config is not None:
+            if api_key is not None:
+                parsed_key = (api_key or "").strip() or None
+                if provider_config.api_key != parsed_key:
+                    provider_config.api_key = parsed_key
+                    changed = True
+            if api_base is not None:
+                parsed_base = (api_base or "").strip() or None
+                if provider_config.api_base != parsed_base:
+                    provider_config.api_base = parsed_base
+                    changed = True
+
     if image_config.enabled:
         selected_provider = next(
             (

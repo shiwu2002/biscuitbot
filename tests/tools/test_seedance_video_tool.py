@@ -44,6 +44,11 @@ def test_tool_metadata_and_config(tmp_path: Path) -> None:
     assert SeedanceVideoTool.enabled(ctx) is True
 
 
+def test_default_model_is_seedance_2_0() -> None:
+    cfg = SeedanceVideoToolConfig()
+    assert cfg.model == "doubao-seedance-2-0-260128"
+
+
 def test_schema_exposes_four_input_interfaces(tmp_path: Path) -> None:
     tool = _tool(tmp_path)
     props = tool.parameters["properties"]

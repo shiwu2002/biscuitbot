@@ -14,6 +14,7 @@ from biscuitbot.webui.settings_api import (
     settings_payload,
     settings_usage_payload,
     update_agent_settings,
+    update_image_generation_settings,
     update_model_configuration,
     update_network_safety_settings,
     update_provider_settings,
@@ -212,6 +213,49 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
     dynamic_provider = saved.providers.model_extra[DYNAMIC_PROVIDER_NAME]
     assert dynamic_provider.api_base == "https://new.example/v1"
     assert dynamic_provider.api_key == "sk-test"
+
+
+def test_update_image_generation_settings_writes_volcengine_api_key(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = update_image_generation_settings(
+        {
+            "provider": ["volcengine"],
+            "enabled": ["true"],
+            "apiKey": ["sk-ark-test"],
+        }
+    )
+
+    assert payload["image_generation"]["provider"] == "volcengine"
+    assert payload["image_generation"]["provider_configured"] is True
+    saved = load_config(config_path)
+    assert saved.providers.model_extra["volcengine"].api_key == "sk-ark-test"
+
+
+def test_update_image_generation_settings_rejects_unconfigured_image_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.delenv("ARK_API_KEY", raising=False)
+
+    with pytest.raises(
+        WebUISettingsError,
+        match="image generation provider is not configured",
+    ):
+        update_image_generation_settings(
+            {
+                "provider": ["volcengine"],
+                "enabled": ["true"],
+            }
+        )
 
 
 def test_update_agent_settings_accepts_context_window_options(

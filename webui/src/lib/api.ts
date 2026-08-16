@@ -931,6 +931,7 @@ export async function updateImageGenerationSettings(
   query.set("default_aspect_ratio", update.defaultAspectRatio);
   query.set("default_image_size", update.defaultImageSize);
   query.set("max_images_per_turn", String(update.maxImagesPerTurn));
+  if (update.apiKey) query.set("api_key", update.apiKey);
   return request<SettingsPayload>(
     `${base}/api/settings/image-generation/update?${query}`,
     token,

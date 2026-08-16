@@ -914,6 +914,7 @@ export interface ImageGenerationSettingsUpdate {
   defaultAspectRatio: string;
   defaultImageSize: string;
   maxImagesPerTurn: number;
+  apiKey?: string;
 }
 
 export interface VideoGenerationSettingsUpdate {

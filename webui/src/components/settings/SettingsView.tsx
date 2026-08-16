@@ -513,6 +513,7 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
     defaultAspectRatio: payload.image_generation.default_aspect_ratio,
     defaultImageSize: payload.image_generation.default_image_size,
     maxImagesPerTurn: payload.image_generation.max_images_per_turn,
+    apiKey: "",
   };
 }
 
@@ -935,7 +936,8 @@ export function SettingsView({
       imageGenerationForm.model !== settings.image_generation.model ||
       imageGenerationForm.defaultAspectRatio !== settings.image_generation.default_aspect_ratio ||
       imageGenerationForm.defaultImageSize !== settings.image_generation.default_image_size ||
-      imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn
+      imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn ||
+      !!imageGenerationForm.apiKey
     );
   }, [imageGenerationForm, settings]);
 
@@ -3037,6 +3039,21 @@ function ImageGenerationSettings({
               ) : null}
             </div>
         </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.imageApiKey", "API key")}
+            description={tx(
+              "settings.help.imageApiKey",
+              "For image-only providers such as 火山方舟 (Volcengine), enter the provider API key here.",
+            )}
+          >
+            <Input
+              type="password"
+              value={form.apiKey ?? ""}
+              placeholder={providerConfigured ? "••••••••" : "sk-..."}
+              onChange={(event) => onChangeForm((prev) => ({ ...prev, apiKey: event.target.value }))}
+              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            />
+          </SettingsRow>
         </SettingsGroup>
       </section>
 
