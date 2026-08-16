@@ -264,7 +264,7 @@ function AuthForm({
   };
 
   return (
-    <div className="flex h-full w-full items-center justify-center px-6">
+    <div className="flex h-full w-full items-center justify-center px-6 cyber-shell-bg">
       <form
         onSubmit={handleSubmit}
         className="flex w-full max-w-sm flex-col gap-4"
@@ -503,7 +503,7 @@ export default function App() {
 
   if (state.status === "loading") {
     return (
-      <div className="flex h-full w-full items-center justify-center">
+      <div className="flex h-full w-full items-center justify-center cyber-shell-bg">
         <div className="flex flex-col items-center gap-3 animate-in fade-in-0 duration-300">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <span className="relative flex h-2 w-2">
@@ -534,7 +534,7 @@ export default function App() {
   }
   if (state.status === "error") {
     return (
-      <div className="flex h-full w-full items-center justify-center px-4 text-center">
+      <div className="flex h-full w-full items-center justify-center px-4 text-center cyber-shell-bg">
         <div className="flex max-w-md flex-col items-center gap-3">
           <p className="text-lg font-semibold">{t("app.error.title")}</p>
           <p className="text-sm text-muted-foreground">{state.message}</p>

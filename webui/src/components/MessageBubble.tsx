@@ -147,7 +147,8 @@ export function MessageBubble({
         {hasText ? (
           <p
             className={cn(
-              "ml-auto w-fit rounded-[18px] bg-secondary/70 px-4 py-2",
+              "ml-auto w-fit rounded-[18px] border border-sky-500/15 bg-gradient-to-br from-sky-500/14 to-cyan-500/8 px-4 py-2",
+              "dark:border-sky-400/20 dark:from-sky-400/16 dark:to-cyan-400/8",
               "text-left text-[16px]/[1.75] whitespace-pre-wrap break-words",
             )}
           >

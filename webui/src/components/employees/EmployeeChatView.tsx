@@ -43,7 +43,7 @@ function HistoryItemButton({
       <span
         className={cn(
           "shrink-0 text-[11px] leading-none",
-          active ? "text-blue-600 dark:text-blue-400" : "text-transparent",
+          active ? "text-sky-600 dark:text-sky-400" : "text-transparent",
         )}
         aria-hidden
       >
@@ -348,7 +348,7 @@ export function EmployeeChatView({
                       className={cn(
                         "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] font-medium transition-colors",
                         selectedKey === null
-                          ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                          ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
                           : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                       )}
                     >
@@ -465,7 +465,7 @@ export function EmployeeChatView({
               className={cn(
                 "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium transition-colors",
                 selectedKey === null
-                  ? "bg-blue-500/10 text-blue-700 dark:text-blue-300"
+                  ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
                   : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >

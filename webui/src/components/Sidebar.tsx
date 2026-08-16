@@ -99,8 +99,8 @@ export function Sidebar(props: SidebarProps) {
       aria-label={t("sidebar.navigation")}
       className={cn(
         "flex h-full w-full min-w-0 flex-col text-sidebar-foreground",
-        props.hostChromeInset ? "bg-transparent" : "bg-sidebar",
-        !props.hostChromeInset && "border-r border-sidebar-border/60",
+        props.hostChromeInset ? "bg-transparent" : "cyber-sidebar",
+        !props.hostChromeInset && "border-r border-[hsl(var(--cyber-panel-border)/0.22)]",
       )}
     >
       <div
@@ -311,7 +311,7 @@ function SidebarActionButton({
       title={title}
       onClick={() => onClick()}
       className={cn(
-        "group h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
+        "group relative h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
         "transition-[width,padding,border-radius,color,background-color] duration-300 ease-out",
         collapsed
           ? "w-9 justify-center gap-0 rounded-xl px-0"
@@ -321,9 +321,16 @@ function SidebarActionButton({
         className,
       )}
     >
+      {active ? (
+        <span
+          aria-hidden
+          className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-[hsl(var(--cyber-glow)/0.95)] shadow-[0_0_8px_hsl(var(--cyber-glow)/0.7)]"
+        />
+      ) : null}
       <span
         className={cn(
           "flex w-4 shrink-0 items-center justify-center transition-transform duration-300 ease-out",
+          active && "drop-shadow-[0_0_5px_hsl(var(--cyber-glow-soft)/0.85)]",
           collapsed ? "translate-x-0" : "translate-x-0",
         )}
         aria-hidden

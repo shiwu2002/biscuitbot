@@ -18,12 +18,12 @@
     --secondary-foreground: 222 47% 14%;
     --muted: 210 30% 94%;
     --muted-foreground: 215 16% 46%;
-    --accent: 204 80% 94%;
-    --accent-foreground: 214 85% 35%;
+    --accent: 199 88% 92%;
+    --accent-foreground: 199 80% 32%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 204 40% 88%;
-    --input: 204 40% 88%;
+    --border: 204 35% 86%;
+    --input: 204 35% 86%;
     --ring: 204 82% 46%;
     --radius: 0.4375rem;
     --sidebar: 210 38% 97%;
@@ -46,19 +46,19 @@
     --card-foreground: 240 4% 96%;
     --popover: 0 0% 12%;
     --popover-foreground: 240 4% 96%;
-    --primary: 240 5% 98%;
-    --primary-foreground: 0 0% 9%;
+    --primary: 199 90% 58%;
+    --primary-foreground: 224 44% 12%;
     --secondary: 0 0% 12%;
     --secondary-foreground: 0 0% 98%;
     --muted: 0 0% 13%;
     --muted-foreground: 0 0% 60%;
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 98%;
+    --accent: 199 88% 18%;
+    --accent-foreground: 199 90% 82%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
     --border: 0 0% 18%;
     --input: 0 0% 18%;
-    --ring: 0 0% 83.1%;
+    --ring: 199 90% 65%;
     --sidebar: 0 0% 11.5%;
     --sidebar-foreground: 0 0% 98%;
     --sidebar-accent: 0 0% 15.5%;
@@ -573,6 +573,19 @@
         hsl(220 20% 9%) 100%
       );
     background-attachment: fixed;
+  }
+
+  /* Sci-fi sidebar surface: faint cyan glow over the base sidebar tint */
+  .cyber-sidebar {
+    background:
+      radial-gradient(ellipse 80% 42% at 50% -8%, hsl(var(--cyber-glow) / 0.12), transparent 58%),
+      radial-gradient(ellipse 55% 28% at 0% 0%, hsl(var(--cyber-glow-soft) / 0.07), transparent 50%),
+      linear-gradient(180deg, hsl(var(--sidebar)) 0%, hsl(var(--sidebar)) 100%);
+  }
+  .dark .cyber-sidebar {
+    background:
+      radial-gradient(ellipse 80% 40% at 50% -8%, hsl(var(--cyber-glow) / 0.1), transparent 58%),
+      linear-gradient(180deg, hsl(var(--sidebar)) 0%, hsl(var(--sidebar)) 100%);
   }
 
   /* Glassmorphic dashboard panels */

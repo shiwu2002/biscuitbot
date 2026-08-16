@@ -531,7 +531,7 @@ function tierBadgeClass(tier: string): string {
     return "bg-amber-500/12 text-amber-700 dark:text-amber-300";
   }
   if (tier === "agent") {
-    return "bg-blue-500/12 text-blue-700 dark:text-blue-300";
+    return "bg-sky-500/12 text-sky-700 dark:text-sky-300";
   }
   return "bg-muted text-muted-foreground";
 }
