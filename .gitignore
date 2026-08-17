@@ -47,6 +47,8 @@ dmypy.json
 # Build & packaging
 dist/
 build/
+dist-x86/
+build-x86/
 *.manifest
 *.spec
 pip-wheel-metadata/

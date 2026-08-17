@@ -303,7 +303,7 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力" });
+    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力中心" });
     const automationsButton = within(sidebar).getByRole("button", { name: "自动任务" });
 
     expect(
@@ -375,7 +375,7 @@ describe("App layout", () => {
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
-    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力" });
+    const capabilitiesButton = within(sidebar).getByRole("button", { name: "能力中心" });
 
     fireEvent.click(capabilitiesButton);
 
@@ -385,7 +385,7 @@ describe("App layout", () => {
     expect(screen.getByText("缺少：CLI: gh")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "侧边栏导航" })).toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "设置分区" })).not.toBeInTheDocument();
-    expect(within(sidebar).getByRole("button", { name: "能力" })).toHaveAttribute(
+    expect(within(sidebar).getByRole("button", { name: "能力中心" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -394,7 +394,7 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "返回聊天" }));
     expect(await screen.findByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
 
-    fireEvent.click(within(sidebar).getByRole("button", { name: "能力" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "能力中心" }));
     expect(await screen.findByRole("heading", { name: "能力" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "查看 github 详情" }));
@@ -1600,10 +1600,10 @@ describe("App layout", () => {
     );
     expect(within(settingsNav).getByRole("button", { name: "模型" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "提供商" })).not.toBeInTheDocument();
-    // 侧边栏顶层标签：概览/外观/模型/网页/应用/渠道/系统；图片、安全等并入二级子区
+    // 侧边栏顶层标签：概览/外观/模型/网页/渠道/系统；能力中心在主导航，图片、安全等并入二级子区
     expect(within(settingsNav).getByRole("button", { name: "系统" })).toBeInTheDocument();
     expect(within(settingsNav).getByRole("button", { name: "网页" })).toBeInTheDocument();
-    expect(within(settingsNav).getByRole("button", { name: "应用" })).toBeInTheDocument();
+    expect(within(settingsNav).queryByRole("button", { name: "能力" })).not.toBeInTheDocument();
     expect(within(settingsNav).getByRole("button", { name: "渠道" })).toBeInTheDocument();
     expect(within(settingsNav).queryByRole("button", { name: "安全" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "退出登录" })).toBeInTheDocument();

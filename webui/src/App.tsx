@@ -99,8 +99,6 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "voice",
   "tts",
   "browser",
-  "apps",
-  "capabilities",
   "automations",
   "skills",
   "runtime",
@@ -157,8 +155,8 @@ function readShellRoute(): ShellRoute {
     };
   }
   if (path === "/apps") {
-    // 应用入口已并入设置页：深链重定向到设置内的「应用」分区。
-    return { view: "settings", activeKey, settingsSection: "apps" };
+    // 应用/技能/MCP 已合并为「能力」模型：深链重定向到能力视图。
+    return { view: "capabilities", activeKey, settingsSection: "capabilities" };
   }
   if (path === "/automations") {
     return { view: "automations", activeKey, settingsSection: "automations" };

@@ -54,13 +54,9 @@
       "label": "语言",
       "ariaLabel": "切换语言"
     },
-    "apps": "应用",
     "automations": "自动任务",
-    "skills": {
-      "title": "技能中心"
-    },
     "capabilities": {
-      "title": "能力"
+      "title": "能力中心"
     },
     "dashboard": "数据概览",
     "knowledge": "个人知识",
@@ -128,7 +124,6 @@
       "runtime": "系统",
       "systemIo": "系统 IO",
       "advanced": "安全",
-      "apps": "应用",
       "automations": "自动任务",
       "skills": "技能",
       "capabilities": "能力",
@@ -170,7 +165,6 @@
       "identity": "身份",
       "webuiSafety": "WebUI 安全",
       "capabilities": "能力",
-      "apps": "应用",
       "nativeHost": "原生宿主",
       "hostSafety": "应用安全",
       "voiceInput": "语音识别",
@@ -602,20 +596,6 @@
       "configureModel": "配置模型",
       "missingModel": "启用截图前请先选择视觉模型。",
       "overridePlaceholder": "如 gpt-4o"
-    },
-    "apps": {
-      "description": "添加 biscuitbot 可在聊天中使用的 App CLI 和 MCP 服务。",
-      "cliLabel": "CLI",
-      "mcpLabel": "MCP",
-      "filterAll": "全部",
-      "filterCli": "CLI 应用",
-      "filterMcp": "MCP 服务",
-      "enabledSummary": "已启用 {{count}} 个",
-      "caption": "{{cli}} 个 CLI · {{mcp}} 个 MCP",
-      "searchPlaceholder": "搜索应用",
-      "featured": "精选",
-      "loading": "正在加载应用...",
-      "empty": "没有匹配的应用。"
     },
     "automations": {
       "filters": {

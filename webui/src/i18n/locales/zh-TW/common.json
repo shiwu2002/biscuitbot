@@ -54,13 +54,9 @@
       "label": "語言",
       "ariaLabel": "切換語言"
     },
-    "apps": "應用",
     "automations": "自動任務",
-    "skills": {
-      "title": "技能中心"
-    },
     "capabilities": {
-      "title": "能力"
+      "title": "能力中心"
     },
     "dashboard": "數據概覽",
     "knowledge": "個人知識",
@@ -128,7 +124,6 @@
       "advanced": "安全",
       "cliApps": "CLI 應用",
       "mcp": "MCP",
-      "apps": "應用",
       "automations": "自動任務",
       "skills": "技能",
       "capabilities": "能力",
@@ -170,7 +165,6 @@
       "capabilities": "能力",
       "cliApps": "CLI 應用",
       "mcp": "MCP 服務",
-      "apps": "應用",
       "nativeHost": "原生宿主",
       "hostSafety": "App 安全",
       "voiceInput": "語音辨識",
@@ -602,20 +596,6 @@
     },
     "legal": {
       "thirdPartyBrands": "產品名稱、標誌與品牌均屬於其各自擁有者。使用僅為識別用途，並不代表背書。"
-    },
-    "apps": {
-      "description": "新增 biscuitbot 可在聊天中使用的 App CLI 和 MCP 服務。",
-      "cliLabel": "CLI",
-      "mcpLabel": "MCP",
-      "filterAll": "全部",
-      "filterCli": "CLI 應用",
-      "filterMcp": "MCP 服務",
-      "enabledSummary": "已啟用 {{count}} 個",
-      "caption": "{{cli}} 個 CLI · {{mcp}} 個 MCP",
-      "searchPlaceholder": "搜尋應用",
-      "featured": "精選",
-      "loading": "正在載入應用...",
-      "empty": "沒有符合的應用。"
     },
     "automations": {
       "filters": {

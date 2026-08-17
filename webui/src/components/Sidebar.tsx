@@ -175,7 +175,7 @@ export function Sidebar(props: SidebarProps) {
         ) : null}
         <SidebarActionButton
           collapsed={collapsed}
-          label={t("sidebar.capabilities.title", { defaultValue: "能力" })}
+          label={t("sidebar.capabilities.title", { defaultValue: "能力中心" })}
           onClick={props.onOpenCapabilities}
           active={props.activeUtility === "capabilities"}
           icon={<Sparkles className="h-4 w-4" />}
