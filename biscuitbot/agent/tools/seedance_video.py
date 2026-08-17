@@ -213,11 +213,24 @@ class SeedanceVideoTool(Tool):
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         """从上下文创建工具实例。"""
-        return cls(workspace=ctx.workspace, config=ctx.config.seedance_video)
+        volcengine_cfg = getattr(ctx.config.providers, "volcengine", None)
+        ark_api_key = getattr(volcengine_cfg, "api_key", None)
+        return cls(
+            workspace=ctx.workspace,
+            config=ctx.config.seedance_video,
+            ark_api_key=ark_api_key,
+        )
 
-    def __init__(self, *, workspace: str | Path, config: SeedanceVideoToolConfig) -> None:
+    def __init__(
+        self,
+        *,
+        workspace: str | Path,
+        config: SeedanceVideoToolConfig,
+        ark_api_key: str | None = None,
+    ) -> None:
         self.workspace = Path(workspace).expanduser()  # 工作区路径，展开 ~
         self.config = config  # 工具配置
+        self._ark_api_key = ark_api_key  # 模型厂商页配置的火山方舟密钥（图像/视频共用）
 
     @property
     def name(self) -> str:
@@ -237,12 +250,16 @@ class SeedanceVideoTool(Tool):
     # ---- 内部实现 ----------------------------------------------------------
 
     def _api_key(self) -> str:
-        """解析 API Key：配置显式值优先，其次环境变量 ARK_API_KEY。"""
-        key = (self.config.api_key or "").strip() or os.environ.get("ARK_API_KEY", "").strip()
+        """解析 API Key：配置显式值优先，其次模型厂商页的火山方舟密钥，最后环境变量 ARK_API_KEY。"""
+        key = (
+            (self.config.api_key or "").strip()
+            or (self._ark_api_key or "").strip()
+            or os.environ.get("ARK_API_KEY", "").strip()
+        )
         if not key:
             raise SeedanceVideoError(
-                "Seedance API key 未配置：请在 config.json 设置 tools.seedance_video.apiKey，"
-                "或导出环境变量 ARK_API_KEY。"
+                "Seedance API key 未配置：请在「模型厂商」页配置火山方舟密钥，"
+                "或在 config.json 设置 tools.seedance_video.apiKey，或导出环境变量 ARK_API_KEY。"
             )
         return key
 

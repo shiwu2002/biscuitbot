@@ -95,6 +95,7 @@ import {
   updateImageGenerationSettings,
   updateModelConfiguration,
   updateNetworkSafetySettings,
+  updateProviderSettings,
   updateScreenshotSettings,
   updateSettings,
   updateSystemIoSettings,
@@ -136,6 +137,7 @@ export type SettingsSectionKey =
   | "overview"
   | "appearance"
   | "models"
+  | "providers"
   | "image"
   | "video"
   | "vision"
@@ -239,6 +241,7 @@ const IMAGE_ASPECT_RATIO_OPTIONS = ["1:1", "3:4", "9:16", "4:3", "16:9", "3:2", 
 const IMAGE_SIZE_OPTIONS = ["1K", "2K", "4K", "1024x1024", "1536x1024", "1024x1536"];
 const VIDEO_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"];
 const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"];
+const SEEDANCE_MODELS = ["doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628"];
 const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   runtime: false,
   browser: false,
@@ -327,6 +330,15 @@ function settingsProviderConfigured(
   return payload.agent.has_api_key;
 }
 
+function providersWithCapability(
+  settings: SettingsPayload,
+  capability: string,
+): SettingsPayload["providers"] {
+  return settings.providers.filter((provider) =>
+    provider.capabilities?.includes(capability),
+  );
+}
+
 const DEFAULT_AGENT_SETTINGS_DRAFT: AgentSettingsDraft = {
   model: "",
   provider: "",
@@ -398,7 +410,6 @@ const DEFAULT_TRANSCRIPTION_SETTINGS: NonNullable<SettingsPayload["transcription
   language: null,
   max_duration_sec: 120,
   max_upload_mb: 25,
-  providers: [],
 };
 
 const DEFAULT_TTS_FORM: TtsSettingsUpdate = {
@@ -417,7 +428,6 @@ const DEFAULT_TTS_SETTINGS: NonNullable<SettingsPayload["tts"]> = {
   voice: "zh-CN-XiaoxiaoNeural",
   rate: null,
   save_dir: "generated/tts",
-  providers: [],
 };
 
 const DEFAULT_NETWORK_SAFETY_FORM: NetworkSafetySettingsUpdate = {
@@ -472,7 +482,6 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
     defaultAspectRatio: payload.image_generation.default_aspect_ratio,
     defaultImageSize: payload.image_generation.default_image_size,
     maxImagesPerTurn: payload.image_generation.max_images_per_turn,
-    apiKey: "",
   };
 }
 
@@ -836,8 +845,7 @@ export function SettingsView({
       imageGenerationForm.model !== settings.image_generation.model ||
       imageGenerationForm.defaultAspectRatio !== settings.image_generation.default_aspect_ratio ||
       imageGenerationForm.defaultImageSize !== settings.image_generation.default_image_size ||
-      imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn ||
-      !!imageGenerationForm.apiKey
+      imageGenerationForm.maxImagesPerTurn !== settings.image_generation.max_images_per_turn
     );
   }, [imageGenerationForm, settings]);
 
@@ -1360,25 +1368,30 @@ export function SettingsView({
             onSave={saveModelSettings}
             onCreateConfiguration={openModelConfigurationDialog}
           />
-          <ProvidersSettings
-            settings={settings}
-            expandedProvider={expandedProvider}
-            query={providerQuery}
-            showBrandLogos={localPrefs.brandLogos}
-            onQueryChange={setProviderQuery}
-            onToggleProvider={handleToggleProvider}
-          />
         </div>
+      ) : null}
+      {sub === "providers" ? (
+        <ProvidersSettings
+          token={token}
+          settings={settings}
+          expandedProvider={expandedProvider}
+          query={providerQuery}
+          showBrandLogos={localPrefs.brandLogos}
+          onQueryChange={setProviderQuery}
+          onToggleProvider={handleToggleProvider}
+          onProviderSaved={applyPayload}
+        />
       ) : null}
       {sub === "image" ? (
         <ImageGenerationSettings
+          token={token}
           settings={settings}
           form={imageGenerationForm}
           dirty={imageGenerationDirty}
           saving={imageGenerationSaving}
           onChangeForm={setImageGenerationForm}
           onSave={saveImageGenerationSettings}
-          onOpenProviders={() => selectSection("models")}
+          onOpenProviders={() => selectSection("providers")}
           showBrandLogos={localPrefs.brandLogos}
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
@@ -1393,6 +1406,7 @@ export function SettingsView({
           saving={videoGenerationSaving}
           onChangeForm={setVideoGenerationForm}
           onSave={saveVideoGenerationSettings}
+          onOpenProviders={() => selectSection("providers")}
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
           requiresRestartPending={pendingRestartSections.video}
@@ -1414,13 +1428,14 @@ export function SettingsView({
       ) : null}
       {sub === "voice" ? (
         <TranscriptionSettings
+          token={token}
           settings={settings}
           form={transcriptionForm}
           dirty={transcriptionDirty}
           saving={transcriptionSaving}
           onChangeForm={setTranscriptionForm}
           onSave={saveTranscriptionSettings}
-          onOpenProviders={() => selectSection("models")}
+          onOpenProviders={() => selectSection("providers")}
           showBrandLogos={localPrefs.brandLogos}
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
@@ -1429,13 +1444,14 @@ export function SettingsView({
       ) : null}
       {sub === "tts" ? (
         <TtsSettings
+          token={token}
           settings={settings}
           form={ttsForm}
           dirty={ttsDirty}
           saving={ttsSaving}
           onChangeForm={setTtsForm}
           onSave={saveTtsSettings}
-          onOpenProviders={() => selectSection("models")}
+          onOpenProviders={() => selectSection("providers")}
           showBrandLogos={localPrefs.brandLogos}
         />
       ) : null}
@@ -1510,6 +1526,7 @@ export function SettingsView({
           />
         );
       case "models":
+      case "providers":
       case "image":
       case "video":
       case "vision":
@@ -1695,7 +1712,7 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
 ];
 
 /** 「模型」父标签家族的 section（含未上线的文生视频占位）。 */
-const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "image", "video", "vision", "voice", "tts"];
+const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "providers", "image", "video", "vision", "voice", "tts"];
 /** 「系统」父标签家族的 section。 */
 const SYSTEM_TAB_KEYS: SettingsSectionKey[] = ["runtime", "systemIo", "advanced"];
 
@@ -1708,6 +1725,7 @@ function topLevelSection(section: SettingsSectionKey): SettingsSectionKey {
 
 /** 模型 tab 二级切换条（子区键即 section key，点选即 selectSection）。 */
 const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }> = [
+  { key: "providers", labelKey: "settings.subtabs.model.providers", fallback: "模型厂商" },
   { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM" },
   { key: "image", labelKey: "settings.subtabs.model.image", fallback: "文生图" },
   { key: "video", labelKey: "settings.subtabs.model.video", fallback: "文生视频" },
@@ -1899,7 +1917,7 @@ function OverviewSettings({
   const imageStatus = settings.image_generation.enabled
     ? tx("settings.values.enabled", "Enabled")
     : tx("settings.values.disabled", "Disabled");
-  const imageCaption = `${providerDisplayLabel(settings.image_generation.providers, settings.image_generation.provider)} · ${
+  const imageCaption = `${providerDisplayLabel(settings.providers, settings.image_generation.provider)} · ${
     settings.image_generation.provider_configured
       ? tx("settings.values.configured", "Configured")
       : tx("settings.values.notConfigured", "Not configured")
@@ -1908,7 +1926,7 @@ function OverviewSettings({
   const voiceStatus = transcription.enabled
     ? tx("settings.values.enabled", "Enabled")
     : tx("settings.values.disabled", "Disabled");
-  const voiceCaption = `${providerDisplayLabel(transcription.providers, transcription.provider)} · ${
+  const voiceCaption = `${providerDisplayLabel(settings.providers, transcription.provider)} · ${
     transcription.provider_configured
       ? tx("settings.values.configured", "Configured")
       : tx("settings.values.notConfigured", "Not configured")
@@ -1917,7 +1935,7 @@ function OverviewSettings({
     ? tx("settings.values.enabled", "Enabled")
     : tx("settings.values.disabled", "Disabled");
   const visionProviderRow =
-    settings.screenshot.available_providers.find(
+    settings.providers.find(
       (provider) => provider.name === settings.screenshot.vision_model,
     ) ?? null;
   const visionPreset =
@@ -2560,23 +2578,37 @@ function ModelsSettings({
   );
 }
 
+const PROVIDER_API_TYPES = ["auto", "chat_completions", "responses"] as const;
+
 function ProvidersSettings({
+  token,
   settings,
   expandedProvider,
   query,
   showBrandLogos,
   onQueryChange,
   onToggleProvider,
+  onProviderSaved,
 }: {
+  token: string;
   settings: SettingsPayload;
   expandedProvider: string | null;
   query: string;
   showBrandLogos: boolean;
   onQueryChange: (query: string) => void;
   onToggleProvider: (provider: string) => void;
+  onProviderSaved: (payload: SettingsPayload) => void;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const [draft, setDraft] = useState<{
+    apiKey: string;
+    apiBase: string;
+    apiType: "auto" | "chat_completions" | "responses";
+  } | null>(null);
+  const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const configuredProviders = settings.providers.filter((provider) => provider.configured);
   const unconfiguredProviders = useMemo(
     () => orderUnconfiguredProviders(settings.providers.filter((provider) => !provider.configured)),
@@ -2584,9 +2616,64 @@ function ProvidersSettings({
   );
   const filteredConfigured = filterProviders(configuredProviders, query);
   const filteredUnconfigured = filterProviders(unconfiguredProviders, query);
+
+  // 切换展开的厂商时重置草稿与错误状态
+  useEffect(() => {
+    setDraft(null);
+    setError(null);
+    setSavingProvider(null);
+  }, [expandedProvider]);
+
+  const updateDraft = (provider: SettingsPayload["providers"][number]) => (
+    patch: Partial<{ apiKey: string; apiBase: string; apiType: "auto" | "chat_completions" | "responses" }>,
+  ) =>
+    setDraft((current) => {
+      const base = current ?? {
+        apiKey: "",
+        apiBase: provider.api_base || provider.default_api_base || "",
+        apiType: (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto",
+      };
+      return { ...base, ...patch };
+    });
+
+  const saveProvider = async (provider: SettingsPayload["providers"][number]) => {
+    if (!draft || savingProvider) return;
+    const currentBase = provider.api_base || provider.default_api_base || "";
+    const currentType = (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto";
+    const apiKey = draft.apiKey.trim();
+    const apiBase = draft.apiBase.trim();
+    const hasKeyChange = Boolean(apiKey);
+    const hasBaseChange = apiBase !== currentBase;
+    const hasTypeChange = provider.name === "openai" && draft.apiType !== currentType;
+    if (!hasKeyChange && !hasBaseChange && !hasTypeChange) {
+      setDraft(null);
+      return;
+    }
+    setSavingProvider(provider.name);
+    setError(null);
+    try {
+      const payload = await updateProviderSettings(token, {
+        provider: provider.name,
+        ...(hasKeyChange ? { apiKey } : {}),
+        ...(hasBaseChange ? { apiBase } : {}),
+        ...(hasTypeChange ? { apiType: draft.apiType } : {}),
+      });
+      onProviderSaved(payload);
+      setDraft(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSavingProvider(null);
+    }
+  };
+
   const renderProviderRow = (provider: SettingsPayload["providers"][number]) => {
     const expanded = expandedProvider === provider.name;
     const isOauthProvider = provider.auth_type === "oauth";
+    const currentBase = provider.api_base || provider.default_api_base || "";
+    const currentType = (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto";
+    const baseValue = draft?.apiBase ?? currentBase;
+    const typeValue = draft?.apiType ?? currentType;
     return (
       <div key={provider.name} className="divide-y divide-border/45">
         <button
@@ -2619,7 +2706,84 @@ function ProvidersSettings({
           </StatusPill>
         </button>
 
-        {expanded ? (
+        {expanded && !isOauthProvider ? (
+          <div className="space-y-3 rounded-[18px] border border-border/45 bg-background/75 px-4 py-3 sm:px-5">
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                {tx("settings.providers.apiBase", "API 地址")}
+              </p>
+              <Input
+                value={baseValue}
+                onChange={(event) => updateDraft(provider)({ apiBase: event.target.value })}
+                placeholder={provider.default_api_base || "https://api.example.com/v1"}
+                className="mt-1 h-9 rounded-full text-[13px]"
+              />
+            </div>
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                {tx("settings.providers.apiKey", "API Key")}
+              </p>
+              <Input
+                type="password"
+                value={draft?.apiKey ?? ""}
+                onChange={(event) => updateDraft(provider)({ apiKey: event.target.value })}
+                placeholder={
+                  provider.api_key_hint
+                    ? `${tx("settings.providers.currentKey", "当前")}: ${provider.api_key_hint}`
+                    : tx("settings.providers.apiKeyPlaceholder", "留空保持不变")
+                }
+                className="mt-1 h-9 rounded-full text-[13px]"
+              />
+            </div>
+            {provider.name === "openai" ? (
+              <div>
+                <p className="text-[12px] font-medium text-muted-foreground">
+                  {tx("settings.providers.apiType", "API 形态")}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {PROVIDER_API_TYPES.map((apiType) => (
+                    <button
+                      key={apiType}
+                      type="button"
+                      onClick={() => updateDraft(provider)({ apiType })}
+                      className={cn(
+                        "h-8 rounded-full border px-3 text-[12px] transition-colors",
+                        typeValue === apiType
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-input text-muted-foreground hover:bg-muted/50",
+                      )}
+                    >
+                      {apiType}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {error ? (
+              <p className="text-[12px] text-destructive">{error}</p>
+            ) : null}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                type="button"
+                size="sm"
+                disabled={savingProvider === provider.name}
+                onClick={() => saveProvider(provider)}
+              >
+                {savingProvider === provider.name
+                  ? tx("settings.providers.saving", "保存中…")
+                  : tx("settings.providers.save", "保存")}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => onToggleProvider(provider.name)}
+              >
+                {tx("settings.providers.cancel", "取消")}
+              </Button>
+            </div>
+          </div>
+        ) : expanded && isOauthProvider ? (
           <div className="space-y-3 rounded-[18px] border border-border/45 bg-background/75 px-4 py-3 sm:px-5">
             <div>
               <p className="text-[12px] font-medium text-muted-foreground">
@@ -2632,12 +2796,6 @@ function ProvidersSettings({
                     : t("settings.byok.notConfigured"))}
               </p>
             </div>
-            <p className="text-[12px] leading-5 text-muted-foreground">
-              {tx(
-                "settings.providers.readOnlyHint",
-                "密钥与地址由内部配置文件（config.json）统一维护，此处仅展示状态。",
-              )}
-            </p>
           </div>
         ) : null}
       </div>
@@ -2647,8 +2805,8 @@ function ProvidersSettings({
     <div className="space-y-6">
       <p className="max-w-[42rem] text-[13px] leading-6 text-muted-foreground">
         {tx(
-          "settings.providers.readOnlyDescription",
-          "已配置的提供商密钥与地址由内部配置文件（config.json）统一维护，此处仅展示配置状态。",
+          "settings.providers.description",
+          "配置各厂商的 API Key 与 API 地址。配置后，文生图 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
         )}
       </p>
       <div className="relative">
@@ -2680,6 +2838,7 @@ function ProvidersSettings({
 }
 
 function ImageGenerationSettings({
+  token,
   settings,
   form,
   dirty,
@@ -2692,6 +2851,7 @@ function ImageGenerationSettings({
   isRestarting,
   requiresRestartPending,
 }: {
+  token: string;
   settings: SettingsPayload;
   form: ImageGenerationSettingsUpdate;
   dirty: boolean;
@@ -2706,9 +2866,9 @@ function ImageGenerationSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const imageProviders = providersWithCapability(settings, "image");
   const selectedProvider =
-    settings.image_generation.providers.find((provider) => provider.name === form.provider) ??
-    settings.image_generation.providers[0];
+    imageProviders.find((provider) => provider.name === form.provider) ?? imageProviders[0];
   const providerConfigured = !!selectedProvider?.configured;
   const missingCredential = form.enabled && !providerConfigured;
   const aspectOptions = optionRowsWithCurrent(
@@ -2741,7 +2901,7 @@ function ImageGenerationSettings({
             description={tx("settings.help.imageProvider", "Choose the registry provider used by generate_image.")}
           >
             <ProviderPicker
-              providers={settings.image_generation.providers}
+              providers={imageProviders}
               value={form.provider}
               emptyLabel={tx("settings.image.selectProvider", "Select provider")}
               showProviderLogos={showBrandLogos}
@@ -2765,21 +2925,6 @@ function ImageGenerationSettings({
               ) : null}
             </div>
         </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.imageApiKey", "API key")}
-            description={tx(
-              "settings.help.imageApiKey",
-              "For image-only providers such as 火山方舟 (Volcengine), enter the provider API key here.",
-            )}
-          >
-            <Input
-              type="password"
-              value={form.apiKey ?? ""}
-              placeholder={providerConfigured ? "••••••••" : "sk-..."}
-              onChange={(event) => onChangeForm((prev) => ({ ...prev, apiKey: event.target.value }))}
-              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
-            />
-          </SettingsRow>
         </SettingsGroup>
       </section>
 
@@ -2790,10 +2935,14 @@ function ImageGenerationSettings({
             title={tx("settings.rows.imageModel", "Image model")}
             description={tx("settings.help.imageModel", "Model name sent to the selected image provider.")}
           >
-            <Input
+            <ModelIdPicker
+              token={token}
+              settings={settings}
+              provider={form.provider}
               value={form.model}
-              onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
-              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+              showProviderLogos={showBrandLogos}
+              onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
+              providerRows={imageProviders}
             />
           </SettingsRow>
           <SettingsRow
@@ -2865,6 +3014,7 @@ function VideoGenerationSettings({
   saving,
   onChangeForm,
   onSave,
+  onOpenProviders,
   onRestart,
   isRestarting,
   requiresRestartPending,
@@ -2875,13 +3025,15 @@ function VideoGenerationSettings({
   saving: boolean;
   onChangeForm: Dispatch<SetStateAction<VideoGenerationSettingsUpdate>>;
   onSave: () => void;
+  onOpenProviders: () => void;
   onRestart?: () => void;
   isRestarting?: boolean;
   requiresRestartPending: boolean;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const apiKeyConfigured = settings.video_generation.api_key_configured;
+  const volcengineProvider = settings.providers.find((provider) => provider.name === "volcengine");
+  const apiKeyConfigured = settings.video_generation.api_key_configured || !!volcengineProvider?.configured;
   const missingCredential = form.enabled && !apiKeyConfigured;
   const ratioOptions = optionRowsWithCurrent(
     VIDEO_RATIO_OPTIONS.map((value) => ({ name: value, label: value })),
@@ -2893,6 +3045,10 @@ function VideoGenerationSettings({
       ...VIDEO_RESOLUTION_OPTIONS.map((value) => ({ name: value, label: value })),
     ],
     form.defaultResolution,
+  );
+  const modelOptions = optionRowsWithCurrent(
+    SEEDANCE_MODELS.map((value) => ({ name: value, label: value })),
+    form.model,
   );
 
   return (
@@ -2913,7 +3069,7 @@ function VideoGenerationSettings({
           </SettingsRow>
           <SettingsRow
             title={tx("settings.rows.videoProviderStatus", "密钥状态")}
-            description={tx("settings.help.videoProviderStatus", "Seedance API 密钥由 config.json 维护。")}
+            description={tx("settings.help.videoProviderStatus", "文生视频与文生图共用「模型厂商」页的火山方舟密钥。")}
           >
             <div className="flex flex-wrap items-center justify-end gap-2">
               <StatusPill tone={apiKeyConfigured ? "success" : "neutral"}>
@@ -2921,6 +3077,11 @@ function VideoGenerationSettings({
                   ? tx("settings.values.configured", "已配置")
                   : tx("settings.values.notConfigured", "未配置")}
               </StatusPill>
+              {!apiKeyConfigured ? (
+                <Button size="sm" variant="outline" onClick={onOpenProviders} className="rounded-full">
+                  {tx("settings.video.configureProvider", "配置厂商")}
+                </Button>
+              ) : null}
             </div>
           </SettingsRow>
         </SettingsGroup>
@@ -2933,11 +3094,20 @@ function VideoGenerationSettings({
             title={tx("settings.rows.videoModel", "视频模型")}
             description={tx("settings.help.videoModel", "发送给 Seedance 的视频模型名称。")}
           >
-            <Input
-              value={form.model}
-              onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
-              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
-            />
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <ProviderPicker
+                providers={modelOptions}
+                value={form.model}
+                emptyLabel={tx("settings.video.selectModel", "选择视频模型")}
+                onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
+              />
+              <Input
+                value={form.model}
+                onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
+                placeholder={tx("settings.video.modelPlaceholder", "或手动输入模型 ID")}
+                className="h-8 w-[min(260px,60vw)] rounded-full text-[13px]"
+              />
+            </div>
           </SettingsRow>
           <SettingsRow
             title={tx("settings.rows.videoRatio", "画面比例")}
@@ -3054,14 +3224,15 @@ function VisionSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const visionProviders = providersWithCapability(settings, "vision");
   const visionModelConfigured = !!(
     form.visionModel &&
-    settings.screenshot.available_providers.some(
+    visionProviders.some(
       (provider) => provider.name === form.visionModel && provider.configured,
     )
   );
   const missingVisionModel = form.enabled && !form.visionModel;
-  const visionProviderOptions = settings.screenshot.available_providers.map(
+  const visionProviderOptions = visionProviders.map(
     (provider) => ({
       name: provider.name,
       label: provider.configured
@@ -3313,6 +3484,7 @@ function SystemIoSettings({
 }
 
 function TranscriptionSettings({
+  token,
   settings,
   form,
   dirty,
@@ -3325,6 +3497,7 @@ function TranscriptionSettings({
   isRestarting,
   requiresRestartPending,
 }: {
+  token: string;
   settings: SettingsPayload;
   form: TranscriptionSettingsUpdate;
   dirty: boolean;
@@ -3339,10 +3512,10 @@ function TranscriptionSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const transcription = settings.transcription ?? DEFAULT_TRANSCRIPTION_SETTINGS;
+  const transcriptionProviders = providersWithCapability(settings, "transcription");
   const selectedProvider =
-    transcription.providers.find((provider) => provider.name === form.provider) ??
-    transcription.providers[0];
+    transcriptionProviders.find((provider) => provider.name === form.provider) ??
+    transcriptionProviders[0];
   const providerConfigured = !!selectedProvider?.configured;
 
   return (
@@ -3365,7 +3538,7 @@ function TranscriptionSettings({
           description={tx("settings.help.transcriptionProvider", "Uses the matching provider credentials from Providers.")}
         >
           <ProviderPicker
-            providers={transcription.providers}
+            providers={transcriptionProviders}
             value={form.provider}
             emptyLabel={tx("settings.voice.selectProvider", "Select provider")}
             showProviderLogos={showBrandLogos}
@@ -3393,10 +3566,14 @@ function TranscriptionSettings({
           title={tx("settings.rows.transcriptionModel", "Model")}
           description={tx("settings.help.transcriptionModel", "Leave as the resolved default unless your provider needs a custom model id.")}
         >
-          <Input
+          <ModelIdPicker
+            token={token}
+            settings={settings}
+            provider={form.provider}
             value={form.model}
-            onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
-            className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            showProviderLogos={showBrandLogos}
+            onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
+            providerRows={transcriptionProviders}
           />
         </SettingsRow>
         <SettingsRow
@@ -3444,6 +3621,7 @@ function TranscriptionSettings({
 }
 
 function TtsSettings({
+  token,
   settings,
   form,
   dirty,
@@ -3453,6 +3631,7 @@ function TtsSettings({
   onOpenProviders,
   showBrandLogos,
 }: {
+  token: string;
   settings: SettingsPayload;
   form: TtsSettingsUpdate;
   dirty: boolean;
@@ -3464,10 +3643,10 @@ function TtsSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const tts = settings.tts ?? DEFAULT_TTS_SETTINGS;
+  const ttsProviders = providersWithCapability(settings, "tts");
   const selectedProvider =
-    tts.providers.find((provider) => provider.name === form.provider) ??
-    tts.providers[0];
+    ttsProviders.find((provider) => provider.name === form.provider) ??
+    ttsProviders[0];
   const providerConfigured = !!selectedProvider?.configured;
 
   return (
@@ -3490,7 +3669,7 @@ function TtsSettings({
           description={tx("settings.help.ttsProvider", "Uses the matching provider credentials from Providers.")}
         >
           <ProviderPicker
-            providers={tts.providers}
+            providers={ttsProviders}
             value={form.provider}
             emptyLabel={tx("settings.voice.selectProvider", "Select provider")}
             showProviderLogos={showBrandLogos}
@@ -3518,10 +3697,14 @@ function TtsSettings({
           title={tx("settings.rows.ttsModel", "Model")}
           description={tx("settings.help.ttsModel", "Leave as the resolved default unless your provider needs a custom model id.")}
         >
-          <Input
+          <ModelIdPicker
+            token={token}
+            settings={settings}
+            provider={form.provider}
             value={form.model}
-            onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
-            className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
+            showProviderLogos={showBrandLogos}
+            onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
+            providerRows={ttsProviders}
           />
         </SettingsRow>
         <SettingsRow
@@ -5750,6 +5933,7 @@ function ModelIdPicker({
   value,
   showProviderLogos,
   onChange,
+  providerRows,
 }: {
   token: string;
   settings: SettingsPayload;
@@ -5757,6 +5941,7 @@ function ModelIdPicker({
   value: string;
   showProviderLogos: boolean;
   onChange: (model: string) => void;
+  providerRows?: SettingsPayload["providers"];
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
@@ -5768,8 +5953,12 @@ function ModelIdPicker({
   const effectiveProvider =
     provider === "auto" ? settings.agent.resolved_provider ?? provider : provider;
   const hasConcreteProvider = Boolean(effectiveProvider && effectiveProvider !== "auto");
-  const providerRow = settingsProviderRow(settings, effectiveProvider);
-  const providerConfigured = settingsProviderConfigured(settings, effectiveProvider);
+  const providerRow = providerRows
+    ? (providerRows.find((row) => row.name === effectiveProvider) ?? null)
+    : settingsProviderRow(settings, effectiveProvider);
+  const providerConfigured = providerRows
+    ? Boolean(providerRow?.configured)
+    : settingsProviderConfigured(settings, effectiveProvider);
   const providerRequiresConfiguration = hasConcreteProvider && !providerConfigured;
   const providerUsesManualModelIds =
     hasConcreteProvider && providerConfigured && providerRow?.auth_type === "oauth";

@@ -366,22 +366,75 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
     )
 
 
+def _collect_models(config: Any, model_name: str) -> list[dict[str, Any]]:
+    """收集所有已配置模型（chat + 图像/视频/TTS）用于 ``GET /v1/models``。
+
+    结果用于外部客户端（Dify / Cherry Studio 等）的模型发现；不改变运行时行为。
+    图像/视频/TTS 等可选工具仅在 ``enabled`` 时才列出。
+    """
+    models: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def add(model_id: str | None, owned_by: str) -> None:
+        mid = (model_id or "").strip()
+        if not mid or mid in seen:
+            return
+        seen.add(mid)
+        models.append(
+            {"id": mid, "object": "model", "created": 0, "owned_by": owned_by}
+        )
+
+    # Chat：当前激活模型 + 所有命名预设
+    add(model_name, "biscuitbot")
+    for preset in getattr(config, "model_presets", {}).values():
+        add(getattr(preset, "model", None), "biscuitbot")
+
+    tools = getattr(config, "tools", None)
+
+    # 文生图
+    image_cfg = getattr(tools, "image_generation", None)
+    if image_cfg is not None and getattr(image_cfg, "enabled", False):
+        add(
+            getattr(image_cfg, "model", None),
+            getattr(image_cfg, "provider", None) or "biscuitbot-image",
+        )
+
+    # 文生视频（Seedance）
+    video_cfg = getattr(tools, "seedance_video", None)
+    if video_cfg is not None and getattr(video_cfg, "enabled", False):
+        add(getattr(video_cfg, "model", None), "seedance")
+
+    # TTS（用 resolve_tts_config 取解析后的默认模型）
+    tts_cfg = getattr(config, "tts", None)
+    if tts_cfg is not None and getattr(tts_cfg, "enabled", True):
+        try:
+            from biscuitbot.audio.tts import resolve_tts_config
+
+            effective = resolve_tts_config(config)
+            add(effective.model, effective.provider or "biscuitbot-tts")
+        except Exception:
+            add(getattr(tts_cfg, "model", None), "biscuitbot-tts")
+
+    # 语音转写（STT）
+    transcription_cfg = getattr(config, "transcription", None)
+    if transcription_cfg is not None and getattr(transcription_cfg, "enabled", False):
+        add(
+            getattr(transcription_cfg, "model", None),
+            getattr(transcription_cfg, "provider", None) or "biscuitbot-transcription",
+        )
+
+    return models
+
+
 async def handle_models(request: web.Request) -> web.Response:
     """GET /v1/models"""
-    model_name = request.app.get("model_name", "biscuitbot")
-    return web.json_response(
-        {
-            "object": "list",
-            "data": [
-                {
-                    "id": model_name,
-                    "object": "model",
-                    "created": 0,
-                    "owned_by": "biscuitbot",
-                }
-            ],
-        }
-    )
+    models = request.app.get("models")
+    if models is None:
+        model_name = request.app.get("model_name", "biscuitbot")
+        models = [
+            {"id": model_name, "object": "model", "created": 0, "owned_by": "biscuitbot"}
+        ]
+    return web.json_response({"object": "list", "data": models})
 
 
 async def handle_health(request: web.Request) -> web.Response:
@@ -395,7 +448,10 @@ async def handle_health(request: web.Request) -> web.Response:
 
 
 def create_app(
-    agent_loop, model_name: str = "biscuitbot", request_timeout: float = 120.0
+    agent_loop,
+    model_name: str = "biscuitbot",
+    request_timeout: float = 120.0,
+    config: Any = None,
 ) -> web.Application:
     """Create the aiohttp application.
 
@@ -403,12 +459,15 @@ def create_app(
         agent_loop: An initialized AgentLoop instance.
         model_name: Model name reported in responses.
         request_timeout: Per-request timeout in seconds.
+        config: Optional Config model. When provided, ``/v1/models`` lists all
+            configured models (chat + image/video/TTS); otherwise a single stub.
     """
     app = web.Application(client_max_size=20 * 1024 * 1024)  # 20MB for base64 images
     app["agent_loop"] = agent_loop
     app["model_name"] = model_name
     app["request_timeout"] = request_timeout
     app["session_locks"] = {}  # per-user locks, keyed by session_key
+    app["models"] = _collect_models(config, model_name) if config is not None else None
 
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)

@@ -94,6 +94,7 @@ const SETTINGS_SECTION_KEYS: SettingsSectionKey[] = [
   "overview",
   "appearance",
   "models",
+  "providers",
   "image",
   "video",
   "vision",

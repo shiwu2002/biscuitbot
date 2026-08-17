@@ -69,7 +69,6 @@ function settingsPayload(): SettingsPayload {
       default_image_size: "1K",
       max_images_per_turn: 4,
       save_dir: "generated",
-      providers: [],
     },
     video_generation: {
       enabled: false,
@@ -91,7 +90,6 @@ function settingsPayload(): SettingsPayload {
       vision_model_override: null,
       vision_model_configured: false,
       resolved_model: null,
-      available_providers: [],
     },
     system_io: {
       enabled: false,
@@ -298,21 +296,9 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(screen.getByRole("button", { name: /重启/ })).toBeInTheDocument();
   });
 
-  it("LLM 子区提供商列表只读：无编辑/保存入口，展开仅展示密钥状态", async () => {
+  it("模型厂商子区可编辑：展开展示 API 地址/密钥表单与保存入口", async () => {
     const payload: SettingsPayload = {
       ...settingsPayload(),
-      agent: {
-        ...settingsPayload().agent,
-        provider: "openai",
-        resolved_provider: "openai",
-      },
-      model_presets: [
-        {
-          ...settingsPayload().model_presets[0],
-          model: "openai/gpt-4o",
-          provider: "openai",
-        },
-      ],
       providers: [
         {
           name: "openai",
@@ -337,18 +323,17 @@ describe("SettingsView 标签合并与二级子区", () => {
       }),
     );
 
-    renderSettingsView({ initialSection: "models", initialSettings: payload });
+    renderSettingsView({ initialSection: "providers", initialSettings: payload });
 
     // 提供商行按钮以其地址为副标题，可作为唯一定位点
     const providerCaption = await screen.findByText("https://api.openai.com/v1");
     expect(providerCaption).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
 
     fireEvent.click(providerCaption);
-    expect(screen.getByText("sk-o••••hint")).toBeInTheDocument();
-    expect(screen.getByText(/此处仅展示状态/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
+    expect(await screen.findByText("API 地址")).toBeInTheDocument();
+    expect(screen.getByText("API Key")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("https://api.openai.com/v1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
   });
 
   it("系统 tab 二级切换条可在 运行/系统IO/安全 间切换", async () => {

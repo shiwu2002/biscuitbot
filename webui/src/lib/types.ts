@@ -496,6 +496,7 @@ export interface SettingsPayload {
     default_api_base?: string | null;
     model_selectable?: boolean;
     api_type?: "auto" | "chat_completions" | "responses";
+    capabilities?: string[];
     oauth_account?: string | null;
     oauth_expires_at?: number | null;
     oauth_login_supported?: boolean;
@@ -533,15 +534,6 @@ export interface SettingsPayload {
     default_image_size: string;
     max_images_per_turn: number;
     save_dir: string;
-    providers: Array<{
-      name: string;
-      label: string;
-      configured: boolean;
-      auth_type?: "api_key" | "oauth";
-      api_key_hint?: string | null;
-      api_base?: string | null;
-      default_api_base?: string | null;
-    }>;
   };
   video_generation: {
     enabled: boolean;
@@ -563,15 +555,6 @@ export interface SettingsPayload {
     vision_model_override: string | null;
     vision_model_configured: boolean;
     resolved_model: string | null;
-    available_providers: Array<{
-      name: string;
-      label: string;
-      configured: boolean;
-      auth_type?: "api_key" | "oauth";
-      api_key_hint?: string | null;
-      api_base?: string | null;
-      default_api_base?: string | null;
-    }>;
   };
   system_io: {
     enabled: boolean;
@@ -590,14 +573,6 @@ export interface SettingsPayload {
     language: string | null;
     max_duration_sec: number;
     max_upload_mb: number;
-    providers: Array<{
-      name: string;
-      label: string;
-      configured: boolean;
-      api_key_hint?: string | null;
-      api_base?: string | null;
-      default_api_base?: string | null;
-    }>;
   };
   tts?: {
     enabled: boolean;
@@ -607,14 +582,6 @@ export interface SettingsPayload {
     voice: string;
     rate: string | null;
     save_dir: string;
-    providers: Array<{
-      name: string;
-      label: string;
-      configured: boolean;
-      api_key_hint?: string | null;
-      api_base?: string | null;
-      default_api_base?: string | null;
-    }>;
   };
   runtime: {
     config_path: string;
@@ -965,7 +932,6 @@ export interface ImageGenerationSettingsUpdate {
   defaultAspectRatio: string;
   defaultImageSize: string;
   maxImagesPerTurn: number;
-  apiKey?: string;
 }
 
 export interface VideoGenerationSettingsUpdate {

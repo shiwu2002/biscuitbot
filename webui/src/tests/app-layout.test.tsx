@@ -99,7 +99,6 @@ function baseSettingsPayload() {
       default_image_size: "1K",
       max_images_per_turn: 4,
       save_dir: "generated",
-      providers: [],
     },
     video_generation: {
       enabled: false,
@@ -121,7 +120,6 @@ function baseSettingsPayload() {
       vision_model_override: null,
       vision_model_configured: false,
       resolved_model: null,
-      available_providers: [],
     },
     system_io: {
       enabled: false,
@@ -1493,24 +1491,6 @@ describe("App layout", () => {
                 default_image_size: "1K",
                 max_images_per_turn: 4,
                 save_dir: "generated",
-                providers: [
-                  {
-                    name: "openrouter",
-                    label: "OpenRouter",
-                    configured: true,
-                    api_key_hint: "sk-o••••test",
-                    api_base: "https://openrouter.ai/api/v1",
-                    default_api_base: "https://openrouter.ai/api/v1",
-                  },
-                  {
-                    name: "gemini",
-                    label: "Gemini",
-                    configured: false,
-                    api_key_hint: null,
-                    api_base: null,
-                    default_api_base: "https://generativelanguage.googleapis.com/v1beta/openai/",
-                  },
-                ],
               },
               video_generation: {
                 enabled: false,
@@ -1532,7 +1512,6 @@ describe("App layout", () => {
                 vision_model_override: null,
                 vision_model_configured: false,
                 resolved_model: null,
-                available_providers: [],
               },
               system_io: {
                 enabled: false,
@@ -1645,6 +1624,10 @@ describe("App layout", () => {
     fireEvent.pointerDown(updatedModelButtons[updatedModelButtons.length - 1]);
     await screen.findByText("openai/gpt-4o");
     fireEvent.click(screen.getAllByText("openai/gpt-4o")[0]);
+    // 提供商列表移至「模型厂商」二级子区，且可编辑（api_key/api_base 表单 + 保存）。
+    fireEvent.click(
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "模型厂商" }),
+    );
     expect(screen.getByText("OpenRouter")).toBeInTheDocument();
     expect(screen.getByText("Ant Ling")).toBeInTheDocument();
     expect(screen.getByTestId("provider-logo-openai")).toBeInTheDocument();
@@ -1657,29 +1640,23 @@ describe("App layout", () => {
       expect(providerLabel).toBeTruthy();
       fireEvent.click(providerLabel!);
     };
-    // 收权后：提供商列表只读，展开仅展示密钥状态与地址，无编辑/保存入口。
+    // 厂商子区可编辑：展开展示 API 地址/密钥表单与保存入口。
     clickProviderRow("OpenAI");
-    expect(screen.getByText("密钥状态")).toBeInTheDocument();
-    expect(screen.getByText("open••••-key")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "编辑" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "保存提供商" })).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("留空则保留当前 key")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/此处仅展示状态/),
-    ).toBeInTheDocument();
+    expect(screen.getByText("API 地址")).toBeInTheDocument();
+    expect(screen.getByText("API Key")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/open••••-key/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     clickProviderRow("Ant Ling");
-    expect(screen.getByText("https://api.ant-ling.com/v1")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("https://api.ant-ling.com/v1")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("https://api.ant-ling.com/v1")).toBeInTheDocument();
     clickProviderRow("Atomic Chat");
-    expect(screen.getByText("http://localhost:1337/v1")).toBeInTheDocument();
-    expect(screen.queryByDisplayValue("http://localhost:1337/v1")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("http://localhost:1337/v1")).toBeInTheDocument();
 
     // 图片生成是「模型」tab 的二级子区（文生图），经子区切换条进入
     fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }));
     expect(screen.getByRole("heading", { name: "模型" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "图片生成" })).toBeInTheDocument();
     expect(screen.getByText("提供商状态")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("openai/gpt-5.4-image-2")).toBeInTheDocument();
+    expect(screen.getByText("openai/gpt-5.4-image-2")).toBeInTheDocument();
     expect(screen.getByText("保存目录")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
 
@@ -1837,16 +1814,6 @@ describe("App layout", () => {
                 default_image_size: "1K",
                 max_images_per_turn: 4,
                 save_dir: "generated",
-                providers: [
-                  {
-                    name: "openrouter",
-                    label: "OpenRouter",
-                    configured: false,
-                    api_key_hint: null,
-                    api_base: null,
-                    default_api_base: "https://openrouter.ai/api/v1",
-                  },
-                ],
               },
               video_generation: {
                 enabled: false,
@@ -1868,7 +1835,6 @@ describe("App layout", () => {
                 vision_model_override: null,
                 vision_model_configured: false,
                 resolved_model: null,
-                available_providers: [],
               },
               system_io: {
                 enabled: false,

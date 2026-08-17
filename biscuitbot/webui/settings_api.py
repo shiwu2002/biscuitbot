@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import re
 import time
+from dataclasses import replace
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -17,6 +18,7 @@ import httpx
 from biscuitbot import __version__
 from biscuitbot.audio.transcription import resolve_transcription_config
 from biscuitbot.audio.transcription_registry import (
+    get_transcription_provider,
     resolve_transcription_provider,
     transcription_provider_names,
 )
@@ -346,6 +348,99 @@ def _resolve_settings_provider(
     return None
 
 
+def _resolve_model_list_provider(
+    config: Any,
+    provider_name: str,
+) -> tuple[Any, str, ProviderConfig] | None:
+    """Resolve a provider for model-list fetching, including non-LLM capabilities.
+
+    ``/api/settings/provider-models`` is also used by the image / TTS / transcription
+    settings pages. Providers like ``volcengine`` / ``gemini`` / ``groq`` are not LLM
+    providers (absent from ``PROVIDERS``), so they need a synthesized spec whose
+    ``default_api_base`` and key requirement come from the capability registry.
+    """
+    resolved = _resolve_settings_provider(config, provider_name)
+    if resolved is not None:
+        return resolved
+
+    name = provider_name.strip()
+    default_api_base: str | None = None
+    requires_api_key = True
+
+    tts_spec = get_tts_provider(name)
+    transcription_spec = get_transcription_provider(name) if tts_spec is None else None
+    image_provider = (
+        get_image_gen_provider(name)
+        if tts_spec is None and transcription_spec is None
+        else None
+    )
+    if tts_spec is not None:
+        default_api_base = tts_spec.default_api_base
+        requires_api_key = tts_spec.requires_api_key
+    elif transcription_spec is not None:
+        default_api_base = transcription_spec.default_api_base
+        requires_api_key = True
+    elif image_provider is not None:
+        default_api_base = None
+        requires_api_key = name != "ollama"
+    else:
+        return None
+
+    spec = create_dynamic_spec(name)
+    spec = replace(
+        spec,
+        default_api_base=default_api_base or "",
+        is_direct=not requires_api_key,
+    )
+
+    provider_config = getattr(config.providers, name, None)
+    if not isinstance(provider_config, ProviderConfig):
+        provider_config = next(
+            (pc for extra_name, pc in _dynamic_provider_items(config) if extra_name == name),
+            ProviderConfig(),
+        )
+    return spec, name, provider_config
+
+
+def _provider_capabilities(name: str, config: Any) -> list[str]:
+    """推导某厂商可服务的能力标签（各能力页据此过滤厂商下拉项）。"""
+    caps: list[str] = []
+    spec = find_by_name(name)
+    is_dynamic = any(key == name for key, _ in _dynamic_provider_items(config))
+    # 能力专用厂商（图像/TTS/转写/视频）即使存入 model_extra 也不具备 LLM 能力
+    is_capability_only = spec is None and (
+        get_image_gen_provider(name) is not None
+        or name == "volcengine"
+        or get_tts_provider(name) is not None
+        or get_transcription_provider(name) is not None
+    )
+    is_llm = spec is not None or (is_dynamic and not is_capability_only)
+    if is_llm:
+        caps.append("llm")
+        if spec is None or not spec.is_transcription_only:
+            caps.append("vision")
+    if get_image_gen_provider(name) is not None:
+        caps.append("image")
+    if name == "volcengine":
+        caps.append("video")
+    if get_tts_provider(name) is not None:
+        caps.append("tts")
+    if get_transcription_provider(name) is not None:
+        caps.append("transcription")
+    return caps
+
+
+def _capability_provider_label(name: str, spec: Any) -> str:
+    """非 LLM 能力厂商的展示名（火山方舟 / Edge TTS 等）。"""
+    if find_by_name(name) is not None:
+        return spec.label if spec is not None else name
+    if name == "volcengine":
+        return "火山方舟"
+    if name == "edge-tts":
+        return "Edge TTS"
+    return name
+
+
 def _provider_settings_row(
     name: str,
     spec: Any,
@@ -365,6 +460,42 @@ def _provider_settings_row(
     if spec.name == "openai":
         row["api_type"] = provider_config.api_type
     return row
+
+
+def _unified_provider_rows(config: Any) -> list[dict[str, Any]]:
+    """单一厂商来源：LLM PROVIDERS + 非 LLM 的图像/TTS/转写厂商 + 动态自定义厂商。
+
+    各能力页不再各自维护厂商列表，统一从此处派生并按 ``capabilities`` 过滤。
+    """
+    names: list[str] = [spec.name for spec in PROVIDERS]
+    for extra in (*image_gen_provider_names(), *tts_provider_names(), *transcription_provider_names()):
+        if extra not in names:
+            names.append(extra)
+    for extra_name, _ in _dynamic_provider_items(config):
+        if extra_name not in names:
+            names.append(extra_name)
+
+    rows: list[dict[str, Any]] = []
+    for name in names:
+        resolved = _resolve_model_list_provider(config, name)
+        if resolved is None:
+            continue
+        spec, key, provider_config = resolved
+        row = _provider_settings_row(key, spec, provider_config)
+        # 覆盖能力厂商特有的「已配置」语义
+        if name == "volcengine":
+            row["configured"] = bool(
+                provider_config.api_key or os.environ.get("ARK_API_KEY", "").strip()
+            )
+        elif name == "edge-tts":
+            row["configured"] = True  # 免密钥，恒可用
+        row["capabilities"] = _provider_capabilities(name, config)
+        # 非 LLM 能力厂商不进入 LLM 模型预设的厂商下拉
+        if "llm" not in row["capabilities"]:
+            row["model_selectable"] = False
+        row["label"] = _capability_provider_label(name, spec)
+        rows.append(row)
+    return rows
 
 
 def needs_setup(config: Any) -> bool:
@@ -741,7 +872,7 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
         raise WebUISettingsError("provider is required")
 
     config = load_config()
-    resolved_provider = _resolve_settings_provider(config, provider_name)
+    resolved_provider = _resolve_model_list_provider(config, provider_name)
     if resolved_provider is None:
         raise WebUISettingsError("unknown provider")
     spec, provider_key, provider_config = resolved_provider
@@ -879,109 +1010,6 @@ def _validate_configured_provider(config: Any, provider: str) -> None:
         raise WebUISettingsError("provider is not configured")
 
 
-# 未注册 LLM spec 的图像生成提供商的中文展示名（如火山方舟仅用于图像，不进 LLM 列表）
-_IMAGE_GEN_PROVIDER_DISPLAY_NAMES = {
-    "volcengine": "火山方舟",
-}
-
-
-def _image_generation_provider_rows(config: Any) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for name in image_gen_provider_names():
-        spec = find_by_name(name)
-        provider_config = getattr(config.providers, name, None)
-        configured = (
-            _provider_configured_for_settings(spec, provider_config)
-            if spec is not None and provider_config is not None
-            else bool(getattr(provider_config, "api_key", None))
-            # 火山方舟支持 ARK_API_KEY 环境变量回退，命中即视为已配置
-            or (name == "volcengine" and bool(os.environ.get("ARK_API_KEY", "").strip()))
-        )
-        rows.append(
-            {
-                "name": name,
-                "label": (
-                    spec.label
-                    if spec is not None
-                    else _IMAGE_GEN_PROVIDER_DISPLAY_NAMES.get(name, name)
-                ),
-                "configured": configured,
-                "auth_type": "api_key",
-                "api_key_hint": _mask_secret_hint(
-                    getattr(provider_config, "api_key", None)
-                ),
-                "api_base": getattr(provider_config, "api_base", None),
-                "default_api_base": (
-                    spec.default_api_base if spec and spec.default_api_base else None
-                ),
-            }
-        )
-    return rows
-
-
-def _transcription_provider_rows(config: Any) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for name in transcription_provider_names():
-        spec = find_by_name(name)
-        provider_config = getattr(config.providers, name, None)
-        rows.append({
-            "name": name,
-            "label": spec.label if spec is not None else name,
-            "configured": bool(getattr(provider_config, "api_key", None)),
-            "api_key_hint": _mask_secret_hint(getattr(provider_config, "api_key", None)),
-            "api_base": getattr(provider_config, "api_base", None),
-            "default_api_base": spec.default_api_base if spec and spec.default_api_base else None,
-        })
-    return rows
-
-
-def _tts_provider_rows(config: Any) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for name in tts_provider_names():
-        spec = get_tts_provider(name)
-        provider_config = getattr(config.providers, name, None)
-        requires_api_key = spec.requires_api_key if spec else True
-        configured = (not requires_api_key) or bool(
-            getattr(provider_config, "api_key", None)
-        )
-        label = "Edge TTS" if name == "edge-tts" else name
-        rows.append({
-            "name": name,
-            "label": label,
-            "configured": configured,
-            "api_key_hint": _mask_secret_hint(getattr(provider_config, "api_key", None)),
-            "api_base": getattr(provider_config, "api_base", None),
-            "default_api_base": spec.default_api_base if spec and spec.default_api_base else None,
-        })
-    return rows
-
-
-def _vision_provider_rows(config: Any) -> list[dict[str, Any]]:
-    """List all LLM providers usable as vision credential sources."""
-    rows: list[dict[str, Any]] = []
-    for spec in PROVIDERS:
-        if spec.is_transcription_only:
-            continue
-        provider_config = getattr(config.providers, spec.name, None)
-        if provider_config is None:
-            continue
-        configured = bool(
-            getattr(provider_config, "api_key", None)
-            or spec.is_local
-            or spec.is_oauth
-        )
-        rows.append({
-            "name": spec.name,
-            "label": spec.label,
-            "configured": configured,
-            "auth_type": "oauth" if spec.is_oauth else "api_key",
-            "api_key_hint": _mask_secret_hint(getattr(provider_config, "api_key", None)),
-            "api_base": getattr(provider_config, "api_base", None),
-            "default_api_base": spec.default_api_base if spec.default_api_base else None,
-        })
-    return rows
-
-
 def settings_payload(
     *,
     requires_restart: bool = False,
@@ -1009,20 +1037,7 @@ def settings_payload(
         spec = find_by_name(effective_preset.provider)
         selected_provider = spec.name if spec else provider_name
 
-    providers = []
-    for spec in PROVIDERS:
-        provider_config = getattr(config.providers, spec.name, None)
-        if provider_config is None:
-            continue
-        providers.append(_provider_settings_row(spec.name, spec, provider_config))
-    for provider_key, provider_config in _dynamic_provider_items(config):
-        providers.append(
-            _provider_settings_row(
-                provider_key,
-                create_dynamic_spec(provider_key),
-                provider_config,
-            )
-        )
+    providers = _unified_provider_rows(config)
 
     search_config = config.tools.web.search
     image_config = config.tools.image_generation
@@ -1034,13 +1049,8 @@ def settings_payload(
         if search_config.provider in _WEB_SEARCH_PROVIDER_BY_NAME
         else "duckduckgo"
     )
-    image_providers = _image_generation_provider_rows(config)
     selected_image_provider = next(
-        (
-            provider
-            for provider in image_providers
-            if provider["name"] == image_config.provider
-        ),
+        (provider for provider in providers if provider["name"] == image_config.provider),
         None,
     )
     model_presets = [
@@ -1129,12 +1139,15 @@ def settings_payload(
             "default_image_size": image_config.default_image_size,
             "max_images_per_turn": image_config.max_images_per_turn,
             "save_dir": image_config.save_dir,
-            "providers": image_providers,
         },
         "video_generation": {
             "enabled": video_config.enabled,
             "api_key_configured": bool(
                 (video_config.api_key or "").strip()
+                or (
+                    (volcengine_cfg := getattr(config.providers, "volcengine", None))
+                    and (volcengine_cfg.api_key or "").strip()
+                )
                 or os.environ.get("ARK_API_KEY", "").strip()
             ),
             "model": video_config.model,
@@ -1168,7 +1181,6 @@ def settings_payload(
                     else None
                 )
             ),
-            "available_providers": _vision_provider_rows(config),
         },
         "system_io": {
             "enabled": config.tools.system_io.enable,
@@ -1183,7 +1195,6 @@ def settings_payload(
             "language": transcription.language,
             "max_duration_sec": transcription.max_duration_sec,
             "max_upload_mb": transcription.max_upload_mb,
-            "providers": _transcription_provider_rows(config),
         },
         "tts": {
             "enabled": tts.enabled,
@@ -1193,7 +1204,6 @@ def settings_payload(
             "voice": tts.voice,
             "rate": tts.rate,
             "save_dir": tts.save_dir,
-            "providers": _tts_provider_rows(config),
         },
         "runtime": {
             "config_path": str(get_config_path().expanduser()),
@@ -1444,8 +1454,17 @@ def update_provider_settings(query: QueryParams) -> dict[str, Any]:
     config = load_config()
     resolved_provider = _resolve_settings_provider(config, provider_name)
     if resolved_provider is None:
+        # 非 LLM 能力厂商（volcengine / groq / edge-tts 等）也允许在「模型厂商」页编辑
+        resolved_provider = _resolve_model_list_provider(config, provider_name)
+    if resolved_provider is None:
         raise WebUISettingsError("unknown provider")
     spec, provider_key, provider_config = resolved_provider
+
+    # 动态 / 能力厂商首次配置时需挂到 model_extra，否则 save_config 不会持久化
+    if find_by_name(provider_key) is None and provider_key not in (
+        config.providers.model_extra or {}
+    ):
+        config.providers.model_extra[provider_key] = provider_config
 
     changed = False
     if "api_key" in query or "apiKey" in query:
@@ -1726,32 +1745,11 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
             image_config.max_images_per_turn = parsed_max
             changed = True
 
-    api_key = _query_first_alias(query, "api_key", "apiKey")
-    api_base = _query_first_alias(query, "api_base", "apiBase")
-    if api_key is not None or api_base is not None:
-        target_provider = image_config.provider
-        provider_config = getattr(config.providers, target_provider, None)
-        if provider_config is None and find_by_name(target_provider) is None:
-            # 图像专用提供商（如火山方舟）不在 LLM 字段里，首次配置时动态新建条目
-            provider_config = ProviderConfig()
-            config.providers.model_extra[target_provider] = provider_config
-        if provider_config is not None:
-            if api_key is not None:
-                parsed_key = (api_key or "").strip() or None
-                if provider_config.api_key != parsed_key:
-                    provider_config.api_key = parsed_key
-                    changed = True
-            if api_base is not None:
-                parsed_base = (api_base or "").strip() or None
-                if provider_config.api_base != parsed_base:
-                    provider_config.api_base = parsed_base
-                    changed = True
-
     if image_config.enabled:
         selected_provider = next(
             (
                 provider
-                for provider in _image_generation_provider_rows(config)
+                for provider in _unified_provider_rows(config)
                 if provider["name"] == image_config.provider
             ),
             None,

@@ -1849,16 +1849,19 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert search_providers["volcengine"]["credential"] == "api_key"
         assert search_providers["searxng"]["credential"] == "base_url"
         assert body["image_generation"]["enabled"] is False
-        assert body["image_generation"]["provider"] == "openai"
-        assert body["image_generation"]["provider_configured"] is True
+        assert body["image_generation"]["provider"] == "volcengine"
+        assert body["image_generation"]["provider_configured"] is False
         assert body["image_generation"]["default_aspect_ratio"] == "1:1"
+        # 图片提供商统一来自「模型厂商」页的 providers 列表（按 image 能力过滤）
         image_providers = {
             provider["name"]: provider
-            for provider in body["image_generation"]["providers"]
+            for provider in body["providers"]
+            if "image" in provider["capabilities"]
         }
         assert image_providers["openai"]["label"] == "OpenAI"
         assert image_providers["openai"]["configured"] is True
         assert image_providers["ollama"]["label"] == "Ollama"
+        assert image_providers["volcengine"]["label"] == "火山方舟"
         assert body["runtime"]["config_path"] == str(config_path)
         workspace_path = body["runtime"]["workspace_path"].replace("\\", "/")
         assert workspace_path.endswith("/.biscuitbot/workspace")
@@ -1890,7 +1893,7 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert provider_body["requires_restart"] is False
         provider_rows = {provider["name"]: provider for provider in provider_body["providers"]}
         assert provider_rows["deepseek"]["configured"] is True
-        assert provider_body["image_generation"]["provider_configured"] is True
+        assert provider_body["image_generation"]["provider_configured"] is False
         assert "sk-or-test" not in provider_updated.text
 
         local_provider_updated = await _http_get(

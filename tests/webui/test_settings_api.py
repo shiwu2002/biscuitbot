@@ -9,6 +9,9 @@ from biscuitbot.config.loader import load_config, save_config
 from biscuitbot.config.schema import Config, ModelPresetConfig
 from biscuitbot.webui.settings_api import (
     WebUISettingsError,
+    _provider_capabilities,
+    _resolve_model_list_provider,
+    _unified_provider_rows,
     create_model_configuration,
     provider_models_payload,
     settings_payload,
@@ -215,7 +218,7 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
     assert dynamic_provider.api_key == "sk-test"
 
 
-def test_update_image_generation_settings_writes_volcengine_api_key(
+def test_update_image_generation_settings_uses_unified_volcengine_provider(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -223,17 +226,26 @@ def test_update_image_generation_settings_writes_volcengine_api_key(
     save_config(Config.model_validate({}), config_path)
     monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
+    # 密钥统一在「模型厂商」页配置（不再是 image_generation 内联维护）
+    update_provider_settings(
+        {
+            "provider": ["volcengine"],
+            "apiKey": ["sk-ark-test"],
+        }
+    )
+
     payload = update_image_generation_settings(
         {
             "provider": ["volcengine"],
             "enabled": ["true"],
-            "apiKey": ["sk-ark-test"],
         }
     )
 
     assert payload["image_generation"]["provider"] == "volcengine"
     assert payload["image_generation"]["provider_configured"] is True
     saved = load_config(config_path)
+    assert saved.tools.image_generation.provider == "volcengine"
+    assert saved.tools.image_generation.enabled is True
     assert saved.providers.model_extra["volcengine"].api_key == "sk-ark-test"
 
 
@@ -480,11 +492,15 @@ def test_settings_payload_includes_tts_config(
     assert tts["model"] == "gpt-4o-mini-tts"
     assert tts["voice"] == "alloy"
     assert tts["save_dir"] == "generated/tts"
-    names = {row["name"] for row in tts["providers"]}
-    assert names == {"openai", "dashscope", "edge-tts"}
-    edge = next(row for row in tts["providers"] if row["name"] == "edge-tts")
+    providers = {row["name"]: row for row in payload["providers"]}
+    tts_names = {
+        row["name"] for row in providers.values() if "tts" in row["capabilities"]
+    }
+    assert tts_names == {"openai", "dashscope", "edge-tts"}
+    edge = providers["edge-tts"]
     assert edge["label"] == "Edge TTS"
     assert edge["configured"] is True
+    assert "tts" in edge["capabilities"]
 
 
 def test_update_tts_settings_writes_top_level_only(
@@ -708,6 +724,90 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
     assert payload["status"] == "available"
     assert payload["catalog_kind"] == "custom"
     assert payload["models"][0]["id"] == "custom-gpt"
+
+
+def test_resolve_model_list_provider_synthesizes_non_llm_capabilities() -> None:
+    """Non-LLM capability providers (image/TTS/transcription) resolve to a spec."""
+    config = Config()
+
+    # transcription provider carries a concrete default_api_base and requires a key
+    groq = _resolve_model_list_provider(config, "groq")
+    assert groq is not None
+    groq_spec, groq_name, _ = groq
+    assert groq_name == "groq"
+    assert groq_spec.default_api_base == "https://api.groq.com/openai/v1"
+    assert groq_spec.is_direct is False
+
+    # image providers resolve (empty base) but are not treated as direct
+    for provider in ("volcengine", "gemini", "aihubmix"):
+        resolved = _resolve_model_list_provider(config, provider)
+        assert resolved is not None, provider
+        spec, name, _ = resolved
+        assert name == provider
+        assert spec.default_api_base == ""
+        assert spec.is_direct is False
+
+    # unknown names do not resolve
+    assert _resolve_model_list_provider(config, "zzz-not-real") is None
+
+
+def test_provider_capabilities_derives_from_registries() -> None:
+    """能力标签从 registry 推导：火山方舟=image+video、edge-tts=tts、groq=transcription。"""
+    config = Config()
+
+    assert _provider_capabilities("volcengine", config) == ["image", "video"]
+    assert _provider_capabilities("edge-tts", config) == ["tts"]
+    assert _provider_capabilities("groq", config) == ["transcription"]
+    # LLM 厂商同时具备 llm 与 vision（非 transcription-only）
+    assert "llm" in _provider_capabilities("openai", config)
+    assert "vision" in _provider_capabilities("openai", config)
+
+
+def test_unified_provider_rows_includes_capability_providers() -> None:
+    """单一厂商来源同时覆盖 LLM 与非 LLM 能力厂商，并写入 capabilities。"""
+    config = Config.model_validate({"providers": {"volcengine": {"apiKey": "sk-ark"}}})
+
+    rows = {row["name"]: row for row in _unified_provider_rows(config)}
+
+    # 火山方舟带 image+video，配了密钥即算已配置，且不进入 LLM 模型下拉
+    assert rows["volcengine"]["capabilities"] == ["image", "video"]
+    assert rows["volcengine"]["configured"] is True
+    assert rows["volcengine"]["label"] == "火山方舟"
+    assert rows["volcengine"]["model_selectable"] is False
+
+    # edge-tts 免密钥，恒已配置
+    assert "tts" in rows["edge-tts"]["capabilities"]
+    assert rows["edge-tts"]["configured"] is True
+
+    # groq 是转写厂商，不进入 LLM 模型下拉
+    assert "transcription" in rows["groq"]["capabilities"]
+    assert rows["groq"]["model_selectable"] is False
+
+    # LLM 厂商仍在，且可被选作 LLM 模型
+    assert "llm" in rows["openai"]["capabilities"]
+    assert rows["openai"]["model_selectable"] is True
+
+
+def test_update_provider_settings_writes_volcengine_to_model_extra(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = update_provider_settings(
+        {
+            "provider": ["volcengine"],
+            "apiKey": ["sk-ark-test"],
+        }
+    )
+
+    providers = {row["name"]: row for row in payload["providers"]}
+    assert providers["volcengine"]["api_key_hint"] == "sk-a••••test"
+    assert providers["volcengine"]["label"] == "火山方舟"
+    saved = load_config(config_path)
+    assert saved.providers.model_extra["volcengine"].api_key == "sk-ark-test"
 
 
 def test_settings_payload_includes_system_io_fields(

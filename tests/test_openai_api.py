@@ -308,6 +308,33 @@ async def test_models_endpoint(aiohttp_client, app) -> None:
 
 @pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
 @pytest.mark.asyncio
+async def test_models_endpoint_lists_all_configured_models(aiohttp_client, mock_agent) -> None:
+    from types import SimpleNamespace
+
+    config = SimpleNamespace(
+        model_presets={
+            "fast": SimpleNamespace(model="chat-fast"),
+            "smart": SimpleNamespace(model="chat-smart"),
+        },
+        tools=SimpleNamespace(
+            image_generation=SimpleNamespace(enabled=True, provider="zhipu", model="cogview-3"),
+            seedance_video=SimpleNamespace(enabled=True, model="seedance-v2"),
+        ),
+        tts=SimpleNamespace(enabled=True, provider="openai", model="tts-1"),
+        transcription=SimpleNamespace(enabled=True, provider="whisper", model="whisper-1"),
+    )
+    app = create_app(mock_agent, model_name="chat-default", request_timeout=10.0, config=config)
+    client = await aiohttp_client(app)
+    resp = await client.get("/v1/models")
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["object"] == "list"
+    ids = {m["id"] for m in body["data"]}
+    assert ids >= {"chat-default", "chat-fast", "chat-smart", "cogview-3", "seedance-v2", "tts-1", "whisper-1"}
+
+
+@pytest.mark.skipif(not HAS_AIOHTTP, reason="aiohttp not installed")
+@pytest.mark.asyncio
 async def test_health_endpoint(aiohttp_client, app) -> None:
     client = await aiohttp_client(app)
     resp = await client.get("/health")

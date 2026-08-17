@@ -132,6 +132,7 @@
     "subtabs": {
       "model": {
         "llm": "LLM",
+        "providers": "模型厂商",
         "image": "文生图",
         "video": "文生视频",
         "vision": "视图理解",
@@ -298,7 +299,7 @@
       "defaultImageSize": "发送给支持此选项的提供商的尺寸提示。",
       "maxImagesPerTurn": "单次 generate_image 请求可生成的图片上限。",
       "videoGeneration": "在对话中暴露视频生成能力（当 Seedance 密钥已配置时）。",
-      "videoProviderStatus": "Seedance API 密钥由 config.json 维护。",
+      "videoProviderStatus": "文生视频与文生图共用「模型厂商」页的火山方舟密钥。",
       "videoModel": "发送给 Seedance 的视频模型名称。",
       "videoRatio": "提示未指定时使用的默认画面比例。",
       "videoDuration": "生成的视频时长（秒），4–30。",
@@ -568,9 +569,18 @@
       }
     },
     "providers": {
+      "description": "配置各厂商的 API Key 与 API 地址。配置后，文生图 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
       "searchPlaceholder": "搜索提供商",
       "noMatches": "没有匹配的提供商。",
       "keyStatus": "密钥状态",
+      "apiBase": "API 地址",
+      "apiKey": "API Key",
+      "apiType": "API 形态",
+      "save": "保存",
+      "saving": "保存中…",
+      "cancel": "取消",
+      "currentKey": "当前",
+      "apiKeyPlaceholder": "留空保持不变",
       "readOnlyHint": "密钥与地址由内部配置文件（config.json）统一维护，此处仅展示状态。",
       "readOnlyDescription": "已配置的提供商密钥与地址由内部配置文件（config.json）统一维护，此处仅展示配置状态。"
     },
@@ -585,10 +595,13 @@
       "missingCredential": "启用图片生成前请先配置此提供商。"
     },
     "video": {
+      "selectModel": "选择视频模型",
+      "modelPlaceholder": "或手动输入模型 ID",
       "selectRatio": "选择画面比例",
       "selectResolution": "选择分辨率",
       "resolutionAuto": "模型自动决定",
-      "missingCredential": "在 config.json 配置 Seedance 密钥后再启用视频生成。"
+      "configureProvider": "配置厂商",
+      "missingCredential": "先在「模型厂商」页配置火山方舟密钥，再启用视频生成。"
     },
     "vision": {
       "selectModel": "选择模型",
