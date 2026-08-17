@@ -30,6 +30,12 @@ def _isolate_pairing_store(tmp_path, monkeypatch):
     monkeypatch.setattr(pairing_store, "_store_path", lambda: tmp_path / "pairing.json")
 
 
+@pytest.fixture(autouse=True)
+def _reset_session_generation(monkeypatch):
+    """隔离登录代数，避免测试间的全局计数相互影响。"""
+    monkeypatch.setattr(weixin_mod, "_session_generation", 0)
+
+
 def _make_channel() -> tuple[WeixinChannel, MessageBus]:
     bus = MessageBus()
     channel = WeixinChannel(
@@ -456,8 +462,8 @@ async def test_poll_once_invalidates_token_on_expired_errcode() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_login_qr_clears_old_token_before_generating_qr() -> None:
-    """每次「扫码连接」都应先清除旧 token，再生成新二维码连接新设备。"""
+async def test_fetch_login_qr_advances_generation_and_clears_old_token() -> None:
+    """每次「扫码连接」都是一次全新登录：推进登录代数并清除旧 token（连接新设备）。"""
     channel, _bus = _make_channel()
     channel._token = "old-token"
     channel._get_updates_buf = "buf"
@@ -469,11 +475,51 @@ async def test_fetch_login_qr_clears_old_token_before_generating_qr() -> None:
     result = await channel.fetch_login_qr()
 
     assert result == {"qrcode_id": "qr-1", "qr_content": "content-1"}
+    assert weixin_mod._session_generation == 1
+    assert channel._seen_generation == weixin_mod._session_generation
     assert channel._token == ""
     assert channel._get_updates_buf == ""
     assert channel._context_tokens == {}
     assert channel._typing_tickets == {}
     assert channel._session_pause_until == 0.0
+
+
+@pytest.mark.asyncio
+async def test_stale_instance_does_not_overwrite_fresh_login_token() -> None:
+    """换账号重新扫码后，旧（主渠道）实例不能把新 token 覆盖回旧账号。
+
+    复现「换一个完全不同的微信号无法绑定渠道」的根因：登录实例把新账号 token
+    写入 account.json，但仍在长轮询旧账号的主渠道实例每次 _save_state 都会用
+    旧 token 覆盖掉它。登录代数据此让旧实例跳过写入。
+    """
+    state_dir = tempfile.mkdtemp(prefix="biscuitbot-weixin-test-")
+    # 主渠道实例（bus=MessageBus）持有旧账号 A 状态。
+    main = WeixinChannel(
+        WeixinConfig(enabled=True, allow_from=["*"], state_dir=state_dir),
+        MessageBus(),
+    )
+    main._token = "account-A-token"
+    main._context_tokens = {"u": "ctx-A"}
+    main._save_state()
+
+    # WebUI 登录实例（bus=None）执行一次「扫码连接」：推进代数 + 清除旧 token。
+    login = WeixinChannel(
+        WeixinConfig(enabled=True, allow_from=["*"], state_dir=state_dir),
+        None,
+    )
+    login._client = SimpleNamespace()  # 避免 fetch_login_qr 创建真实 httpx 客户端
+    login._fetch_qr_code = AsyncMock(return_value=("qr-1", "content"))
+    await login.fetch_login_qr()
+
+    # 登录实例拿到新账号 B 的 token 并落盘。
+    login._token = "account-B-token"
+    login._context_tokens = {"u": "ctx-B"}
+    login._save_state()
+    assert json.loads(Path(state_dir, "account.json").read_text())["token"] == "account-B-token"
+
+    # 旧的主渠道实例此刻若仍轮询，其 _save_state 不应覆盖新 token。
+    main._save_state()
+    assert json.loads(Path(state_dir, "account.json").read_text())["token"] == "account-B-token"
 
 
 @pytest.mark.asyncio

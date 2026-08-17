@@ -121,6 +121,11 @@ _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tiff", ".ico"
 _VIDEO_EXTS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv"}
 _VOICE_EXTS = {".mp3", ".wav", ".amr", ".silk", ".ogg", ".m4a", ".aac", ".flac"}
 
+# 登录代数：每次「扫码连接」重新登录（换账号/换设备）时 +1。
+# 主渠道实例据此检测到新登录并重新加载 account.json，避免继续用旧账号 token 轮询；
+# 登录会话实例据此避免旧账号状态覆盖磁盘上刚写入的新 token。
+_session_generation = 0
+
 
 def _has_downloadable_media_locator(media: dict[str, Any] | None) -> bool:
     """检查媒体字典是否包含可下载的定位信息（encrypt_query_param 或 full_url）。"""
@@ -182,6 +187,7 @@ class WeixinChannel(BaseChannel):
         self._typing_tickets: dict[str, dict[str, Any]] = {}  # chat_id -> 打字票据缓存
         self._context_token_at: dict[str, float] = {}  # chat_id -> context_token 缓存时间戳
         self._pending_tool_hints: dict[str, list[str]] = {}  # chat_id -> 待刷新的工具提示列表
+        self._seen_generation: int = _session_generation  # 本实例已同步到的登录代数
 
     # ------------------------------------------------------------------
     # 状态持久化
@@ -236,6 +242,10 @@ class WeixinChannel(BaseChannel):
 
     def _save_state(self) -> None:
         """将账户状态（token、游标、context_token 等）持久化到磁盘。"""
+        if self._seen_generation != _session_generation:
+            # 一次新的扫码登录正在进行/已完成，本实例持有的还是旧账号状态，
+            # 不要用它覆盖磁盘上刚写入的新 token（否则换账号后仍停留在旧账号）。
+            return
         state_file = self._get_state_dir() / "account.json"
         with suppress(Exception):
             data = {
@@ -486,9 +496,13 @@ class WeixinChannel(BaseChannel):
                 timeout=httpx.Timeout(6, connect=15),
                 follow_redirects=True,
             )
-        # 清除旧 token：每次「扫码连接」都是一次全新登录（连接新设备）。
-        self._invalidate_token()
         qrcode_id, qr_content = await self._fetch_qr_code()
+        # 拿到新二维码后再推进登录代数并清除旧 token：每次「扫码连接」都是一次全新登录
+        # （连接新设备）。主渠道实例据此停止用旧账号轮询、等待新 token 写入。
+        global _session_generation
+        _session_generation += 1
+        self._seen_generation = _session_generation
+        self._invalidate_token()
         return {"qrcode_id": qrcode_id, "qr_content": qr_content}
 
     async def poll_login_qr(self, qrcode_id: str) -> dict[str, Any]:
@@ -527,6 +541,11 @@ class WeixinChannel(BaseChannel):
                 if base_url:
                     self.config.base_url = base_url
                 self._save_state()
+                # 再推进一次登录代数：通知主渠道实例「新 token 已落盘」，促其立即
+                # 重载 account.json 并续接新账号，无需重启网关。
+                global _session_generation
+                _session_generation += 1
+                self._seen_generation = _session_generation
                 # 全新登录（扫码连接新设备）：清空该渠道的配对授权，让下一次
                 # 私聊重新进入配对码流程（否则沿用旧 token 时代已授权的用户，
                 # 换新设备后收不到验证码）。
@@ -636,6 +655,14 @@ class WeixinChannel(BaseChannel):
 
             consecutive_failures = 0
             while self._running and self._token:
+                if self._seen_generation != _session_generation:
+                    # 检测到新的扫码登录（换账号/换设备）：重载 account.json 续接新 token。
+                    self._seen_generation = _session_generation
+                    self._clear_session_state()
+                    self._load_state()
+                    if not self._token:
+                        # 登录尚未完成（或 token 已清除）：回到外层等待扫码写入新 token。
+                        break
                 try:
                     await self._poll_once()
                     consecutive_failures = 0
