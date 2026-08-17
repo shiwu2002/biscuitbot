@@ -6,15 +6,18 @@
 .env
 .web
 .orion
-.agent/
 
 # Trae IDE development context (local only, not shared)
 # Keep .trae/rules/ tracked for team-shared project rules
 .trae/documents/
 
 # Claude / AI assistant artifacts
+.claude/
 docs/superpowers/
 docs/plans/
+
+# Node dependencies
+/node_modules/
 
 # webui (monorepo frontend)
 webui/node_modules/
@@ -49,6 +52,7 @@ dist/
 build/
 dist-x86/
 build-x86/
+output/
 *.manifest
 *.spec
 pip-wheel-metadata/
