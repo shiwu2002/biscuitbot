@@ -43,6 +43,14 @@ export function ThreadHeader({
       )}
     >
       <div className="relative flex min-w-0 items-center gap-2">
+        {!hideSidebarToggleForHostChrome ? (
+          <img
+            src="/brand/biscuitbot_icon.png"
+            alt=""
+            className="h-7 w-7 shrink-0 select-none object-contain"
+            draggable={false}
+          />
+        ) : null}
         <Button
           variant="ghost"
           size="icon"

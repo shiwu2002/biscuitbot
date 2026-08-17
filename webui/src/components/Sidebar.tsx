@@ -90,7 +90,6 @@ export function Sidebar(props: SidebarProps) {
   const [menuPortalContainer, setMenuPortalContainer] =
     useState<HTMLElement | null>(null);
   const collapsed = Boolean(props.collapsed);
-  const toggleLabel = t("thread.header.toggleSidebar");
   const newChatShortcut = newChatShortcutLabel();
 
   return (
@@ -110,7 +109,7 @@ export function Sidebar(props: SidebarProps) {
           collapsed ? "w-14 justify-start" : "justify-start",
         )}
       >
-        {!collapsed && !props.hostChromeInset && (
+        {!collapsed && !props.hostChromeInset && props.containActionMenus ? (
           <Button
             variant="ghost"
             size="icon"
@@ -120,28 +119,7 @@ export function Sidebar(props: SidebarProps) {
           >
             <Menu className="h-3.5 w-3.5" />
           </Button>
-        )}
-        <button
-          type="button"
-          aria-label={collapsed ? toggleLabel : undefined}
-          aria-hidden={collapsed ? undefined : true}
-          title={collapsed ? toggleLabel : undefined}
-          onClick={collapsed ? props.onExpand : undefined}
-          tabIndex={collapsed ? 0 : -1}
-          className={cn(
-            "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl transition-colors",
-            collapsed
-              ? "-ml-0.5 hover:bg-sidebar-accent/75"
-              : "pointer-events-none",
-          )}
-        >
-          <img
-            src="/brand/biscuitbot_icon.png"
-            alt=""
-            className="h-8 w-8 select-none object-contain"
-            draggable={false}
-          />
-        </button>
+        ) : null}
       </div>
 
       <div

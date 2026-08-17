@@ -2168,7 +2168,7 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "从顶部切换主题" }));
     expect(toggleThemeSpy).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "收起侧边栏" }));
+    fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
     const sidebarAside = container.querySelector("aside.lg\\:block") as HTMLElement;
     await waitFor(() => expect(sidebarAside.style.width).toBe("56px"));
 
@@ -2179,7 +2179,7 @@ describe("App layout", () => {
     expect(within(rail).queryByRole("button", { name: "View" })).not.toBeInTheDocument();
     expect(within(rail).queryByText("Existing chat")).not.toBeInTheDocument();
 
-    fireEvent.click(within(rail).getByRole("button", { name: "切换侧边栏" }));
+    fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
     await waitFor(() => expect(sidebarAside.style.width).toBe("272px"));
 
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });

@@ -127,7 +127,7 @@ export function KnowledgeView({
       <div
         className={cn(
           "mx-auto w-full max-w-[920px] px-4 py-6 sm:px-8 sm:py-8 lg:py-12",
-          hostChromeInset && "pt-[4.25rem] sm:pt-[4.25rem] lg:pt-[4.75rem]",
+          hostChromeInset && "pt-11 sm:pt-11 lg:pt-11",
         )}
       >
         <div className="mb-7">

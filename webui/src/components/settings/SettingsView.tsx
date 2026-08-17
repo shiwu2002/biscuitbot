@@ -1626,7 +1626,7 @@ export function SettingsView({
         <div
           className={cn(
             "mx-auto w-full max-w-[920px] px-4 py-6 sm:px-8 sm:py-8 lg:py-12",
-            hostChromeInset && "pt-[4.25rem] sm:pt-[4.25rem] lg:pt-[4.75rem]",
+            hostChromeInset && "pt-11 sm:pt-11 lg:pt-11",
           )}
         >
           <div className="mb-7">
@@ -1745,7 +1745,7 @@ function SettingsSidebar({
     <aside
       className={cn(
         "flex w-full shrink-0 flex-col border-b border-[hsl(var(--cyber-panel-border)/0.28)] bg-card/62 px-3 pb-2 shadow-[inset_0_-1px_0_rgba(255,255,255,0.55)] backdrop-blur-xl dark:bg-card/45 dark:shadow-none md:w-[17rem] md:border-b-0 md:border-r md:px-3 md:pb-4 md:shadow-[inset_-1px_0_0_rgba(255,255,255,0.55)]",
-        hostChromeInset ? "pt-[4.25rem] md:pt-[4.25rem]" : "pt-4 md:pt-4",
+        hostChromeInset ? "pt-11 md:pt-11" : "pt-4 md:pt-4",
       )}
     >
       <button
