@@ -2,7 +2,7 @@
 #
 # 产物：
 #   - 安装包     src-tauri\target\release\bundle\nsis\*.exe
-#   - sidecar    src-tauri\binaries\biscuitbot-sidecar-<target-triple>.exe
+#   - sidecar    src-tauri\binaries\biscuitbot-sidecar\（onedir 目录）
 #
 # 前置要求：
 #   - Python 虚拟环境 .venv（含项目依赖）
@@ -49,7 +49,7 @@ if (-not (Test-Path $PyInstaller)) {
     if ($LASTEXITCODE -ne 0) { throw "pyinstaller 安装失败" }
 }
 
-Write-Info "==> 3/5 打包 gateway sidecar（PyInstaller one-file）"
+Write-Info "==> 3/5 打包 gateway sidecar（PyInstaller onedir）"
 # 剔除与 Python 解释器无关的运行时第三方依赖（渠道 SDK / GUI）；
 # prompt_toolkit 在 cli/commands.py 顶部被导入，必须保留。
 # 注意：不要剔除渠道 SDK（lark_oapi / dingtalk_stream / socketio / botpy 等）——
@@ -71,10 +71,7 @@ $Excludes = @(
     "--exclude-module", "PyQt6"
 )
 
-$TripleLine = & rustc -vV 2>$null | Select-String '^host: '
-$Triple = if ($TripleLine) { ($TripleLine -split ": ")[1].Trim() } else { "x86_64-pc-windows-msvc" }
-
-& $VenvPython -m PyInstaller --noconfirm --clean --onefile --windowed `
+& $VenvPython -m PyInstaller --noconfirm --clean --onedir --windowed `
     --paths "$Root" `
     --collect-submodules biscuitbot.channels `
     --name biscuitbot-sidecar `
@@ -86,9 +83,11 @@ $Triple = if ($TripleLine) { ($TripleLine -split ": ")[1].Trim() } else { "x86_6
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 打包失败" }
 
 New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
-$SidecarName = "biscuitbot-sidecar-$Triple.exe"
-Copy-Item -Force (Join-Path $DistDir "biscuitbot-sidecar.exe") (Join-Path $BinariesDir $SidecarName)
-Write-Info "    sidecar → src-tauri\binaries\$SidecarName"
+# onedir：整体复制目录（可执行文件 + _internal\），sidecar 启动时按相对路径找依赖
+$SidecarDir = Join-Path $BinariesDir "biscuitbot-sidecar"
+if (Test-Path $SidecarDir) { Remove-Item -Recurse -Force $SidecarDir }
+Copy-Item -Recurse -Force (Join-Path $DistDir "biscuitbot-sidecar") $SidecarDir
+Write-Info "    sidecar → src-tauri\binaries\biscuitbot-sidecar\"
 
 if ($SkipTauri) {
     Write-Info "（--SkipTauri 已跳过第 4/5、5/5 步）"

@@ -81,18 +81,27 @@ fn spawn_sidecar(app: &AppHandle) {
 }
 
 async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
-    let sidecar = match app.shell().sidecar("biscuitbot-sidecar") {
-        Ok(cmd) => cmd,
+    // onedir 打包：sidecar 是「可执行文件 + _internal/」目录，经 bundle.resources
+    // 随 app 分发（不再走 externalBin），需从 resource 目录解析可执行文件后手动启动。
+    let sidecar = match app.path().resource_dir() {
+        Ok(dir) => {
+            let bin_name = format!("biscuitbot-sidecar{}", std::env::consts::EXE_SUFFIX);
+            app.shell().command(
+                dir.join("binaries")
+                    .join("biscuitbot-sidecar")
+                    .join(bin_name),
+            )
+        }
         Err(err) => {
-            eprintln!("[biscuitbot] failed to create sidecar command: {err}");
+            eprintln!("[biscuitbot] failed to resolve resource dir: {err}");
             navigate_to(app, ERROR_PAGE);
             return SidecarOutcome::StartupFailed;
         }
     };
 
-    // PyInstaller onefile 是 bootstrap→runtime 两级进程，sidecar 内的 getppid()
-    // 指向 bootstrap 而非本壳；把壳自身 PID 经环境变量传给 sidecar，其看门狗
-    // 据此在壳被强杀时自清理，避免残留后台 gateway。
+    // 把壳自身 PID 经环境变量传给 sidecar，其看门狗据此在壳被强杀时自清理，避免
+    // 残留后台 gateway。（onefile 时代因 bootstrap→runtime 两级结构必须如此；onedir
+    // 下 getppid() 已直接指向壳，此环境变量仍保留以保持看门狗逻辑不变。）
     let sidecar = sidecar.env("BISCUITBOT_PARENT_PID", std::process::id().to_string());
 
     let (mut rx, child) = match sidecar.spawn() {

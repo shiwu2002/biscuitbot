@@ -118,10 +118,11 @@ def main(config: Any = None) -> None:
 def _watch_pid() -> int | None:
     """返回需要监控的宿主进程 PID。
 
-    打包场景：Tauri 壳通过环境变量 ``BISCUITBOT_PARENT_PID`` 传入自身 PID。
-    这是必要的——PyInstaller onefile 是“bootstrap 父进程 → 运行时子进程”
-    的两级结构，本进程的 ``getppid()`` 指向 bootstrap 而非壳，单纯靠
-    reparent 检测永远不触发。环境变量会随 bootstrap 继承给运行时子进程。
+    打包场景：Tauri 壳通过环境变量 ``BISCUITBOT_PARENT_PID`` 传入自身 PID，
+    看门狗据此在壳被强杀时自清理。onefile 打包时这是必须的——它是
+    “bootstrap 父进程 → 运行时子进程”两级结构，本进程的 ``getppid()`` 指向
+    bootstrap 而非壳，单纯靠 reparent 检测永远不触发。onedir 打包下单级进程，
+    ``getppid()`` 已直接指向壳，但保留该环境变量可避免依赖具体打包方式，更稳。
     未设置（``biscuitbot sidecar`` 直接跑）时返回 None，退化为 getppid 检测。
     """
     raw = os.environ.get("BISCUITBOT_PARENT_PID")
