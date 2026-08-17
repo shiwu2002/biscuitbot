@@ -1148,11 +1148,11 @@ export interface KnowledgeDocument {
   indexed_at?: string;
 }
 
-/** A generated asset (image / video / audio) produced by the agent. */
+/** A generated asset (image / video / audio / document) produced by the agent. */
 export interface Asset {
   id: string;
   name: string;
-  kind: "image" | "video" | "audio";
+  kind: "image" | "video" | "audio" | "document";
   size: number | null;
   created_at: string;
   caption: string;
@@ -1224,6 +1224,16 @@ export interface FilePreviewPayload {
   language: string;
   content: string;
   size: number;
+  truncated: boolean;
+}
+
+/** Text preview of a generated document asset (docx/pdf/xlsx/…). */
+export interface DocumentPreviewPayload {
+  id: string;
+  name: string;
+  kind: "document";
+  size: number;
+  content: string;
   truncated: boolean;
 }
 

@@ -8,6 +8,7 @@ import type {
   Employee,
   EmployeesPayload,
   CliAppsPayload,
+  DocumentPreviewPayload,
   FilePreviewPayload,
   ImageGenerationSettingsUpdate,
   KnowledgeDocument,
@@ -917,6 +918,21 @@ export async function deleteAsset(
   const query = new URLSearchParams();
   query.set("id", id);
   return request<AssetsPayload>(`${base}/api/settings/assets/delete?${query}`, token);
+}
+
+export async function fetchDocumentPreview(
+  token: string,
+  id: string,
+  base: string = "",
+): Promise<DocumentPreviewPayload> {
+  const query = new URLSearchParams();
+  query.set("id", id);
+  return request<DocumentPreviewPayload>(
+    `${base}/api/settings/assets/preview?${query}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
 }
 
 export async function loginProviderOAuth(

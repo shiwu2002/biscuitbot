@@ -1,16 +1,17 @@
 """资产列表/删除 helpers for the WebUI HTTP and message surfaces.
 
-「资产」= 智能体生成的图片/视频/音频，与用户主动上传的知识库文档分开：
+「资产」= 智能体生成的图片/视频/音频/文档，与用户主动上传的知识库文档分开：
 
 - 生成图片 ``media/generated/YYYY-MM-DD/img_<12hex>.png`` + sidecar ``.json``
 - 生成视频 ``media/generated_video/YYYY-MM-DD/vid_<12hex>.mp4`` + sidecar ``.json``
+- 生成文档 ``media/api/*_report.docx`` 等（外部 API 服务器产出，无 sidecar）
 - TTS 音频 ``<workspace>/generated/tts/<date>/tts_<12hex>.mp3``（无 sidecar）
 
-图片/视频都在 media 根内，直接用 ``sign_media`` 签名；TTS 在 media 根外，先
+图片/视频/文档都在 media 根内，直接用 ``sign_media`` 签名；TTS 在 media 根外，先
 **稳定 staging** 到 ``media/websocket/``（按源路径 sha256 定名，幂等）再签名，
 避免 ``sign_or_stage_media_path`` 每次生成新 uuid 文件名导致列表无限复制。
 
-``media/api``、``media/websocket`` 不属于生成资产，不在扫描范围内。
+``media/websocket`` 是 staging 区，不属于生成资产，不在扫描范围内。
 """
 
 from __future__ import annotations
@@ -32,15 +33,19 @@ from biscuitbot.webui.settings_api import WebUISettingsError
 
 QueryParams = dict[str, list[str]]
 
-_ASSET_ID_RE = re.compile(r"^(?:img|vid|tts)_[0-9a-f]{12}$")
+# 资产 id 来自文件名 stem，本身不含路径分隔符；真实防线是 delete_asset 里的
+# ``_safe_unlink`` 的 ``resolve().relative_to(root)``。这里只约束字符集与长度。
+_ASSET_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 # media 根下要纳入资产列表的子目录 → (kind, 扩展名集合)。
 _IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 _VIDEO_EXTS = frozenset({".mp4", ".webm", ".mov"})
 _AUDIO_EXTS = frozenset({".mp3", ".wav", ".m4a", ".ogg"})
+_DOCUMENT_EXTS = frozenset({".docx", ".pdf", ".md", ".txt", ".xlsx", ".csv", ".pptx"})
 _MEDIA_ASSET_DIRS: tuple[tuple[str, str, frozenset[str]], ...] = (
     ("generated", "image", _IMAGE_EXTS),
     ("generated_video", "video", _VIDEO_EXTS),
+    ("api", "document", _DOCUMENT_EXTS),
 )
 
 _TTS_REL_DIR = Path("generated") / "tts"
@@ -195,6 +200,46 @@ def _safe_unlink(path: Path, root: Path) -> bool:
         return False
 
 
+_PREVIEW_MAX_CHARS = 200_000
+
+
+def document_preview(query: QueryParams) -> dict[str, Any]:
+    """返回文档资产的文本预览。
+
+    docx/pdf/xlsx/pptx/txt 经 ``biscuitbot.utils.document.extract_text`` 提取
+    为纯文本（浏览器无法原生渲染 docx，这里给一个可读的文本预览）。
+    """
+    asset_id = (query_first(query, "id") or "").strip()
+    if not _ASSET_ID_RE.fullmatch(asset_id):
+        raise WebUISettingsError("invalid asset id")
+    media_root = get_media_dir()
+    root = media_root / "api"
+    if not root.is_dir():
+        raise WebUISettingsError("asset not found")
+    target: Path | None = None
+    for path in root.rglob(f"{asset_id}.*"):
+        if path.is_file() and path.suffix.lower() in _DOCUMENT_EXTS:
+            target = path
+            break
+    if target is None:
+        raise WebUISettingsError("asset not found")
+
+    from biscuitbot.utils.document import extract_text
+
+    text = extract_text(target) or ""
+    truncated = len(text) > _PREVIEW_MAX_CHARS
+    if truncated:
+        text = text[:_PREVIEW_MAX_CHARS]
+    return {
+        "id": asset_id,
+        "name": target.name,
+        "kind": "document",
+        "size": _file_size(target),
+        "content": text,
+        "truncated": truncated,
+    }
+
+
 def _remove_staged_tts(asset_id: str) -> None:
     """按稳定 staging 命名规则删除 ``media/websocket`` 中的 TTS 副本。"""
     target_dir = get_media_dir("websocket")
@@ -213,7 +258,8 @@ def delete_asset(
 ) -> dict[str, Any]:
     """按 id 删除一个生成资产，返回更新后的资产列表。
 
-    ``img_*`` / ``vid_*`` 删文件 + 同目录 sidecar；``tts_*`` 删源文件 + staging 副本。
+    id 不区分前缀，在所有 media 根子目录（图片/视频/文档）逐个查找删除，
+    同时清理同目录 sidecar ``.json``；``tts_*`` 删源文件 + staging 副本。
     """
     asset_id = (query_first(query, "id") or "").strip()
     if not _ASSET_ID_RE.fullmatch(asset_id):
@@ -223,24 +269,22 @@ def delete_asset(
     workspace = config.workspace_path
     media_root = get_media_dir()
 
-    if asset_id.startswith("tts_"):
-        root = workspace / _TTS_REL_DIR
-        if root.is_dir():
-            for path in root.rglob(f"{asset_id}.*"):
-                if path.is_file() and path.suffix.lower() in _AUDIO_EXTS:
-                    _safe_unlink(path, root)
-        _remove_staged_tts(asset_id)
-    else:
-        subdir, exts = (
-            ("generated", _IMAGE_EXTS)
-            if asset_id.startswith("img_")
-            else ("generated_video", _VIDEO_EXTS)
-        )
+    # media 根内的生成资产：图片/视频/文档 + sidecar
+    for subdir, _, exts in _MEDIA_ASSET_DIRS:
         root = media_root / subdir
-        if root.is_dir():
-            for path in root.rglob(f"{asset_id}.*"):
-                if path.is_file() and path.suffix.lower() in exts:
-                    _safe_unlink(path, root)
-            for sidecar in root.rglob(f"{asset_id}.json"):
-                _safe_unlink(sidecar, root)
+        if not root.is_dir():
+            continue
+        for path in root.rglob(f"{asset_id}.*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() in exts or path.suffix.lower() == ".json":
+                _safe_unlink(path, root)
+
+    # TTS 音频：源文件 + staging 副本
+    root = workspace / _TTS_REL_DIR
+    if root.is_dir():
+        for path in root.rglob(f"{asset_id}.*"):
+            if path.is_file() and path.suffix.lower() in _AUDIO_EXTS:
+                _safe_unlink(path, root)
+    _remove_staged_tts(asset_id)
     return assets_payload(sign_media)

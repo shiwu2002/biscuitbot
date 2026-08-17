@@ -15,6 +15,8 @@ from biscuitbot.api.server import (
     _save_base64_data_url,
     create_app,
 )
+from biscuitbot.config.loader import save_config
+from biscuitbot.config.schema import Config
 from biscuitbot.utils.document import extract_documents
 
 try:
@@ -25,6 +27,19 @@ except ImportError:
     HAS_AIOHTTP = False
 
 pytest_plugins = ("pytest_asyncio",)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_instance_dir(tmp_path, monkeypatch):
+    """把实例数据目录重定向到临时目录。
+
+    上传路径（``get_media_dir("api")`` → ``get_data_dir()`` → ``get_config_path()``）
+    最终由 ``config.loader._current_config_path`` 决定；不隔离的话 multipart/base64
+    测试会把文件写进真实的 ``~/.biscuitbot/media/api/``。
+    """
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
 
 
 def _make_mock_agent(response_text: str = "mock response") -> MagicMock:

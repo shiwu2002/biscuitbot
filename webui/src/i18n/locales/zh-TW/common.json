@@ -1247,12 +1247,17 @@
     },
     "assets": {
       "loading": "載入資產…",
-      "empty": "還沒有生成任何資產。智能體生成的圖片、影片、音訊會出現在這裡。",
+      "empty": "還沒有生成任何資產。智能體生成的圖片、文件、影片、音訊會出現在這裡。",
       "deleteConfirm": "確認刪除「{{name}}」？",
+      "filterEmpty": "此分類暫無資產。",
+      "filter": {
+        "all": "全部"
+      },
       "kind": {
         "image": "圖片",
         "video": "影片",
-        "audio": "音訊"
+        "audio": "音訊",
+        "document": "文件"
       }
     }
   }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
@@ -7,6 +7,7 @@ import {
   deleteAsset,
   deleteKnowledgeDocument,
   fetchAssets,
+  fetchDocumentPreview,
   fetchKnowledgeDocuments,
 } from "@/lib/api";
 import type { Asset, KnowledgeDocument } from "@/lib/types";
@@ -19,6 +20,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
     deleteKnowledgeDocument: vi.fn(),
     fetchAssets: vi.fn(),
     deleteAsset: vi.fn(),
+    fetchDocumentPreview: vi.fn(),
   };
 });
 
@@ -67,6 +69,15 @@ const ASSETS: Asset[] = [
     caption: "",
     media_url: "/api/media/x/tts.mp3",
   },
+  {
+    id: "e9329aaeb3bc_report",
+    name: "e9329aaeb3bc_report.docx",
+    kind: "document",
+    size: 128,
+    created_at: "2026-08-17T13:00:00+08:00",
+    caption: "",
+    media_url: "/api/media/x/report.docx",
+  },
 ];
 
 function renderView() {
@@ -101,7 +112,7 @@ describe("KnowledgeView 知识库视图", () => {
     expect(screen.getByRole("button", { name: "上传文件" })).toBeInTheDocument();
   });
 
-  it("切换到「资产」Tab 后列出图片/视频/音频", async () => {
+  it("切换到「资产」Tab 后列出图片/文档/视频/音频", async () => {
     vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
     renderView();
 
@@ -111,8 +122,33 @@ describe("KnowledgeView 知识库视图", () => {
     expect(await screen.findByText("img_1234567890ab.png")).toBeInTheDocument();
     expect(screen.getByText("vid_1234567890ab.mp4")).toBeInTheDocument();
     expect(screen.getByText("tts_1234567890ab.mp3")).toBeInTheDocument();
+    expect(screen.getByText("e9329aaeb3bc_report.docx")).toBeInTheDocument();
     // 资产 Tab 没有上传按钮
     expect(screen.queryByRole("button", { name: "上传文件" })).not.toBeInTheDocument();
+  });
+
+  it("资产分类筛选只显示所选类型的卡片", async () => {
+    vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
+    renderView();
+
+    await screen.findByText("guide.md");
+    fireEvent.click(screen.getByRole("button", { name: "资产" }));
+    await screen.findByText("e9329aaeb3bc_report.docx");
+
+    const view = within(screen.getByTestId("assets-view"));
+    fireEvent.click(view.getByRole("button", { name: "视频" }));
+    expect(screen.getByText("vid_1234567890ab.mp4")).toBeInTheDocument();
+    expect(screen.queryByText("img_1234567890ab.png")).not.toBeInTheDocument();
+    expect(screen.queryByText("e9329aaeb3bc_report.docx")).not.toBeInTheDocument();
+
+    fireEvent.click(view.getByRole("button", { name: "文档" }));
+    expect(screen.getByText("e9329aaeb3bc_report.docx")).toBeInTheDocument();
+    expect(screen.queryByText("vid_1234567890ab.mp4")).not.toBeInTheDocument();
+
+    fireEvent.click(view.getByRole("button", { name: "全部" }));
+    expect(screen.getByText("img_1234567890ab.png")).toBeInTheDocument();
+    expect(screen.getByText("vid_1234567890ab.mp4")).toBeInTheDocument();
+    expect(screen.getByText("tts_1234567890ab.mp3")).toBeInTheDocument();
   });
 
   it("点击图片资产打开图片预览（Lightbox）", async () => {
@@ -128,6 +164,30 @@ describe("KnowledgeView 知识库视图", () => {
     fireEvent.click(imageButton);
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("点击文档资产打开文本预览弹窗", async () => {
+    vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
+    vi.mocked(fetchDocumentPreview).mockResolvedValue({
+      id: "e9329aaeb3bc_report",
+      name: "e9329aaeb3bc_report.docx",
+      kind: "document",
+      size: 128,
+      content: "Total revenue: $5,000,000",
+      truncated: false,
+    });
+    renderView();
+
+    await screen.findByText("guide.md");
+    fireEvent.click(screen.getByRole("button", { name: "资产" }));
+    await screen.findByText("e9329aaeb3bc_report.docx");
+
+    fireEvent.click(screen.getByRole("button", { name: "e9329aaeb3bc_report.docx" }));
+
+    expect(
+      await screen.findByText("Total revenue: $5,000,000"),
+    ).toBeInTheDocument();
+    expect(fetchDocumentPreview).toHaveBeenCalledWith("tok", "e9329aaeb3bc_report");
   });
 
   it("删除资产走 confirm 并用返回值刷新列表", async () => {

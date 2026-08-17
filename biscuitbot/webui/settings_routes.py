@@ -18,7 +18,7 @@ from websockets.http11 import Response
 
 from biscuitbot.agent.tools.mcp import request_mcp_reload
 from biscuitbot.bus.queue import MessageBus
-from biscuitbot.webui.assets_api import assets_payload, delete_asset
+from biscuitbot.webui.assets_api import assets_payload, delete_asset, document_preview
 from biscuitbot.webui.cli_apps_api import cli_apps_action, cli_apps_payload
 from biscuitbot.webui.http_utils import query_first as _query_first
 from biscuitbot.webui.mcp_presets_api import mcp_presets_settings_action
@@ -131,6 +131,8 @@ class WebUISettingsRouter:
             return self._handle_settings_knowledge_delete(request)
         if path == "/api/settings/assets":
             return self._handle_settings_assets(request)
+        if path == "/api/settings/assets/preview":
+            return self._handle_settings_assets_preview(request)
         if path == "/api/settings/assets/delete":
             return self._handle_settings_assets_delete(request)
         if path == "/api/settings/cli-apps":
@@ -381,6 +383,15 @@ class WebUISettingsRouter:
         if self._sign_media is None:
             return self._error_response(500, "media signing unavailable")
         return self._json_response(assets_payload(self._sign_media))
+
+    def _handle_settings_assets_preview(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = document_preview(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(payload)
 
     def _handle_settings_assets_delete(self, request: WsRequest) -> Response:
         if not self._authorized(request):
