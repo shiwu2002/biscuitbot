@@ -1,0 +1,154 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
+import { ClientProvider } from "@/providers/ClientProvider";
+import {
+  deleteAsset,
+  deleteKnowledgeDocument,
+  fetchAssets,
+  fetchKnowledgeDocuments,
+} from "@/lib/api";
+import type { Asset, KnowledgeDocument } from "@/lib/types";
+
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+  return {
+    ...actual,
+    fetchKnowledgeDocuments: vi.fn(),
+    deleteKnowledgeDocument: vi.fn(),
+    fetchAssets: vi.fn(),
+    deleteAsset: vi.fn(),
+  };
+});
+
+const DOCS: KnowledgeDocument[] = [
+  {
+    doc_id: "guide.md",
+    kind: "document",
+    caption: "",
+    size: 123,
+    indexed_at: "2026-08-17T00:00:00Z",
+  },
+  {
+    doc_id: "photo.png",
+    kind: "image",
+    caption: "a red fox",
+    size: 456,
+    indexed_at: "2026-08-16T00:00:00Z",
+  },
+];
+
+const ASSETS: Asset[] = [
+  {
+    id: "img_1234567890ab",
+    name: "img_1234567890ab.png",
+    kind: "image",
+    size: 1000,
+    created_at: "2026-08-17T10:00:00+08:00",
+    caption: "a red fox",
+    media_url: "/api/media/x/img.png",
+  },
+  {
+    id: "vid_1234567890ab",
+    name: "vid_1234567890ab.mp4",
+    kind: "video",
+    size: 2000,
+    created_at: "2026-08-17T11:00:00+08:00",
+    caption: "",
+    media_url: "/api/media/x/vid.mp4",
+  },
+  {
+    id: "tts_1234567890ab",
+    name: "tts_1234567890ab.mp3",
+    kind: "audio",
+    size: 300,
+    created_at: "2026-08-17T12:00:00+08:00",
+    caption: "",
+    media_url: "/api/media/x/tts.mp3",
+  },
+];
+
+function renderView() {
+  return render(
+    <ClientProvider client={{} as never} token="tok">
+      <KnowledgeView onBackToChat={vi.fn()} />
+    </ClientProvider>,
+  );
+}
+
+describe("KnowledgeView 知识库视图", () => {
+  beforeEach(() => {
+    vi.mocked(fetchKnowledgeDocuments).mockResolvedValue({ documents: DOCS });
+    window.confirm = vi.fn(() => true) as unknown as typeof window.confirm;
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+  });
+
+  it("默认渲染「文档」Tab 并列出上传的文档", async () => {
+    renderView();
+
+    expect(await screen.findByText("guide.md")).toBeInTheDocument();
+    expect(screen.getByText("photo.png")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "文档" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // 上传按钮只在文档 Tab 出现
+    expect(screen.getByRole("button", { name: "上传文件" })).toBeInTheDocument();
+  });
+
+  it("切换到「资产」Tab 后列出图片/视频/音频", async () => {
+    vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
+    renderView();
+
+    await screen.findByText("guide.md");
+    fireEvent.click(screen.getByRole("button", { name: "资产" }));
+
+    expect(await screen.findByText("img_1234567890ab.png")).toBeInTheDocument();
+    expect(screen.getByText("vid_1234567890ab.mp4")).toBeInTheDocument();
+    expect(screen.getByText("tts_1234567890ab.mp3")).toBeInTheDocument();
+    // 资产 Tab 没有上传按钮
+    expect(screen.queryByRole("button", { name: "上传文件" })).not.toBeInTheDocument();
+  });
+
+  it("点击图片资产打开图片预览（Lightbox）", async () => {
+    vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
+    renderView();
+
+    await screen.findByText("guide.md");
+    fireEvent.click(screen.getByRole("button", { name: "资产" }));
+
+    const imageButton = await screen.findByRole("button", {
+      name: "img_1234567890ab.png",
+    });
+    fireEvent.click(imageButton);
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("删除资产走 confirm 并用返回值刷新列表", async () => {
+    vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
+    vi.mocked(deleteAsset).mockResolvedValue({
+      assets: ASSETS.filter((a) => a.id !== "tts_1234567890ab"),
+    });
+    renderView();
+
+    await screen.findByText("guide.md");
+    fireEvent.click(screen.getByRole("button", { name: "资产" }));
+
+    const deleteButtons = await screen.findAllByRole("button", { name: "删除" });
+    fireEvent.click(deleteButtons[2]); // 第三个 = TTS
+
+    await waitFor(() => {
+      expect(deleteAsset).toHaveBeenCalledWith("tok", "tts_1234567890ab");
+    });
+    await waitFor(() => {
+      expect(screen.queryByText("tts_1234567890ab.mp3")).not.toBeInTheDocument();
+    });
+    expect(deleteKnowledgeDocument).not.toHaveBeenCalled();
+  });
+});

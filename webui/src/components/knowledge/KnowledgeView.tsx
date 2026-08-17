@@ -16,6 +16,8 @@ import type { KnowledgeDocument } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
 
+import { AssetsView } from "./AssetsView";
+
 function formatBytes(bytes: number | null | undefined): string {
   if (bytes === null || bytes === undefined) return "—";
   if (bytes < 1024) return `${bytes} B`;
@@ -54,6 +56,7 @@ export function KnowledgeView({
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [tab, setTab] = useState<"documents" | "assets">("documents");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -142,36 +145,66 @@ export function KnowledgeView({
                 {tx("knowledge.title", "知识库")}
               </h1>
             </div>
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="h-9 shrink-0 rounded-[10px] px-4"
-            >
-              {uploading ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
-              ) : (
-                <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              )}
-              {tx("knowledge.upload", "上传文件")}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => handleFiles(e.target.files)}
-            />
+            {tab === "documents" ? (
+              <>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="h-9 shrink-0 rounded-[10px] px-4"
+                >
+                  {uploading ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+                  ) : (
+                    <Upload className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                  )}
+                  {tx("knowledge.upload", "上传文件")}
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => handleFiles(e.target.files)}
+                />
+              </>
+            ) : null}
           </div>
         </div>
 
-        {loading ? (
-          <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
-            {tx("knowledge.loading", "加载知识库…")}
-          </div>
-        ) : error && !docs ? (
+        <div className="mb-6 -mx-1 flex gap-1.5">
+          {(
+            [
+              { key: "documents" as const, labelKey: "knowledge.tabs.documents", fallback: "文档" },
+              { key: "assets" as const, labelKey: "knowledge.tabs.assets", fallback: "资产" },
+            ]
+          ).map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              aria-current={tab === item.key ? "page" : undefined}
+              onClick={() => setTab(item.key)}
+              className={cn(
+                "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
+                tab === item.key
+                  ? "bg-foreground/8 text-foreground"
+                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+              )}
+            >
+              {tx(item.labelKey, item.fallback)}
+            </button>
+          ))}
+        </div>
+
+        {tab === "documents" ? (
+          <>
+            {loading ? (
+              <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] text-sm text-muted-foreground">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                {tx("knowledge.loading", "加载知识库…")}
+              </div>
+            ) : error && !docs ? (
           <div className="cyber-glass-panel relative overflow-hidden rounded-[24px] px-5 py-4 text-sm text-muted-foreground">
             <span className="max-w-[520px]">{error}</span>
           </div>
@@ -248,7 +281,11 @@ export function KnowledgeView({
               ))}
             </div>
           </div>
-        ) : null}
+          ) : null}
+          </>
+        ) : (
+          <AssetsView />
+        )}
       </div>
     </main>
   );

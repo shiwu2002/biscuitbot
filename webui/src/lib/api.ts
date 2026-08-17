@@ -1,4 +1,5 @@
 import type {
+  Asset,
   AutomationsPayload,
   AutomationUpdatePayload,
   CapabilitiesPayload,
@@ -894,6 +895,28 @@ export async function deleteKnowledgeDocument(
     `${base}/api/settings/knowledge/delete?${query}`,
     token,
   );
+}
+
+/** 生成资产（图片/视频/音频）列表载荷。 */
+export interface AssetsPayload {
+  assets: Asset[];
+}
+
+export async function fetchAssets(
+  token: string,
+  base: string = "",
+): Promise<AssetsPayload> {
+  return request<AssetsPayload>(`${base}/api/settings/assets`, token);
+}
+
+export async function deleteAsset(
+  token: string,
+  id: string,
+  base: string = "",
+): Promise<AssetsPayload> {
+  const query = new URLSearchParams();
+  query.set("id", id);
+  return request<AssetsPayload>(`${base}/api/settings/assets/delete?${query}`, token);
 }
 
 export async function loginProviderOAuth(

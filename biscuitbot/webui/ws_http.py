@@ -212,6 +212,7 @@ class GatewayHTTPHandler:
             error_response=_http_error,
             runtime_surface=runtime_surface,
             runtime_capabilities=self._capabilities,
+            sign_media=self.media.sign_media_path,
         )
 
     def workspace_controls_available(self, connection: Any) -> bool:

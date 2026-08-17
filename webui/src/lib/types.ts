@@ -1148,6 +1148,17 @@ export interface KnowledgeDocument {
   indexed_at?: string;
 }
 
+/** A generated asset (image / video / audio) produced by the agent. */
+export interface Asset {
+  id: string;
+  name: string;
+  kind: "image" | "video" | "audio";
+  size: number | null;
+  created_at: string;
+  caption: string;
+  media_url: string;
+}
+
 /** Base64-encoded image attached to an outbound ``message`` envelope.
  *
  * ``data_url`` must be a ``data:image/<png|jpeg|webp|gif>;base64,...`` string

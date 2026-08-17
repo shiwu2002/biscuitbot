@@ -1240,6 +1240,20 @@
     "document": "文件",
     "size": "大小",
     "delete": "刪除",
-    "deleteConfirm": "確認刪除"
+    "deleteConfirm": "確認刪除",
+    "tabs": {
+      "documents": "文件",
+      "assets": "資產"
+    },
+    "assets": {
+      "loading": "載入資產…",
+      "empty": "還沒有生成任何資產。智能體生成的圖片、影片、音訊會出現在這裡。",
+      "deleteConfirm": "確認刪除「{{name}}」？",
+      "kind": {
+        "image": "圖片",
+        "video": "影片",
+        "audio": "音訊"
+      }
+    }
   }
 }

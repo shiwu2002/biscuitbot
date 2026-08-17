@@ -62,6 +62,12 @@ _MEDIA_ALLOWED_MIMES: frozenset[str] = frozenset({
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "audio/mpeg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mp4",
+    "audio/ogg",
+    "audio/aac",
 })
 _SVG_MEDIA_HEADERS: tuple[tuple[str, str], ...] = (
     (
