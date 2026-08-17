@@ -27,6 +27,7 @@ import { useDeferredTitleRefresh } from "@/hooks/useDeferredTitleRefresh";
 import { useSidebarState } from "@/hooks/useSidebarState";
 import { useSkills } from "@/hooks/useSkills";
 import { useEmployees } from "@/hooks/useEmployees";
+import { useIsDesktop } from "@/hooks/useIsDesktop";
 import { ThemeProvider, useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
 import {
@@ -676,7 +677,10 @@ function Shell({
   const pendingCreatedKeyRef = useRef<string | null>(null);
   const effectiveRuntimeSurface =
     settingsSnapshot?.surface ?? settingsSnapshot?.runtime_surface ?? runtimeSurface;
-  const showHostChrome = effectiveRuntimeSurface === "native";
+  const isNativeSurface = effectiveRuntimeSurface === "native";
+  const isDesktop = useIsDesktop();
+  /** 全宽顶栏布局：桌面端（浏览器或桌面壳）统一使用，移动端继续走 Sheet 抽屉。 */
+  const showHostChrome = isNativeSurface || isDesktop;
   const showMainSidebar = view !== "settings";
 
   const navigate = useCallback(
@@ -1667,11 +1671,11 @@ function Shell({
   const renderHostSidebarFlowContent = !showHostChrome || hostSidebarOpen;
 
   useEffect(() => {
-    document.documentElement.classList.toggle("native-host", showHostChrome);
+    document.documentElement.classList.toggle("native-host", isNativeSurface);
     return () => {
       document.documentElement.classList.remove("native-host");
     };
-  }, [showHostChrome]);
+  }, [isNativeSurface]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -1889,6 +1893,7 @@ function Shell({
                   onNativeEngineRestart={onNativeEngineRestart}
                   isRestarting={isRestarting}
                   hostChromeInset={showHostChrome}
+                  hideLogout={isNativeSurface}
                 />
               </div>
             ) : null}

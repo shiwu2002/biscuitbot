@@ -266,6 +266,8 @@ interface SettingsViewProps {
   onNativeEngineRestart?: () => Promise<string>;
   isRestarting?: boolean;
   hostChromeInset?: boolean;
+  /** 桌面壳（native）下隐藏「退出登录」，与顶栏 padding 解耦（浏览器桌面端仍显示）。 */
+  hideLogout?: boolean;
 }
 
 function readLocalPreferences(): LocalPreferences {
@@ -575,6 +577,7 @@ export function SettingsView({
   onNativeEngineRestart,
   isRestarting = false,
   hostChromeInset = false,
+  hideLogout = false,
 }: SettingsViewProps) {
   const { t } = useTranslation();
   const { token } = useClient();
@@ -1590,6 +1593,7 @@ export function SettingsView({
           onBackToChat={onBackToChat}
           onLogout={onLogout}
           hostChromeInset={hostChromeInset}
+          hideLogout={hideLogout}
         />
       ) : null}
 
@@ -1733,12 +1737,14 @@ function SettingsSidebar({
   onBackToChat,
   onLogout,
   hostChromeInset,
+  hideLogout,
 }: {
   activeSection: SettingsSectionKey;
   onSelectSection: (section: SettingsSectionKey) => void;
   onBackToChat: () => void;
   onLogout?: () => void;
   hostChromeInset?: boolean;
+  hideLogout?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -1789,7 +1795,7 @@ function SettingsSidebar({
       </nav>
 
       <div className="hidden md:mt-auto md:block md:pt-4">
-        {onLogout && !hostChromeInset ? (
+        {onLogout && !hideLogout ? (
           <Button
             type="button"
             variant="ghost"

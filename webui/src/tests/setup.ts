@@ -53,6 +53,30 @@ if (!("randomUUID" in globalThis.crypto)) {
   });
 }
 
+// happy-dom 默认 viewport 为 1024px，`(min-width: 1024px)` 命中会令 useIsDesktop
+// 误判为桌面端、启用全宽顶栏布局。这里默认提供「窄屏」matchMedia，需要桌面端
+// 行为的测试再自行 vi.stubGlobal("matchMedia", ...) 覆盖。
+function defaultMatchMedia(query: string): MediaQueryList {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return false;
+    },
+  } as MediaQueryList;
+}
+
+Object.defineProperty(window, "matchMedia", {
+  configurable: true,
+  writable: true,
+  value: defaultMatchMedia,
+});
+
 beforeEach(async () => {
   // 应用默认中文（defaultLocale=zh-CN，仅支持 zh-CN/zh-TW）。
   // 旧测试按英文产品编写，本处切到英文会触发 i18next 回退中文，

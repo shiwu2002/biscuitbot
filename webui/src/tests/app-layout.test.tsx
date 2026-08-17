@@ -281,6 +281,7 @@ describe("App layout", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("keeps sidebar layout out of the main thread width contract", async () => {
@@ -2168,18 +2169,13 @@ describe("App layout", () => {
     fireEvent.click(screen.getByRole("button", { name: "从顶部切换主题" }));
     expect(toggleThemeSpy).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
+    const toggle = screen.getByTestId("host-sidebar-toggle");
     const sidebarAside = container.querySelector("aside.lg\\:block") as HTMLElement;
-    await waitFor(() => expect(sidebarAside.style.width).toBe("56px"));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(sidebarAside.style.width).toBe("0px"));
+    expect(screen.queryByRole("navigation", { name: "侧边栏导航" })).not.toBeInTheDocument();
 
-    expect(screen.queryByRole("button", { name: "Start a new chat" })).not.toBeInTheDocument();
-    const rail = screen.getByRole("navigation", { name: "侧边栏导航" });
-    expect(within(rail).getByRole("button", { name: "新建对话" })).toBeInTheDocument();
-    expect(within(rail).getByRole("button", { name: "搜索" })).toBeInTheDocument();
-    expect(within(rail).queryByRole("button", { name: "View" })).not.toBeInTheDocument();
-    expect(within(rail).queryByText("Existing chat")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "切换侧边栏" }));
+    fireEvent.click(toggle);
     await waitFor(() => expect(sidebarAside.style.width).toBe("272px"));
 
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });

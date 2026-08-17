@@ -581,8 +581,21 @@ class WeixinChannel(BaseChannel):
         if self.config.token:
             self._token = self.config.token
         elif not self._load_state():
-            if not await self._qr_login():
-                self.logger.error("login failed. Run 'biscuitbot channels login weixin' to authenticate.")
+            # 无 token：不在此处阻塞式终端扫码（会挂起网关约 8 分钟，且与 WebUI
+            # 扫码登录流程冲突）。改为等待 WebUI 扫码登录 / CLI 登录把 token 写入
+            # account.json，随后自动续接长轮询，无需重启网关。
+            self.logger.info(
+                "weixin has no token; waiting for WebUI/CLI login to save one"
+            )
+            while self._running and not self._token:
+                await asyncio.sleep(2)
+                self._load_state()
+            if not self._token:
+                if self._running:
+                    self.logger.error(
+                        "weixin still has no token. Run 'biscuitbot channels login weixin' "
+                        "or scan via WebUI to authenticate."
+                    )
                 self._running = False
                 return
 
