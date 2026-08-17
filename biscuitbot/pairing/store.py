@@ -180,6 +180,24 @@ def revoke(channel: str, sender_id: str) -> bool:
         return False
 
 
+def clear_channel(channel: str) -> bool:
+    """Clear all approved senders for *channel*.
+
+    Used when a channel re-authenticates (e.g. WeChat 重新扫码登录连接新设备) so
+    the next private message re-enters the pairing-code flow.  Returns ``True``
+    if the channel had approved senders and they were removed.
+    """
+    with _LOCK:
+        data = _load()
+        approved: dict[str, set[str]] = data.get("approved", {})
+        if channel in approved:
+            del approved[channel]
+            _save(data)
+            logger.info("Cleared all approved senders for {}", channel)
+            return True
+        return False
+
+
 def get_approved(channel: str) -> list[str]:
     """Return all approved sender IDs for *channel*."""
     with _LOCK:

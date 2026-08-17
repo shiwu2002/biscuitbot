@@ -83,6 +83,20 @@ class TestRevoke:
         assert store.revoke("telegram", "999") is False
 
 
+class TestClearChannel:
+    def test_clears_all_senders(self) -> None:
+        for sender in ("123", "456"):
+            store.approve_code(store.generate_code("telegram", sender))
+        assert store.get_approved("telegram") == ["123", "456"]
+
+        assert store.clear_channel("telegram") is True
+        assert store.get_approved("telegram") == []
+        assert store.is_approved("telegram", "123") is False
+
+    def test_unknown_channel_returns_false(self) -> None:
+        assert store.clear_channel("nope") is False
+
+
 class TestListPending:
     def test_empty(self) -> None:
         assert store.list_pending() == []

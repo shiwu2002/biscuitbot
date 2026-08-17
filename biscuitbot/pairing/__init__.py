@@ -2,6 +2,7 @@
 
 from biscuitbot.pairing.store import (
     approve_code,
+    clear_channel,
     deny_code,
     format_expiry,
     format_pairing_reply,
@@ -19,6 +20,7 @@ PAIRING_COMMAND_META_KEY = "_pairing_command"
 
 __all__ = [
     "approve_code",
+    "clear_channel",
     "deny_code",
     "format_expiry",
     "format_pairing_reply",

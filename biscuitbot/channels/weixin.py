@@ -43,6 +43,7 @@ from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir, get_runtime_subdir  # 媒体目录与运行时子目录获取
 from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.pairing import clear_channel  # 重新扫码登录后清空配对授权
 from biscuitbot.utils.helpers import split_message  # 消息分块工具
 
 # ---------------------------------------------------------------------------
@@ -128,6 +129,10 @@ def _has_downloadable_media_locator(media: dict[str, Any] | None) -> bool:
     return bool(str(media.get("encrypt_query_param", "") or "") or str(media.get("full_url", "") or "").strip())
 
 
+class _TokenInvalidated(Exception):
+    """内部信号：微信 bot token 已被服务端作废（errcode -14），需重新扫码登录。"""
+
+
 class WeixinConfig(Base):
     """个人微信渠道配置。"""
 
@@ -172,6 +177,7 @@ class WeixinChannel(BaseChannel):
         self._poll_task: asyncio.Task | None = None  # 轮询任务
         self._next_poll_timeout_s: int = DEFAULT_LONG_POLL_TIMEOUT_S  # 下次轮询超时（可被服务端覆盖）
         self._session_pause_until: float = 0.0  # 会话暂停截止时间（过期后暂停轮询）
+        self._failed_token: str = ""  # 最近一次因 errcode -14 失效的 token，用于识别磁盘上是否有新 token
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> 打字保活任务
         self._typing_tickets: dict[str, dict[str, Any]] = {}  # chat_id -> 打字票据缓存
         self._context_token_at: dict[str, float] = {}  # chat_id -> context_token 缓存时间戳
@@ -394,6 +400,8 @@ class WeixinChannel(BaseChannel):
                         if base_url:
                             self.config.base_url = base_url
                         self._save_state()
+                        # 全新登录：清空配对授权，让下一次私聊重新进入配对码流程。
+                        clear_channel(self.name)
                         self.logger.info(
                             "login successful! bot_id={} user_id={}",
                             bot_id,
@@ -469,12 +477,17 @@ class WeixinChannel(BaseChannel):
 
         供 WebUI 引导界面调用：一次性拿到 ``qrcode_id`` 与 ``qr_content``，
         前端用任意二维码库把 ``qr_content`` 渲染成二维码供用户扫描。
+
+        每次调用都会先清除旧 token（含磁盘 account.json），确保这是一次全新登录，
+        用于「切换设备 / 重新连接」场景：点「扫码连接」即重新生成 token 连接新设备。
         """
         if self._client is None:
             self._client = httpx.AsyncClient(
                 timeout=httpx.Timeout(6, connect=15),
                 follow_redirects=True,
             )
+        # 清除旧 token：每次「扫码连接」都是一次全新登录（连接新设备）。
+        self._invalidate_token()
         qrcode_id, qr_content = await self._fetch_qr_code()
         return {"qrcode_id": qrcode_id, "qr_content": qr_content}
 
@@ -514,6 +527,10 @@ class WeixinChannel(BaseChannel):
                 if base_url:
                     self.config.base_url = base_url
                 self._save_state()
+                # 全新登录（扫码连接新设备）：清空该渠道的配对授权，让下一次
+                # 私聊重新进入配对码流程（否则沿用旧 token 时代已授权的用户，
+                # 换新设备后收不到验证码）。
+                clear_channel(self.name)
                 result.update({
                     "confirmed": True,
                     "bot_id": status_data.get("ilink_bot_id", ""),
@@ -570,7 +587,11 @@ class WeixinChannel(BaseChannel):
                 self._client = None
 
     async def start(self) -> None:
-        """启动渠道：初始化客户端、加载/登录 token、开始长轮询循环。"""
+        """启动渠道：初始化客户端、加载/登录 token、开始长轮询循环。
+
+        token 失效（errcode -14）后会自动清除并回到「等待重新扫码」状态，
+        重新扫码成功后无需重启网关即可续接长轮询。
+        """
         self._running = True
         self._next_poll_timeout_s = self.config.poll_timeout
         self._client = httpx.AsyncClient(
@@ -578,48 +599,66 @@ class WeixinChannel(BaseChannel):
             follow_redirects=True,
         )
 
-        if self.config.token:
-            self._token = self.config.token
-        elif not self._load_state():
-            # 无 token：不在此处阻塞式终端扫码（会挂起网关约 8 分钟，且与 WebUI
-            # 扫码登录流程冲突）。改为等待 WebUI 扫码登录 / CLI 登录把 token 写入
-            # account.json，随后自动续接长轮询，无需重启网关。
-            self.logger.info(
-                "weixin has no token; waiting for WebUI/CLI login to save one"
-            )
-            while self._running and not self._token:
-                await asyncio.sleep(2)
-                self._load_state()
-            if not self._token:
-                if self._running:
-                    self.logger.error(
-                        "weixin still has no token. Run 'biscuitbot channels login weixin' "
-                        "or scan via WebUI to authenticate."
-                    )
-                self._running = False
-                return
-
-        self.logger.info("channel starting with long-poll...")
-
-        consecutive_failures = 0
+        # 外层循环：token 失效后回到这里，等待重新扫码再续接长轮询。
         while self._running:
-            try:
-                await self._poll_once()
-                consecutive_failures = 0
-            except httpx.TimeoutException:
-                # 长轮询超时是正常行为，直接重试
-                continue
-            except Exception:
+            if self.config.token:
+                self._token = self.config.token
+            elif not self._token:
+                self._load_state()
+
+            # 若重新加载到的仍是刚失效的旧 token（磁盘上无新 token），删除
+            # account.json 并进入「等待重新扫码」，避免反复用失效 token 长轮询。
+            if self._failed_token and self._token == self._failed_token:
+                self.logger.warning(
+                    "reloaded the same invalidated token; clearing account.json and waiting for re-login"
+                )
+                self._invalidate_token()
+                self._failed_token = ""
+
+            if not self._token:
+                # 无 token：不在此处阻塞式终端扫码（会挂起网关约 8 分钟，且与 WebUI
+                # 扫码登录流程冲突）。改为等待 WebUI 扫码登录 / CLI 登录把 token 写入
+                # account.json，随后自动续接长轮询，无需重启网关。
+                self.logger.info(
+                    "weixin has no token; waiting for WebUI/CLI login to save one"
+                )
+                while self._running and not self._token:
+                    await asyncio.sleep(2)
+                    if self.config.token:
+                        self._token = self.config.token
+                    else:
+                        self._load_state()
                 if not self._running:
-                    break
-                self.logger.exception("WeChat poll loop error")
-                consecutive_failures += 1
-                if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-                    # 连续失败次数过多，进入退避
+                    return
+                self._session_pause_until = 0.0
+
+            self.logger.info("channel starting with long-poll...")
+
+            consecutive_failures = 0
+            while self._running and self._token:
+                try:
+                    await self._poll_once()
                     consecutive_failures = 0
-                    await asyncio.sleep(BACKOFF_DELAY_S)
-                else:
-                    await asyncio.sleep(RETRY_DELAY_S)
+                except _TokenInvalidated:
+                    # token 已失效并清除，回到外层等待重新扫码。
+                    self.logger.warning(
+                        "weixin token invalidated; waiting for a fresh QR login"
+                    )
+                    break
+                except httpx.TimeoutException:
+                    # 长轮询超时是正常行为，直接重试
+                    continue
+                except Exception:
+                    if not self._running:
+                        break
+                    self.logger.exception("WeChat poll loop error")
+                    consecutive_failures += 1
+                    if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                        # 连续失败次数过多，进入退避
+                        consecutive_failures = 0
+                        await asyncio.sleep(BACKOFF_DELAY_S)
+                    else:
+                        await asyncio.sleep(RETRY_DELAY_S)
 
     async def stop(self) -> None:
         """停止渠道：取消轮询任务、停止打字指示器、关闭客户端、保存状态。"""
@@ -636,6 +675,25 @@ class WeixinChannel(BaseChannel):
     # ------------------------------------------------------------------
     # 轮询（对应 monitor.ts 的 monitorWeixinProvider）
     # ------------------------------------------------------------------
+
+    def _clear_session_state(self) -> None:
+        """清空内存中的 token 与会话状态（不触碰磁盘上的 account.json）。"""
+        self._token = ""
+        self._get_updates_buf = ""
+        self._context_tokens.clear()
+        self._typing_tickets.clear()
+        self._session_pause_until = 0.0
+
+    def _invalidate_token(self) -> None:
+        """清除失效 token：清空内存并删除磁盘上的 account.json。
+
+        微信 token 被作废（errcode -14）后调用，确保后续回到「等待重新扫码」
+        状态时不会反复加载同一个已失效的 token。
+        """
+        self._clear_session_state()
+        state_file = self._get_state_dir() / "account.json"
+        with suppress(Exception):
+            state_file.unlink()
 
     def _pause_session(self, duration_s: int = SESSION_PAUSE_DURATION_S) -> None:
         """暂停会话（会话过期后暂停轮询一段时间）。"""
@@ -684,15 +742,17 @@ class WeixinChannel(BaseChannel):
 
         if is_error:
             if errcode == ERRCODE_SESSION_EXPIRED or ret == ERRCODE_SESSION_EXPIRED:
-                # 会话过期：暂停轮询
-                self._pause_session()
-                remaining = self._session_pause_remaining_s()
+                # 会话失效（errcode -14）：token 已被微信服务端作废（如多端抢登）。
+                # 不再盲等 60 分钟——清除内存 token 并抛出专用信号，由 start() 回到
+                # 「等待重新扫码」状态。磁盘上的 account.json 暂不删除：若用户正在
+                # 「扫码连接」并已写入新 token，start() 会直接续接新 token（切换设备）。
                 self.logger.warning(
-                    "session expired (errcode {}). Pausing {} min.",
+                    "session expired (errcode {}); clearing token and waiting for re-login",
                     errcode,
-                    max((remaining + 59) // 60, 1),
                 )
-                return
+                self._failed_token = self._token
+                self._clear_session_state()
+                raise _TokenInvalidated()
             raise RuntimeError(
                 f"getUpdates failed: ret={ret} errcode={errcode} errmsg={data.get('errmsg', '')}"
             )

@@ -11,6 +11,7 @@ import pytest
 
 import biscuitbot.channels.weixin as weixin_mod
 from biscuitbot.bus.queue import MessageBus
+from biscuitbot.pairing import store as pairing_store
 from biscuitbot.channels.weixin import (
     ITEM_IMAGE,
     ITEM_TEXT,
@@ -21,6 +22,12 @@ from biscuitbot.channels.weixin import (
     _decrypt_aes_ecb,
     _encrypt_aes_ecb,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_pairing_store(tmp_path, monkeypatch):
+    """隔离 pairing 存储，避免测试写入真实的 ~/.biscuitbot/pairing.json。"""
+    monkeypatch.setattr(pairing_store, "_store_path", lambda: tmp_path / "pairing.json")
 
 
 def _make_channel() -> tuple[WeixinChannel, MessageBus]:
@@ -433,15 +440,40 @@ async def test_send_still_sends_text_when_typing_ticket_missing() -> None:
 
 
 @pytest.mark.asyncio
-async def test_poll_once_pauses_session_on_expired_errcode() -> None:
+async def test_poll_once_invalidates_token_on_expired_errcode() -> None:
     channel, _bus = _make_channel()
     channel._client = SimpleNamespace(timeout=None)
     channel._token = "token"
     channel._api_post = AsyncMock(return_value={"ret": 0, "errcode": -14, "errmsg": "expired"})
 
-    await channel._poll_once()
+    with pytest.raises(weixin_mod._TokenInvalidated):
+        await channel._poll_once()
 
-    assert channel._session_pause_remaining_s() > 0
+    assert channel._token == ""
+    assert channel._get_updates_buf == ""
+    # 记住失效 token，供 start() 识别「磁盘上是否已有新 token」。
+    assert channel._failed_token == "token"
+
+
+@pytest.mark.asyncio
+async def test_fetch_login_qr_clears_old_token_before_generating_qr() -> None:
+    """每次「扫码连接」都应先清除旧 token，再生成新二维码连接新设备。"""
+    channel, _bus = _make_channel()
+    channel._token = "old-token"
+    channel._get_updates_buf = "buf"
+    channel._context_tokens = {"u": "ctx"}
+    channel._typing_tickets = {"u": {"ticket": 1}}
+    channel._session_pause_until = 999.0
+    channel._fetch_qr_code = AsyncMock(return_value=("qr-1", "content-1"))
+
+    result = await channel.fetch_login_qr()
+
+    assert result == {"qrcode_id": "qr-1", "qr_content": "content-1"}
+    assert channel._token == ""
+    assert channel._get_updates_buf == ""
+    assert channel._context_tokens == {}
+    assert channel._typing_tickets == {}
+    assert channel._session_pause_until == 0.0
 
 
 @pytest.mark.asyncio
