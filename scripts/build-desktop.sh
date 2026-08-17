@@ -41,8 +41,9 @@ while [[ $# -gt 0 ]]; do
       DIST_DIR="$ROOT/dist-x86"
       WORK_DIR="$ROOT/build-x86"
       RELEASE_SUBPATH="x86_64-apple-darwin/release"
-      # 独立 bundle identifier + 产品名，避免与 arm64 版在 macOS 上“撞名”
-      TAURI_BUILD_ARGS=(--target "$TARGET_TRIPLE" --config "$ROOT/src-tauri/tauri.x64.conf.json")
+      # 应用名 / identifier 与 arm64 版一致（biscuitbot / com.biscuitbot.desktop），
+      # 仅交叉编译目标不同；DMG 文件名按架构区分（_x64 vs _aarch64）。
+      TAURI_BUILD_ARGS=(--target "$TARGET_TRIPLE")
       ;;
     *)
       echo "未知参数: $1（支持 --intel）" >&2
@@ -112,7 +113,12 @@ cd "$ROOT"
 
 echo "==> 5/5 Tauri 构建（release，${TARGET_TRIPLE}）"
 cd "$ROOT/src-tauri"
-bun x tauri build "${TAURI_BUILD_ARGS[@]}"
+# bash 3.2 下 `set -u` 会把空数组的 "${arr[@]}" 判为 unbound，须先判长度
+if [[ ${#TAURI_BUILD_ARGS[@]} -gt 0 ]]; then
+  bun x tauri build "${TAURI_BUILD_ARGS[@]}"
+else
+  bun x tauri build
+fi
 cd "$ROOT"
 
 echo
