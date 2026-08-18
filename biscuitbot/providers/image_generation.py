@@ -208,6 +208,27 @@ def image_gen_provider_configs(config: Any) -> dict[str, Any]:
     return result
 
 
+def unified_provider_configs(config: Any) -> dict[str, Any]:
+    """从统一 providers 配置提取全部厂商（固定字段 + model_extra 自定义厂商）。
+
+    与 :func:`image_gen_provider_configs` 不同，本函数不按图像能力过滤，而是返回
+    providers 下所有已声明的厂商配置，供各能力工具（文生图 / 文生视频 / 视觉 /
+    TTS / 转写等）以自身 ``provider`` 字段按厂商名取用密钥、base_url 与模型，
+    实现「能力」与「厂商」解耦——同一厂商（如 volcengine）可同时服务多种能力，
+    不同能力也能指向不同厂商。
+    """
+    providers_cfg = config.providers
+    result: dict[str, Any] = {}
+    for name in type(providers_cfg).model_fields:
+        pc = getattr(providers_cfg, name, None)
+        if pc is not None:
+            result[name] = pc
+    for extra_name, pc in (providers_cfg.model_extra or {}).items():
+        if pc is not None:
+            result[extra_name] = pc
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Base class —— 图像生成 Provider 抽象基类
 # ---------------------------------------------------------------------------

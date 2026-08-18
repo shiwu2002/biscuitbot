@@ -214,10 +214,12 @@ class SeedanceVideoTool(Tool):
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         """从上下文创建工具实例。"""
-        # 火山方舟密钥与文生图共用：从图像生成提供商配置里取 volcengine。
-        provider_configs = getattr(ctx, "image_generation_provider_configs", None) or {}
-        volcengine_cfg = provider_configs.get("volcengine")
-        ark_api_key = getattr(volcengine_cfg, "api_key", None)
+        # 密钥从统一 providers 配置按 seedance_video.provider 取用（默认火山方舟），
+        # 与文生图解耦：两者可指向不同厂商，厂商密钥统一走「模型厂商」页配置。
+        provider_configs = getattr(ctx, "provider_configs", None) or {}
+        provider_name = ctx.config.seedance_video.provider
+        provider_cfg = provider_configs.get(provider_name)
+        ark_api_key = getattr(provider_cfg, "api_key", None)
         return cls(
             workspace=ctx.workspace,
             config=ctx.config.seedance_video,

@@ -95,6 +95,7 @@ class ToolContext:
     sessions: Any | None = None  # 会话管理
     provider_snapshot_loader: Callable[[], Any] | None = None  # 模型快照加载器
     image_generation_provider_configs: dict[str, Any] | None = None  # 图像生成供应商配置
+    provider_configs: dict[str, Any] | None = None  # 统一供应商配置（所有已配置厂商，含 model_extra）
     vision_provider_loader: Callable[[], Any] | None = None  # 视觉模型加载器
     timezone: str = "UTC"  # 时区，默认 UTC
     file_state_store: Any = field(default=None)  # 文件状态存储

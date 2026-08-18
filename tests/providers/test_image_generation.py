@@ -15,6 +15,7 @@ from biscuitbot.providers.image_generation import (
     VolcanoImageGenerationClient,
     ZhipuImageGenerationClient,
     image_gen_provider_configs,
+    unified_provider_configs,
 )
 
 PNG_BYTES = (
@@ -92,6 +93,31 @@ def test_image_gen_provider_configs_includes_model_extra_providers() -> None:
 
     # 固定字段里的官方提供商仍照常返回（即便 api_key 为空）
     assert "openai" in result
+
+
+def test_unified_provider_configs_includes_fixed_and_model_extra() -> None:
+    """unified_provider_configs 必须同时返回固定字段与 model_extra 里的自定义厂商，
+    这是 seedance_video 等工具按 provider 名解析密钥的统一来源。"""
+    from biscuitbot.config.schema import Config
+
+    cfg = Config(
+        providers={
+            "openai": {"apiKey": "sk-openai"},
+            "volcengine": {"apiKey": "ark-key"},
+            "my_video_vendor": {"apiKey": "video-key"},
+        }
+    )
+    result = unified_provider_configs(cfg)
+
+    # 固定字段厂商
+    assert "openai" in result
+    assert result["openai"].api_key == "sk-openai"
+    # model_extra 自定义厂商（能力专用，如 volcengine）
+    assert "volcengine" in result
+    assert result["volcengine"].api_key == "ark-key"
+    # 任意自定义厂商（视频/图像可指向不同厂商）
+    assert "my_video_vendor" in result
+    assert result["my_video_vendor"].api_key == "video-key"
 
 
 @pytest.mark.asyncio

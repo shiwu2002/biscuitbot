@@ -144,3 +144,42 @@ def test_config_registered_in_schema() -> None:
 
     assert "seedance_video" in ToolsConfig.model_fields
     assert SchemaConfig is SeedanceVideoToolConfig
+
+
+def test_create_resolves_key_from_unified_provider_config(tmp_path: Path) -> None:
+    """视频密钥按 seedance_video.provider 从统一 providers 配置取用，与文生图解耦。"""
+    ctx = SimpleNamespace(
+        workspace=tmp_path,
+        config=SimpleNamespace(
+            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="volcengine")
+        ),
+        provider_configs={"volcengine": SimpleNamespace(api_key="ark-from-provider")},
+    )
+    tool = SeedanceVideoTool.create(ctx)
+    assert tool._ark_api_key == "ark-from-provider"
+
+
+def test_create_supports_different_provider_than_image_gen(tmp_path: Path) -> None:
+    """文生视频可指向与文生图不同的厂商，只要该厂商已在「模型厂商」页配置。"""
+    ctx = SimpleNamespace(
+        workspace=tmp_path,
+        config=SimpleNamespace(
+            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="my_video_vendor")
+        ),
+        provider_configs={"my_video_vendor": SimpleNamespace(api_key="video-vendor-key")},
+    )
+    tool = SeedanceVideoTool.create(ctx)
+    assert tool._ark_api_key == "video-vendor-key"
+
+
+def test_create_missing_provider_falls_back_to_none(tmp_path: Path) -> None:
+    """厂商未配置时 create 不抛错，密钥解析交给 _api_key 的环境变量兜底。"""
+    ctx = SimpleNamespace(
+        workspace=tmp_path,
+        config=SimpleNamespace(
+            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="volcengine")
+        ),
+        provider_configs={},
+    )
+    tool = SeedanceVideoTool.create(ctx)
+    assert tool._ark_api_key is None

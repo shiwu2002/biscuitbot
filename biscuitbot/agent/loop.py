@@ -245,6 +245,7 @@ class AgentLoop:
         tools_config: ToolsConfig | None = None,
         image_generation_provider_config: ProviderConfig | None = None,
         image_generation_provider_configs: dict[str, ProviderConfig] | None = None,
+        provider_configs: dict[str, ProviderConfig] | None = None,
         provider_snapshot_loader: Callable[..., ProviderSnapshot] | None = None,
         provider_signature: tuple[object, ...] | None = None,
         model_presets: dict[str, ModelPresetConfig] | None = None,
@@ -293,6 +294,7 @@ class AgentLoop:
         self.web_config = _tc.web
         self.exec_config = _tc.exec
         self._image_generation_provider_configs = dict(image_generation_provider_configs or {})
+        self._provider_configs = dict(provider_configs or {})  # 统一供应商配置（供各能力工具按 provider 字段取用）
         if (
             image_generation_provider_config is not None
             and "openrouter" not in self._image_generation_provider_configs
@@ -438,10 +440,16 @@ class AgentLoop:
                     return None
 
             vision_provider_loader = _default_vision_loader
+        provider_configs = extra.pop("provider_configs", None)
+        if provider_configs is None:
+            from biscuitbot.providers.image_generation import unified_provider_configs
+
+            provider_configs = unified_provider_configs(config)
         return cls(
             bus=bus,
             provider=provider,
             workspace=config.workspace_path,
+            provider_configs=provider_configs,
             model=model,
             max_iterations=defaults.max_tool_iterations,
             max_concurrent_subagents=defaults.max_concurrent_subagents,
@@ -570,6 +578,7 @@ class AgentLoop:
             sessions=self.sessions,
             provider_snapshot_loader=self._provider_snapshot_loader,
             image_generation_provider_configs=self._image_generation_provider_configs,
+            provider_configs=self._provider_configs,
             vision_provider_loader=self._vision_provider_loader,
             timezone=self.context.timezone or "UTC",
             workspace_sandbox=self.workspace_scopes.sandbox_status,
