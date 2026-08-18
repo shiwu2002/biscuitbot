@@ -18,7 +18,7 @@
 | duration | integer | 否 | 5 | 时长（秒），2.0 支持 4–15，2.5 支持到 30 |
 | resolution | string | 否 | - | 清晰度：480p / 720p / 1080p / 4K（4K 仅 2.5）。**仅文生/图生视频可用**，带参考素材（r2v）时勿传 |
 | generate_audio | boolean | 否 | false | 是否开启音画同步生成音频 |
-| watermark | boolean | 否 | true | 是否添加水印 |
+| watermark | boolean | 否 | false | 是否添加水印（默认关闭 = 去水印） |
 | model | string | 否 | 配置默认 | 模型覆盖：doubao-seedance-2-5-260628 / doubao-seedance-2-0-260128 / Endpoint ID |
 
 ## 调用示例

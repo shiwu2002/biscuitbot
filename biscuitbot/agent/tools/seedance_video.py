@@ -90,7 +90,7 @@ class SeedanceVideoToolConfig(Base):
     default_duration: int = Field(default=5, ge=_MIN_DURATION, le=_MAX_DURATION)  # 默认时长（秒）
     default_resolution: str | None = None  # 默认清晰度，None 表示交给模型
     generate_audio: bool = False  # 是否默认开启音画同步生成音频
-    watermark: bool = True  # 是否默认添加水印
+    watermark: bool = False  # 是否默认添加水印（默认关闭 = 去水印）
     save_dir: str = "generated_video"  # artifact 保存子目录名
     poll_interval_sec: float = Field(default=10.0, ge=1.0, le=60.0)  # 轮询间隔（秒）
     max_poll_attempts: int = Field(default=180, ge=1, le=600)  # 最大轮询次数（约 30 分钟）
@@ -177,7 +177,7 @@ def _audio_mime_from_suffix(path: Path) -> str:
             description="是否开启音画同步生成音频。",
         ),
         watermark=BooleanSchema(
-            description="是否添加水印（默认开启）。",
+            description="是否添加水印（默认关闭，即去水印）。",
         ),
         model=StringSchema(
             "可选模型覆盖（默认用配置里的 model，可切到 doubao-seedance-2-0-260128 或 Endpoint ID ep-...）。",

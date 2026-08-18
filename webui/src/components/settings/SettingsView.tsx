@@ -377,7 +377,7 @@ const DEFAULT_VIDEO_GENERATION_FORM: VideoGenerationSettingsUpdate = {
   defaultDuration: 5,
   defaultResolution: "",
   generateAudio: false,
-  watermark: true,
+  watermark: false,
 };
 
 const DEFAULT_SCREENSHOT_FORM: ScreenshotSettingsUpdate = {
