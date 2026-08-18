@@ -56,11 +56,10 @@ TTS_PROVIDERS: tuple[TtsProviderSpec, ...] = (
     ),
     TtsProviderSpec(
         name="dashscope",
-        default_model="cosyvoice-v2",
-        default_voice="longxiaochun",
-        adapter="biscuitbot.providers.tts:OpenAITtsProvider",
+        default_model="cosyvoice-v3-flash",
+        default_voice="longxiaochun_v3",
+        adapter="biscuitbot.providers.tts:DashScopeTtsProvider",
         aliases=("aliyun", "tongyi"),
-        default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
     ),
     TtsProviderSpec(
         name="edge-tts",

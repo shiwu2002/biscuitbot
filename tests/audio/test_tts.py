@@ -77,6 +77,6 @@ def test_explicit_top_level_values_preserved_across_override() -> None:
     cfg.tts.rate = "-20%"
     eff = resolve_tts_config_with_overrides(cfg, provider="dashscope")
     assert eff.provider == "dashscope"
-    assert eff.model == "cosyvoice-v2"
-    assert eff.voice == "longxiaochun"
+    assert eff.model == "cosyvoice-v3-flash"
+    assert eff.voice == "longxiaochun_v3"
     assert eff.rate == "-20%"

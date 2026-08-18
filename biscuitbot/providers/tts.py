@@ -205,3 +205,71 @@ class EdgeTtsProvider:
         except Exception as exc:
             raise TtsError(f"Edge TTS 合成失败：{exc}") from exc
         return str(path)
+
+
+def _dashscope_rate(rate: str | None) -> float:
+    """把 "+10%" 形式的语速转成 DashScope speech_rate（0.5~2.0 浮点倍率）。"""
+    return max(0.5, min(2.0, _rate_to_speed(rate)))
+
+
+class DashScopeTtsProvider:
+    """使用阿里云 DashScope 官方 SDK 的语音合成 Provider（CosyVoice 等）。
+
+    DashScope 的 OpenAI 兼容模式（``compatible-mode/v1``）不提供 ``/audio/speech``，
+    因此本适配器改走 DashScope 原生 SDK（内部使用 WebSocket），复用同一个 API Key。
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        model: str | None = None,
+        voice: str | None = None,
+        rate: str | None = None,
+    ):
+        self.api_key = api_key or os.environ.get("DASHSCOPE_API_KEY")
+        self.model = model or "cosyvoice-v3-flash"
+        self.voice = voice or "longxiaochun_v3"
+        self.rate = rate
+
+    async def synthesize(self, text: str, output_path: str | Path) -> str:
+        """合成语音并写入 *output_path*，返回实际文件路径。"""
+        if not self.api_key:
+            raise TtsError("DashScope API key not configured for TTS")
+        if not text.strip():
+            raise TtsError("TTS 输入文本为空")
+        try:
+            import dashscope  # 懒导入：dashscope 是可选依赖
+            from dashscope.audio.tts_v2 import SpeechSynthesizer
+        except ImportError as exc:
+            raise TtsError(
+                "未安装 dashscope SDK，请执行 pip install 'biscuitbot[tts]'"
+            ) from exc
+
+        path = _ensure_output_path(output_path)
+
+        def _call() -> bytes:
+            # SDK 从全局 dashscope.api_key 读取密钥，构造参数不接受 api_key。
+            dashscope.api_key = self.api_key
+            # SDK 要求每次 call 前重建实例；async_call=False 使 call() 阻塞并
+            # 返回完整音频字节（否则默认走回调并返回 None）。
+            synthesizer = SpeechSynthesizer(
+                model=self.model,
+                voice=self.voice,
+                speech_rate=_dashscope_rate(self.rate),
+            )
+            synthesizer.async_call = False
+            audio = synthesizer.call(text, timeout_millis=120_000)
+            if not audio:
+                raise TtsError("DashScope TTS 返回空音频")
+            return audio
+
+        try:
+            audio = await asyncio.to_thread(_call)
+        except TtsError:
+            raise
+        except Exception as exc:
+            raise TtsError(f"DashScope TTS 合成失败：{exc}") from exc
+
+        path.write_bytes(audio)
+        return str(path)

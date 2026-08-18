@@ -86,8 +86,9 @@ class ToolContext:
     在创建工具实例时传入，包含工作区、配置、事件总线、子代理管理器、
     定时任务服务等依赖，供工具初始化与运行时使用。
     """
-    config: Any  # 全局配置对象
+    config: Any  # 工具配置对象（ToolsConfig）
     workspace: str  # 工作区路径
+    root_config: Any | None = None  # 根配置（Config），供需要顶层配置（如 tts/providers）的工具使用
     bus: Any | None = None  # 事件总线
     subagent_manager: Any | None = None  # 子代理管理器
     employees: Any | None = None  # 数字人员工目录存储（invoke_employee 工具使用）

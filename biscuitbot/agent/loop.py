@@ -254,6 +254,7 @@ class AgentLoop:
         runtime_events: RuntimeEventBus | None = None,
         runtime_model_publisher: Callable[[str, str | None], None] | None = None,
         vision_provider_loader: Callable[[], LLMProvider | None] | None = None,
+        root_config: Any | None = None,
     ):
         from biscuitbot.config.schema import ToolsConfig
 
@@ -291,6 +292,7 @@ class AgentLoop:
             else defaults.tool_hint_max_length
         )
         self.tools_config = _tc
+        self._root_config = root_config  # 根配置，供需要顶层配置（tts/providers）的工具使用
         self.web_config = _tc.web
         self.exec_config = _tc.exec
         self._image_generation_provider_configs = dict(image_generation_provider_configs or {})
@@ -473,6 +475,7 @@ class AgentLoop:
             provider_snapshot_loader=provider_snapshot_loader,
             preset_snapshot_loader=preset_snapshot_loader,
             vision_provider_loader=vision_provider_loader,
+            root_config=config,
             **extra,
         )
 
@@ -570,6 +573,7 @@ class AgentLoop:
 
         ctx = ToolContext(
             config=self.tools_config,
+            root_config=self._root_config,
             workspace=str(self.workspace),
             bus=self.bus,
             subagent_manager=self.subagents,

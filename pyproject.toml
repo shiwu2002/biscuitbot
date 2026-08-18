@@ -70,6 +70,7 @@ wecom = [
 ]
 tts = [
     "edge-tts>=7.0.0,<8.0.0",
+    "dashscope>=1.20.0",
 ]
 weixin = [
     "qrcode[pil]>=8.0",

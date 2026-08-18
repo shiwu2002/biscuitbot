@@ -40,13 +40,15 @@ from biscuitbot.audio.tts import (  # TTS 服务层
         ),
         voice=StringSchema(
             "音色覆盖。OpenAI 如 alloy/echo/fable/onyx/nova/shimmer；"
-            "DashScope 如 longxiaochun/longwan；edge-tts 如 zh-CN-XiaoxiaoNeural。",
+            "DashScope 如 longxiaochun_v3/longanyang（cosyvoice-v3-flash 音色，多为 _v3 后缀）；"
+            "edge-tts 如 zh-CN-XiaoxiaoNeural。"
+            "DashScope 完整男女声音色清单见 docs/text_to_speech.md（音色参数列）。",
         ),
         rate=StringSchema(
             "语速，如 \"+10%\" 加快、\"-20%\" 减慢。",
         ),
         model=StringSchema(
-            "模型覆盖，如 gpt-4o-mini-tts / cosyvoice-v2。",
+            "模型覆盖，如 gpt-4o-mini-tts / cosyvoice-v3-flash。",
         ),
         provider=StringSchema(
             "TTS 服务商覆盖：openai / dashscope / edge-tts。",
@@ -71,14 +73,20 @@ class TextToSpeechTool(Tool):
     config_key = ""  # 无独立工具配置段：从顶层 config.tts 读取
 
     @classmethod
+    def _resolve_config(cls, ctx: Any) -> Any:
+        """取根配置（root_config），回退到 config（兼容测试/直接构造）。"""
+        return getattr(ctx, "root_config", None) or getattr(ctx, "config", None)
+
+    @classmethod
     def enabled(cls, ctx: Any) -> bool:
-        """仅当 config.tts.enabled 为 True 时启用。"""
-        return bool(getattr(ctx.config, "tts", None) and ctx.config.tts.enabled)
+        """仅当根配置 tts.enabled 为 True 时启用。"""
+        cfg = cls._resolve_config(ctx)
+        return bool(cfg and getattr(cfg, "tts", None) and cfg.tts.enabled)
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         """从上下文创建工具实例。"""
-        return cls(workspace=ctx.workspace, config=ctx.config)
+        return cls(workspace=ctx.workspace, config=cls._resolve_config(ctx))
 
     def __init__(self, *, workspace: str | Path, config: Any) -> None:
         self.workspace = Path(workspace).expanduser()  # 工作区路径，展开 ~
@@ -94,7 +102,7 @@ class TextToSpeechTool(Tool):
         """工具描述，指导模型如何调用。"""
         return (
             "Synthesize speech audio from text and save it as a local mp3 file. "
-            "Supports openai (gpt-4o-mini-tts), dashscope (cosyvoice-v2) and edge-tts "
+            "Supports openai (gpt-4o-mini-tts), dashscope (cosyvoice-v3-flash) and edge-tts "
             "(free, no API key). Returns the local audio file path; pass it to the user "
             "via the message tool or to a video/audio editor as input."
         )

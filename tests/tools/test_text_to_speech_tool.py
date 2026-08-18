@@ -54,6 +54,32 @@ def test_create_wires_workspace_and_config(tmp_path: Path) -> None:
     assert tool.config is cfg
 
 
+def test_enabled_and_create_use_root_config(tmp_path: Path) -> None:
+    from biscuitbot.agent.tools.context import ToolContext
+
+    cfg = Config()
+    cfg.tts.enabled = True
+    ctx = ToolContext(config=cfg.tools, root_config=cfg, workspace=str(tmp_path))
+    assert TextToSpeechTool.enabled(ctx) is True
+    tool = TextToSpeechTool.create(ctx)
+    assert tool.config is cfg  # 根配置，而非 ToolsConfig
+
+    cfg.tts.enabled = False
+    assert TextToSpeechTool.enabled(ctx) is False
+
+
+def test_registers_via_tool_loader(tmp_path: Path) -> None:
+    from biscuitbot.agent.tools.context import ToolContext
+    from biscuitbot.agent.tools.loader import ToolLoader
+    from biscuitbot.agent.tools.registry import ToolRegistry
+
+    cfg = Config()
+    cfg.tts.enabled = True
+    ctx = ToolContext(config=cfg.tools, root_config=cfg, workspace=str(tmp_path))
+    registered = ToolLoader().load(ctx, ToolRegistry())
+    assert "text_to_speech" in registered
+
+
 @pytest.mark.asyncio
 async def test_execute_returns_audio_metadata(
     tmp_path: Path,
