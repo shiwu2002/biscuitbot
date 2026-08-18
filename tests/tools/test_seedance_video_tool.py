@@ -57,7 +57,7 @@ def test_schema_exposes_four_input_interfaces(tmp_path: Path) -> None:
     for key in ("prompt", "image_urls", "video_urls", "audio_urls"):
         assert key in props
     # 生成参数也应暴露
-    for key in ("ratio", "duration", "resolution", "generate_audio", "watermark", "model"):
+    for key in ("ratio", "duration", "resolution", "generate_audio", "seed", "watermark", "model"):
         assert key in props
     assert props["duration"]["minimum"] == 4
     assert props["duration"]["maximum"] == 30
@@ -222,6 +222,50 @@ async def test_execute_drops_resolution_in_r2v_mode(
     await tool.execute(prompt="一只橘猫弹钢琴", resolution="720p")
     body = captured["body"]
     assert body["resolution"] == "720p"
+
+
+@pytest.mark.asyncio
+async def test_execute_defaults_generate_audio_true_in_r2v(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """带参考视频/音频时默认开启 generate_audio；纯文生仍用配置默认 false。"""
+    tool = _tool(tmp_path, api_key="ark-test")
+    captured: dict[str, object] = {}
+
+    async def fake_create(self, client, body):
+        captured["body"] = body
+        return "task-1"
+
+    async def fake_poll(self, client, task_id):
+        return {"content": {"video_url": "https://example.com/out.mp4"}}
+
+    async def fake_download(self, client, video_url):
+        return {"path": str(tmp_path / "out.mp4")}
+
+    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
+    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
+    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+
+    # 带参考视频：默认开启
+    await tool.execute(prompt="保持运镜", video_urls=["https://example.com/v.mp4"])
+    assert captured["body"]["generate_audio"] is True
+
+    # 带参考音频：默认开启
+    await tool.execute(prompt="保持运镜", audio_urls=["https://example.com/a.mp3"])
+    assert captured["body"]["generate_audio"] is True
+
+    # 纯文生视频：仍为配置默认 false
+    await tool.execute(prompt="一只橘猫弹钢琴")
+    assert captured["body"]["generate_audio"] is False
+
+    # 显式关闭：覆盖 r2v 默认
+    await tool.execute(
+        prompt="保持运镜",
+        video_urls=["https://example.com/v.mp4"],
+        generate_audio=False,
+    )
+    assert captured["body"]["generate_audio"] is False
 
 
 @pytest.mark.asyncio

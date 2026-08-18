@@ -46,8 +46,9 @@ from biscuitbot.utils.helpers import detect_image_mime, ensure_dir  # MIME 探�
 
 # 方舟 Seedance 默认 base URL（OpenAI 兼容，内容生成任务走 /contents/generations/tasks）
 _DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
-# 支持的模型 ID：2.0 与 2.5（也支持已开通的 Endpoint ID ep-...）
+# 支持的模型 ID：2.0 / 2.0 mini / 2.5（也支持已开通的 Endpoint ID ep-...）
 _MODEL_2_0 = "doubao-seedance-2-0-260128"
+_MODEL_2_0_MINI = "doubao-seedance-2-0-mini-260615"
 _MODEL_2_5 = "doubao-seedance-2-5-260628"
 # 支持的画幅比例
 _RATIOS = ("16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive")
@@ -90,6 +91,7 @@ class SeedanceVideoToolConfig(Base):
     default_duration: int = Field(default=5, ge=_MIN_DURATION, le=_MAX_DURATION)  # 默认时长（秒）
     default_resolution: str | None = None  # 默认清晰度，None 表示交给模型
     generate_audio: bool = False  # 是否默认开启音画同步生成音频
+    seed: int | None = None  # 随机种子（None 表示随机）；固定可复现/微调结果
     watermark: bool = False  # 是否默认添加水印（默认关闭 = 去水印）
     save_dir: str = "generated_video"  # artifact 保存子目录名
     poll_interval_sec: float = Field(default=10.0, ge=1.0, le=60.0)  # 轮询间隔（秒）
@@ -174,13 +176,19 @@ def _audio_mime_from_suffix(path: Path) -> str:
             enum=_RESOLUTIONS,
         ),
         generate_audio=BooleanSchema(
-            description="是否开启音画同步生成音频。",
+            description="是否开启音画同步生成音频（带参考视频/音频时默认开启）。",
+        ),
+        seed=IntegerSchema(
+            description="随机种子（-1 或省略为随机）。固定 seed 可让相似输入得到可复现/可微调的结果。",
+            minimum=-1,
+            maximum=4294967295,
         ),
         watermark=BooleanSchema(
             description="是否添加水印（默认关闭，即去水印）。",
         ),
         model=StringSchema(
-            "可选模型覆盖（默认用配置里的 model，可切到 doubao-seedance-2-0-260128 或 Endpoint ID ep-...）。",
+            "可选模型覆盖（默认用配置里的 model，可切到 doubao-seedance-2-0-260128 / "
+            "doubao-seedance-2-0-mini-260615 / doubao-seedance-2-5-260628 或 Endpoint ID ep-...）。",
         ),
         required=["prompt"],
     )
@@ -440,6 +448,7 @@ class SeedanceVideoTool(Tool):
         duration: int | None = None,
         resolution: str | None = None,
         generate_audio: bool | None = None,
+        seed: int | None = None,
         watermark: bool | None = None,
         model: str | None = None,
         **kwargs: Any,
@@ -454,7 +463,8 @@ class SeedanceVideoTool(Tool):
             ratio: 画幅比例。
             duration: 时长（秒）。
             resolution: 清晰度。
-            generate_audio: 是否音画同步生成音频。
+            generate_audio: 是否音画同步生成音频（带参考视频/音频时默认开启）。
+            seed: 随机种子（None 表示随机）。
             watermark: 是否加水印。
             model: 模型覆盖。
 
@@ -462,14 +472,21 @@ class SeedanceVideoTool(Tool):
             包含视频本地路径与元数据的 JSON 字符串；出错时返回错误说明。
         """
         try:
+            # r2v（带参考视频/音频）默认开启音画同步生成音频；显式传入时以传入值为准。
+            if generate_audio is None:
+                generate_audio = True if (audio_urls or video_urls) else self.config.generate_audio
             body: dict[str, Any] = {
                 "model": model or self.config.model,
                 "content": self._build_content(prompt, image_urls, video_urls, audio_urls),
                 "ratio": ratio or self.config.default_ratio,
                 "duration": duration or self.config.default_duration,
-                "generate_audio": generate_audio if generate_audio is not None else self.config.generate_audio,
+                "generate_audio": generate_audio,
                 "watermark": watermark if watermark is not None else self.config.watermark,
             }
+            # 随机种子：仅在显式指定时下发，None 交给方舟默认随机
+            resolved_seed = seed if seed is not None else self.config.seed
+            if resolved_seed is not None:
+                body["seed"] = resolved_seed
             # r2v（参考转视频）：带参考图/视频/音频时，模型按参考素材自动推导分辨率，
             # 显式传 resolution 会被方舟拒绝（"not valid ... in r2v"），故在此丢弃。
             is_r2v = bool(image_urls or video_urls or audio_urls)

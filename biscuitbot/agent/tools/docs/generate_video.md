@@ -17,9 +17,10 @@
 | ratio | string | 否 | 16:9 | 画幅：16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive |
 | duration | integer | 否 | 5 | 时长（秒），2.0 支持 4–15，2.5 支持到 30 |
 | resolution | string | 否 | - | 清晰度：480p / 720p / 1080p / 4K（4K 仅 2.5）。**仅文生/图生视频可用**，带参考素材（r2v）时勿传 |
-| generate_audio | boolean | 否 | false | 是否开启音画同步生成音频 |
+| generate_audio | boolean | 否 | false | 是否开启音画同步生成音频（带参考视频/音频时默认开启） |
+| seed | integer | 否 | -1（随机） | 随机种子；固定 seed 可复现/微调结果，范围 -1 ~ 2^32-1 |
 | watermark | boolean | 否 | false | 是否添加水印（默认关闭 = 去水印） |
-| model | string | 否 | 配置默认 | 模型覆盖：doubao-seedance-2-5-260628 / doubao-seedance-2-0-260128 / Endpoint ID |
+| model | string | 否 | 配置默认 | 模型覆盖：doubao-seedance-2-5-260628 / doubao-seedance-2-0-260128 / doubao-seedance-2-0-mini-260615 / Endpoint ID |
 
 ## 调用示例
 
