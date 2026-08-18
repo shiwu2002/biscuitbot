@@ -214,6 +214,7 @@
       "maxImagesPerTurn": "每輪最大圖片數",
       "imageSaveDir": "儲存目錄",
       "videoGeneration": "影片生成",
+      "videoProvider": "影片廠商",
       "videoProviderStatus": "金鑰狀態",
       "videoModel": "影片模型",
       "videoRatio": "畫面比例",
@@ -276,8 +277,9 @@
       "defaultImageSize": "傳送給支援此選項的供應商的尺寸提示。",
       "maxImagesPerTurn": "單次 generate_image 請求可生成的圖片上限。",
       "videoGeneration": "在對話中暴露影片生成能力（當 Seedance 金鑰已設定時）。",
+      "videoProvider": "選擇影片生成廠商；未配置時預設使用火山方舟。",
       "videoProviderStatus": "文生影片與文生圖共用「模型廠商」頁的火山方舟金鑰。",
-      "videoModel": "傳送給 Seedance 的影片模型名稱。",
+      "videoModel": "傳送給所選影片廠商的模型名稱。",
       "videoRatio": "提示詞未指定時使用的預設畫面比例。",
       "videoDuration": "產生的影片時長（秒），4–30。",
       "videoResolution": "提示詞未指定時使用的預設解析度；「模型自動決定」交由模型選擇。",
@@ -477,6 +479,7 @@
       "missingCredential": "啟用圖片生成前請先配置此供應商。"
     },
     "video": {
+      "selectProvider": "選擇影片廠商",
       "selectModel": "選擇影片模型",
       "modelPlaceholder": "或手動輸入模型 ID",
       "selectRatio": "選擇畫面比例",

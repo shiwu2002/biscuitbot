@@ -82,6 +82,7 @@ class SeedanceVideoToolConfig(Base):
     """
 
     enabled: bool = False  # 是否启用视频生成工具
+    provider: str = "volcengine"  # 视频厂商（默认火山方舟；预留多厂商扩展）
     api_key: str | None = None  # 显式 API Key；缺省回退到环境变量 ARK_API_KEY
     base_url: str = _DEFAULT_BASE_URL  # 方舟 base URL
     model: str = _MODEL_2_0  # 默认模型（2.0），可配成 2.5 或 Endpoint ID
@@ -213,7 +214,9 @@ class SeedanceVideoTool(Tool):
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         """从上下文创建工具实例。"""
-        volcengine_cfg = getattr(ctx.config.providers, "volcengine", None)
+        # 火山方舟密钥与文生图共用：从图像生成提供商配置里取 volcengine。
+        provider_configs = getattr(ctx, "image_generation_provider_configs", None) or {}
+        volcengine_cfg = provider_configs.get("volcengine")
         ark_api_key = getattr(volcengine_cfg, "api_key", None)
         return cls(
             workspace=ctx.workspace,

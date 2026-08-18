@@ -241,7 +241,6 @@ const IMAGE_ASPECT_RATIO_OPTIONS = ["1:1", "3:4", "9:16", "4:3", "16:9", "3:2", 
 const IMAGE_SIZE_OPTIONS = ["1K", "2K", "4K", "1024x1024", "1536x1024", "1024x1536"];
 const VIDEO_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"];
 const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"];
-const SEEDANCE_MODELS = ["doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628"];
 const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   runtime: false,
   browser: false,
@@ -371,6 +370,7 @@ const DEFAULT_IMAGE_GENERATION_FORM: ImageGenerationSettingsUpdate = {
 
 const DEFAULT_VIDEO_GENERATION_FORM: VideoGenerationSettingsUpdate = {
   enabled: false,
+  provider: "volcengine",
   model: "doubao-seedance-2-5-260628",
   defaultRatio: "16:9",
   defaultDuration: 5,
@@ -488,6 +488,7 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
 function videoGenerationFormFromPayload(payload: SettingsPayload): VideoGenerationSettingsUpdate {
   return {
     enabled: payload.video_generation.enabled,
+    provider: payload.video_generation.provider,
     model: payload.video_generation.model,
     defaultRatio: payload.video_generation.default_ratio,
     defaultDuration: payload.video_generation.default_duration,
@@ -853,6 +854,7 @@ export function SettingsView({
     if (!settings) return false;
     return (
       videoGenerationForm.enabled !== settings.video_generation.enabled ||
+      videoGenerationForm.provider !== settings.video_generation.provider ||
       videoGenerationForm.model !== settings.video_generation.model ||
       videoGenerationForm.defaultRatio !== settings.video_generation.default_ratio ||
       videoGenerationForm.defaultDuration !== settings.video_generation.default_duration ||
@@ -1400,6 +1402,7 @@ export function SettingsView({
       ) : null}
       {sub === "video" ? (
         <VideoGenerationSettings
+          token={token}
           settings={settings}
           form={videoGenerationForm}
           dirty={videoGenerationDirty}
@@ -1410,10 +1413,12 @@ export function SettingsView({
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
           requiresRestartPending={pendingRestartSections.video}
+          showBrandLogos={localPrefs.brandLogos}
         />
       ) : null}
       {sub === "vision" ? (
         <VisionSettings
+          token={token}
           settings={settings}
           form={screenshotForm}
           dirty={screenshotDirty}
@@ -1424,6 +1429,7 @@ export function SettingsView({
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
           requiresRestartPending={pendingRestartSections.vision}
+          showBrandLogos={localPrefs.brandLogos}
         />
       ) : null}
       {sub === "voice" ? (
@@ -2866,7 +2872,9 @@ function ImageGenerationSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const imageProviders = providersWithCapability(settings, "image");
+  const imageProviders = providersWithCapability(settings, "image").filter(
+    (provider) => provider.configured,
+  );
   const selectedProvider =
     imageProviders.find((provider) => provider.name === form.provider) ?? imageProviders[0];
   const providerConfigured = !!selectedProvider?.configured;
@@ -3018,7 +3026,10 @@ function VideoGenerationSettings({
   onRestart,
   isRestarting,
   requiresRestartPending,
+  token,
+  showBrandLogos,
 }: {
+  token: string;
   settings: SettingsPayload;
   form: VideoGenerationSettingsUpdate;
   dirty: boolean;
@@ -3029,11 +3040,16 @@ function VideoGenerationSettings({
   onRestart?: () => void;
   isRestarting?: boolean;
   requiresRestartPending: boolean;
+  showBrandLogos: boolean;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const volcengineProvider = settings.providers.find((provider) => provider.name === "volcengine");
-  const apiKeyConfigured = settings.video_generation.api_key_configured || !!volcengineProvider?.configured;
+  const videoProviders = providersWithCapability(settings, "video");
+  const selectedProvider =
+    videoProviders.find((provider) => provider.name === form.provider) ?? videoProviders[0];
+  const providerConfigured = !!selectedProvider?.configured;
+  const apiKeyConfigured =
+    settings.video_generation.api_key_configured || providerConfigured;
   const missingCredential = form.enabled && !apiKeyConfigured;
   const ratioOptions = optionRowsWithCurrent(
     VIDEO_RATIO_OPTIONS.map((value) => ({ name: value, label: value })),
@@ -3045,10 +3061,6 @@ function VideoGenerationSettings({
       ...VIDEO_RESOLUTION_OPTIONS.map((value) => ({ name: value, label: value })),
     ],
     form.defaultResolution,
-  );
-  const modelOptions = optionRowsWithCurrent(
-    SEEDANCE_MODELS.map((value) => ({ name: value, label: value })),
-    form.model,
   );
 
   return (
@@ -3065,6 +3077,18 @@ function VideoGenerationSettings({
               onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
               ariaLabel={tx("settings.rows.videoGeneration", "视频生成")}
               label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.videoProvider", "视频厂商")}
+            description={tx("settings.help.videoProvider", "选择视频生成厂商；未配置时默认使用火山方舟。")}
+          >
+            <ProviderPicker
+              providers={videoProviders}
+              value={form.provider}
+              emptyLabel={tx("settings.video.selectProvider", "选择视频厂商")}
+              showProviderLogos={showBrandLogos}
+              onChange={(provider) => onChangeForm((prev) => ({ ...prev, provider }))}
             />
           </SettingsRow>
           <SettingsRow
@@ -3092,22 +3116,17 @@ function VideoGenerationSettings({
         <SettingsGroup>
           <SettingsRow
             title={tx("settings.rows.videoModel", "视频模型")}
-            description={tx("settings.help.videoModel", "发送给 Seedance 的视频模型名称。")}
+            description={tx("settings.help.videoModel", "发送给所选视频厂商的模型名称。")}
           >
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <ProviderPicker
-                providers={modelOptions}
-                value={form.model}
-                emptyLabel={tx("settings.video.selectModel", "选择视频模型")}
-                onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
-              />
-              <Input
-                value={form.model}
-                onChange={(event) => onChangeForm((prev) => ({ ...prev, model: event.target.value }))}
-                placeholder={tx("settings.video.modelPlaceholder", "或手动输入模型 ID")}
-                className="h-8 w-[min(260px,60vw)] rounded-full text-[13px]"
-              />
-            </div>
+            <ModelIdPicker
+              token={token}
+              settings={settings}
+              provider={form.provider}
+              value={form.model}
+              showProviderLogos={showBrandLogos}
+              onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
+              providerRows={videoProviders}
+            />
           </SettingsRow>
           <SettingsRow
             title={tx("settings.rows.videoRatio", "画面比例")}
@@ -3210,6 +3229,8 @@ function VisionSettings({
   onRestart,
   isRestarting,
   requiresRestartPending,
+  token,
+  showBrandLogos,
 }: {
   settings: SettingsPayload;
   form: ScreenshotSettingsUpdate;
@@ -3221,25 +3242,19 @@ function VisionSettings({
   onRestart?: () => void;
   isRestarting?: boolean;
   requiresRestartPending: boolean;
+  token: string;
+  showBrandLogos: boolean;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const visionProviders = providersWithCapability(settings, "vision");
+  const visionProviders = providersWithCapability(settings, "vision").filter(
+    (provider) => provider.configured,
+  );
   const visionModelConfigured = !!(
     form.visionModel &&
-    visionProviders.some(
-      (provider) => provider.name === form.visionModel && provider.configured,
-    )
+    visionProviders.some((provider) => provider.name === form.visionModel)
   );
   const missingVisionModel = form.enabled && !form.visionModel;
-  const visionProviderOptions = visionProviders.map(
-    (provider) => ({
-      name: provider.name,
-      label: provider.configured
-        ? provider.label
-        : `${provider.label} (${tx("settings.values.notConfigured", "Not configured")})`,
-    }),
-  );
   const selectedPreset =
     settings.model_presets.find((preset) => preset.name === form.visionModel) ?? null;
   const overrideTrimmed = (form.visionModelOverride ?? "").trim();
@@ -3262,27 +3277,15 @@ function VisionSettings({
             />
           </SettingsRow>
           <SettingsRow
-            title={tx("settings.rows.visionModelOverride", "Vision model")}
-            description={tx("settings.help.visionModelOverride", "Multimodal model id used to interpret screenshots (e.g. gpt-4o, qwen-vl-max, claude-3-5-sonnet). Leave empty to use the preset's default model.")}
-          >
-            <Input
-              value={form.visionModelOverride ?? ""}
-              onChange={(event) =>
-                onChangeForm((prev) => ({ ...prev, visionModelOverride: event.target.value || null }))
-              }
-              placeholder={selectedPreset?.model ?? tx("settings.vision.overridePlaceholder", "e.g. gpt-4o")}
-              className="h-8 w-[min(300px,70vw)] rounded-full text-[13px]"
-            />
-          </SettingsRow>
-          <SettingsRow
             title={tx("settings.rows.visionModel", "Provider credentials")}
-            description={tx("settings.help.visionModel", "Select a provider to supply the API key and endpoint for the vision model above.")}
+            description={tx("settings.help.visionModel", "Select a provider to supply the API key and endpoint for the vision model.")}
           >
             <div className="flex flex-wrap items-center justify-end gap-2">
               <ProviderPicker
-                providers={visionProviderOptions}
+                providers={visionProviders}
                 value={form.visionModel ?? ""}
                 emptyLabel={tx("settings.vision.selectProvider", "Select provider")}
+                showProviderLogos={showBrandLogos}
                 onChange={(visionModel) =>
                   onChangeForm((prev) => ({ ...prev, visionModel }))
                 }
@@ -3298,6 +3301,22 @@ function VisionSettings({
                 </Button>
               ) : null}
             </div>
+          </SettingsRow>
+          <SettingsRow
+            title={tx("settings.rows.visionModelOverride", "Vision model")}
+            description={tx("settings.help.visionModelOverride", "Multimodal model id used to interpret screenshots (e.g. gpt-4o, qwen-vl-max, claude-3-5-sonnet). Leave empty to use the preset's default model.")}
+          >
+            <ModelIdPicker
+              token={token}
+              settings={settings}
+              provider={form.visionModel ?? ""}
+              value={form.visionModelOverride ?? ""}
+              showProviderLogos={showBrandLogos}
+              onChange={(model) =>
+                onChangeForm((prev) => ({ ...prev, visionModelOverride: model || null }))
+              }
+              providerRows={visionProviders}
+            />
           </SettingsRow>
           {resolvedModel ? (
             <ReadOnlyRow
@@ -3512,7 +3531,9 @@ function TranscriptionSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const transcriptionProviders = providersWithCapability(settings, "transcription");
+  const transcriptionProviders = providersWithCapability(settings, "transcription").filter(
+    (provider) => provider.configured,
+  );
   const selectedProvider =
     transcriptionProviders.find((provider) => provider.name === form.provider) ??
     transcriptionProviders[0];
@@ -3643,7 +3664,9 @@ function TtsSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const ttsProviders = providersWithCapability(settings, "tts");
+  const ttsProviders = providersWithCapability(settings, "tts").filter(
+    (provider) => provider.configured,
+  );
   const selectedProvider =
     ttsProviders.find((provider) => provider.name === form.provider) ??
     ttsProviders[0];

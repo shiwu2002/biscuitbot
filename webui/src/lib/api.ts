@@ -1023,6 +1023,7 @@ export async function updateVideoGenerationSettings(
 ): Promise<SettingsPayload> {
   const query = new URLSearchParams();
   query.set("enabled", String(update.enabled));
+  query.set("provider", update.provider);
   query.set("model", update.model);
   query.set("default_ratio", update.defaultRatio);
   query.set("default_duration", String(update.defaultDuration));

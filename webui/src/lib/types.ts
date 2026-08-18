@@ -538,6 +538,7 @@ export interface SettingsPayload {
   video_generation: {
     enabled: boolean;
     api_key_configured: boolean;
+    provider: string;
     model: string;
     default_ratio: string;
     default_duration: number;
@@ -936,6 +937,7 @@ export interface ImageGenerationSettingsUpdate {
 
 export interface VideoGenerationSettingsUpdate {
   enabled: boolean;
+  provider: string;
   model: string;
   defaultRatio: string;
   defaultDuration: number;

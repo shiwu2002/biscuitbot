@@ -164,8 +164,6 @@ _MODEL_LIST_CATALOG_PROVIDERS = {
     "novita",
     "openrouter",
     "siliconflow",
-    "volcengine",
-    "volcengine_coding_plan",
 }
 
 _MODEL_LIST_OFFICIAL_PROVIDERS = {
@@ -184,6 +182,8 @@ _MODEL_LIST_OFFICIAL_PROVIDERS = {
     "qianfan",
     "skywork",
     "stepfun",
+    "volcengine",
+    "volcengine_coding_plan",
     "xiaomi_mimo",
     "zhipu",
 }
@@ -1150,6 +1150,7 @@ def settings_payload(
                 )
                 or os.environ.get("ARK_API_KEY", "").strip()
             ),
+            "provider": video_config.provider,
             "model": video_config.model,
             "default_ratio": video_config.default_ratio,
             "default_duration": video_config.default_duration,
@@ -1783,6 +1784,17 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
             raise WebUISettingsError("video generation model is too long")
         if video_config.model != model:
             video_config.model = model
+            changed = True
+
+    provider = _query_first(query, "provider")
+    if provider is not None:
+        provider = provider.strip().lower()
+        if not provider:
+            raise WebUISettingsError("video generation provider is required")
+        if len(provider) > 64:
+            raise WebUISettingsError("video generation provider is too long")
+        if video_config.provider != provider:
+            video_config.provider = provider
             changed = True
 
     default_ratio = _query_first_alias(query, "default_ratio", "defaultRatio")

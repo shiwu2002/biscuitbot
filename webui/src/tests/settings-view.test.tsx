@@ -72,6 +72,7 @@ function settingsPayload(): SettingsPayload {
     },
     video_generation: {
       enabled: false,
+      provider: "volcengine",
       api_key_configured: false,
       model: "doubao-seedance",
       default_ratio: "16:9",
@@ -275,7 +276,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     fireEvent.click(subtabs.getByRole("button", { name: "文生视频" }));
 
     expect(await screen.findByRole("switch", { name: "视频生成" })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("doubao-seedance")).toBeInTheDocument();
+    expect(screen.getByText("doubao-seedance")).toBeInTheDocument();
     expect(screen.getByText("16:9")).toBeInTheDocument();
     expect(screen.getByText("generated/videos")).toBeInTheDocument();
     // 视频面板不含密钥/地址编辑字段
