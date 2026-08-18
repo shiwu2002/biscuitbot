@@ -183,3 +183,74 @@ def test_create_missing_provider_falls_back_to_none(tmp_path: Path) -> None:
     )
     tool = SeedanceVideoTool.create(ctx)
     assert tool._ark_api_key is None
+
+
+@pytest.mark.asyncio
+async def test_execute_drops_resolution_in_r2v_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """r2v（带参考素材）模式下不发送 resolution；纯文生视频才保留。"""
+    tool = _tool(tmp_path, api_key="ark-test")
+    captured: dict[str, object] = {}
+
+    async def fake_create(self, client, body):
+        captured["body"] = body
+        return "task-1"
+
+    async def fake_poll(self, client, task_id):
+        return {"content": {"video_url": "https://example.com/out.mp4"}}
+
+    async def fake_download(self, client, video_url):
+        return {"path": str(tmp_path / "out.mp4")}
+
+    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
+    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
+    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+
+    # r2v：带参考视频，显式传 resolution=720p 应被丢弃
+    await tool.execute(
+        prompt="保持运镜不变",
+        video_urls=["https://example.com/v.mp4"],
+        resolution="720p",
+    )
+    body = captured["body"]
+    assert body["content"][1]["role"] == "reference_video"
+    assert "resolution" not in body
+
+    # 纯文生视频：resolution 保留
+    await tool.execute(prompt="一只橘猫弹钢琴", resolution="720p")
+    body = captured["body"]
+    assert body["resolution"] == "720p"
+
+
+@pytest.mark.asyncio
+async def test_execute_drops_default_resolution_in_r2v_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """r2v 模式同样忽略配置里的 default_resolution。"""
+    tool = _tool(tmp_path, api_key="ark-test", default_resolution="720p")
+    captured: dict[str, object] = {}
+
+    async def fake_create(self, client, body):
+        captured["body"] = body
+        return "task-1"
+
+    async def fake_poll(self, client, task_id):
+        return {"content": {"video_url": "https://example.com/out.mp4"}}
+
+    async def fake_download(self, client, video_url):
+        return {"path": str(tmp_path / "out.mp4")}
+
+    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
+    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
+    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+
+    await tool.execute(
+        prompt="保持运镜不变",
+        image_urls=["https://example.com/ref.jpg"],
+    )
+    body = captured["body"]
+    assert body["content"][1]["role"] == "reference_image"
+    assert "resolution" not in body

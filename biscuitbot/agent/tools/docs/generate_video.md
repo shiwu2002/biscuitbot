@@ -16,7 +16,7 @@
 | audio_urls | array | 否 | - | 参考音频列表（本地路径 / 公网 URL / base64 data URL） |
 | ratio | string | 否 | 16:9 | 画幅：16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive |
 | duration | integer | 否 | 5 | 时长（秒），2.0 支持 4–15，2.5 支持到 30 |
-| resolution | string | 否 | - | 清晰度：480p / 720p / 1080p / 4K（4K 仅 2.5） |
+| resolution | string | 否 | - | 清晰度：480p / 720p / 1080p / 4K（4K 仅 2.5）。**仅文生/图生视频可用**，带参考素材（r2v）时勿传 |
 | generate_audio | boolean | 否 | false | 是否开启音画同步生成音频 |
 | watermark | boolean | 否 | true | 是否添加水印 |
 | model | string | 否 | 配置默认 | 模型覆盖：doubao-seedance-2-5-260628 / doubao-seedance-2-0-260128 / Endpoint ID |
@@ -43,6 +43,7 @@ generate_video(
 ## 注意事项
 
 - 参考**视频**只接受公网可访问的 HTTP(S) URL；本地视频文件需先上传到可访问地址。
+- 带参考图 / 参考视频 / 参考音频（r2v）时**不要传 `resolution`**：该模式下模型按参考素材自动推导分辨率，显式传入会被方舟拒绝（`not valid ... in r2v`）。工具已自动忽略该参数。
 - 参考**图片 / 音频**支持本地路径（自动 base64）与公网 URL。
 - 视频生成耗时较长（通常数分钟），工具内部会自动轮询直至完成。
 - 结果会下载到媒体目录并持久化，返回本地 `path`；可用该路径作为后续剪辑工具的输入，或通过 message 工具交付给用户。

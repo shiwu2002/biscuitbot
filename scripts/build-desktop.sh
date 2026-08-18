@@ -85,6 +85,15 @@ EXCLUDES=(
   --exclude-module PySide6
   --exclude-module PyQt6
 )
+# TTS 适配器与 SDK 通过字符串/函数内动态导入（tts_registry.load_adapter 用
+# import_module、provider 内函数级 import dashscope/edge_tts），PyInstaller
+# 静态分析捕捉不到，须显式收集，否则桌面端 text_to_speech 会 ModuleNotFoundError
+# 或报「未安装 xxx SDK」。dashscope 用 --collect-all 以连其 tts_v2 子模块与
+# websocket-client 依赖一并收进。
+HIDDEN_IMPORTS=(
+  --hidden-import biscuitbot.providers.tts
+  --collect-all dashscope
+)
 "$PYTHON" -m PyInstaller --noconfirm --clean --onedir \
   --distpath "$DIST_DIR" \
   --workpath "$WORK_DIR" \
@@ -94,6 +103,7 @@ EXCLUDES=(
   --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
   --add-data "biscuitbot/templates:biscuitbot/templates" \
   --add-data "biscuitbot/skills:biscuitbot/skills" \
+  "${HIDDEN_IMPORTS[@]}" \
   "${EXCLUDES[@]}" \
   scripts/desktop_sidecar_main.py
 

@@ -170,7 +170,7 @@ def _audio_mime_from_suffix(path: Path) -> str:
             maximum=_MAX_DURATION,
         ),
         resolution=StringSchema(
-            "清晰度（4K 仅 2.5 支持）。",
+            "清晰度（4K 仅 2.5 支持）。仅文生/图生视频可用；带参考素材（r2v）时模型自动定分辨率，勿传此参数。",
             enum=_RESOLUTIONS,
         ),
         generate_audio=BooleanSchema(
@@ -470,7 +470,16 @@ class SeedanceVideoTool(Tool):
                 "generate_audio": generate_audio if generate_audio is not None else self.config.generate_audio,
                 "watermark": watermark if watermark is not None else self.config.watermark,
             }
-            if resolution or self.config.default_resolution:
+            # r2v（参考转视频）：带参考图/视频/音频时，模型按参考素材自动推导分辨率，
+            # 显式传 resolution 会被方舟拒绝（"not valid ... in r2v"），故在此丢弃。
+            is_r2v = bool(image_urls or video_urls or audio_urls)
+            if is_r2v:
+                if resolution or self.config.default_resolution:
+                    logger.info(
+                        "Seedance r2v 模式忽略 resolution：{}",
+                        resolution or self.config.default_resolution,
+                    )
+            elif resolution or self.config.default_resolution:
                 body["resolution"] = resolution or self.config.default_resolution
 
             async with httpx.AsyncClient(timeout=self.config.timeout_sec) as client:
