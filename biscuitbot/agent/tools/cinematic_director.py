@@ -7,15 +7,20 @@
 状态机、校验、存储分别由 ``_cinematic/`` 子包的 ``workflow`` / ``validators`` /
 ``state`` / ``schemas`` 承担。
 
-把「AI 导演」工作流（导演圣经 → 剧本 → 剧本审核 → 世界观/角色资产 → 资产审核
-→ 资产锁定 → 分镜 → 视频生成 → 视频审核 → 成片）固化为**代码层面的 9 阶段状态
-机与硬校验**，而非靠 Agent 自觉执行：阶段顺序、三级审核 Gate、数据冻结全部由
-代码强制，非法操作被拒绝，从而解决 AI 视频「人物/场景/光影漂移」与「流程偏移」。
+把「AI 导演」工作流（导演圣经 → 剧本 → 剧本审核 → **（可选用户审核）** →
+**空间规划** → 世界观/角色资产 → 资产审核 → 资产锁定 → 分镜 → 视频生成 →
+视频审核 → 成片）固化为**代码层面的 11 阶段状态机与硬校验**，而非靠 Agent
+自觉执行：阶段顺序、审核 Gate、数据冻结全部由代码强制，非法操作被拒绝，从而
+解决 AI 视频「人物/场景/光影漂移」与「流程偏移」。空间规划是**强制阶段**——
+生成资产前必须先声明平面图并锁定坐标。
 
 设计要点：
 - 单工具多 action：通过 ``action`` 参数分派，共享同一份项目状态；
-- 9 阶段状态机：``init → script_analysis → world_building → character_design
-  → asset_lock → storyboard → video_generation → quality_check → final_edit``；
+- 11 阶段状态机：``init → script_analysis → script_review → spatial_planning
+  → world_building → character_design → asset_lock → storyboard
+  → video_generation → quality_check → final_edit``；
+- 剧本师步骤产出 ``story``（整体剧情 + 人物/环境描述词 + 空间/大局描述词），
+  并可经 ``request_user_review``/``approve_script`` 走**可选**用户审核门；
 - 三级审核 Gate：剧本审核 / 资产审核 / 视频审核，低于阈值或否决即硬阻塞；
 - 权限隔离：``_scopes={"core"}`` 使子 Agent 无法调用本工具（只有主 Agent/导演
   能改项目状态），资产与剧本在审核/锁定后**冻结**，且无「编辑/删除」动作；
@@ -46,16 +51,18 @@ from ._cinematic.validators import CinematicDirectorError  # 校验错误
 class CinematicDirectorTool(Tool):
     """AI 导演工作流编排与管控工具。
 
-    通过 ``action`` 驱动一个受 9 阶段状态机约束的项目：先建项目、写剧本、剧本
-    审核、锁定世界观/角色资产、资产审核、资产锁定、分镜、编译 Prompt、生成视频、
-    视频审核、记录成片。非法跳阶段或审核不过都会被拒绝。
+    通过 ``action`` 驱动一个受 11 阶段状态机约束的项目：先建项目、写剧本（含
+    story 描述词）、剧本审核、（可选用户审核）、空间规划（强制）、锁定世界观/角色
+    资产、资产审核、资产锁定、分镜、编译 Prompt、生成视频、视频审核、记录成片。
+    非法跳阶段或审核不过都会被拒绝。
     """
 
     _scopes = {"core"}  # 仅主 Agent 可用；子 Agent（subagent）无法调用 → 权限隔离
     _capability = (
         "Orchestrate an AI film production pipeline (bible → script → review → "
-        "world/character assets → asset lock → storyboard → video generation → "
-        "video review → final) with a hard 9-stage state machine."
+        "optional user review → spatial planning → world/character assets → "
+        "asset lock → storyboard → video generation → video review → final) "
+        "with a hard 11-stage state machine."
     )
     _usage_md = "docs/cinematic_director.md"  # 使用说明文档路径
 
@@ -76,13 +83,21 @@ class CinematicDirectorTool(Tool):
     def description(self) -> str:
         """工具描述，指导模型如何调用。"""
         return (
-            "Orchestrate an AI film production project with a hard 9-stage state "
-            "machine and three review gates (script/assets/video). Actions: "
-            "create_project, write_script, review_script, add_asset, review_assets, "
+            "Orchestrate an AI film production project with a hard 11-stage state "
+            "machine and review gates (script/optional-user/assets/video). Actions: "
+            "create_project, set_floorplan, write_script, review_script, "
+            "request_user_review, approve_script, add_asset, review_assets, "
             "lock_assets, plan_shot, compile_prompt, record_qc, record_shot_result, "
             "status. It blocks skipping stages, requires a reference image for every "
             "asset, freezes script/assets after review/lock, and blocks recording a "
-            "shot result until video QC passes. Read docs/cinematic_director.md first."
+            "shot result until video QC passes. write_script should include a rich "
+            "'story' (plot + character/environment prompts + spatial/worldview "
+            "descriptions); after writing, ask the user whether they want to review "
+            "the story — if yes, request_user_review then approve_script once the "
+            "user confirms, else proceed via review_script. A mandatory "
+            "spatial_planning stage (set_floorplan) must complete before assets are "
+            "generated, so every LOC carries coordinates and every shot blocking is "
+            "validated at compile_prompt. Read docs/cinematic_director.md first."
         )
 
     # ------------------------------------------------------------------

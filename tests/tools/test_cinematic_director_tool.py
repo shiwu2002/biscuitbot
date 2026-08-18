@@ -1,4 +1,4 @@
-"""Tests for the cinematic_director tool (AI 导演 9 阶段状态机 + 三级审核 Gate + 分目录记忆)."""
+"""Tests for the cinematic_director tool (AI 导演 11 阶段状态机 + 审核 Gate + story + 分目录记忆)."""
 
 from __future__ import annotations
 
@@ -34,14 +34,33 @@ def _create_project(store: ProjectStore, project_id: str = "demo") -> dict:
                 ratio="16:9", fps=24, color_palette="冷色月光，低饱和")
 
 
-def _write_script(store: ProjectStore, project_id: str = "demo") -> dict:
+def _write_script(store: ProjectStore, project_id: str = "demo", story: dict | None = None) -> dict:
     return _act(store, "write_script", project_id=project_id,
                 scenes=[{"id": "Scene001", "location": "雪林", "time": "黄昏",
                          "function": "建立危机感", "duration": 10}],
                 shots=[{"id": "Shot001", "scene_id": "Scene001", "shot_size": "大全景",
                         "camera": "无人机下降", "lens": "24mm", "action": "一家三口逃亡",
                         "emotion": "恐惧", "sound": "风雪声",
-                        "asset_refs": ["CHAR001", "CHAR002", "LOC001"]}])
+                        "asset_refs": ["CHAR001", "CHAR002", "LOC001"],
+                        "spatial": {
+                            "camera": {"position": {"x": 30, "y": 20}, "target": {"x": 50, "y": 40}},
+                            "characters": [
+                                {"asset_id": "CHAR001", "position": {"x": 50, "y": 40}, "facing": 90},
+                                {"asset_id": "CHAR002", "position": {"x": 45, "y": 36}, "facing": 0},
+                            ],
+                        }}],
+                story=story)
+
+
+def _story() -> dict:
+    """剧情补充层样例（整体剧情 + 人物/环境描述词 + 空间/大局描述词）。"""
+    return {
+        "plot": "一家三口在暴雪中逃亡求生",
+        "characters": [{"id": "CHAR001", "name": "爸爸", "prompt": "45 岁男人，黑色羽绒服"}],
+        "environments": [{"id": "LOC001", "name": "雪林", "prompt": "黄昏暴雪的雪林"}],
+        "spatial": "雪林在平面图东北部，人物从东侧入画向西逃亡",
+        "worldview": "末日废土，冷色主调",
+    }
 
 
 def _review_script(store: ProjectStore, project_id: str = "demo", score: int = 90) -> dict:
@@ -57,7 +76,8 @@ def _add_char(store: ProjectStore, project_id: str = "demo", asset_id: str = "CH
 def _add_loc(store: ProjectStore, project_id: str = "demo", asset_id: str = "LOC001") -> dict:
     return _act(store, "add_asset", project_id=project_id, kind="LOC", id=asset_id,
                 name="雪林", appearance="黄昏暴雪的雪林，冷色月光",
-                reference_image=f"assets/{asset_id}.png")
+                reference_image=f"assets/{asset_id}.png",
+                position={"x": 50, "y": 40}, footprint={"width": 20, "depth": 16})
 
 
 def _review_assets(store: ProjectStore, project_id: str = "demo", score: int = 90) -> dict:
@@ -73,6 +93,7 @@ def _setup_asset_lock(store: ProjectStore, project_id: str = "demo") -> None:
     _create_project(store, project_id)
     _write_script(store, project_id)
     _review_script(store, project_id)
+    _act(store, "set_floorplan", project_id=project_id, width=100, length=80)
     _add_loc(store, project_id, "LOC001")
     _add_char(store, project_id, "CHAR001")
     _add_char(store, project_id, "CHAR002")
@@ -155,6 +176,7 @@ def test_add_loc_auto_advances_to_character_design(tmp_path: Path) -> None:
     _create_project(store)
     _write_script(store)
     _review_script(store)
+    _act(store, "set_floorplan", project_id="demo", width=100, length=80)
     result = _add_loc(store)
     assert result["stage"] == "character_design"
 
@@ -226,6 +248,7 @@ def test_review_assets_requires_all_chars(tmp_path: Path) -> None:
     _create_project(store)
     _write_script(store)
     _review_script(store)
+    _act(store, "set_floorplan", project_id="demo", width=100, length=80)
     _add_loc(store)
     _add_char(store, asset_id="CHAR001")  # CHAR002 缺失
     with pytest.raises(CinematicDirectorError, match="missing character assets"):
@@ -415,3 +438,240 @@ def test_execute_returns_json_error_on_gate_rejection(tmp_path: Path) -> None:
     payload = json.loads(raw)
     assert payload["ok"] is False
     assert "not allowed at stage" in payload["error"]
+
+
+# ---------------------------------------------------------------------------
+# 空间资产能力（平面图 + 坐标 + 空间一致性硬门）
+# ---------------------------------------------------------------------------
+
+
+def _setup_spatial_locked(store: ProjectStore, project_id: str = "demo", *, loc2: bool = False) -> dict:
+    """推进到 storyboard，带平面图 + LOC 坐标 + 镜头空间站位。"""
+    _create_project(store, project_id)
+    refs = ["CHAR001", "CHAR002", "LOC001"] + (["LOC002"] if loc2 else [])
+    shots = [{
+        "id": "Shot001", "scene_id": "Scene001", "shot_size": "大全景",
+        "action": "逃亡", "emotion": "恐惧", "sound": "风雪声",
+        "asset_refs": refs,
+        "spatial": {
+            "camera": {"position": {"x": 30, "y": 20}, "target": {"x": 50, "y": 40}},
+            "characters": [
+                {"asset_id": "CHAR001", "position": {"x": 50, "y": 40}, "facing": 90},
+                {"asset_id": "CHAR002", "position": {"x": 45, "y": 36}, "facing": 0},
+            ],
+        },
+    }]
+    _act(store, "write_script", project_id=project_id,
+         scenes=[{"id": "Scene001", "location": "雪林", "time": "黄昏",
+                  "function": "建立危机感", "duration": 10}],
+         shots=shots)
+    _review_script(store, project_id)
+    _act(store, "set_floorplan", project_id=project_id, width=100, length=80)
+    _act(store, "add_asset", project_id=project_id, kind="LOC", id="LOC001", name="雪林",
+         appearance="黄昏暴雪的雪林", reference_image="assets/LOC001.png",
+         position={"x": 50, "y": 40}, footprint={"width": 20, "depth": 16})
+    if loc2:
+        _act(store, "add_asset", project_id=project_id, kind="LOC", id="LOC002", name="木屋",
+             appearance="木屋", reference_image="assets/LOC002.png",
+             position={"x": 55, "y": 42}, footprint={"width": 10, "depth": 10})
+    _add_char(store, project_id, "CHAR001")
+    _add_char(store, project_id, "CHAR002")
+    _review_assets(store, project_id)
+    return _lock_assets(store, project_id)
+
+
+def test_set_floorplan_persists_map_json(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    _review_script(store)
+    result = _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+    assert result["floorplan"]["width"] == 100
+    assert result["floorplan"]["unit"] == "meter"
+    assert result["stage"] == "world_building"  # 空间规划完成即放行资产生成
+    data = store.load("demo")
+    assert data["floorplan"]["length"] == 80
+    assert (tmp_path / "cinematic" / "demo" / "map.json").exists()
+
+
+def test_set_floorplan_rejects_missing_dims(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    _review_script(store)
+    with pytest.raises(CinematicDirectorError, match="width"):
+        _act(store, "set_floorplan", project_id="demo", width=0, length=80)
+
+
+def test_set_floorplan_rejected_before_spatial_planning(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)  # 仍在 script_analysis
+    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+        _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+
+
+def test_add_loc_requires_position(tmp_path: Path) -> None:
+    """空间规划强制后，LOC 资产必须带坐标。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    _review_script(store)
+    _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+    with pytest.raises(CinematicDirectorError, match="position"):
+        _act(store, "add_asset", project_id="demo", kind="LOC", id="LOC001",
+             name="雪林", appearance="黄昏暴雪的雪林", reference_image="assets/LOC001.png")
+
+
+def test_compile_prompt_spatial_hard_gate_character_out_of_loc(tmp_path: Path) -> None:
+    """人物站位越出引用 LOC 占地 → compile_prompt 硬门拒绝。"""
+    store = _store(tmp_path)
+    _setup_spatial_locked(store)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    # 篡改 CHAR001 站位到 LOC001 占地之外
+    data = store.load("demo")
+    data["shots"][0]["spatial"]["characters"][0]["position"] = {"x": 5, "y": 5}
+    store.save("demo", data)
+    with pytest.raises(CinematicDirectorError, match="spatial inconsistency"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+
+
+def test_compile_prompt_rejects_overlapping_locs(tmp_path: Path) -> None:
+    """两个 LOC 占地重叠 → compile_prompt 硬门拒绝（建筑不叠放）。"""
+    store = _store(tmp_path)
+    _setup_spatial_locked(store, loc2=True)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    with pytest.raises(CinematicDirectorError, match="overlap"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+
+
+def test_compile_prompt_rejects_motion_wall_cross(tmp_path: Path) -> None:
+    """人物 motion_to 直线穿过另一 LOC 占地 → 穿墙拒绝。"""
+    store = _store(tmp_path)
+    _setup_spatial_locked(store, loc2=True)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    # 重新布局，避免「建筑不叠放」与「人物越界」干扰，仅触发穿墙
+    data = store.load("demo")
+    data["assets"]["LOC001"]["position"] = {"x": 20, "y": 40}   # AABB [10,30]x[32,48]
+    data["assets"]["LOC002"]["position"] = {"x": 80, "y": 10}   # AABB [75,85]x[5,15]
+    chars = data["shots"][0]["spatial"]["characters"]
+    chars[0]["position"] = {"x": 20, "y": 40}   # CHAR001 在 LOC001 内
+    chars[0]["motion_to"] = {"x": 90, "y": 10}  # 直线穿过 LOC002 占地
+    chars[1]["position"] = {"x": 20, "y": 36}   # CHAR002 也在 LOC001 内
+    store.save("demo", data)
+    with pytest.raises(CinematicDirectorError, match="motion path crosses"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+
+
+def test_compile_prompt_spatial_phrase(tmp_path: Path) -> None:
+    """合法空间布局 → prompt 注入坐标与方位短语。"""
+    store = _store(tmp_path)
+    _setup_spatial_locked(store)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    prompt = result["prompt"]
+    assert "位于平面图 (50,40)" in prompt
+    assert "西南角" in prompt
+    assert "面向东" in prompt
+    assert "机位在 @LOC001" in prompt
+    assert result["stage"] == "quality_check"
+
+
+# ---------------------------------------------------------------------------
+# story 剧情补充层 + 可选用户审核门
+# ---------------------------------------------------------------------------
+
+
+def test_write_script_persists_story(tmp_path: Path) -> None:
+    """write_script 的 story 落盘到 story.json 并写回 data。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store, story=_story())
+    data = store.load("demo")
+    assert data["story"]["plot"] == "一家三口在暴雪中逃亡求生"
+    assert data["story"]["characters"][0]["prompt"].startswith("45 岁")
+    assert (tmp_path / "cinematic" / "demo" / "story.json").exists()
+
+
+def test_write_script_generates_script_doc(tmp_path: Path) -> None:
+    """write_script 生成可读的剧本资产文档 script.md，含剧情与人物。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store, story=_story())
+    doc = (tmp_path / "cinematic" / "demo" / "script.md").read_text(encoding="utf-8")
+    assert "## 整体剧情" in doc
+    assert "一家三口在暴雪中逃亡求生" in doc
+    assert "CHAR001" in doc and "爸爸" in doc
+    assert "## 分镜" in doc
+
+
+def test_request_user_review_enters_script_review(tmp_path: Path) -> None:
+    """request_user_review 进入 script_review 并返回完整剧情供呈现。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store, story=_story())
+    result = _act(store, "request_user_review", project_id="demo")
+    assert result["stage"] == "script_review"
+    assert result["story"]["plot"] == "一家三口在暴雪中逃亡求生"
+    assert store.load("demo")["stage"] == "script_review"
+
+
+def test_approve_script_true_advances_to_spatial_planning(tmp_path: Path) -> None:
+    """用户批准 → spatial_planning，可继续 set_floorplan。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store, story=_story())
+    _act(store, "request_user_review", project_id="demo")
+    result = _act(store, "approve_script", project_id="demo", approved=True)
+    assert result["stage"] == "spatial_planning"
+    _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+    assert store.load("demo")["stage"] == "world_building"
+
+
+def test_approve_script_false_returns_to_script_analysis(tmp_path: Path) -> None:
+    """用户打回 → script_analysis，且后续 set_floorplan 仍被审核门挡住。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store, story=_story())
+    _act(store, "request_user_review", project_id="demo")
+    result = _act(store, "approve_script", project_id="demo", approved=False, note="剧情太单薄")
+    assert result["stage"] == "script_analysis"
+    assert store.load("demo")["stage"] == "script_analysis"
+    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+        _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+
+
+def test_request_user_review_requires_script_analysis(tmp_path: Path) -> None:
+    """尚未写剧本（init）时不可进入用户审核。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+        _act(store, "request_user_review", project_id="demo")
+
+
+def test_approve_script_requires_script_review(tmp_path: Path) -> None:
+    """未进入 script_review 阶段不可裁决。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+        _act(store, "approve_script", project_id="demo", approved=True)
+
+
+def test_approve_script_requires_approved_bool(tmp_path: Path) -> None:
+    """approve_script 必须显式传 approved 布尔值。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    _act(store, "request_user_review", project_id="demo")
+    with pytest.raises(CinematicDirectorError, match="approved"):
+        _act(store, "approve_script", project_id="demo")
+
+
+def test_review_script_without_user_review_advances(tmp_path: Path) -> None:
+    """不请求用户审核时，review_script 直接进 spatial_planning（可选门跳过）。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    result = _review_script(store)
+    assert result["stage"] == "spatial_planning"

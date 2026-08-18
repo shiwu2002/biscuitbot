@@ -1,28 +1,33 @@
 # cinematic_director
 
-AI 导演工作流编排工具。把「导演圣经 → 剧本 → 剧本审核 → 世界观/角色资产 → 资产审核 → 资产锁定 → 分镜 → 视频生成 → 视频审核 → 成片」固化为**代码强约束的 9 阶段状态机**：阶段顺序、三级审核 Gate、数据冻结都由本工具硬校验，非法操作被拒绝，解决 AI 视频人物/场景/光影漂移与流程偏移问题。
+AI 导演工作流编排工具。把「导演圣经 → 剧本 → 剧本审核 → **（可选用户审核）** → **空间规划** → 世界观/角色资产 → 资产审核 → 资产锁定 → 分镜 → 视频生成 → 视频审核 → 成片」固化为**代码强约束的 11 阶段状态机**：阶段顺序、审核 Gate、数据冻结都由本工具硬校验，非法操作被拒绝，解决 AI 视频人物/场景/光影漂移与流程偏移问题。剧本师步骤产出完整 `story`（整体剧情 + 人物/环境描述词 + 空间/大局描述词），并可经**可选用户审核门**让用户确认后再继续。空间规划是**强制阶段**——生成任何资产之前必须先声明平面图并锁定坐标体系。
 
 ## 何时使用
 
 用户想拍短剧、把小说/故事/剧本改编成视频、做 AI 影视/分镜/预告片生产时使用。本工具**不生成视频/图片/音频**——它只做编排与管控；视频/图片/配音分别交给 `generate_video` / `generate_image` / `text_to_speech`。
 
-## 9 阶段状态机
+## 11 阶段状态机
 
 项目 `stage`：
 
 ```
-init → script_analysis → world_building → character_design → asset_lock
-     → storyboard → video_generation → quality_check → final_edit
+init → script_analysis → script_review → spatial_planning → world_building
+     → character_design → asset_lock → storyboard → video_generation
+     → quality_check → final_edit
 ```
+
+`script_review` 是**可选**阶段：只有调用 `request_user_review` 才会进入；不调用则 `review_script` 通过后直接进 `spatial_planning`。
 
 全部镜头 `final` 后 `completed=true`。镜头 `shot.status`：`pending → prompted → qc_pass/qc_fail → final`。
 
 **硬门（代码强制，不可绕过）：**
 
-1. **三级审核 Gate**：`review_script`（剧本审核）不过 → 不能进入 world_building；`review_assets`（资产审核）不过 → 不能进入 asset_lock；`record_qc`（视频审核）任一分数 < 阈值（默认 85）→ 镜头 `qc_fail`，`record_shot_result` 拒绝推进。
-2. **资产优先 + 参考图强制**：`add_asset` 必须有 `reference_image`；`lock_assets` 校验脚本引用的每个资产都已添加且有参考图。
-3. **数据冻结**：`review_script` 通过后 `write_script` 拒绝改剧本；`lock_assets` 后 `add_asset` 拒绝改资产；资产一旦创建**无「编辑/删除」动作**，角色定义天然不可变。
-4. **权限隔离**：本工具 `_scopes={"core"}`，只有主 Agent（导演）能改项目状态；`spawn` 出的子 Agent 无法调用本工具，只能用 `generate_image`/`read_file`/视觉能力**产出内容后回报**，由导演落库。
+1. **三级审核 Gate**：`review_script`（剧本审核）不过 → 不能进入 spatial_planning；`review_assets`（资产审核）不过 → 不能进入 asset_lock；`record_qc`（视频审核）任一分数 < 阈值（默认 85）→ 镜头 `qc_fail`，`record_shot_result` 拒绝推进。
+2. **可选用户审核门**：调用 `request_user_review` 后项目进入 `script_review`，必须等 `approve_script(approved=true)` 才能进 `spatial_planning`；`approved=false` 打回 `script_analysis` 重写。不调用则跳过此门。
+3. **空间规划强制**：进入 spatial_planning 后必须 `set_floorplan` 才能进入 world_building；`add_asset(LOC)` 必须带 `position`；`compile_prompt` 强制校验「界内 / 建筑不叠放 / 人物不悬空 / 运动不穿墙」，不一致直接拒绝。
+4. **资产优先 + 参考图强制**：`add_asset` 必须有 `reference_image`；`lock_assets` 校验脚本引用的每个资产都已添加且有参考图。
+5. **数据冻结**：`review_script` 通过后 `write_script` 拒绝改剧本；`lock_assets` 后 `add_asset` 拒绝改资产；资产一旦创建**无「编辑/删除」动作**，角色定义天然不可变。
+6. **权限隔离**：本工具 `_scopes={"core"}`，只有主 Agent（导演）能改项目状态；`spawn` 出的子 Agent 无法调用本工具，只能用 `generate_image`/`read_file`/视觉能力**产出内容后回报**，由导演落库。
 
 ## 动作（action）
 
@@ -38,16 +43,61 @@ init → script_analysis → world_building → character_design → asset_lock
 | color_palette | 否 | 色彩体系 |
 | reference_works | 否 | 对标影视作品 |
 
-### write_script —— 写场景 + 分镜（叙事层）→ stage=script_analysis
+### set_floorplan —— 声明全局 2D 平面图（spatial_planning 阶段，强制）→ 开启空间一致性
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id | 是 | 项目 ID |
+| width | 是 | 用地宽度（米，x 轴范围 `[0,width]`） |
+| length | 是 | 用地深度（米，y 轴范围 `[0,length]`） |
+| unit | 否 | 坐标单位，默认 `meter` |
+
+平面图是**强制阶段**：`review_script` 通过后进入 `spatial_planning`，必须先 `set_floorplan` 才能进入 `world_building` 生成资产。设了平面图即开启空间一致性**硬门**——LOC 资产必须带 `position`，每个镜头必须提供 `spatial` 站位，`compile_prompt` 会校验「界内 / 建筑不叠放 / 人物不悬空 / 运动不穿墙」，不一致直接拒绝。坐标系约定：**2D 俯视平面图**，原点 `(0,0)` 在西南角，`+x` 向东、`+y` 向北（北在上）。
+
+阶段约束：只能在 `spatial_planning` 调用（在 `review_script` 之后、`add_asset` 之前），调用后自动 → `world_building`。
+
+### write_script —— 写场景 + 分镜 + 剧情（叙事层）→ stage=script_analysis
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | project_id | 是 | 项目 ID |
 | scenes | 是 | 场景列表：`{id, location, time, function, duration}` |
-| shots | 是 | 分镜列表：`{id, scene_id, shot_size, camera, lens, action, emotion, sound, asset_refs}` |
+| shots | 是 | 分镜列表：`{id, scene_id, shot_size, camera, lens, action, emotion, sound, asset_refs, spatial}` |
+| story | 否 | **剧情补充优化**：整体剧情 + 人物/环境描述词 + 空间/大局描述词，见下 |
 
 约束：每个 shot 的 `scene_id` 必须存在；`asset_refs` 必须含至少一个 `CHAR###` 与一个 `LOC###`。
 
-### review_script —— 剧本审核 Gate → 通过后 stage=world_building
+`story`（剧本师先补齐剧情与各类描述词，供用户审核；其中人物/环境的 `prompt` 即后续 `add_asset` 的 `appearance` 来源）：
+
+```json
+"story": {
+  "plot": "一家三口在暴雪中逃亡求生，途中遭遇追兵，最终在雪林小屋反击脱险",
+  "characters": [
+    {"id": "CHAR001", "name": "爸爸", "prompt": "45 岁男人，黑色羽绒服，胡茬严肃"},
+    {"id": "CHAR002", "name": "妈妈", "prompt": "40 岁女人，深灰大衣，神情坚毅"}
+  ],
+  "environments": [
+    {"id": "LOC001", "name": "雪林", "prompt": "黄昏暴雪的雪林，冷色月光"}
+  ],
+  "spatial": "雪林位于平面图东北部，小屋在西南角，人物从东侧入画向西逃亡",
+  "worldview": "末日废土+暴雪求生，冷色主调，压抑而紧张的氛围"
+}
+```
+
+`write_script` 会同步生成**剧本资产文档** `script.md`（Markdown），把剧情/人物/环境/场景/分镜整理成可读文档写入项目目录，供用户后续查阅剧情；`request_user_review` 时可直接读 `script.md` 呈现给用户审核。
+
+shot 必填 `spatial`（空间布局站位，空间规划强制后每个镜头都要提供）：
+
+```json
+"spatial": {
+  "camera":     {"position":{"x":30,"y":20}, "target":{"x":50,"y":40}, "facing":45},
+  "characters": [{"asset_id":"CHAR001","position":{"x":50,"y":40},"facing":90,"motion_to":{"x":52,"y":40}}],
+  "props":      [{"asset_id":"PROP001","position":{"x":45,"y":36},"facing":0}]
+}
+```
+
+- `characters[].asset_id` 必须是 `asset_refs` 里的 `CHAR###`；`props[]` 同理须 `PROP###`。
+- `position`：站位坐标（米）；`facing`：朝向角（0=北，90=东）；`motion_to`：可选运动终点（用于穿墙检测）。
+
+### review_script —— 剧本审核 Gate → 通过后 stage=spatial_planning
 | 参数 | 必填 | 说明 |
 |------|------|------|
 | project_id | 是 | 项目 ID |
@@ -56,6 +106,22 @@ init → script_analysis → world_building → character_design → asset_lock
 | threshold | 否 | 通过阈值，默认 85 |
 | note | 否 | 备注 / 修改建议 |
 | reviewer | 否 | 审核人（员工代号或姓名，记录是谁审的） |
+
+### request_user_review —— 进入可选用户审核（script_analysis → script_review）
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id | 是 | 项目 ID |
+
+写完剧本后**询问用户是否需要审核剧情**；需要则调用本动作进入 `script_review` 并返回完整 `story`/`scenes`/`shots` 供呈现给用户。不需要则跳过，直接用 `review_script` 推进。
+
+### approve_script —— 用户审核裁决（script_review → spatial_planning / script_analysis）
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id | 是 | 项目 ID |
+| approved | 是 | `true` 放行 → spatial_planning；`false` 打回 → script_analysis 重写 |
+| note | 否 | 用户意见 / 修改建议 |
+
+用户确认通过后 `approved=true` 才能进入后续 `set_floorplan`；打回则回到 `script_analysis` 重新 `write_script`。
 
 ### add_asset —— 锁定单个资产
 | 参数 | 必填 | 说明 |
@@ -66,8 +132,12 @@ init → script_analysis → world_building → character_design → asset_lock
 | name | 是 | 资产名 |
 | appearance | 是 | **稳定外观短语**（prompt 直接引用的、保持一致的关键描述） |
 | reference_image | 是 | 参考图路径（`generate_image` 生成的本地路径） |
+| position | 否 | **仅 LOC**。占地中心点 `{x,y}`（米）；**强制必填**（空间规划后 LOC 必须定位） |
+| orientation | 否 | **仅 LOC**。建筑朝向角（0=北，90=东） |
+| footprint | 否 | **仅 LOC**。占地尺寸 `{width,depth}`（米，以 `position` 为中心） |
+| entrance | 否 | **仅 LOC**。入口点 `{x,y}` |
 
-阶段约束：`LOC`/`PROP` 只能在 `world_building` 添加（全部齐备后自动 → `character_design`）；`CHAR` 只能在 `character_design` 添加。
+阶段约束：`LOC`/`PROP` 只能在 `world_building` 添加（全部齐备后自动 → `character_design`）；`CHAR` 只能在 `character_design` 添加。CHAR/PROP 的站位坐标是镜头级的（见 `write_script` 的 `spatial`），不在资产层设置。
 
 ### review_assets —— 资产审核 Gate → 通过后 stage=asset_lock
 参数同 `review_script`（`score`/`passed`/`threshold`/`note`/`reviewer`）。要求所有 `CHAR###` 引用资产已添加。
@@ -80,6 +150,14 @@ init → script_analysis → world_building → character_design → asset_lock
 
 ### compile_prompt —— 编译规范化 Prompt（禁止 LLM 直接编最终提示词）
 参数 `project_id` + `shot_id`。按固定规则编译出带 `@CHAR001 @LOC001` 锚点的 prompt，返回 `prompt` + `image_urls`，供 `generate_video` 直接调用。全部镜头编译后自动 → `quality_check`。
+
+空间规划强制后，`compile_prompt` 先做**空间一致性硬门校验**（LOC 界内/不叠放、人物/道具不悬空、机位界内、运动不穿墙），不一致直接抛错拒绝；校验通过则把坐标/朝向翻译成自然语言方位短语注入 prompt，例如：
+
+```
+@CHAR001 …（站在 @LOC001 西南角，面向东）
+@LOC001 …（位于平面图 (50,40)，朝向北）
+Camera: tracking, 24fps（机位在 @LOC001 西南方 28 米）
+```
 
 ### record_qc —— 视频审核 Gate（质检硬阻塞）
 | 参数 | 必填 | 说明 |
@@ -108,45 +186,70 @@ cinematic_director(action="create_project", project_id="snow-forest",
                    name="雪林逃亡", logline="一家三口在暴雪中逃亡求生",
                    style="realistic movie scene", ratio="16:9")
 
-# 2. 写剧本
+# 2. 写剧本（补全剧情 story；镜头必须带 spatial 空间站位）
 cinematic_director(action="write_script", project_id="snow-forest",
-                   scenes=[{"id":"Scene001","location":"雪林","time":"黄昏","function":"建立危机感","duration":10}],
+                   scenes=[{"id":"Scene001","location":"雪林","time":"黄昏",
+                            "function":"建立危机感","duration":10}],
                    shots=[{"id":"Shot001","scene_id":"Scene001","shot_size":"大全景",
                            "action":"一家三口逃亡","emotion":"恐惧","sound":"风雪声",
-                           "asset_refs":["CHAR001","CHAR002","LOC001"]}])
+                           "asset_refs":["CHAR001","CHAR002","LOC001"],
+                           "spatial": {
+                             "camera": {"position":{"x":30,"y":20}, "target":{"x":50,"y":40}},
+                             "characters": [
+                               {"asset_id":"CHAR001","position":{"x":50,"y":40},"facing":90},
+                               {"asset_id":"CHAR002","position":{"x":45,"y":36},"facing":0}
+                             ]}}],
+                   story={"plot":"一家三口在暴雪中逃亡求生，最终在雪林小屋反击脱险",
+                          "characters":[{"id":"CHAR001","name":"爸爸","prompt":"45 岁男人，黑色羽绒服"},
+                                        {"id":"CHAR002","name":"妈妈","prompt":"40 岁女人，深灰大衣"}],
+                          "environments":[{"id":"LOC001","name":"雪林","prompt":"黄昏暴雪的雪林，冷色月光"}],
+                          "spatial":"雪林在平面图东北部，人物从东侧入画向西逃亡",
+                          "worldview":"末日废土+暴雪求生，冷色主调"})
 
-# 3. 剧本审核（不过则回写剧本再审）
+# 3. 剧本审核。可选：先询问用户是否审核剧情——
+#    需要 → request_user_review 呈现剧情 → 等用户确认 → approve_script(approved=true)
+#    不需要 → 直接 review_script
 cinematic_director(action="review_script", project_id="snow-forest", score=90)
 
-# 4. 生成参考图并添加资产（先世界 LOC/PROP，再角色 CHAR）
+# 3'. 若用户选择审核（示例）：
+# cinematic_director(action="request_user_review", project_id="snow-forest")  # 呈现剧情给用户
+# ... 用户确认后 ...
+# cinematic_director(action="approve_script", project_id="snow-forest", approved=true)
+
+# 4. 空间规划（强制）：声明全局平面图 → 进入 world_building
+cinematic_director(action="set_floorplan", project_id="snow-forest", width=100, length=80)
+
+# 5. 生成参考图并添加资产（先世界 LOC/PROP，再角色 CHAR；LOC 必须带坐标）
 generate_image(prompt="黄昏暴雪的雪林，冷色月光", aspect_ratio="1:1")
 cinematic_director(action="add_asset", project_id="snow-forest", kind="LOC", id="LOC001",
                    name="雪林", appearance="黄昏暴雪的雪林，冷色月光",
-                   reference_image="<场景参考图路径>")
+                   reference_image="<场景参考图路径>",
+                   position={"x":50,"y":40}, footprint={"width":20,"depth":16})
 generate_image(prompt="45岁男人，黑色羽绒服，三视图，写实", aspect_ratio="1:1")
 cinematic_director(action="add_asset", project_id="snow-forest", kind="CHAR", id="CHAR001",
                    name="爸爸", appearance="45 岁男人，黑色羽绒服，胡茬严肃",
                    reference_image="<角色参考图路径>")
 # ... 为每个资产重复 add_asset ...
 
-# 5. 资产审核 + 锁定
+# 6. 资产审核 + 锁定
 cinematic_director(action="review_assets", project_id="snow-forest", score=90)
 cinematic_director(action="lock_assets", project_id="snow-forest")
 
-# 6. 分镜 + 编译 Prompt
+# 7. 分镜 + 编译 Prompt（compile_prompt 先做空间一致性硬门校验）
 cinematic_director(action="plan_shot", project_id="snow-forest", shot_id="Shot001",
                    movement="handheld tracking shot", fps=24, lighting="cold cinematic lighting")
 cinematic_director(action="compile_prompt", project_id="snow-forest", shot_id="Shot001")
 # → { prompt: "@CHAR001 ... @LOC001 ...\nCamera: ...", image_urls: [...] }
+# prompt 中已注入方位短语，如「@CHAR001 …（站在 @LOC001 中央，面向东）」
 
-# 7. 生成视频
+# 8. 生成视频
 generate_video(prompt="<上一步的 prompt>", image_urls=["<上一步的 image_urls>"], ratio="16:9", duration=10)
 
-# 8. 视频审核（结合视觉能力读视频首帧与参考图对比后打分）
+# 9. 视频审核（结合视觉能力读视频首帧与参考图对比后打分）
 cinematic_director(action="record_qc", project_id="snow-forest", shot_id="Shot001",
                    character_score=95, scene_score=90, action_score=88)
 
-# 9. 记录成片（qc_pass 才被接受）
+# 10. 记录成片（qc_pass 才被接受）
 cinematic_director(action="record_shot_result", project_id="snow-forest",
                    shot_id="Shot001", video_path="<生成的视频路径>")
 ```
@@ -158,6 +261,9 @@ cinematic_director(action="record_shot_result", project_id="snow-forest",
 ```
 project.json                  # 索引：stage/completed/scenes/时间戳
 bible.json                    # 导演圣经
+story.json                    # 剧情补充层（write_script 的 story）
+script.md                     # 剧本资产文档（write_script 生成的 Markdown，供用户查阅剧情）
+map.json                      # 平面图（set_floorplan 后存在）
 characters/CHAR001.json       # 角色资产
 locations/LOC001.json         # 场景资产
 props/PROP001.json            # 道具资产

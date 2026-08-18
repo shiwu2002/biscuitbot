@@ -84,6 +84,14 @@ class ProjectStore:
         bible_path = root / "bible.json"
         data["bible"] = self._read_json(bible_path) if bible_path.exists() else {}
 
+        # floorplan（平面图，可选）
+        floorplan_path = root / "map.json"
+        data["floorplan"] = self._read_json(floorplan_path) if floorplan_path.exists() else None
+
+        # story（故事/剧本补充层，可选）
+        story_path = root / "story.json"
+        data["story"] = self._read_json(story_path) if story_path.exists() else {}
+
         # assets（characters/ + locations/ + props/）
         assets: dict[str, Any] = {}
         for kind, dirname in _ASSET_DIRS.items():
@@ -129,6 +137,13 @@ class ProjectStore:
         # bible
         self._write_json(root / "bible.json", data.get("bible") or {})
 
+        # story（故事/剧本补充层）
+        self._write_json(root / "story.json", data.get("story") or {})
+
+        # floorplan（平面图，可选）
+        if data.get("floorplan"):
+            self._write_json(root / "map.json", data["floorplan"])
+
         # assets
         for asset in (data.get("assets") or {}).values():
             dirname = _ASSET_DIRS[asset["kind"]]
@@ -141,3 +156,13 @@ class ProjectStore:
         # reviews
         for key, review in (data.get("reviews") or {}).items():
             self._write_json(root / "reviews" / f"{key}.json", review)
+
+    def write_text(self, project_id: str | None, filename: str, content: str) -> Path:
+        """原子写文本文件（如 script.md），返回写入路径。"""
+        root = self.root(project_id)
+        ensure_dir(root)
+        path = root / filename
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(content, encoding="utf-8")
+        os.replace(tmp, path)
+        return path

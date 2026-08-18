@@ -1,7 +1,7 @@
 """AI 导演工作流常量与权限矩阵。
 
 职责与项目角色：
-- 定义资产类型、ID/项目 ID 正则、9 阶段、镜头状态、画幅、质检阈值；
+- 定义资产类型、ID/项目 ID 正则、11 阶段、镜头状态、画幅、质检阈值；
 - 定义全部动作（action）与角色（role），以及角色→动作的权限矩阵。
 """
 
@@ -16,10 +16,12 @@ _ASSET_ID_RE = re.compile(r"^(CHAR|LOC|PROP)(\d{3})$")
 # 项目 ID：小写 slug（字母/数字/连字符/下划线），杜绝路径穿越
 _PROJECT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
-# 项目 9 阶段状态机（文档规定的宏观流水线）
+# 项目 11 阶段状态机（文档规定的宏观流水线）
 _STAGES = (
     "init",
     "script_analysis",
+    "script_review",
+    "spatial_planning",
     "world_building",
     "character_design",
     "asset_lock",
@@ -41,8 +43,11 @@ _RATIOS = ("16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive")
 # 全部 action（供 schema enum 与分派使用）
 _ACTIONS = (
     "create_project",
+    "set_floorplan",
     "write_script",
     "review_script",
+    "request_user_review",
+    "approve_script",
     "add_asset",
     "review_assets",
     "lock_assets",
@@ -61,8 +66,8 @@ _ROLES = ("director", "script", "world", "character", "asset", "video", "editor"
 # 真正的隔离靠 _scopes={"core"}（子代理无法调用本工具）与数据冻结门。
 _ROLE_ACTIONS: dict[str, frozenset[str]] = {
     "director": frozenset(_ACTIONS),
-    "script": frozenset({"write_script", "review_script", "status"}),
-    "world": frozenset({"add_asset", "status"}),
+    "script": frozenset({"write_script", "review_script", "request_user_review", "approve_script", "status"}),
+    "world": frozenset({"set_floorplan", "add_asset", "status"}),
     "character": frozenset({"add_asset", "status"}),
     "asset": frozenset({"add_asset", "review_assets", "lock_assets", "status"}),
     "video": frozenset({"plan_shot", "compile_prompt", "record_qc", "status"}),
