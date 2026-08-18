@@ -62,7 +62,9 @@ class CinematicDirectorTool(Tool):
         "Orchestrate an AI film production pipeline (bible → script → review → "
         "optional user review → spatial planning → world/character assets → "
         "asset lock → storyboard → video generation → video review → final) "
-        "with a hard 11-stage state machine."
+        "with a hard 11-stage state machine, plus optional first-frame continuity "
+        "(reuse the previous shot's recorded last frame when a shot continues "
+        "directly from it)."
     )
     _usage_md = "docs/cinematic_director.md"  # 使用说明文档路径
 
@@ -88,16 +90,24 @@ class CinematicDirectorTool(Tool):
             "create_project, set_floorplan, write_script, review_script, "
             "request_user_review, approve_script, add_asset, review_assets, "
             "lock_assets, plan_shot, compile_prompt, record_qc, record_shot_result, "
-            "status. It blocks skipping stages, requires a reference image for every "
-            "asset, freezes script/assets after review/lock, and blocks recording a "
-            "shot result until video QC passes. write_script should include a rich "
-            "'story' (plot + character/environment prompts + spatial/worldview "
+            "record_shot_frame, attach_audio, attach_spatial_map, status. It blocks "
+            "skipping stages, requires a reference image for every asset, freezes "
+            "script/assets after review/lock, and blocks recording a shot result "
+            "until video QC passes. write_script should include a rich 'story' "
+            "(plot + character/environment prompts + spatial/worldview "
             "descriptions); after writing, ask the user whether they want to review "
             "the story — if yes, request_user_review then approve_script once the "
             "user confirms, else proceed via review_script. A mandatory "
             "spatial_planning stage (set_floorplan) must complete before assets are "
             "generated, so every LOC carries coordinates and every shot blocking is "
-            "validated at compile_prompt. Read docs/cinematic_director.md first."
+            "validated at compile_prompt. compile_prompt assembles the full video "
+            "reference set (image_urls = optionally the previous shot's last frame "
+            "as first-frame reference when continuity=true, then spatial map image, "
+            "then character/scene reference images, plus audio_urls). First-frame "
+            "continuity is OPTIONAL: set continuity=true only for shots that "
+            "continue directly from the previous shot; for scene cuts / new plot "
+            "segments omit it (continuity=false), since reusing the previous frame "
+            "would be meaningless. Read docs/cinematic_director.md first."
         )
 
     # ------------------------------------------------------------------

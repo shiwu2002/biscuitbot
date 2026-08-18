@@ -55,6 +55,9 @@ _ACTIONS = (
     "compile_prompt",
     "record_qc",
     "record_shot_result",
+    "record_shot_frame",
+    "attach_audio",
+    "attach_spatial_map",
     "status",
 )
 
@@ -67,9 +70,9 @@ _ROLES = ("director", "script", "world", "character", "asset", "video", "editor"
 _ROLE_ACTIONS: dict[str, frozenset[str]] = {
     "director": frozenset(_ACTIONS),
     "script": frozenset({"write_script", "review_script", "request_user_review", "approve_script", "status"}),
-    "world": frozenset({"set_floorplan", "add_asset", "status"}),
+    "world": frozenset({"set_floorplan", "add_asset", "attach_spatial_map", "status"}),
     "character": frozenset({"add_asset", "status"}),
     "asset": frozenset({"add_asset", "review_assets", "lock_assets", "status"}),
-    "video": frozenset({"plan_shot", "compile_prompt", "record_qc", "status"}),
-    "editor": frozenset({"record_shot_result", "status"}),
+    "video": frozenset({"plan_shot", "compile_prompt", "record_qc", "attach_audio", "status"}),
+    "editor": frozenset({"record_shot_result", "record_shot_frame", "status"}),
 }

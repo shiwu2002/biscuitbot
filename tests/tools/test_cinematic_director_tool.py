@@ -325,7 +325,7 @@ def test_record_qc_fail_blocks_shot_result(tmp_path: Path) -> None:
     assert qc["below_threshold"] == ["action"]
     assert qc["stage"] == "quality_check"
 
-    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+    with pytest.raises(CinematicDirectorError, match="QC not passed"):
         _act(store, "record_shot_result", project_id="demo", shot_id="Shot001",
              video_path="out/shot001.mp4")
 
@@ -675,3 +675,151 @@ def test_review_script_without_user_review_advances(tmp_path: Path) -> None:
     _write_script(store)
     result = _review_script(store)
     assert result["stage"] == "spatial_planning"
+
+
+# ---------------------------------------------------------------------------
+# 首尾帧连贯（非首镜头必须用上一镜头尾帧作为首帧）+ 空间图 + 音频
+# ---------------------------------------------------------------------------
+
+
+def _setup_two_shot_locked(store: ProjectStore, project_id: str = "demo") -> dict:
+    """推进到 storyboard，含两个镜头（各带合法空间站位，满足空间一致性硬门）。"""
+    _create_project(store, project_id)
+    shots = [
+        {"id": "Shot001", "scene_id": "Scene001", "shot_size": "大全景",
+         "action": "逃亡", "emotion": "恐惧", "sound": "风雪声",
+         "asset_refs": ["CHAR001", "CHAR002", "LOC001"],
+         "spatial": {
+             "camera": {"position": {"x": 30, "y": 20}, "target": {"x": 50, "y": 40}},
+             "characters": [
+                 {"asset_id": "CHAR001", "position": {"x": 50, "y": 40}, "facing": 90},
+                 {"asset_id": "CHAR002", "position": {"x": 45, "y": 36}, "facing": 0},
+             ],
+         }},
+        {"id": "Shot002", "scene_id": "Scene001", "shot_size": "中景",
+         "action": "反击", "emotion": "坚定", "sound": "风雪声",
+         "asset_refs": ["CHAR001", "CHAR002", "LOC001"],
+         "spatial": {
+             "camera": {"position": {"x": 30, "y": 20}, "target": {"x": 50, "y": 40}},
+             "characters": [
+                 {"asset_id": "CHAR001", "position": {"x": 50, "y": 40}, "facing": 90},
+                 {"asset_id": "CHAR002", "position": {"x": 45, "y": 36}, "facing": 0},
+             ],
+         }},
+    ]
+    _act(store, "write_script", project_id=project_id,
+         scenes=[{"id": "Scene001", "location": "雪林", "time": "黄昏",
+                  "function": "建立危机感", "duration": 10}],
+         shots=shots)
+    _review_script(store, project_id)
+    _act(store, "set_floorplan", project_id=project_id, width=100, length=80)
+    _act(store, "add_asset", project_id=project_id, kind="LOC", id="LOC001", name="雪林",
+         appearance="黄昏暴雪的雪林", reference_image="assets/LOC001.png",
+         position={"x": 50, "y": 40}, footprint={"width": 20, "depth": 16})
+    _add_char(store, project_id, "CHAR001")
+    _add_char(store, project_id, "CHAR002")
+    _review_assets(store, project_id)
+    return _lock_assets(store, project_id)
+
+
+def _plan_all(store: ProjectStore, project_id: str = "demo", shots: tuple[str, ...] = ("Shot001", "Shot002")) -> None:
+    for sid in shots:
+        _act(store, "plan_shot", project_id=project_id, shot_id=sid, movement="tracking")
+
+
+def test_first_shot_compile_requires_no_last_frame(tmp_path: Path) -> None:
+    """首个镜头编译不要求上一镜头尾帧，image_urls 仅参考图。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    assert result["image_urls"] == ["assets/CHAR001.png", "assets/CHAR002.png", "assets/LOC001.png"]
+    assert result["audio_urls"] == []
+
+
+def test_non_first_shot_without_continuity_skips_prev_frame(tmp_path: Path) -> None:
+    """非首镜头未请求 continuity 时不引入上一镜头尾帧（跨场景/硬切）。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot002")
+    assert result["image_urls"] == ["assets/CHAR001.png", "assets/CHAR002.png", "assets/LOC001.png"]
+
+
+def test_continuity_requires_prev_last_frame(tmp_path: Path) -> None:
+    """continuity=true 但上一镜头未 record_shot_frame → 拒绝。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    with pytest.raises(CinematicDirectorError, match="record_shot_frame"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot002", continuity=True)
+
+
+def test_continuity_rejected_on_first_shot(tmp_path: Path) -> None:
+    """首个镜头请求 continuity → 拒绝（无上一镜头）。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    with pytest.raises(CinematicDirectorError, match="first shot"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001", continuity=True)
+
+
+def test_non_first_shot_uses_prev_last_frame_as_first_frame(tmp_path: Path) -> None:
+    """continuity=true 时，下一镜头 image_urls[0] 即上一镜头尾帧（首帧连贯）。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    _act(store, "record_qc", project_id="demo", shot_id="Shot001",
+         character_score=95, scene_score=90, action_score=88)
+    _act(store, "record_shot_result", project_id="demo", shot_id="Shot001",
+         video_path="out/shot001.mp4")
+    _act(store, "record_shot_frame", project_id="demo", shot_id="Shot001",
+         last_frame="frames/shot001_last.jpg")
+
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot002", continuity=True)
+    assert result["image_urls"][0] == "frames/shot001_last.jpg"
+    assert result["image_urls"][1:] == ["assets/CHAR001.png", "assets/CHAR002.png", "assets/LOC001.png"]
+
+
+def test_attach_spatial_map_and_audio_flow_into_compile(tmp_path: Path) -> None:
+    """空间坐标关系图并入 image_urls，音频资产作为 audio_urls 返回。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _act(store, "attach_spatial_map", project_id="demo", image="assets/map.png")
+    _act(store, "attach_audio", project_id="demo", shot_id="Shot001", audio="assets/voice001.mp3")
+    _plan_all(store)
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    assert result["image_urls"][0] == "assets/map.png"
+    assert result["audio_urls"] == ["assets/voice001.mp3"]
+
+
+def test_record_shot_frame_requires_final_status(tmp_path: Path) -> None:
+    """镜头非 final（未 record_shot_result）时 record_shot_frame 拒绝。"""
+    store = _store(tmp_path)
+    _setup_two_shot_locked(store)
+    _plan_all(store)
+    _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    with pytest.raises(CinematicDirectorError, match="not yet final"):
+        _act(store, "record_shot_frame", project_id="demo", shot_id="Shot001",
+             last_frame="frames/x.jpg")
+
+
+def test_attach_audio_stage_gate(tmp_path: Path) -> None:
+    """storyboard 之前不可 attach_audio。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    with pytest.raises(CinematicDirectorError, match="not allowed at stage"):
+        _act(store, "attach_audio", project_id="demo", shot_id="Shot001", audio="x.mp3")
+
+
+def test_attach_spatial_map_requires_floorplan(tmp_path: Path) -> None:
+    """未 set_floorplan 前不可 attach_spatial_map。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    _write_script(store)
+    _review_script(store)  # spatial_planning，尚未 set_floorplan
+    with pytest.raises(CinematicDirectorError, match="set_floorplan"):
+        _act(store, "attach_spatial_map", project_id="demo", image="assets/map.png")

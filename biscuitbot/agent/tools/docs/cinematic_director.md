@@ -28,6 +28,7 @@ init → script_analysis → script_review → spatial_planning → world_buildi
 4. **资产优先 + 参考图强制**：`add_asset` 必须有 `reference_image`；`lock_assets` 校验脚本引用的每个资产都已添加且有参考图。
 5. **数据冻结**：`review_script` 通过后 `write_script` 拒绝改剧本；`lock_assets` 后 `add_asset` 拒绝改资产；资产一旦创建**无「编辑/删除」动作**，角色定义天然不可变。
 6. **权限隔离**：本工具 `_scopes={"core"}`，只有主 Agent（导演）能改项目状态；`spawn` 出的子 Agent 无法调用本工具，只能用 `generate_image`/`read_file`/视觉能力**产出内容后回报**，由导演落库。
+7. **首尾帧连贯（可选，智能体逐镜头抉择）**：`compile_prompt` 仅当显式 `continuity=true` 时要求上一镜头已 `record_shot_frame` 并自动把该尾帧作为首帧引用（`image_urls[0]`）；时间连续/动作连续的镜头设 `true`，跨场景/跨剧情/硬切应省略或设 `false`。不强制。
 
 ## 动作（action）
 
@@ -149,7 +150,11 @@ shot 必填 `spatial`（空间布局站位，空间规划强制后每个镜头�
 `project_id` + `shot_id` + 可选 `camera/lens/fps/movement/depth/lighting`。
 
 ### compile_prompt —— 编译规范化 Prompt（禁止 LLM 直接编最终提示词）
-参数 `project_id` + `shot_id`。按固定规则编译出带 `@CHAR001 @LOC001` 锚点的 prompt，返回 `prompt` + `image_urls`，供 `generate_video` 直接调用。全部镜头编译后自动 → `quality_check`。
+参数 `project_id` + `shot_id`。按固定规则编译出带 `@CHAR001 @LOC001` 锚点的 prompt，返回 `prompt` + `image_urls` + `audio_urls`，供 `generate_video` 直接调用。全部镜头编译后自动 → `quality_check`。
+
+`image_urls` 装配顺序（自动，Agent 只需照搬）：**上一镜头尾帧（首帧引用，仅当 `continuity=true`）** → **空间坐标关系资产图**（`attach_spatial_map`，若存在）→ 人物/场景/道具参考图。`audio_urls` 来自 `attach_audio` 附加的音频资产（若存在）。
+
+`continuity`（可选布尔）由智能体**逐镜头抉择**：本镜头与上一镜头时间/动作连续（如连续动作分镜）→ `true`，工具校验上一镜头已 `record_shot_frame` 并把尾帧放 `image_urls[0]`；跨场景、跨剧情段、硬切 → 省略或 `false`，不引入尾帧。设 `true` 但上一镜头未记录尾帧会被拒绝。
 
 空间规划强制后，`compile_prompt` 先做**空间一致性硬门校验**（LOC 界内/不叠放、人物/道具不悬空、机位界内、运动不穿墙），不一致直接抛错拒绝；校验通过则把坐标/朝向翻译成自然语言方位短语注入 prompt，例如：
 
@@ -174,6 +179,32 @@ Camera: tracking, 24fps（机位在 @LOC001 西南方 28 米）
 
 ### record_shot_result —— 记录成片（final_edit 阶段）
 参数 `project_id` + `shot_id` + `video_path`。要求镜头已 `qc_pass`，否则拒绝。全部镜头 `final` 后 `completed=true`。
+
+### record_shot_frame —— 记录成片尾帧（视频生成后，video_generation/quality_check/final_edit 阶段）
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id / shot_id | 是 | 定位镜头（须 `final` 状态，即已 `record_shot_result`） |
+| last_frame | 是 | 本镜头成片**最后一帧图片路径**（Agent 用 shell 跑 ffmpeg 抽取，如 `ffmpeg -sseof -1 -i shot.mp4 -update 1 last_frame.jpg`） |
+
+该尾帧会在**下一镜头** `compile_prompt(continuity=true)` 时被作为首帧引用（`image_urls[0]`），实现片段连贯。**只有需要衔接的镜头才需记录**——跨场景/跨剧情段可跳过本动作。
+
+> **顺序生成**：需要连贯的镜头须**逐个**生成——`compile_prompt(Shot N, continuity=…) → generate_video → record_qc → record_shot_result → record_shot_frame`，再做 `Shot N+1`。`record_qc` / `record_shot_result` / `record_shot_frame` 因此在 `video_generation / quality_check / final_edit` 阶段均可用（阶段只是进度指示，真正硬门是镜头自身状态）。
+
+### attach_audio —— 附加音频资产（storyboard / video_generation 阶段）
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id / shot_id | 是 | 定位镜头 |
+| audio | 是 | 音频资产路径（`text_to_speech` 生成的本地路径 / URL） |
+
+附加后 `compile_prompt` 会把它作为 `audio_urls` 返回，供 `generate_video` 使用。
+
+### attach_spatial_map —— 附加空间坐标关系资产图（set_floorplan 之后任意阶段）
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| project_id | 是 | 项目 ID |
+| image | 是 | 空间坐标关系资产图路径（如平面图俯视图 `generate_image` 生成） |
+
+附加后 `compile_prompt` 会把该图并入每个镜头的 `image_urls`（在参考图之前），作为空间布局参考。
 
 ### status —— 查看状态 + 下一步
 参数仅 `project_id`。返回阶段、各镜头状态、已锁定资产数、审核结果，以及代码算出的 `next_action`。
@@ -242,8 +273,9 @@ cinematic_director(action="compile_prompt", project_id="snow-forest", shot_id="S
 # → { prompt: "@CHAR001 ... @LOC001 ...\nCamera: ...", image_urls: [...] }
 # prompt 中已注入方位短语，如「@CHAR001 …（站在 @LOC001 中央，面向东）」
 
-# 8. 生成视频
-generate_video(prompt="<上一步的 prompt>", image_urls=["<上一步的 image_urls>"], ratio="16:9", duration=10)
+# 8. 生成视频（image_urls / audio_urls 直接照搬 compile_prompt 的返回）
+generate_video(prompt="<上一步的 prompt>", image_urls=["<上一步的 image_urls>"],
+               audio_urls=["<上一步的 audio_urls>"], ratio="16:9", duration=10)
 
 # 9. 视频审核（结合视觉能力读视频首帧与参考图对比后打分）
 cinematic_director(action="record_qc", project_id="snow-forest", shot_id="Shot001",
@@ -252,6 +284,16 @@ cinematic_director(action="record_qc", project_id="snow-forest", shot_id="Shot00
 # 10. 记录成片（qc_pass 才被接受）
 cinematic_director(action="record_shot_result", project_id="snow-forest",
                    shot_id="Shot001", video_path="<生成的视频路径>")
+
+# 10'. 抽取成片尾帧并记录（下一镜头首帧连贯硬门——不记录则下一镜头 compile_prompt 被拒）
+# shell: ffmpeg -sseof -1 -i <生成的视频路径> -update 1 shot001_last_frame.jpg
+cinematic_director(action="record_shot_frame", project_id="snow-forest",
+                   shot_id="Shot001", last_frame="<shot001_last_frame.jpg 路径>")
+
+# 11. 下一镜头：连续动作 → continuity=true，工具把 Shot001 尾帧作为 image_urls[0] 首帧引用
+cinematic_director(action="compile_prompt", project_id="snow-forest", shot_id="Shot002", continuity=true)
+# → image_urls[0] = Shot001 尾帧，实现片段连贯；再 generate_video → record_qc → record_shot_result → record_shot_frame …
+# 跨场景/跨剧情/硬切则省略 continuity（或 continuity=false），不引入上一镜头尾帧
 ```
 
 ## 项目记忆（分目录）
@@ -263,11 +305,11 @@ project.json                  # 索引：stage/completed/scenes/时间戳
 bible.json                    # 导演圣经
 story.json                    # 剧情补充层（write_script 的 story）
 script.md                     # 剧本资产文档（write_script 生成的 Markdown，供用户查阅剧情）
-map.json                      # 平面图（set_floorplan 后存在）
+map.json                      # 平面图（set_floorplan 后存在，含 map_image 空间坐标关系图）
 characters/CHAR001.json       # 角色资产
 locations/LOC001.json         # 场景资产
 props/PROP001.json            # 道具资产
-shots/Shot001.json            # 分镜 + 摄影参数 + prompt + 成片路径
+shots/Shot001.json            # 分镜 + 摄影参数 + prompt + image_urls/audio_urls + video_path + last_frame/audio
 videos/                       # 成片目录
 reviews/                      # script_review.json / asset_review.json / shot_<id>_review.json
 ```
@@ -276,4 +318,5 @@ reviews/                      # script_review.json / asset_review.json / shot_<i
 
 - 资产 ID 是**全片一致性锚点**：一旦锁定，后续镜头一律复用同一 ID，不重新描述人物/场景，避免漂移。
 - 质检/审核分数由 Agent 结合视觉能力（`screenshot`/`read_file` 读视频首帧与资产参考图对比）判定后填入；本工具只做记录 + 硬阻塞，不做自动判分。
+- **首尾帧连贯（可选）**：只有需要衔接的镜头才 `record_shot_frame`，并在下一镜头 `compile_prompt(continuity=true)` 时复用尾帧作为首帧。若某镜头 QC 不通过需重生成，其尾帧会改变 → 重新抽取并 `record_shot_frame`，下游依赖它的镜头再重新 `compile_prompt`（首帧引用随之更新）。跨场景/跨剧情/硬切无需此步。
 - 如需**分工协作**，可用 `spawn` 让剧本/资产/QA 子代理产出内容（起草剧本、生成参考图、打分），再由导演用本工具落库——子代理因 `_scopes` 限制无法直接改项目状态，天然满足权限隔离。

@@ -157,5 +157,14 @@ def parameters_schema() -> dict[str, Any]:
         action_score=IntegerSchema(description="动作一致度（0-100）。", minimum=0, maximum=100, nullable=True),
         # ---- record_shot_result ----
         video_path=StringSchema("成片本地路径。", nullable=True),
+        # ---- record_shot_frame / attach_audio / attach_spatial_map（首尾帧连贯 + 全资产参考）----
+        last_frame=StringSchema("本镜头成片尾帧图路径（record_shot_frame 必填；作为下一镜头首帧引用）。", nullable=True),
+        audio=StringSchema("本镜头音频资产路径（本地路径 / URL，attach_audio 写入）。", nullable=True),
+        image=StringSchema("空间坐标关系资产图路径（本地路径 / URL，attach_spatial_map 写入）。", nullable=True),
+        # ---- compile_prompt 连贯开关（智能体逐镜头抉择，非强制）----
+        continuity=BooleanSchema(
+            description="是否用上一镜头成片尾帧作为本镜头首帧（片段连贯）。仅时间连续/动作连续的镜头设为 true；跨场景/跨剧情/硬切时应 false 或省略。",
+            nullable=True,
+        ),
         required=["action"],
     )

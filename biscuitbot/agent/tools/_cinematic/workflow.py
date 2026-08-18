@@ -54,6 +54,14 @@ def _get_shot(data: dict[str, Any], shot_id: Any) -> dict[str, Any]:
     raise CinematicDirectorError(f"shot {shot_id!r} not found in script")
 
 
+def _shot_index(data: dict[str, Any], shot_id: Any) -> int:
+    """返回镜头在 ``shots`` 列表中的序号（0 起，用于判断是否首个镜头）。"""
+    for i, shot in enumerate(data.get("shots", [])):
+        if shot.get("id") == shot_id:
+            return i
+    raise CinematicDirectorError(f"shot {shot_id!r} not found in script")
+
+
 def _all_refs(data: dict[str, Any]) -> set[str]:
     """脚本中全部镜头引用的资产 ID 集合。"""
     refs: set[str] = set()
@@ -446,7 +454,10 @@ def write_script(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
             "cinematography": {},
             "prompt": "",
             "image_urls": [],
+            "audio_urls": [],
             "video_path": "",
+            "last_frame": "",
+            "audio": "",
         }
         for s in shots
     ]
@@ -761,10 +772,37 @@ def compile_prompt(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any
     lines.append(f"Style: {bible.get('style') or ''}")
     prompt = "\n".join(line for line in lines if line.strip())
 
-    image_urls = [assets[r]["reference_image"] for r in refs]
+    # 首尾帧连贯（可选，智能体逐镜头抉择）：仅当显式 continuity=true 时才装配上一镜头尾帧
+    continuity = kwargs.get("continuity")
+    require(
+        continuity is None or isinstance(continuity, bool),
+        "'continuity' must be boolean when provided",
+    )
+    idx = _shot_index(data, shot_id)
+    prev = data["shots"][idx - 1] if idx > 0 else None
+
+    # 参考图装配顺序：上一镜头尾帧（首帧，仅 continuity）→ 空间坐标关系图 → 人物/场景/道具参考图
+    image_urls: list[str] = []
+    if continuity:
+        require(
+            prev is not None,
+            f"shot {shot_id!r} is the first shot; cannot apply first-frame continuity",
+        )
+        require(
+            bool(prev.get("last_frame")),
+            f"continuity requested for shot {shot_id!r} but previous shot {prev.get('id')!r} "
+            "has no last_frame; call record_shot_frame first",
+        )
+        image_urls.append(prev["last_frame"])
+    if floorplan and floorplan.get("map_image"):
+        image_urls.append(floorplan["map_image"])
+    image_urls.extend(assets[r]["reference_image"] for r in refs)
+
+    audio_urls = [shot["audio"]] if shot.get("audio") else []
 
     shot["prompt"] = prompt
     shot["image_urls"] = image_urls
+    shot["audio_urls"] = audio_urls
     shot["status"] = "prompted"
     if stage == "video_generation" and _all_shots_prompted(data):
         data["stage"] = "quality_check"
@@ -775,7 +813,11 @@ def compile_prompt(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any
         "stage": data["stage"],
         "prompt": prompt,
         "image_urls": image_urls,
-        "message": "pass prompt + image_urls to generate_video, then record_qc",
+        "audio_urls": audio_urls,
+        "message": (
+            "pass prompt + image_urls (first element = previous shot last frame "
+            "only when continuity=true) + audio_urls to generate_video, then record_qc"
+        ),
     }
 
 
@@ -784,7 +826,7 @@ def record_qc(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
     project_id = validate_project_id(kwargs.get("project_id"))
     check_role(kwargs.get("role"), "record_qc")
     data = store.load(project_id)
-    require_stage(data["stage"], "record_qc", "quality_check")
+    require_stage(data["stage"], "record_qc", "video_generation", "quality_check")
 
     shot_id = kwargs.get("shot_id")
     shot = _get_shot(data, shot_id)
@@ -832,7 +874,7 @@ def record_shot_result(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str,
     project_id = validate_project_id(kwargs.get("project_id"))
     check_role(kwargs.get("role"), "record_shot_result")
     data = store.load(project_id)
-    require_stage(data["stage"], "record_shot_result", "final_edit")
+    require_stage(data["stage"], "record_shot_result", "video_generation", "quality_check", "final_edit")
 
     shot_id = kwargs.get("shot_id")
     shot = _get_shot(data, shot_id)
@@ -851,6 +893,69 @@ def record_shot_result(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str,
         "project_id": project_id, "shot_id": shot_id,
         "stage": data["stage"], "completed": data["completed"],
         "message": f"shot {shot_id} recorded; completed: {data['completed']}",
+    }
+
+
+def record_shot_frame(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """记录镜头成片尾帧（final_edit 阶段）；作为下一镜头的首帧引用。"""
+    project_id = validate_project_id(kwargs.get("project_id"))
+    check_role(kwargs.get("role"), "record_shot_frame")
+    data = store.load(project_id)
+    require_stage(data["stage"], "record_shot_frame", "video_generation", "quality_check", "final_edit")
+
+    shot_id = kwargs.get("shot_id")
+    shot = _get_shot(data, shot_id)
+    require(
+        shot.get("status") == "final",
+        f"cannot record last_frame for shot {shot_id!r}: not yet final (current: {shot.get('status')})",
+    )
+    require(bool(kwargs.get("last_frame")), "record_shot_frame requires 'last_frame'")
+
+    shot["last_frame"] = kwargs.get("last_frame")
+    store.save(project_id, data)
+    return {
+        "project_id": project_id,
+        "shot_id": shot_id,
+        "last_frame": shot["last_frame"],
+        "message": f"last_frame recorded for {shot_id}; it will be used as the first-frame reference of the next shot",
+    }
+
+
+def attach_audio(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """为镜头附加音频资产（storyboard / video_generation 阶段，供 compile_prompt 带入）。"""
+    project_id = validate_project_id(kwargs.get("project_id"))
+    check_role(kwargs.get("role"), "attach_audio")
+    data = store.load(project_id)
+    require_stage(data["stage"], "attach_audio", "storyboard", "video_generation")
+
+    shot_id = kwargs.get("shot_id")
+    shot = _get_shot(data, shot_id)
+    require(bool(kwargs.get("audio")), "attach_audio requires 'audio'")
+
+    shot["audio"] = kwargs.get("audio")
+    store.save(project_id, data)
+    return {
+        "project_id": project_id,
+        "shot_id": shot_id,
+        "audio": shot["audio"],
+        "message": f"audio attached to {shot_id}; it will be passed as audio_urls at compile_prompt",
+    }
+
+
+def attach_spatial_map(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
+    """附加空间坐标关系资产图到平面图（供 compile_prompt 带入每个镜头参考）。"""
+    project_id = validate_project_id(kwargs.get("project_id"))
+    check_role(kwargs.get("role"), "attach_spatial_map")
+    data = store.load(project_id)
+    require(data.get("floorplan"), "attach_spatial_map requires set_floorplan first")
+    require(bool(kwargs.get("image")), "attach_spatial_map requires 'image'")
+
+    data["floorplan"]["map_image"] = kwargs.get("image")
+    store.save(project_id, data)
+    return {
+        "project_id": project_id,
+        "image": kwargs.get("image"),
+        "message": "spatial map image attached; it will be included in every shot's image_urls",
     }
 
 
@@ -897,12 +1002,16 @@ def next_action(data: dict[str, Any]) -> str:
     if stage == "storyboard":
         return "plan_shot for every shot"
     if stage == "video_generation":
-        return "compile_prompt for each shot"
+        return (
+            "compile_prompt for the next pending shot (then generate_video → "
+            "record_qc → record_shot_result → record_shot_frame if the next shot "
+            "needs continuity); optionally attach_audio first"
+        )
     if stage == "quality_check":
         for shot in data.get("shots", []):
             if shot.get("status") in ("prompted", "qc_fail"):
                 return f"record_qc for {shot.get('id')}"
         return "record_qc for remaining shots"
     if stage == "final_edit":
-        return "record_shot_result for qc_pass shots"
+        return "record_shot_result for qc_pass shots, then record_shot_frame for the last frame"
     return "unknown stage"
