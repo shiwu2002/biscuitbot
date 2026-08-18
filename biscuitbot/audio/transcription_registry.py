@@ -62,6 +62,11 @@ TRANSCRIPTION_PROVIDERS: tuple[TranscriptionProviderSpec, ...] = (
         aliases=("aliyun", "tongyi"),
         default_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
     ),
+    TranscriptionProviderSpec(
+        name="newapi",
+        default_model="whisper-1",
+        adapter="biscuitbot.providers.transcription:NewApiTranscriptionProvider",
+    ),
 )
 
 _BY_NAME = {spec.name: spec for spec in TRANSCRIPTION_PROVIDERS}
@@ -76,8 +81,25 @@ def get_transcription_provider(name: str) -> TranscriptionProviderSpec | None:
     return _BY_NAME.get(name)
 
 
+def generic_transcription_spec(name: str) -> TranscriptionProviderSpec:
+    """为声明了 transcription 能力但无专用适配器的厂商合成通用 OpenAI 兼容规格。"""
+    return TranscriptionProviderSpec(
+        name=name,
+        default_model="whisper-1",
+        adapter="biscuitbot.providers.transcription:GenericOpenAITranscriptionProvider",
+    )
+
+
 def resolve_transcription_provider(value: Any) -> TranscriptionProviderSpec | None:
     if not isinstance(value, str):
         return None
     name = value.strip().lower()
     return _BY_NAME.get(name) or _BY_ALIAS.get(name)
+
+
+def resolve_transcription_spec(value: Any) -> TranscriptionProviderSpec | None:
+    """解析 provider 名；未知值合成通用 OpenAI 兼容规格（用于用户自定义厂商）。"""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    name = value.strip().lower()
+    return _BY_NAME.get(name) or _BY_ALIAS.get(name) or generic_transcription_spec(name)

@@ -1455,6 +1455,52 @@ class AIHubMixImageGenerationClient(OpenAIImageGenerationClient):
 
 
 # ---------------------------------------------------------------------------
+# New API image generation —— 开源 OpenAI 兼容中转站（复用 OpenAI 客户端逻辑）
+# ---------------------------------------------------------------------------
+
+
+class NewApiImageGenerationClient(OpenAIImageGenerationClient):
+    """New API 中转站图像生成客户端（复用 OpenAI 兼容的 Images API）。"""
+
+    provider_name = "newapi"
+    missing_key_message = (
+        "New API 中转站 API key 未配置。请在「模型厂商」页配置 newapi 的密钥。"
+    )
+
+    def _default_base_url(self) -> str:
+        return ""  # 无通用默认域名，由用户在 providers.newapi.apiBase 指定
+
+    def _base_path(self) -> str:
+        return "/v1"
+
+    @staticmethod
+    def _strip_model_prefix(model: str) -> str:
+        return model  # 中转站模型名直传，无前缀
+
+
+class GenericOpenAIImageGenerationClient(OpenAIImageGenerationClient):
+    """通用 OpenAI 兼容文生图客户端（不注册为独立厂商）。
+
+    用于「模型厂商」页声明了 image 能力、但没有专用图像适配器的厂商
+    （如第三方 OpenAI 兼容中转站）。工具会把该厂商配置的域名作为 ``api_base``
+    传入，这里统一按 OpenAI Images API 形态请求 ``/v1/images/generations``。
+    """
+
+    provider_name = "generic"
+    missing_key_message = "该厂商 API key 未配置，无法调用文生图。"
+
+    def _default_base_url(self) -> str:
+        return ""
+
+    def _base_path(self) -> str:
+        return "/v1"
+
+    @staticmethod
+    def _strip_model_prefix(model: str) -> str:
+        return model  # 厂商模型名直传，无前缀
+
+
+# ---------------------------------------------------------------------------
 # Volcano Engine ARK (火山方舟) image generation —— Seedream 系列
 # ---------------------------------------------------------------------------
 
@@ -1542,3 +1588,4 @@ register_image_gen_provider(GeminiImageGenerationClient)
 register_image_gen_provider(OllamaImageGenerationClient)
 register_image_gen_provider(OpenAIImageGenerationClient)
 register_image_gen_provider(ZhipuImageGenerationClient)
+register_image_gen_provider(NewApiImageGenerationClient)

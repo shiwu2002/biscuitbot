@@ -210,6 +210,7 @@ class ProviderConfig(Base):
     extra_headers: dict[str, str] | None = None  # 自定义请求头（如 AiHubMix 的 APP-Code）
     extra_body: dict[str, Any] | None = None  # 额外提供商请求字段；结构随提供商/API 形态变化
     extra_query: dict[str, str] | None = None  # 额外查询参数（如 Azure 风格网关的 api-version）
+    capabilities: list[str] | None = None  # 用户显式声明的能力标签；None=按注册表自动推断
 
 
 class ProvidersConfig(Base):
@@ -242,6 +243,7 @@ class ProvidersConfig(Base):
     moonshot: ProviderConfig = Field(default_factory=ProviderConfig)  # 月之暗面 (Kimi)
     stepfun: ProviderConfig = Field(default_factory=ProviderConfig)  # 阶跃星辰
     ollama: ProviderConfig = Field(default_factory=ProviderConfig)  # Ollama 本地模型
+    newapi: ProviderConfig = Field(default_factory=ProviderConfig)  # New API 中转站（OpenAI 兼容网关）
 
     @model_validator(mode="after")
     def convert_extra_providers(self):
@@ -407,6 +409,10 @@ class Config(BaseSettings):
         default_factory=dict,
         validation_alias=AliasChoices("modelPresets", "model_presets"),
     )
+    hidden_providers: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("hiddenProviders", "hidden_providers"),
+    )  # 用户在「模型厂商」页删除的能力厂商名；从列表中隐藏（可重新声明能力找回）
 
     def __init__(self, **values: Any) -> None:
         # 若模型尚未完成（工具配置前置引用未解析），先触发解析

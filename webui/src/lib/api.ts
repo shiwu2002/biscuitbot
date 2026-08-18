@@ -750,8 +750,22 @@ export async function updateProviderSettings(
   if (update.apiKey !== undefined) query.set("api_key", update.apiKey);
   if (update.apiBase !== undefined) query.set("api_base", update.apiBase);
   if (update.apiType !== undefined) query.set("api_type", update.apiType);
+  if (update.capabilities !== undefined) query.set("capabilities", update.capabilities.join(","));
   return request<SettingsPayload>(
     `${base}/api/settings/provider/update?${query}`,
+    token,
+  );
+}
+
+export async function deleteProviderSettings(
+  token: string,
+  provider: string,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  query.set("provider", provider);
+  return request<SettingsPayload>(
+    `${base}/api/settings/provider/delete?${query}`,
     token,
   );
 }

@@ -28,6 +28,7 @@ from biscuitbot.webui.settings_api import (
     create_model_configuration,
     decorate_settings_payload,
     delete_knowledge_document,
+    delete_provider_settings,
     knowledge_documents_payload,
     provider_models_payload,
     settings_payload,
@@ -103,6 +104,8 @@ class WebUISettingsRouter:
             return self._handle_settings_model_configuration_update(request)
         if path == "/api/settings/provider/update":
             return self._handle_settings_provider_update(request)
+        if path == "/api/settings/provider/delete":
+            return self._handle_settings_provider_delete(request)
         if path == "/api/settings/provider-models":
             return await self._handle_settings_provider_models(request)
         if path == "/api/settings/web-search/update":
@@ -261,6 +264,15 @@ class WebUISettingsRouter:
             return self._unauthorized()
         try:
             payload = update_provider_settings(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(self._with_restart_state(payload, section="image"))
+
+    def _handle_settings_provider_delete(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = delete_provider_settings(self._query(request))
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="image"))

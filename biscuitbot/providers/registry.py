@@ -198,6 +198,19 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         detect_by_base_keyword="11434",
         default_api_base="http://localhost:11434/v1",
     ),
+
+    # === 中转站 / 网关 ====================================================
+    # New API：开源 OpenAI 兼容中转站（new-api / one-api 一系）。
+    # 可路由任意 OpenAI 兼容模型，并提供 /images/generations、/audio/speech、
+    # /audio/transcriptions 等能力。域名由用户在 providers.newapi.apiBase 指定。
+    ProviderSpec(
+        name="newapi",
+        keywords=(),
+        env_key="NEWAPI_API_KEY",
+        display_name="New API 中转",
+        backend="openai_compat",
+        is_gateway=True,
+    ),
 )
 
 

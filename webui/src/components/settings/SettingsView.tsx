@@ -88,6 +88,7 @@ import {
   fetchSettings,
   fetchSettingsUsage,
   fetchProviderModels,
+  deleteProviderSettings,
   runAutomationAction,
   selfUpdate,
   updateAutomation,
@@ -2586,6 +2587,15 @@ function ModelsSettings({
 
 const PROVIDER_API_TYPES = ["auto", "chat_completions", "responses"] as const;
 
+const PROVIDER_CAPABILITIES: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "llm", label: "对话" },
+  { key: "vision", label: "视觉理解" },
+  { key: "image", label: "文生图" },
+  { key: "video", label: "文生视频" },
+  { key: "tts", label: "语音合成" },
+  { key: "transcription", label: "语音转写" },
+];
+
 function ProvidersSettings({
   token,
   settings,
@@ -2611,8 +2621,10 @@ function ProvidersSettings({
     apiKey: string;
     apiBase: string;
     apiType: "auto" | "chat_completions" | "responses";
+    capabilities: string[];
   } | null>(null);
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
+  const [deletingProvider, setDeletingProvider] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const configuredProviders = settings.providers.filter((provider) => provider.configured);
@@ -2631,27 +2643,45 @@ function ProvidersSettings({
   }, [expandedProvider]);
 
   const updateDraft = (provider: SettingsPayload["providers"][number]) => (
-    patch: Partial<{ apiKey: string; apiBase: string; apiType: "auto" | "chat_completions" | "responses" }>,
+    patch: Partial<{
+      apiKey: string;
+      apiBase: string;
+      apiType: "auto" | "chat_completions" | "responses";
+      capabilities: string[];
+    }>,
   ) =>
     setDraft((current) => {
       const base = current ?? {
         apiKey: "",
         apiBase: provider.api_base || provider.default_api_base || "",
         apiType: (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto",
+        capabilities: [...(provider.capabilities ?? [])],
       };
       return { ...base, ...patch };
     });
+
+  const toggleCapability = (provider: SettingsPayload["providers"][number]) => (key: string) => {
+    const currentCaps = draft?.capabilities ?? provider.capabilities ?? [];
+    const next = currentCaps.includes(key)
+      ? currentCaps.filter((c) => c !== key)
+      : [...currentCaps, key];
+    updateDraft(provider)({ capabilities: next });
+  };
 
   const saveProvider = async (provider: SettingsPayload["providers"][number]) => {
     if (!draft || savingProvider) return;
     const currentBase = provider.api_base || provider.default_api_base || "";
     const currentType = (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto";
+    const currentCaps = provider.capabilities ?? [];
     const apiKey = draft.apiKey.trim();
     const apiBase = draft.apiBase.trim();
     const hasKeyChange = Boolean(apiKey);
     const hasBaseChange = apiBase !== currentBase;
     const hasTypeChange = provider.name === "openai" && draft.apiType !== currentType;
-    if (!hasKeyChange && !hasBaseChange && !hasTypeChange) {
+    const hasCapsChange =
+      draft.capabilities.length !== currentCaps.length ||
+      draft.capabilities.some((c) => !currentCaps.includes(c));
+    if (!hasKeyChange && !hasBaseChange && !hasTypeChange && !hasCapsChange) {
       setDraft(null);
       return;
     }
@@ -2663,6 +2693,7 @@ function ProvidersSettings({
         ...(hasKeyChange ? { apiKey } : {}),
         ...(hasBaseChange ? { apiBase } : {}),
         ...(hasTypeChange ? { apiType: draft.apiType } : {}),
+        ...(hasCapsChange ? { capabilities: draft.capabilities } : {}),
       });
       onProviderSaved(payload);
       setDraft(null);
@@ -2670,6 +2701,29 @@ function ProvidersSettings({
       setError((err as Error).message);
     } finally {
       setSavingProvider(null);
+    }
+  };
+
+  const deleteProvider = async (provider: SettingsPayload["providers"][number]) => {
+    if (deletingProvider) return;
+    const confirmed = window.confirm(
+      tx(
+        "settings.providers.deleteConfirm",
+        `确定删除厂商「${provider.label}」吗？其 API Key 与能力配置将被移除。`,
+      ),
+    );
+    if (!confirmed) return;
+    setDeletingProvider(provider.name);
+    setError(null);
+    try {
+      const payload = await deleteProviderSettings(token, provider.name);
+      onProviderSaved(payload);
+      setDraft(null);
+      onToggleProvider(provider.name);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeletingProvider(null);
     }
   };
 
@@ -2765,6 +2819,33 @@ function ProvidersSettings({
                 </div>
               </div>
             ) : null}
+            <div>
+              <p className="text-[12px] font-medium text-muted-foreground">
+                {tx("settings.providers.capabilities", "支持的能力")}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {PROVIDER_CAPABILITIES.map((cap) => {
+                  const selected = (draft?.capabilities ?? provider.capabilities ?? []).includes(
+                    cap.key,
+                  );
+                  return (
+                    <button
+                      key={cap.key}
+                      type="button"
+                      onClick={() => toggleCapability(provider)(cap.key)}
+                      className={cn(
+                        "h-8 rounded-full border px-3 text-[12px] transition-colors",
+                        selected
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-input text-muted-foreground hover:bg-muted/50",
+                      )}
+                    >
+                      {cap.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {error ? (
               <p className="text-[12px] text-destructive">{error}</p>
             ) : null}
@@ -2787,6 +2868,20 @@ function ProvidersSettings({
               >
                 {tx("settings.providers.cancel", "取消")}
               </Button>
+              {provider.deletable ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="ml-auto"
+                  disabled={deletingProvider === provider.name}
+                  onClick={() => deleteProvider(provider)}
+                >
+                  {deletingProvider === provider.name
+                    ? tx("settings.providers.deleting", "删除中…")
+                    : tx("settings.providers.delete", "删除")}
+                </Button>
+              ) : null}
             </div>
           </div>
         ) : expanded && isOauthProvider ? (

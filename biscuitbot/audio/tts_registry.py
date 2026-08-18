@@ -69,6 +69,12 @@ TTS_PROVIDERS: tuple[TtsProviderSpec, ...] = (
         adapter="biscuitbot.providers.tts:EdgeTtsProvider",
         requires_api_key=False,
     ),
+    TtsProviderSpec(
+        name="newapi",
+        default_model="gpt-4o-mini-tts",
+        default_voice="alloy",
+        adapter="biscuitbot.providers.tts:OpenAITtsProvider",
+    ),
 )
 
 _BY_NAME = {spec.name: spec for spec in TTS_PROVIDERS}
@@ -85,6 +91,17 @@ def get_tts_provider(name: str) -> TtsProviderSpec | None:
     return _BY_NAME.get(name)
 
 
+def generic_openai_tts_spec(name: str) -> TtsProviderSpec:
+    """为声明了 tts 能力但无专用适配器的厂商合成通用 OpenAI 兼容 TTS 规格。"""
+    return TtsProviderSpec(
+        name=name,
+        default_model="gpt-4o-mini-tts",
+        default_voice="alloy",
+        adapter="biscuitbot.providers.tts:OpenAITtsProvider",
+        requires_api_key=True,
+    )
+
+
 def resolve_tts_provider(value: Any) -> TtsProviderSpec:
     """解析 provider 名；空值默认 edge-tts，未知值抛 ValueError。"""
     if not isinstance(value, str) or not value.strip():
@@ -93,4 +110,15 @@ def resolve_tts_provider(value: Any) -> TtsProviderSpec:
     spec = _BY_NAME.get(name) or _BY_ALIAS.get(name)
     if spec is None:
         raise ValueError(f"未知的 TTS provider: {value}")
+    return spec
+
+
+def resolve_tts_spec(value: Any) -> TtsProviderSpec:
+    """解析 provider 名；空值默认 edge-tts，未知值合成通用 OpenAI 兼容规格。"""
+    if not isinstance(value, str) or not value.strip():
+        return _BY_NAME[_DEFAULT_PROVIDER]
+    name = value.strip().lower()
+    spec = _BY_NAME.get(name) or _BY_ALIAS.get(name)
+    if spec is None:
+        return generic_openai_tts_spec(name)
     return spec

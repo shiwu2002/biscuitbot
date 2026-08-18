@@ -417,8 +417,12 @@ def _resolve_model_list_provider(
     return spec, name, provider_config
 
 
-def _provider_capabilities(name: str, config: Any) -> list[str]:
-    """推导某厂商可服务的能力标签（各能力页据此过滤厂商下拉项）。"""
+# 厂商可声明/推导的全部能力标签（各能力页据此过滤厂商下拉项）。
+_CAPABILITY_KEYS = ("llm", "vision", "image", "video", "tts", "transcription")
+
+
+def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
+    """按注册表/硬编码规则自动推断厂商能力（用户未显式声明时的兜底）。"""
     caps: list[str] = []
     spec = find_by_name(name)
     is_dynamic = any(key == name for key, _ in _dynamic_provider_items(config))
@@ -443,6 +447,20 @@ def _provider_capabilities(name: str, config: Any) -> list[str]:
     if get_transcription_provider(name) is not None:
         caps.append("transcription")
     return caps
+
+
+def _provider_capabilities(name: str, config: Any) -> list[str]:
+    """厂商可服务的能力标签：优先读用户在「模型厂商」页显式声明，否则自动推断。"""
+    provider_config = _provider_config_by_name(config, name)
+    declared = getattr(provider_config, "capabilities", None) if provider_config else None
+    if declared is not None:
+        # 只保留合法能力标签并去重，保持稳定顺序
+        seen: list[str] = []
+        for cap in declared:
+            if cap in _CAPABILITY_KEYS and cap not in seen:
+                seen.append(cap)
+        return seen
+    return _detect_provider_capabilities(name, config)
 
 
 def _capability_provider_label(name: str, spec: Any) -> str:
@@ -490,8 +508,12 @@ def _unified_provider_rows(config: Any) -> list[dict[str, Any]]:
         if extra_name not in names:
             names.append(extra_name)
 
+    hidden = {str(name).replace("-", "_") for name in (config.hidden_providers or [])}
+
     rows: list[dict[str, Any]] = []
     for name in names:
+        if name.replace("-", "_") in hidden:
+            continue
         resolved = _resolve_model_list_provider(config, name)
         if resolved is None:
             continue
@@ -509,6 +531,8 @@ def _unified_provider_rows(config: Any) -> list[dict[str, Any]]:
         if "llm" not in row["capabilities"]:
             row["model_selectable"] = False
         row["label"] = _capability_provider_label(name, spec)
+        # 非固定 LLM 厂商（能力专用 / 动态自定义厂商）可被删除；固定字段厂商属内置不可删
+        row["deletable"] = find_by_name(name) is None
         rows.append(row)
     return rows
 
@@ -1508,6 +1532,23 @@ def update_provider_settings(query: QueryParams) -> dict[str, Any]:
                 provider_config.api_type = parsed_api_type
                 changed = True
 
+    if "capabilities" in query:
+        raw = _query_first(query, "capabilities") or ""
+        requested = [c.strip().lower() for c in raw.split(",") if c.strip()]
+        invalid = [c for c in requested if c not in _CAPABILITY_KEYS]
+        if invalid:
+            raise WebUISettingsError(
+                "capabilities must be one of: " + ", ".join(_CAPABILITY_KEYS)
+            )
+        # 去重并保持稳定顺序
+        seen: list[str] = []
+        for c in requested:
+            if c not in seen:
+                seen.append(c)
+        if provider_config.capabilities != seen:
+            provider_config.capabilities = seen
+            changed = True
+
     if changed:
         save_config(config)
     image_config = config.tools.image_generation
@@ -1518,6 +1559,67 @@ def update_provider_settings(query: QueryParams) -> dict[str, Any]:
         and get_image_gen_provider(provider_key) is not None
     )
     return settings_payload(requires_restart=restart_required)
+
+
+def delete_provider_settings(query: QueryParams) -> dict[str, Any]:
+    """删除「模型厂商」页中的厂商。
+
+    固定字段厂商（openai / anthropic / deepseek 等内置项）不可删除。其余厂商分两类：
+      - 能力专用厂商（volcengine / gemini / edge-tts / groq / aihubmix 等注册表项）：
+        加入 ``hidden_providers`` 从列表隐藏，并清除其保存在 model_extra 的密钥配置。
+      - 动态自定义厂商（model_extra 项）：从 model_extra 移除并隐藏。
+    删除时同步回退所有指向该厂商的引用（LLM 默认/预设、图像/视频/TTS/转写 provider），避免悬空。
+    """
+    provider_name = (_query_first(query, "provider") or "").strip()
+    if not provider_name:
+        raise WebUISettingsError("provider is required")
+
+    config = load_config()
+    if find_by_name(provider_name) is not None:
+        raise WebUISettingsError("provider cannot be deleted")
+
+    normalized = provider_name.replace("-", "_")
+
+    # 1) 清除 model_extra 里的密钥配置（若存在）
+    model_extra = config.providers.model_extra or {}
+    key = next(
+        (
+            extra_name
+            for extra_name in model_extra
+            if extra_name == provider_name
+            or extra_name.replace("-", "_") == normalized
+        ),
+        None,
+    )
+    if key is not None:
+        del model_extra[key]
+
+    # 2) 加入隐藏列表，避免注册表驱动厂商重新出现
+    hidden = config.hidden_providers or []
+    if normalized not in {str(name).replace("-", "_") for name in hidden}:
+        hidden.append(provider_name)
+        config.hidden_providers = hidden
+
+    # 3) 回退各处引用，避免删除后留下悬空 provider
+    defaults = config.agents.defaults
+    if defaults.provider.replace("-", "_") == normalized:
+        defaults.provider = "auto"
+    if defaults.vision_model and defaults.vision_model.replace("-", "_") == normalized:
+        defaults.vision_model = None
+    for preset in config.model_presets.values():
+        if preset.provider.replace("-", "_") == normalized:
+            preset.provider = "auto"
+    if config.tools.image_generation.provider.replace("-", "_") == normalized:
+        config.tools.image_generation.provider = "volcengine"
+    if config.tools.seedance_video.provider.replace("-", "_") == normalized:
+        config.tools.seedance_video.provider = "volcengine"
+    if config.transcription.provider and config.transcription.provider.replace("-", "_") == normalized:
+        config.transcription.provider = None
+    if config.tts.provider and config.tts.provider.replace("-", "_") == normalized:
+        config.tts.provider = None
+
+    save_config(config)
+    return settings_payload()
 
 
 def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:

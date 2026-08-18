@@ -19,6 +19,7 @@ from loguru import logger
 from biscuitbot.audio.transcription_registry import (
     get_transcription_provider,
     resolve_transcription_provider,
+    resolve_transcription_spec,
 )
 from biscuitbot.config.paths import get_media_dir
 from biscuitbot.providers.registry import find_by_name
@@ -68,12 +69,21 @@ class TranscriptionIngressError(Exception):
 
 
 def _as_provider(value: Any) -> TranscriptionProviderName | None:
-    spec = resolve_transcription_provider(value)
-    return spec.name if spec else None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    name = value.strip().lower()
+    spec = resolve_transcription_provider(name)
+    return spec.name if spec else name
 
 
 def _provider_config(config: Any, provider: str) -> Any:
-    return getattr(getattr(config, "providers", None), provider, None)
+    providers = getattr(config, "providers", None)
+    if providers is None:
+        return None
+    pc = getattr(providers, provider, None)
+    if pc is not None:
+        return pc
+    return (providers.model_extra or {}).get(provider)
 
 
 def _provider_default_api_base(provider: str) -> str | None:
@@ -131,9 +141,8 @@ def resolve_transcription_config(config: Any) -> EffectiveTranscriptionConfig:
     )
     spec = get_transcription_provider(provider)
     if spec is None:
-        logger.warning("Unknown transcription provider {}; falling back to {}", provider, _DEFAULT_PROVIDER)
-        provider = _DEFAULT_PROVIDER
-        spec = get_transcription_provider(provider)
+        # 未知厂商（用户在能力配置里声明了 transcription）→ 通用 OpenAI 兼容规格
+        spec = resolve_transcription_spec(provider)
     default_model = spec.default_model if spec else ""
     provider_cfg = _provider_config(config, provider)
     return EffectiveTranscriptionConfig(
@@ -204,7 +213,7 @@ async def transcribe_audio_file(
     """Transcribe *file_path* using the already-resolved transcription config."""
     if not config.enabled or not config.configured:
         return ""
-    spec = get_transcription_provider(config.provider)
+    spec = get_transcription_provider(config.provider) or resolve_transcription_spec(config.provider)
     if spec is None:
         logger.warning("Unknown transcription provider: {}", config.provider)
         return ""

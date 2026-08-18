@@ -329,4 +329,58 @@ class OpenAITranscriptionProvider:
         )
 
 
+class NewApiTranscriptionProvider(OpenAITranscriptionProvider):
+    """New API 中转站语音转写：复用 Whisper 兼容接口，固定补 ``/v1`` 路径。
+
+    上层 ``_resolve_transcription_api_base`` 会把 ``providers.newapi.apiBase``
+    收敛为纯域名（``extract_domain``），因此这里统一补回
+    ``/v1/audio/transcriptions``，与 New API 的标准路由保持一致。
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        language: str | None = None,
+        model: str | None = None,
+    ):
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        domain = (api_base or "").rstrip("/")
+        self.api_url = (
+            f"{domain}/v1/audio/transcriptions"
+            if domain
+            else "https://api.openai.com/v1/audio/transcriptions"
+        )
+        self.language = language or None
+        self.model = model or "whisper-1"
+        logger.debug("New API transcription endpoint: {}", self.api_url)
+
+
+class GenericOpenAITranscriptionProvider(OpenAITranscriptionProvider):
+    """通用 OpenAI 兼容语音转写：用于用户声明 transcription 能力但无专用适配器的厂商。
+
+    上层 ``_resolve_transcription_api_base`` 会把 ``providers.<name>.apiBase``
+    收敛为纯域名（``extract_domain``），因此这里统一补回
+    ``/v1/audio/transcriptions``，与 OpenAI 兼容中转站的标准路由保持一致。
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        api_base: str | None = None,
+        language: str | None = None,
+        model: str | None = None,
+    ):
+        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        domain = (api_base or "").rstrip("/")
+        self.api_url = (
+            f"{domain}/v1/audio/transcriptions"
+            if domain
+            else "https://api.openai.com/v1/audio/transcriptions"
+        )
+        self.language = language or None
+        self.model = model or "whisper-1"
+        logger.debug("Generic transcription endpoint: {}", self.api_url)
+
+
 

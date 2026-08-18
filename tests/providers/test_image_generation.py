@@ -9,7 +9,9 @@ import pytest
 
 from biscuitbot.providers.image_generation import (
     GeminiImageGenerationClient,
+    GenericOpenAIImageGenerationClient,
     ImageGenerationError,
+    NewApiImageGenerationClient,
     OllamaImageGenerationClient,
     OpenAIImageGenerationClient,
     VolcanoImageGenerationClient,
@@ -118,6 +120,85 @@ def test_unified_provider_configs_includes_fixed_and_model_extra() -> None:
     # 任意自定义厂商（视频/图像可指向不同厂商）
     assert "my_video_vendor" in result
     assert result["my_video_vendor"].api_key == "video-key"
+
+
+def test_newapi_image_client_resolves_v1_path() -> None:
+    """New API 中转站只传域名时，客户端补回 /v1 路径前缀。"""
+    client = NewApiImageGenerationClient(api_key="sk-newapi", api_base="https://relay.example.com")
+    assert client.api_base == "https://relay.example.com/v1"
+
+
+def test_newapi_registered_across_capabilities() -> None:
+    """New API 中转站作为一个厂商，应同时具备 LLM/视觉/图像/TTS/转写能力。"""
+    from biscuitbot.audio.transcription_registry import get_transcription_provider
+    from biscuitbot.audio.tts_registry import get_tts_provider
+    from biscuitbot.config.schema import Config
+    from biscuitbot.providers.image_generation import get_image_gen_provider
+    from biscuitbot.providers.registry import find_by_name
+    from biscuitbot.webui.settings_api import _provider_capabilities
+
+    assert find_by_name("newapi") is not None
+    assert get_image_gen_provider("newapi") is not None
+    assert get_tts_provider("newapi") is not None
+    assert get_transcription_provider("newapi") is not None
+
+    cfg = Config(providers={"newapi": {"apiKey": "sk-newapi", "apiBase": "https://relay.example.com/v1"}})
+    caps = _provider_capabilities("newapi", cfg)
+    for expected in ("llm", "vision", "image", "tts", "transcription"):
+        assert expected in caps
+
+
+def test_generic_image_client_resolves_v1_path() -> None:
+    """通用 OpenAI 兼容文生图客户端：只传域名时补回 /v1 路径前缀。"""
+    client = GenericOpenAIImageGenerationClient(
+        api_key="sk-foo", api_base="https://relay.example.com"
+    )
+    assert client.api_base == "https://relay.example.com/v1"
+
+
+def test_provider_capabilities_respects_declared_capabilities() -> None:
+    """用户在「模型厂商」页显式声明的能力标签应覆盖注册表自动推断。"""
+    from biscuitbot.config.schema import Config
+    from biscuitbot.webui.settings_api import _provider_capabilities
+
+    # newapi 默认自动推断出 llm/vision/image/tts/transcription，但用户可收窄为仅图像
+    cfg = Config(
+        providers={
+            "newapi": {
+                "apiKey": "sk-newapi",
+                "apiBase": "https://relay.example.com/v1",
+                "capabilities": ["image"],
+            }
+        }
+    )
+    assert _provider_capabilities("newapi", cfg) == ["image"]
+
+    # 未显式声明时仍走自动推断
+    cfg2 = Config(providers={"newapi": {"apiKey": "sk-newapi"}})
+    assert "llm" in _provider_capabilities("newapi", cfg2)
+
+
+def test_generic_tts_spec_resolution() -> None:
+    """未知厂商的 TTS 解析应合成通用 OpenAI 兼容规格而非报错。"""
+    from biscuitbot.audio.tts_registry import get_tts_provider, resolve_tts_spec
+
+    assert get_tts_provider("my_relay") is None
+    spec = resolve_tts_spec("my_relay")
+    assert spec.name == "my_relay"
+    assert spec.adapter == "biscuitbot.providers.tts:OpenAITtsProvider"
+
+
+def test_generic_transcription_spec_resolution() -> None:
+    """未知厂商的转写解析应合成通用 OpenAI 兼容规格而非回退默认厂商。"""
+    from biscuitbot.audio.transcription_registry import (
+        get_transcription_provider,
+        resolve_transcription_spec,
+    )
+
+    assert get_transcription_provider("my_relay") is None
+    spec = resolve_transcription_spec("my_relay")
+    assert spec.name == "my_relay"
+    assert spec.adapter == "biscuitbot.providers.transcription:GenericOpenAITranscriptionProvider"
 
 
 @pytest.mark.asyncio

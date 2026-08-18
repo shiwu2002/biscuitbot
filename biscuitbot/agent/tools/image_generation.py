@@ -25,6 +25,7 @@ from biscuitbot.agent.tools.schema import (  # schema 构造器
 from biscuitbot.config.paths import get_media_dir  # 媒体目录获取函数
 from biscuitbot.config_base import Base  # 配置基类
 from biscuitbot.providers.image_generation import (  # 图像生成提供商抽象
+    GenericOpenAIImageGenerationClient,
     ImageGenerationError,
     ImageGenerationProvider,
     extract_domain,
@@ -115,6 +116,7 @@ class ImageGenerationTool(Tool):
             workspace=ctx.workspace,
             config=ctx.config.image_generation,
             provider_configs=ctx.image_generation_provider_configs,
+            unified_provider_configs=getattr(ctx, "provider_configs", None),
         )
 
     def __init__(
@@ -124,10 +126,14 @@ class ImageGenerationTool(Tool):
         config: ImageGenerationToolConfig,
         provider_config: ProviderConfig | None = None,
         provider_configs: dict[str, ProviderConfig] | None = None,
+        unified_provider_configs: dict[str, ProviderConfig] | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()  # 工作区路径，展开 ~
         self.config = config  # 工具配置
-        self.provider_configs = dict(provider_configs or {})  # 提供商配置字典
+        self.provider_configs = dict(provider_configs or {})  # 图像能力厂商配置字典
+        # 统一厂商配置（固定字段 + model_extra），供声明了 image 能力但无专用
+        # 适配器的自定义厂商取用密钥与域名
+        self.unified_provider_configs = dict(unified_provider_configs or {})
         # 兼容旧的单 provider_config 参数：若未在 provider_configs 中则补入
         if provider_config is not None and config.provider not in self.provider_configs:
             self.provider_configs[config.provider] = provider_config
@@ -147,8 +153,11 @@ class ImageGenerationTool(Tool):
         )
 
     def _provider_config(self) -> ProviderConfig | None:
-        """返回当前配置提供商的 ProviderConfig。"""
-        return self.provider_configs.get(self.config.provider)
+        """返回当前配置提供商的 ProviderConfig（图像能力注册表优先，统一配置兜底）。"""
+        pc = self.provider_configs.get(self.config.provider)
+        if pc is None:
+            pc = self.unified_provider_configs.get(self.config.provider)
+        return pc
 
     def _provider_client(self) -> ImageGenerationProvider | None:
         """构造图像生成提供商客户端实例。
@@ -158,7 +167,11 @@ class ImageGenerationTool(Tool):
         provider = self._provider_config()
         cls = get_image_gen_provider(self.config.provider)
         if cls is None:
-            return None
+            # 通用兜底：声明了 image 能力但无专用适配器的厂商走 OpenAI 兼容客户端；
+            # 若该厂商连域名都没配置，则无法构造有效端点，仍视为不支持。
+            if provider is None or not getattr(provider, "api_base", None):
+                return None
+            cls = GenericOpenAIImageGenerationClient
         # api_base 解析优先级：LLM 提供商的 domain > 提供商默认值。
         # 仅继承 LLM 提供商的域名（而非完整路径），因为图像/转录 API
         # 可能使用与 LLM API 不同的路径（例如 DashScope LLM 使用

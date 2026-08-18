@@ -13,6 +13,7 @@ from biscuitbot.webui.settings_api import (
     _resolve_model_list_provider,
     _unified_provider_rows,
     create_model_configuration,
+    delete_provider_settings,
     provider_models_payload,
     settings_payload,
     settings_usage_payload,
@@ -216,6 +217,151 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
     dynamic_provider = saved.providers.model_extra[DYNAMIC_PROVIDER_NAME]
     assert dynamic_provider.api_base == "https://new.example/v1"
     assert dynamic_provider.api_key == "sk-test"
+
+
+def test_update_provider_settings_persists_capabilities(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(_dynamic_provider_config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    update_provider_settings(
+        {
+            "provider": [DYNAMIC_PROVIDER_NAME],
+            "capabilities": ["llm,vision,image"],
+        }
+    )
+
+    saved = load_config(config_path)
+    dynamic_provider = saved.providers.model_extra[DYNAMIC_PROVIDER_NAME]
+    assert dynamic_provider.capabilities == ["llm", "vision", "image"]
+
+    payload = settings_payload()
+    providers = {row["name"]: row for row in payload["providers"]}
+    assert providers[DYNAMIC_PROVIDER_NAME]["capabilities"] == ["llm", "vision", "image"]
+
+
+def test_provider_capabilities_override_narrows_llm(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """用户把厂商能力收窄为仅图像时，该厂商应退出 LLM 模型预设下拉。"""
+    config_path = tmp_path / "config.json"
+    save_config(_dynamic_provider_config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    update_provider_settings(
+        {
+            "provider": [DYNAMIC_PROVIDER_NAME],
+            "capabilities": ["image"],
+        }
+    )
+
+    rows = _unified_provider_rows(load_config(config_path))
+    row = next(r for r in rows if r["name"] == DYNAMIC_PROVIDER_NAME)
+    assert row["capabilities"] == ["image"]
+    assert row["model_selectable"] is False
+
+
+def test_provider_capabilities_empty_declared_not_auto_detected(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """用户清空全部能力时，应保留空列表而非回退自动推断。"""
+    config_path = tmp_path / "config.json"
+    save_config(_dynamic_provider_config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    update_provider_settings(
+        {
+            "provider": [DYNAMIC_PROVIDER_NAME],
+            "capabilities": [""],
+        }
+    )
+
+    row = next(
+        r for r in _unified_provider_rows(load_config(config_path))
+        if r["name"] == DYNAMIC_PROVIDER_NAME
+    )
+    assert row["capabilities"] == []
+    assert row["model_selectable"] is False
+
+
+def test_delete_provider_settings_removes_dynamic_provider_and_resets_refs(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """删除动态厂商后应移除其 model_extra 项，并把指向它的引用回退到默认。"""
+    config_path = tmp_path / "config.json"
+    raw_config = {
+        "providers": {
+            DYNAMIC_PROVIDER_NAME: {
+                "apiBase": DYNAMIC_PROVIDER_API_BASE,
+                "apiKey": "sk-test",
+            }
+        },
+        "agents": {
+            "defaults": {
+                "provider": DYNAMIC_PROVIDER_NAME,
+                "model": "gpt-4o-mini",
+            }
+        },
+        "model_presets": {
+            "mine": {"provider": DYNAMIC_PROVIDER_NAME, "model": "gpt-4o-mini"}
+        },
+        "tools": {
+            "image_generation": {"provider": DYNAMIC_PROVIDER_NAME},
+            "seedance_video": {"provider": DYNAMIC_PROVIDER_NAME},
+        },
+        "tts": {"provider": DYNAMIC_PROVIDER_NAME},
+        "transcription": {"provider": DYNAMIC_PROVIDER_NAME},
+    }
+    save_config(Config.model_validate(raw_config), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    delete_provider_settings({"provider": [DYNAMIC_PROVIDER_NAME]})
+
+    saved = load_config(config_path)
+    assert DYNAMIC_PROVIDER_NAME not in (saved.providers.model_extra or {})
+    assert DYNAMIC_PROVIDER_NAME in saved.hidden_providers
+    assert saved.agents.defaults.provider == "auto"
+    assert saved.model_presets["mine"].provider == "auto"
+    assert saved.tools.image_generation.provider == "volcengine"
+    assert saved.tools.seedance_video.provider == "volcengine"
+    assert saved.tts.provider is None
+    assert saved.transcription.provider is None
+
+
+def test_delete_provider_settings_hides_registry_capability_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未配置的注册表能力厂商（如 groq）删除后应从统一厂商列表隐藏。"""
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    delete_provider_settings({"provider": ["groq"]})
+
+    saved = load_config(config_path)
+    assert "groq" in saved.hidden_providers
+    rows = _unified_provider_rows(saved)
+    assert "groq" not in {row["name"] for row in rows}
+
+
+def test_delete_provider_settings_rejects_builtin_provider(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """固定字段厂商（内置项）不可删除。"""
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    with pytest.raises(WebUISettingsError):
+        delete_provider_settings({"provider": ["deepseek"]})
 
 
 def test_update_image_generation_settings_uses_unified_volcengine_provider(
@@ -496,7 +642,7 @@ def test_settings_payload_includes_tts_config(
     tts_names = {
         row["name"] for row in providers.values() if "tts" in row["capabilities"]
     }
-    assert tts_names == {"openai", "dashscope", "edge-tts"}
+    assert tts_names == {"openai", "dashscope", "edge-tts", "newapi"}
     edge = providers["edge-tts"]
     assert edge["label"] == "Edge TTS"
     assert edge["configured"] is True

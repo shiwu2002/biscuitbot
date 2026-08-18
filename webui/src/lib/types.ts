@@ -497,6 +497,7 @@ export interface SettingsPayload {
     model_selectable?: boolean;
     api_type?: "auto" | "chat_completions" | "responses";
     capabilities?: string[];
+    deletable?: boolean;
     oauth_account?: string | null;
     oauth_expires_at?: number | null;
     oauth_login_supported?: boolean;
@@ -904,6 +905,7 @@ export interface ProviderSettingsUpdate {
   apiKey?: string;
   apiBase?: string;
   apiType?: "auto" | "chat_completions" | "responses";
+  capabilities?: string[];
 }
 
 export interface WebSearchSettingsUpdate {

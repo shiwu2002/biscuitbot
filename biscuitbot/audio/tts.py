@@ -19,6 +19,7 @@ from loguru import logger  # 结构化日志
 from biscuitbot.audio.tts_registry import (
     get_tts_provider,
     resolve_tts_provider,
+    resolve_tts_spec,
 )
 from biscuitbot.config.paths import get_workspace_path
 from biscuitbot.providers.registry import find_by_name
@@ -58,8 +59,14 @@ class EffectiveTtsConfig:
 
 
 def _provider_config(config: Any, provider: str) -> Any:
-    """读取 ``config.providers.<provider>`` 的 LLM 提供商配置。"""
-    return getattr(getattr(config, "providers", None), provider, None)
+    """读取 ``config.providers.<provider>`` 的提供商配置（固定字段 + model_extra）。"""
+    providers = getattr(config, "providers", None)
+    if providers is None:
+        return None
+    pc = getattr(providers, provider, None)
+    if pc is not None:
+        return pc
+    return (providers.model_extra or {}).get(provider)
 
 
 def _resolve_tts_api_key(provider: str, provider_cfg: Any) -> str:
@@ -89,7 +96,7 @@ def _resolve_tts_api_base(provider: str, provider_cfg: Any) -> str:
 def resolve_tts_config(config: Any) -> EffectiveTtsConfig:
     """解析顶层 TTS 配置，缺省项回退到 provider 默认值。"""
     top = getattr(config, "tts", None)
-    spec = resolve_tts_provider(getattr(top, "provider", None))
+    spec = resolve_tts_spec(getattr(top, "provider", None))
     provider_cfg = _provider_config(config, spec.name)
     return EffectiveTtsConfig(
         enabled=bool(getattr(top, "enabled", True)),
@@ -117,7 +124,7 @@ def resolve_tts_config_with_overrides(
     model/voice 与 ``providers.<name>`` 的 key/base 重新解析。
     """
     eff = resolve_tts_config(config)
-    spec = resolve_tts_provider(provider or eff.provider)
+    spec = resolve_tts_spec(provider or eff.provider)
     top = getattr(config, "tts", None)
     provider_cfg = _provider_config(config, spec.name)
     return EffectiveTtsConfig(
@@ -159,9 +166,7 @@ async def synthesize_speech_file(
         raise TtsServiceError("not_configured", provider=config.provider)
     if not text or not text.strip():
         raise TtsServiceError("empty")
-    spec = get_tts_provider(config.provider)
-    if spec is None:
-        raise TtsServiceError("unknown_provider", provider=config.provider)
+    spec = get_tts_provider(config.provider) or resolve_tts_spec(config.provider)
     path = (
         Path(output_path).expanduser()
         if output_path
