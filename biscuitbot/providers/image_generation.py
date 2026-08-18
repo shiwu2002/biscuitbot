@@ -190,13 +190,22 @@ def image_gen_provider_configs(config: Any) -> dict[str, Any]:
     """从全局配置中提取已注册 Provider 对应的配置项。
 
     仅返回在注册表中存在且配置中确实填写的 Provider，便于上层逐个初始化。
+
+    能力专用厂商（volcengine / gemini / aihubmix 等）不是 ``ProvidersConfig``
+    的固定字段，「模型厂商」页首次配置时会把它们挂到 ``providers.model_extra``
+    （见 settings_api 的保存逻辑），因此除固定字段外还要回查 ``model_extra``，
+    否则这些厂商的密钥取不到，导致文生图/文生视频报「无 api key」。
     """
     providers_cfg = config.providers
-    return {
-        name: pc
-        for name in _IMAGE_GEN_PROVIDERS
-        if (pc := getattr(providers_cfg, name, None)) is not None
-    }
+    model_extra = providers_cfg.model_extra or {}
+    result: dict[str, Any] = {}
+    for name in _IMAGE_GEN_PROVIDERS:
+        pc = getattr(providers_cfg, name, None)
+        if pc is None:
+            pc = model_extra.get(name)
+        if pc is not None:
+            result[name] = pc
+    return result
 
 
 # ---------------------------------------------------------------------------

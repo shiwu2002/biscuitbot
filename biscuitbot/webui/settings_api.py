@@ -330,6 +330,21 @@ def _dynamic_provider_items(config: Any) -> list[tuple[str, ProviderConfig]]:
     ]
 
 
+def _provider_config_by_name(config: Any, name: str) -> ProviderConfig | None:
+    """按名称取 ProviderConfig：先查固定字段，再查 model_extra 自定义厂商。
+
+    能力专用厂商（volcengine / gemini / aihubmix 等）不是 ProvidersConfig 的
+    固定字段，「模型厂商」页会把它们存进 model_extra，直接 ``getattr`` 会漏掉。
+    """
+    pc = getattr(config.providers, name, None)
+    if isinstance(pc, ProviderConfig):
+        return pc
+    for extra_name, extra_pc in _dynamic_provider_items(config):
+        if extra_name == name:
+            return extra_pc
+    return None
+
+
 def _resolve_settings_provider(
     config: Any,
     provider_name: str,
@@ -1145,7 +1160,7 @@ def settings_payload(
             "api_key_configured": bool(
                 (video_config.api_key or "").strip()
                 or (
-                    (volcengine_cfg := getattr(config.providers, "volcengine", None))
+                    (volcengine_cfg := _provider_config_by_name(config, "volcengine"))
                     and (volcengine_cfg.api_key or "").strip()
                 )
                 or os.environ.get("ARK_API_KEY", "").strip()
@@ -1858,8 +1873,11 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
             changed = True
 
     if video_config.enabled:
-        has_key = bool((video_config.api_key or "").strip()) or bool(
-            os.environ.get("ARK_API_KEY", "").strip()
+        volcengine_cfg = _provider_config_by_name(config, "volcengine")
+        has_key = bool(
+            (video_config.api_key or "").strip()
+            or (volcengine_cfg and (volcengine_cfg.api_key or "").strip())
+            or os.environ.get("ARK_API_KEY", "").strip()
         )
         if not has_key:
             raise WebUISettingsError("seedance api key is required to enable video generation")

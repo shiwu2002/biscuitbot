@@ -14,6 +14,7 @@ from biscuitbot.providers.image_generation import (
     OpenAIImageGenerationClient,
     VolcanoImageGenerationClient,
     ZhipuImageGenerationClient,
+    image_gen_provider_configs,
 )
 
 PNG_BYTES = (
@@ -76,6 +77,21 @@ class FakeClient:
     async def get(self, url: str, **kwargs: Any) -> FakeResponse:
         self.get_calls.append({"url": url, **kwargs})
         return self.get_response
+
+
+def test_image_gen_provider_configs_includes_model_extra_providers() -> None:
+    """「模型厂商」页把能力专用厂商（volcengine/gemini/aihubmix）存进
+    providers.model_extra 而非固定字段，image_gen_provider_configs 必须也能取到，
+    否则文生图/文生视频（seedance 共用火山方舟密钥）会报「无 api key」。"""
+    from biscuitbot.config.schema import Config
+
+    cfg = Config(providers={"volcengine": {"apiKey": "test-ark-key"}})
+    result = image_gen_provider_configs(cfg)
+    assert result.get("volcengine") is not None
+    assert result["volcengine"].api_key == "test-ark-key"
+
+    # 固定字段里的官方提供商仍照常返回（即便 api_key 为空）
+    assert "openai" in result
 
 
 @pytest.mark.asyncio

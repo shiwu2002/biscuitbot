@@ -121,6 +121,16 @@ else
 fi
 cd "$ROOT"
 
+# 清理 tauri-bundler 在 bundle/dmg/ 遗留的卷图标临时文件。
+# tauri-bundler 的 create_icns_file（macos/icon.rs）会把 icons/icon.icns 复制到
+# bundle/dmg/icon.icns 用作 `--volicon` 源（DMG 内会正确转为隐藏的 .VolumeIcon.icns），
+# 但打包结束后不删除，导致 icon.icns 泄漏到产物目录；bundle_dmg.sh 同样是 create-dmg
+# 的中间脚本。这里统一清理，让 bundle/dmg/ 只保留 *.dmg。
+DMG_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle/dmg"
+if [ -d "$DMG_DIR" ]; then
+  rm -f "$DMG_DIR/icon.icns" "$DMG_DIR/bundle_dmg.sh"
+fi
+
 echo
 echo "构建完成！产物："
 ls -1 "$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle/"*/ 2>/dev/null | sed 's/^/  /'
