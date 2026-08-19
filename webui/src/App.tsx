@@ -1050,6 +1050,13 @@ function Shell({
         beforeUserIndex,
         t("chat.forkTitle", { title: sourceTitle }),
       );
+      // Mark the fork's key as recently created to prevent the guard effect
+      // from resetting navigation to the new-chat view when the optimistic
+      // fork row has not landed in `sessions` yet (same protection as
+      // onCreateChat). Without this, a desktop build where the setSessions /
+      // navigate updates are flushed in separate frames can bounce the user
+      // to "#/new" — the reported "new conversation window" symptom.
+      pendingCreatedKeyRef.current = `websocket:${chatId}`;
       navigate({
         view: "chat",
         activeKey: `websocket:${chatId}`,

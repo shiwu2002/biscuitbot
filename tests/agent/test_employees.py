@@ -265,7 +265,7 @@ class TestTitleField:
         assert by_id["clip-master"]["title"] == "AI视频剪辑总监"
         assert by_id["short-video-operator"]["title"] == "短视频增长操盘手"
         assert by_id["super-secretary"]["title"] == "AI执行秘书"
-        assert by_id["all-round-designer"]["title"] == "AI视觉设计总监"
+        assert by_id["all-round-designer"]["title"] == "AI广告设计师"
         assert by_id["screenwriter"]["title"] == "编剧"
 
     def test_missing_title_defaults_to_empty(self, tmp_path: Path) -> None:
@@ -290,7 +290,7 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         store.list_employees()
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 8
+        assert raw["builtin_version"] == 10
 
     def test_v1_file_syncs_builtin_names_and_keeps_custom(
         self, tmp_path: Path
@@ -320,7 +320,7 @@ class TestBuiltinVersionMigration:
         assert by_id["my-custom"]["name"] == "我的助理"
         assert by_id["my-custom"]["system_prompt"] == "自定义提示词"
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 8
+        assert raw["builtin_version"] == 10
 
     def test_v1_sync_updates_builtin_skills(self, tmp_path: Path) -> None:
         # 老 v1 文件：内置记录的空技能会被同步为新版绑定的技能
