@@ -59,12 +59,11 @@ class CinematicDirectorTool(Tool):
 
     _scopes = {"core"}  # 仅主 Agent 可用；子 Agent（subagent）无法调用 → 权限隔离
     _capability = (
-        "Orchestrate an AI film production pipeline (bible → script → review → "
-        "optional user review → spatial planning → world/character assets → "
-        "asset lock → storyboard → video generation → video review → final) "
-        "with a hard 11-stage state machine, plus optional first-frame continuity "
-        "(reuse the previous shot's recorded last frame when a shot continues "
-        "directly from it)."
+        "Produce AI short-drama / long-form videos: turn a novel, story, or "
+        "script into a filmed multi-scene work (bible → script → optional user "
+        "review → spatial planning → world/character assets → storyboard → "
+        "video generation → review → final) enforced by a hard 11-stage state "
+        "machine, plus optional first-frame continuity across shots."
     )
     _usage_md = "docs/cinematic_director.md"  # 使用说明文档路径
 
@@ -85,8 +84,11 @@ class CinematicDirectorTool(Tool):
     def description(self) -> str:
         """工具描述，指导模型如何调用。"""
         return (
-            "Orchestrate an AI film production project with a hard 11-stage state "
-            "machine and review gates (script/optional-user/assets/video). Actions: "
+            "Use when the user wants to produce an AI short-drama / long-form "
+            "video, or to adapt a novel, story, or script into a filmed "
+            "multi-scene work. Orchestrate the full production with a hard "
+            "11-stage state machine and review gates "
+            "(script/optional-user/assets/video). Actions: "
             "create_project, set_floorplan, write_script, review_script, "
             "request_user_review, approve_script, add_asset, review_assets, "
             "lock_assets, plan_shot, compile_prompt, record_qc, record_shot_result, "
