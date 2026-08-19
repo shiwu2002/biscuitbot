@@ -302,16 +302,16 @@ class TestBuildSystemPrompt:
     def test_includes_requirement_refinement_section(self, tmp_path):
         builder = _builder(tmp_path)
         result = builder.build_system_prompt()
-        assert "# 需求精化（先精化，再执行）" in result
-        assert "任务简报" in result
+        assert "# 需求补充与优化（保留原意，补充并优化，不精化改写）" in result
+        assert "需求补充" in result
 
     def test_requirement_refinement_in_employee_session(self, tmp_path):
         builder = _builder(tmp_path)
         result = builder.build_system_prompt(
             session_metadata={"employee": "clip-master"},
         )
-        # 需求精化段对所有会话生效，员工会话的 persona 段仍然注入
-        assert "# 需求精化（先精化，再执行）" in result
+        # 需求补充与优化段对所有会话生效，员工会话的 persona 段仍然注入
+        assert "# 需求补充与优化（保留原意，补充并优化，不精化改写）" in result
         assert "Persona — 阿伟" in result
 
 
