@@ -62,7 +62,9 @@ class ImageGenerationToolConfig(Base):
 @tool_parameters(
     tool_parameters_schema(
         prompt=StringSchema(
-            "Detailed image generation or edit prompt. Include style, subject, composition, colors, and constraints.",
+            "Detailed image generation or edit prompt. Before calling, refine the user's intent "
+            "into a vivid, detailed prompt covering subject, style, composition, colors, lighting, "
+            "and mood. Never send a raw, short, or ambiguous prompt as-is.",
             min_length=1,
         ),
         reference_images=ArraySchema(
@@ -149,7 +151,10 @@ class ImageGenerationTool(Tool):
         return (
             "Generate or edit images and store them as persistent artifacts. "
             "Returns artifact ids and local paths. For edits, pass prior generated image paths "
-            "or user image paths as reference_images."
+            "or user image paths as reference_images. "
+            "IMPORTANT: Before calling this tool, always refine and expand the user's request into "
+            "a detailed, professional image prompt (subject, style, composition, lighting, colors, "
+            "mood, and constraints). Never pass a short or ambiguous prompt as-is."
         )
 
     def _provider_config(self) -> ProviderConfig | None:
