@@ -13,6 +13,7 @@ from biscuitbot.webui.transcript import (
     append_fork_marker,
     delete_webui_transcript,
     fork_transcript_before_user_index,
+    read_transcript_lines,
     write_session_messages_as_transcript,
 )
 
@@ -21,6 +22,37 @@ _WEBUI_CHAT_ID_RE = re.compile(r"^[A-Za-z0-9_:-]{1,64}$")
 
 def _valid_webui_chat_id(value: Any) -> bool:
     return isinstance(value, str) and _WEBUI_CHAT_ID_RE.match(value) is not None
+
+
+def _map_before_user_index_to_session(
+    session_manager: SessionManager,
+    source_key: str,
+    before_user_index: int,
+) -> int:
+    """Map a transcript-global user index onto the agent session's retained prefix.
+
+    The webui transcript is append-only and keeps the full display history,
+    while the agent session can be truncated by AutoCompact/Dream to a recent
+    suffix (old turns collapsed into ``_last_summary``). The client computes
+    ``before_user_index`` from the transcript, so it can exceed the session's
+    own user count and make ``fork_session_before_user_index`` bail out.
+
+    Retained session user rows cover transcript user indexes ``[T-S, T)`` where
+    ``T``/``S`` are the transcript/session user counts, so the number of retained
+    rows that fall strictly before the fork point is ``min(B, T) - max(0, T-S)``.
+    """
+    transcript_users = sum(
+        1 for rec in read_transcript_lines(source_key) if rec.get("event") == "user"
+    )
+    info = session_manager.read_session_file(source_key)
+    if not info:
+        return before_user_index
+    session_users = sum(
+        1 for msg in info.get("messages", []) if msg.get("role") == "user"
+    )
+    if session_users <= 0 or transcript_users == session_users:
+        return before_user_index
+    return max(0, min(before_user_index, transcript_users) - max(0, transcript_users - session_users))
 
 
 def create_webui_chat_fork(
@@ -35,10 +67,21 @@ def create_webui_chat_fork(
     source_key = f"websocket:{source_chat_id}"
     target_key = f"websocket:{new_id}"
     try:
+        # Map the transcript-global index onto the agent session's retained
+        # messages: for compacted sessions the transcript keeps the full history
+        # while the session holds only a recent suffix, so the raw index can be
+        # out of range (aborting the fork) or land inside the suffix (silently
+        # pulling in post-fork turns). The transcript-side fork below supplies
+        # the complete display history regardless.
+        session_index = _map_before_user_index_to_session(
+            session_manager,
+            source_key,
+            before_user_index,
+        )
         forked = session_manager.fork_session_before_user_index(
             source_key,
             target_key,
-            before_user_index,
+            session_index,
         )
         if forked is None:
             return None
