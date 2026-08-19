@@ -136,7 +136,7 @@ async def test_execute_rejects_non_http_url_after_cleaning():
     result = await tool.execute(url="ftp://example.com/file")
     data = json.loads(result)
     assert "error" in data
-    assert "URL validation failed" in data["error"]
+    assert "URL 校验失败" in data["error"]
 
 
 @pytest.mark.asyncio
@@ -145,7 +145,7 @@ async def test_execute_rejects_garbage_after_cleaning():
     result = await tool.execute(url="`not a url at all`")
     data = json.loads(result)
     assert "error" in data
-    assert "URL validation failed" in data["error"]
+    assert "URL 校验失败" in data["error"]
 
 
 @pytest.mark.asyncio
@@ -154,4 +154,4 @@ async def test_execute_rejects_bare_domain_after_cleaning():
     result = await tool.execute(url="`example.com/page`")
     data = json.loads(result)
     assert "error" in data
-    assert "URL validation failed" in data["error"]
+    assert "URL 校验失败" in data["error"]

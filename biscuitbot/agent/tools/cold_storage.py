@@ -89,7 +89,7 @@ class ColdStorageTool(Tool):
         limit = min(limit, 10)
 
         if self._stats is None:
-            return json.dumps({"error": "usage stats not bound"}, ensure_ascii=False)
+            return json.dumps({"error": "冷门仓库未初始化，请稍后重试或重新发起搜索"}, ensure_ascii=False)
 
         cold_names = self._stats.cold_tool_names()
         if not cold_names:

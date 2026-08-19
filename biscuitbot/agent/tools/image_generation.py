@@ -218,16 +218,16 @@ class ImageGenerationTool(Tool):
         except WorkspaceBoundaryError as exc:
             # 参考图片必须在工作区或 biscuitbot 媒体目录内
             raise ImageGenerationError(
-                "reference_images must be inside the workspace or biscuitbot media directory"
+                "参考图路径越界：请把参考图放到工作区或 biscuitbot 媒体目录内"
             ) from exc
         except OSError as exc:
-            raise ImageGenerationError(f"reference image not found: {value}") from exc
+            raise ImageGenerationError(f"参考图不存在：{value}，请确认路径是否正确") from exc
         if not resolved.is_file():
-            raise ImageGenerationError(f"reference image is not a file: {value}")
+            raise ImageGenerationError(f"参考图不是有效文件：{value}")
         raw = resolved.read_bytes()
         # 校验图片 MIME 类型是否受支持
         if detect_image_mime(raw) is None:
-            raise ImageGenerationError(f"unsupported reference image: {value}")
+            raise ImageGenerationError(f"不支持的参考图格式：{value}（仅支持 png/jpg/webp 等常见图片格式）")
         return str(resolved)
 
     def _resolve_reference_images(self, values: list[str] | None) -> list[str]:
@@ -266,14 +266,14 @@ class ImageGenerationTool(Tool):
         """
         client = self._provider_client()
         if client is None:
-            return f"Error: unsupported image generation provider '{self.config.provider}'"
+            return f"Error: 图像生成 provider '{self.config.provider}' 不受支持。请在 config 把 tools.imageGeneration.provider 改为已支持厂商（如 openai/dashscope/volcengine/gemini/zhipu）"
 
         requested = count or 1  # 默认生成 1 张
         # 校验请求数量不超过每轮上限
         if requested > self.config.max_images_per_turn:
             return (
-                "Error: count exceeds tools.imageGeneration.maxImagesPerTurn "
-                f"({self.config.max_images_per_turn})"
+                f"Error: 请求生成 {requested} 张超出单轮上限 "
+                f"{self.config.max_images_per_turn} 张，请把 count 降到该值以内"
             )
 
         try:
@@ -303,4 +303,4 @@ class ImageGenerationTool(Tool):
                         break
             return generated_image_tool_result(artifacts)
         except (ArtifactError, ImageGenerationError, OSError) as exc:
-            return f"Error: {exc}"
+            return f"Error: 图像生成失败：{exc}"

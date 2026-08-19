@@ -417,7 +417,7 @@ class WebSearchTool(Tool):
                 freshness=kwargs.get("freshness", "noLimit"),
             )
         else:
-            return f"Error: unknown search provider '{provider}'"
+            return f"Error: 未知搜索提供商 '{provider}'，请把 tools.web.search.provider 设为 duckduckgo/brave/tavily/searxng/jina/kagi/exa/bocha/volcengine/olostep 之一"
 
     async def _search_olostep(self, query: str, n: int) -> str:
         try:
@@ -467,9 +467,9 @@ class WebSearchTool(Tool):
             items = [{"title": answer_text or "Olostep answer", "url": "", "content": "\n".join(source_lines)}]
             return _format_results(query, items, n)
         except Olostep_BaseError as e:
-            return f"Olostep search error: {type(e).__name__}: {e}"
+            return f"Error: Olostep 搜索失败（{type(e).__name__}）：{e}。请检查 OLOSTEP_API_KEY 与网络"
         except Exception as e:
-            return f"Olostep search error: {type(e).__name__}: {e}"
+            return f"Error: Olostep 搜索失败（{type(e).__name__}）：{e}。请检查 OLOSTEP_API_KEY 与网络"
 
     async def _search_brave(self, query: str, n: int) -> str:
         api_key = self.config.api_key or os.environ.get("BRAVE_API_KEY", "")
@@ -507,9 +507,9 @@ class WebSearchTool(Tool):
                     "Error: Brave search rate limited after retry. "
                     "Retry later or reduce consecutive web_search calls."
                 )
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
     async def _search_tavily(self, query: str, n: int) -> str:
         api_key = self.config.api_key or os.environ.get("TAVILY_API_KEY", "")
@@ -527,7 +527,7 @@ class WebSearchTool(Tool):
                 r.raise_for_status()
             return _format_results(query, r.json().get("results", []), n)
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
     async def _search_searxng(self, query: str, n: int) -> str:
         base_url = (self.config.base_url or os.environ.get("SEARXNG_BASE_URL", "")).strip()
@@ -537,7 +537,7 @@ class WebSearchTool(Tool):
         endpoint = f"{base_url.rstrip('/')}/search"
         is_valid, error_msg = _validate_url(endpoint)
         if not is_valid:
-            return f"Error: invalid SearXNG URL: {error_msg}"
+            return f"Error: SearXNG URL 无效：{error_msg}。请检查 tools.web.search 的 SearXNG baseUrl 配置"
         try:
             async with httpx.AsyncClient(proxy=self.proxy) as client:
                 r = await client.get(
@@ -549,7 +549,7 @@ class WebSearchTool(Tool):
                 r.raise_for_status()
             return _format_results(query, r.json().get("results", []), n)
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
     async def _search_jina(self, query: str, n: int) -> str:
         api_key = self.config.api_key or os.environ.get("JINA_API_KEY", "")
@@ -600,7 +600,7 @@ class WebSearchTool(Tool):
             ]
             return _format_results(query, items, n)
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
     async def _search_exa(self, query: str, n: int) -> str:
         api_key = self.config.api_key or os.environ.get("EXA_API_KEY", "")
@@ -648,9 +648,9 @@ class WebSearchTool(Tool):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
                 return "Error: Exa search rate limited. Try again later or reduce search frequency."
-            return f"Error: Exa search failed ({e.response.status_code}): {e}"
+            return f"Error: Exa 搜索失败（{e.response.status_code}）：{e}。请检查 EXA_API_KEY 与网络"
         except Exception as e:
-            return f"Error: Exa search failed: {e}"
+            return f"Error: Exa 搜索失败：{e}。请检查 EXA_API_KEY 与网络"
 
     async def _search_volcengine(
         self,
@@ -674,7 +674,7 @@ class WebSearchTool(Tool):
             normalized_time_range = _normalize_volcengine_time_range(time_range) if time_range else None
             normalized_auth_level = _normalize_volcengine_auth_level(auth_level) if auth_level is not None else None
         except ValueError as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
         body: dict[str, Any] = {
             "Query": query,
@@ -708,17 +708,17 @@ class WebSearchTool(Tool):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429:
                 return "Error: Volcengine search rate limited. Try again later or reduce search frequency."
-            return f"Error: Volcengine search failed ({e.response.status_code}): {e}"
+            return f"Error: Volcengine 搜索失败（{e.response.status_code}）：{e}。请检查对应 API key 与网络"
         except Exception as e:
-            return f"Error: Volcengine search failed: {e}"
+            return f"Error: Volcengine 搜索失败：{e}。请检查对应 API key 与网络"
 
         error = (data.get("ResponseMetadata") or {}).get("Error") or data.get("Error") or data.get("error")
         if error:
             if isinstance(error, dict):
                 code = error.get("Code") or error.get("code") or "unknown"
                 message = error.get("Message") or error.get("message") or error
-                return f"Error: Volcengine search error {code}: {message}"
-            return f"Error: Volcengine search error: {error}"
+                return f"Error: Volcengine 搜索错误 {code}：{message}"
+            return f"Error: Volcengine 搜索错误：{error}"
 
         result = data.get("Result") or data
         web_results = result.get("WebResults") or result.get("webResults") or result.get("results") or []
@@ -777,7 +777,7 @@ class WebSearchTool(Tool):
             return _format_results(query, items, n)
         except Exception as e:
             logger.warning("DuckDuckGo/Bing search failed: {}", e, exc_info=True)
-            return f"Error: DuckDuckGo/Bing search failed ({type(e).__name__}: {e})"
+            return f"Error: DuckDuckGo/Bing 搜索失败（{type(e).__name__}: {e}）。可稍后重试或改用其他搜索提供商"
 
     async def _search_bocha(self, query: str, n: int, freshness: str = "noLimit") -> str:
         api_key = self.config.api_key or os.environ.get("BOCHA_API_KEY", "")
@@ -825,9 +825,9 @@ class WebSearchTool(Tool):
             ]
             return _format_results(query, items, n)
         except httpx.HTTPStatusError as e:
-            return f"Error: Bocha search HTTP {e.response.status_code}: {e.response.text[:200]}"
+            return f"Error: Bocha 搜索 HTTP {e.response.status_code}：{e.response.text[:200]}。请检查 BOCHA_API_KEY 与网络"
         except Exception as e:
-            return f"Error: {e}"
+            return f"Error: 搜索请求失败：{e}。请检查对应 API key 与网络"
 
 
 @tool_parameters(
@@ -918,7 +918,7 @@ class WebFetchTool(Tool):
         assert max_chars is not None
         is_valid, error_msg = _validate_url_safe(url)
         if not is_valid:
-            return json.dumps({"error": f"URL validation failed: {error_msg}", "url": url}, ensure_ascii=False)
+            return json.dumps({"error": f"URL 校验失败：{error_msg}（仅支持 http/https，且不允许访问内网/本机地址）", "url": url}, ensure_ascii=False)
 
         # Detect and fetch images directly to avoid Jina's textual image captioning
         try:
@@ -1036,10 +1036,10 @@ class WebFetchTool(Tool):
             }, ensure_ascii=False)
         except httpx.ProxyError as e:
             logger.exception("WebFetch proxy error for {}", url)
-            return json.dumps({"error": f"Proxy error: {e}", "url": url}, ensure_ascii=False)
+            return json.dumps({"error": f"抓取失败：{e}。请检查代理配置，或该站点可能需要登录/不支持抓取", "url": url}, ensure_ascii=False)
         except Exception as e:
             logger.exception("WebFetch error for {}", url)
-            return json.dumps({"error": str(e), "url": url}, ensure_ascii=False)
+            return json.dumps({"error": f"抓取失败：{e}。请稍后重试，或该站点可能需要登录/不支持抓取", "url": url}, ensure_ascii=False)
 
     def _extract_readable_html(self, html_content: str, extract_mode: str) -> str:
         """使用 readability 提取 HTML 主要内容并转换为 markdown 或纯文本。"""

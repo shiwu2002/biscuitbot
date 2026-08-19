@@ -79,7 +79,7 @@ class TestReadFileTool:
     @pytest.mark.asyncio
     async def test_missing_path_returns_clear_error(self, tool):
         result = await tool.execute()
-        assert result == "Error reading file: Unknown path"
+        assert result == "Error: 缺少必填参数 path，请提供要读取的文件路径"
 
     @pytest.mark.asyncio
     async def test_char_budget_trims(self, tool, tmp_path):
@@ -209,7 +209,7 @@ class TestEditFileTool:
         f = tmp_path / "a.py"
         f.write_text("hello", encoding="utf-8")
         result = await tool.execute(path=str(f), old_text="hello")
-        assert result == "Error editing file: Unknown new_text"
+        assert result == "Error: 缺少必填参数 new_text，请提供替换后的新内容"
 
 
 # ---------------------------------------------------------------------------
@@ -279,7 +279,7 @@ class TestListDirTool:
     @pytest.mark.asyncio
     async def test_missing_path_returns_clear_error(self, tool):
         result = await tool.execute()
-        assert result == "Error listing directory: Unknown path"
+        assert result == "Error: 缺少必填参数 path，请提供要列出的目录路径"
 
 
 # ---------------------------------------------------------------------------

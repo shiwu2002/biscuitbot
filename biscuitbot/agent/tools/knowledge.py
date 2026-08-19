@@ -71,12 +71,15 @@ class SearchKnowledgeTool(Tool):
         query = str(kwargs.get("query") or "").strip()
         if not query:
             return json.dumps(
-                {"error": "query is required"}, ensure_ascii=False
+                {"error": "缺少检索关键词 query，请提供要检索的词语"}, ensure_ascii=False
             )
 
         limit = kwargs.get("limit") or 5
         if not isinstance(limit, int) or limit < 1:
-            limit = 5
+            return json.dumps(
+                {"error": f"limit 必须是 1-20 之间的整数，收到 {limit!r}"},
+                ensure_ascii=False,
+            )
         limit = min(limit, 20)
 
         results = search_knowledge(self._workspace, query, limit=limit)

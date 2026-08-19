@@ -252,7 +252,7 @@ class MessageTool(Tool, ContextAware):
                 not isinstance(row, list) or any(not isinstance(label, str) for label in row)
                 for row in buttons
             ):
-                return "Error: buttons must be a list of list of strings"
+                return "Error: buttons 应为「按行分组的按钮文本列表」，例如 [[\"是\"], [\"否\"]]，每行是一个字符串列表"
         default_channel = self._default_channel.get()
         default_chat_id = self._default_chat_id.get()
         channel = channel or default_channel
@@ -282,7 +282,7 @@ class MessageTool(Tool, ContextAware):
             message_id = None
 
         if not channel or not chat_id:
-            return "Error: No target channel/chat specified"
+            return "Error: 未指定发送目标，请提供 channel 与 chat_id（WebSocket 会话可省略以使用当前会话 id）"
 
         if not self._send_callback:
             return "Error: Message sending not configured"
@@ -292,7 +292,10 @@ class MessageTool(Tool, ContextAware):
             try:
                 media = self._resolve_media(media)
             except (OSError, PermissionError, ValueError) as e:
-                return f"Error: media path is not allowed: {str(e)}"
+                return (
+                    f"Error: 附件路径不合法：{e}。请确认路径在工作区内且文件存在，"
+                    "或改用 generate_image 返回的绝对路径"
+                )
 
         # 构造元数据：同目标时继承默认元数据
         metadata = dict(self._default_metadata.get()) if same_target else {}
@@ -328,4 +331,7 @@ class MessageTool(Tool, ContextAware):
             button_info = f" with {sum(len(row) for row in buttons)} button(s)" if buttons else ""
             return f"Message sent to {channel}:{chat_id}{media_info}{button_info}"
         except Exception as e:
-            return f"Error sending message: {str(e)}"
+            return (
+                f"Error: 消息发送失败：{e}。请确认 channel/chat_id 正确且该渠道已登录，"
+                "临时网络错误可稍后重试"
+            )

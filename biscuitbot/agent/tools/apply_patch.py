@@ -323,7 +323,7 @@ class ApplyPatchTool(_FsTool):
 
                     pos = norm_content.find(norm_old)
                     if pos < 0:
-                        raise _PatchError(f"old_text not found in {path}")
+                        raise _PatchError(f"old_text 未在 {path} 中找到，请先 read_file 重新读取该文件，复制精确的原文片段后重试")
                     # 禁止 old_text 出现多次，避免歧义替换
                     if norm_content.find(norm_old, pos + 1) >= 0:
                         raise _PatchError(f"old_text appears multiple times in {path}")
@@ -380,9 +380,9 @@ class ApplyPatchTool(_FsTool):
             return "Patch applied:\n" + "\n".join(
                 _format_summary(summary) for summary in summaries
             )
-        except PermissionError as exc:
-            return f"Error: {exc}"
+        except PermissionError:
+            return "Error: 没有权限写入补丁目标文件，请检查文件/目录权限"
         except _PatchError as exc:
             return f"Error applying patch: {exc}"
         except Exception as exc:
-            return f"Error applying patch: {exc}"
+            return f"Error: 写入补丁失败（{exc}），已回滚本次所有修改。请检查目标路径是否为目录、磁盘空间是否充足"

@@ -358,10 +358,11 @@ class SeedanceVideoTool(Tool):
         try:
             response = await client.post(url, headers=headers, json=body)
         except httpx.RequestError as exc:
-            raise SeedanceVideoError(f"创建任务请求失败：{exc}") from exc
+            raise SeedanceVideoError(f"创建任务请求失败：{exc}。请检查网络连接或 baseUrl 配置") from exc
         if response.status_code >= 400:
             raise SeedanceVideoError(
                 f"创建任务失败（HTTP {response.status_code}）：{response.text[:500]}"
+                "。请检查 API key 是否有效、模型是否已开通"
             )
         data = response.json()
         task_id = data.get("id")
@@ -391,7 +392,7 @@ class SeedanceVideoTool(Tool):
                 return data
             if status in ("failed", "cancelled", "canceled"):
                 error = data.get("error") or data.get("message") or "任务失败"
-                raise SeedanceVideoError(f"Seedance 任务失败：{error}")
+                raise SeedanceVideoError(f"Seedance 任务失败：{error}（可重试，或检查提示词/参考素材是否合规）")
             # queued / running / pending 等继续轮询
         raise SeedanceVideoError(
             f"Seedance 任务超时（超过 {self.config.max_poll_attempts} 次轮询）"
@@ -412,7 +413,7 @@ class SeedanceVideoTool(Tool):
             response = await client.get(video_url)
             response.raise_for_status()
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-            raise SeedanceVideoError(f"下载生成的视频失败：{exc}") from exc
+            raise SeedanceVideoError(f"下载生成的视频失败：{exc}。视频 URL 可能已过期，请重试") from exc
         raw = response.content
         if not raw:
             raise SeedanceVideoError("下载的视频为空")
@@ -521,4 +522,4 @@ class SeedanceVideoTool(Tool):
         except SeedanceVideoError as exc:
             return f"Error: {exc}"
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
-            return f"Error: Seedance 请求失败：{exc}"
+            return f"Error: Seedance 请求失败：{exc}。请检查网络与 baseUrl，稍后重试"

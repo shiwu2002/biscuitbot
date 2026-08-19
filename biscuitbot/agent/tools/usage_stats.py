@@ -18,6 +18,8 @@ from dataclasses import asdict, dataclass  # 数据类支持
 from pathlib import Path  # 路径处理
 from typing import TYPE_CHECKING  # 仅类型检查时导入
 
+from loguru import logger  # 结构化日志（统计/冷存储文件损坏告警）
+
 if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
     from biscuitbot.agent.tools.registry import ToolRegistry
 
@@ -201,11 +203,11 @@ class UsageStats:
                 for k, v in data.items():
                     self._stats[k] = ToolUsageStat(**v)
             except (json.JSONDecodeError, TypeError):
-                pass
+                logger.warning("usage_stats.json 损坏，已忽略并重置为空：{}", self._stats_file)
         if self._cold_file is not None and self._cold_file.is_file():
             try:
                 data = json.loads(self._cold_file.read_text(encoding="utf-8"))
                 for k, v in data.items():
                     self._cold[k] = ColdEntry(**v)
             except (json.JSONDecodeError, TypeError):
-                pass
+                logger.warning("cold_storage.json 损坏，已忽略并重置为空：{}", self._cold_file)

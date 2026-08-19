@@ -152,8 +152,11 @@ class CronTool(Tool, ContextAware):
 
         try:
             ZoneInfo(tz)
-        except (KeyError, Exception):
-            return f"Error: unknown timezone '{tz}'"
+        except Exception:
+            return (
+                f"未知时区 '{tz}'，请使用 IANA 时区名（如 'Asia/Shanghai'、"
+                "'America/Vancouver'），或省略 tz 参数使用默认时区"
+            )
         return None
 
     def _display_timezone(self, schedule: CronSchedule) -> str:
@@ -244,7 +247,7 @@ class CronTool(Tool, ContextAware):
             return self._list_jobs()
         elif action == "remove":
             return self._remove_job(job_id)
-        return f"Unknown action: {action}"
+        return f"未知操作 '{action}'，合法操作：add（添加）、list（列出）、remove（移除）"
 
     def _add_job(
         self,
@@ -415,4 +418,4 @@ class CronTool(Tool, ContextAware):
                 f"Cannot remove job `{job_id}`.\n"
                 "This is a protected system-managed cron job."
             )
-        return f"Job {job_id} not found"
+        return f"未找到任务 '{job_id}'，请先调用 action='list' 查看现有任务 id 后再重试"

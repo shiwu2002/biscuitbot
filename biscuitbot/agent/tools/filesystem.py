@@ -18,6 +18,7 @@ from biscuitbot.agent.tools.schema import (
 )
 from biscuitbot.config_base import Base
 from biscuitbot.security.workspace_access import current_tool_workspace
+from biscuitbot.security.workspace_policy import WorkspaceBoundaryError
 from biscuitbot.utils.helpers import build_image_content_blocks, detect_image_mime
 
 
@@ -225,7 +226,7 @@ class ReadFileTool(_FsTool):
     ) -> Any:
         try:
             if not path:
-                return "Error reading file: Unknown path"
+                return "Error: 缺少必填参数 path，请提供要读取的文件路径"
 
             # Device path blacklist
             if _is_blocked_device(path):
@@ -337,10 +338,12 @@ class ReadFileTool(_FsTool):
                 result += f"\n\n(End of file — {total} lines total)"
             self._file_states.record_read(fp, offset=offset, limit=limit)
             return result
-        except PermissionError as e:
-            return f"Error: {e}"
+        except WorkspaceBoundaryError as e:
+            return f"Error: 路径越界（{e}）。工作区边界是硬性安全策略，请改用工作区内的路径"
+        except PermissionError:
+            return f"Error: 没有权限读取文件 {path}，请检查文件权限或改用可访问的路径"
         except Exception as e:
-            return f"Error reading file: {e}"
+            return f"Error: 读取 {path} 失败（{e}）。请确认文件存在、不是目录且路径有效"
 
     def _read_pdf(self, fp: Path, pages: str | None) -> str:
         try:
@@ -443,18 +446,20 @@ class WriteFileTool(_FsTool):
     async def execute(self, path: str | None = None, content: str | None = None, **kwargs: Any) -> str:
         try:
             if not path:
-                raise ValueError("Unknown path")
+                return "Error: 缺少必填参数 path，请提供要写入的文件路径"
             if content is None:
-                raise ValueError("Unknown content")
+                return "Error: 缺少必填参数 content，请提供要写入的文件内容"
             fp = self._resolve(path)
             fp.parent.mkdir(parents=True, exist_ok=True)
             fp.write_text(content, encoding="utf-8")
             self._file_states.record_write(fp)
             return f"Successfully wrote {len(content)} characters to {fp}"
-        except PermissionError as e:
-            return f"Error: {e}"
+        except WorkspaceBoundaryError as e:
+            return f"Error: 路径越界（{e}）。工作区边界是硬性安全策略，请改用工作区内的路径"
+        except PermissionError:
+            return f"Error: 没有权限写入 {path}，请检查文件/目录权限"
         except Exception as e:
-            return f"Error writing file: {e}"
+            return f"Error: 写入 {path} 失败（{e}）。请确认 path 不是已存在的目录、父目录可创建且可写"
 
 
 # ---------------------------------------------------------------------------
@@ -789,11 +794,11 @@ class EditFileTool(_FsTool):
     ) -> str:
         try:
             if not path:
-                raise ValueError("Unknown path")
+                return "Error: 缺少必填参数 path，请提供要编辑的文件路径"
             if old_text is None:
-                raise ValueError("Unknown old_text")
+                return "Error: 缺少必填参数 old_text，请提供要替换的原文片段"
             if new_text is None:
-                raise ValueError("Unknown new_text")
+                return "Error: 缺少必填参数 new_text，请提供替换后的新内容"
             if occurrence is not None and occurrence < 1:
                 return "Error: occurrence must be >= 1."
             if line_hint is not None and line_hint < 1:
@@ -918,10 +923,12 @@ class EditFileTool(_FsTool):
             if warning:
                 msg = f"{warning}\n{msg}"
             return msg
-        except PermissionError as e:
-            return f"Error: {e}"
+        except WorkspaceBoundaryError as e:
+            return f"Error: 路径越界（{e}）。工作区边界是硬性安全策略，请改用工作区内的路径"
+        except PermissionError:
+            return f"Error: 没有权限编辑 {path}，请检查文件/目录权限"
         except Exception as e:
-            return f"Error editing file: {e}"
+            return f"Error: 编辑 {path} 失败（{e}）。请确认目标路径可写"
 
     def _file_not_found_msg(self, path: str, fp: Path) -> str:
         """Build an error message with 'Did you mean ...?' suggestions."""
@@ -1016,7 +1023,7 @@ class ListDirTool(_FsTool):
     ) -> str:
         try:
             if path is None:
-                raise ValueError("Unknown path")
+                return "Error: 缺少必填参数 path，请提供要列出的目录路径"
             dp = self._resolve(path)
             if not dp.exists():
                 return f"Error: Directory not found: {path}"
@@ -1051,7 +1058,9 @@ class ListDirTool(_FsTool):
             if total > cap:
                 result += f"\n\n(truncated, showing first {cap} of {total} entries)"
             return result
-        except PermissionError as e:
-            return f"Error: {e}"
+        except WorkspaceBoundaryError as e:
+            return f"Error: 路径越界（{e}）。工作区边界是硬性安全策略，请改用工作区内的路径"
+        except PermissionError:
+            return f"Error: 没有权限读取目录 {path}，请检查目录权限"
         except Exception as e:
-            return f"Error listing directory: {e}"
+            return f"Error: 列出目录 {path} 失败（{e}）"

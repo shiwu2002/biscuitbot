@@ -389,7 +389,10 @@ class ExecTool(Tool):
             return result
 
         except Exception as e:
-            return f"Error executing command: {str(e)}"
+            return (
+                f"Error: 命令启动失败（{type(e).__name__}: {e}），"
+                "请检查命令与 working_dir 是否正确"
+            )
 
     async def _execute_session(
         self,
@@ -417,7 +420,10 @@ class ExecTool(Tool):
             )
             return format_session_poll(session_id, poll)
         except Exception as exc:
-            return f"Error executing command: {exc}"
+            return (
+                f"Error: 会话命令启动失败（{type(exc).__name__}: {exc}），"
+                "请检查 working_dir 是否存在及命令是否有效"
+            )
 
     def _resolve_timeout(self, timeout: int | None) -> int | None:
         """解析有效的硬超时（秒），None 表示无限制。
@@ -463,7 +469,7 @@ class ExecTool(Tool):
                 resolved_root = Path(workspace_root).expanduser().resolve()
             except Exception:
                 return (
-                    "Error: working_dir could not be resolved"
+                    f"Error: 无法解析 working_dir（{working_dir!r}）：路径无效或含非法字符"
                     + _WORKSPACE_BOUNDARY_NOTE
                 )
             if not is_path_within(requested, resolved_root):
@@ -488,7 +494,10 @@ class ExecTool(Tool):
                 )
             else:
                 workspace = workspace_root or cwd
-                command = wrap_command(self.sandbox, command, workspace, cwd)
+                try:
+                    command = wrap_command(self.sandbox, command, workspace, cwd)
+                except ValueError as exc:
+                    return f"Error: {exc}"
                 cwd = str(Path(workspace).resolve())
 
         effective_timeout = self._resolve_timeout(timeout)
@@ -687,10 +696,10 @@ class ExecTool(Tool):
         if not explicitly_allowed:
             for pattern in self.deny_patterns:
                 if re.search(pattern, lower):
-                    return "Error: Command blocked by deny pattern filter"
+                    return f"Error: 命令被安全策略拦截（命中规则：{pattern}）。请改写命令避开该模式，或在配置 allow_patterns 中显式放行"
 
             if self.allow_patterns:
-                return "Error: Command blocked by allowlist filter (not in allowlist)"
+                return f"Error: 命令不在 allowlist 白名单内。当前白名单：{self.allow_patterns}。请调整命令以匹配白名单，或联系管理员修改配置"
 
         from biscuitbot.security.network import contains_internal_url
         if contains_internal_url(

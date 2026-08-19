@@ -131,13 +131,9 @@ class ScreenshotTool(Tool):
             return "Error: question parameter is required."
 
         # 1. 获取视觉模型提供商
-        provider = self._get_vision_provider()
+        provider, provider_error = self._get_vision_provider()
         if provider is None:
-            return (
-                "Error: vision model is not configured. "
-                "Set `visionModel` in the agent config to a vision-capable model preset "
-                "(e.g. \"qwen-vl\", \"gpt-4o\")."
-            )
+            return f"Error: {provider_error}"
 
         # 2. 捕获屏幕截图
         screenshot_path = await self._capture_screenshot()
@@ -158,18 +154,27 @@ class ScreenshotTool(Tool):
             except OSError:
                 pass
 
-    def _get_vision_provider(self) -> LLMProvider | None:
+    def _get_vision_provider(self) -> tuple[LLMProvider | None, str | None]:
         """懒加载视觉模型提供商。
 
-        返回 None 表示未配置或加载失败。
+        返回 (provider, error)：provider 为 None 时 error 说明原因（未配置 / 加载失败）。
         """
         if self._vision_provider_loader is None:
-            return None
+            return None, (
+                "vision model is not configured. Set `visionModel` in the agent "
+                'config to a vision-capable model preset (e.g. "qwen-vl", "gpt-4o").'
+            )
         try:
-            return self._vision_provider_loader()
-        except Exception:
+            provider = self._vision_provider_loader()
+        except Exception as exc:
             logger.exception("Failed to load vision provider")
-            return None
+            return None, f"视觉模型加载失败：{exc}。请检查 visionModel 配置与对应 API key"
+        if provider is None:
+            return None, (
+                "vision model is not configured. Set `visionModel` in the agent "
+                'config to a vision-capable model preset (e.g. "qwen-vl", "gpt-4o").'
+            )
+        return provider, None
 
     @staticmethod
     def _is_headless_environment() -> bool:
@@ -377,4 +382,4 @@ class ScreenshotTool(Tool):
             return "Vision model returned an empty response."
         except Exception as exc:
             logger.exception("Vision model call failed")
-            return f"Error: vision model call failed: {exc}"
+            return f"Error: 视觉模型调用失败：{exc}。请检查 visionModel 配置与对应 API key"

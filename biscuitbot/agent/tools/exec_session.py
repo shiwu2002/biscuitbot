@@ -685,7 +685,7 @@ class WriteStdinTool(Tool):
         except KeyError:
             return f"Error: exec session not found: {session_id}"
         except Exception as exc:
-            return f"Error writing to exec session: {exc}"
+            return f"Error: 无法向 exec 会话写入（{exc}），请检查 working_dir 是否存在及命令是否有效"
 
     async def _wait_for_output(
         self,
@@ -836,4 +836,4 @@ class ListExecSessionsTool(Tool):
                 )
             return "\n".join(lines)
         except Exception as exc:
-            return f"Error listing exec sessions: {exc}"
+            return f"Error: 列出 exec 会话失败（{exc}），请稍后重试"

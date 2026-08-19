@@ -231,6 +231,19 @@ class DashScopeTtsProvider:
         self.model = model or "cosyvoice-v3-flash"
         self.voice = voice or "longxiaochun_v3"
         self.rate = rate
+        # 前置参数校验：把底层 SDK 笼统的 "parameters are correct" 变成可定位的错误，
+        # 让上层智能体一眼知道该改 model 还是 voice，而不是盲目试错。
+        if not self.model.startswith("cosyvoice"):
+            raise TtsError(
+                f"DashScope TTS 模型应为 CosyVoice 系列（如 cosyvoice-v3-flash），"
+                f"当前 model={self.model!r}；qwen3-tts-flash 等 Qwen-TTS 模型需走 "
+                f"HTTP 接口，本适配器（SpeechSynthesizer）不支持"
+            )
+        if self.voice.endswith("Neural"):
+            raise TtsError(
+                f"DashScope TTS 音色应为 CosyVoice 音色 ID（如 longxiaochun_v3、"
+                f"longcheng_v3），当前 voice={self.voice!r} 是微软 Edge 音色，不适用于 dashscope"
+            )
 
     async def synthesize(self, text: str, output_path: str | Path) -> str:
         """合成语音并写入 *output_path*，返回实际文件路径。"""

@@ -204,7 +204,11 @@ def _check_one_tool(tool: "Tool", workspace: Path) -> list[str]:
         issues.append(f"使用说明文件不存在：{usage_md}")
         return issues
 
-    content = md_path.read_text(encoding="utf-8")
+    try:
+        content = md_path.read_text(encoding="utf-8")
+    except (UnicodeDecodeError, OSError) as e:
+        issues.append(f"读取使用说明失败（{e}），请检查文件编码或权限：{usage_md}")
+        return issues
 
     # 1. 标题检查
     title_expected = f"# {tool.name}"

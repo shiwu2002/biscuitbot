@@ -123,7 +123,7 @@ class TestBwrapBackend:
 class TestUnknownBackend:
     def test_raises_value_error(self, tmp_path):
         ws = str(tmp_path / "project")
-        with pytest.raises(ValueError, match="Unknown sandbox backend"):
+        with pytest.raises(ValueError, match="未知沙箱后端"):
             wrap_command("nonexistent", "ls", ws, ws)
 
     def test_empty_string_raises(self, tmp_path):

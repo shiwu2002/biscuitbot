@@ -327,7 +327,7 @@ def test_exec_session_mode_reuses_exec_safety_guard(tmp_path):
 
     result = asyncio.run(tool.execute(command="echo blocked", yield_time_ms=0))
 
-    assert "blocked by deny pattern" in result
+    assert "命令被安全策略拦截" in result
 
 
 def test_write_stdin_reports_missing_session(tmp_path):

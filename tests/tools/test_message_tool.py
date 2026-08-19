@@ -11,7 +11,7 @@ from biscuitbot.config.paths import get_workspace_path
 async def test_message_tool_returns_error_when_no_target_context() -> None:
     tool = MessageTool()
     result = await tool.execute(content="test")
-    assert result == "Error: No target channel/chat specified"
+    assert result == "Error: 未指定发送目标，请提供 channel 与 chat_id（WebSocket 会话可省略以使用当前会话 id）"
 
 
 @pytest.mark.asyncio
@@ -35,7 +35,7 @@ async def test_message_tool_rejects_malformed_buttons(bad) -> None:
         chat_id="1",
         buttons=bad,
     )
-    assert result == "Error: buttons must be a list of list of strings"
+    assert result == 'Error: buttons 应为「按行分组的按钮文本列表」，例如 [["是"], ["否"]]，每行是一个字符串列表'
 
 
 @pytest.mark.asyncio
@@ -226,7 +226,7 @@ async def test_message_tool_rejects_outside_workspace_absolute_media_when_restri
         media=[str(outside)],
     )
 
-    assert result.startswith("Error: media path is not allowed:")
+    assert result.startswith("Error: 附件路径不合法：")
     assert "outside allowed directory" in result
     assert sent == []
 

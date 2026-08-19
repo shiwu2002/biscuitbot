@@ -416,7 +416,7 @@ async def test_exa_search_http_error(monkeypatch):
     tool = _tool(provider="exa", api_key="bad-exa-key")
     result = await tool.execute(query="test")
 
-    assert "Error: Exa search failed (401)" in result
+    assert "Exa 搜索失败（401）" in result
 
 
 @pytest.mark.asyncio

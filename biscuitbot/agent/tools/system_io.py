@@ -204,7 +204,7 @@ class SystemIoTool(Tool):
             return f"Error: action '{action}' timed out after {timeout_ms}ms"
         except Exception as exc:  # noqa: BLE001 — 作为工具结果返回，绝不抛出
             logger.exception("system_io action '{}' failed", action)
-            return f"Error: {exc}"
+            return f"Error: 系统 IO 操作 '{action}' 失败：{exc}。请检查设备/端口是否可用、权限是否足够"
         return self._truncate(result)
 
     async def _dispatch(self, action: str, kwargs: dict[str, Any]) -> str:

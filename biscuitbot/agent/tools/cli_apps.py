@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from pydantic import Field
+from loguru import logger  # 结构化日志（加载 CLI 应用列表失败告警）
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
 from biscuitbot.agent.tools.schema import ArraySchema, BooleanSchema, IntegerSchema, StringSchema, tool_parameters_schema  # Schema 构造器
@@ -127,6 +128,7 @@ class CliAppsTool(Tool):
         try:
             installed = CliAppManager(workspace=self.workspace, runtime=self.runtime).installed_names()
         except Exception:
+            logger.exception("加载已安装 CLI 应用列表失败")
             installed = []
         installed_note = (
             f" Installed Settings CLI Apps: {', '.join(installed)}."
@@ -177,4 +179,4 @@ class CliAppsTool(Tool):
                 restrict_to_workspace=access.restrict_to_workspace,
             )
         except CliAppError as exc:
-            return f"Error: {exc.message}"
+            return f"Error: CLI 应用执行失败：{exc.message}。请确认该应用已在「设置 → CLI 应用」中安装并可用"

@@ -343,9 +343,9 @@ class FindFilesTool(_SearchTool):
                 result += "\n\n" + note
             return result
         except PermissionError as e:
-            return f"Error: {e}"
+            return f"Error: 无权限访问目录/文件：{e}，请确认可读权限"
         except Exception as e:
-            return f"Error finding files: {e}"
+            return f"Error: 查找文件失败：{e}"
 
 
 class GrepTool(_SearchTool):
@@ -681,6 +681,6 @@ class GrepTool(_SearchTool):
                 result += "\n\n" + "\n".join(notes)
             return result
         except PermissionError as e:
-            return f"Error: {e}"
+            return f"Error: 无权限访问目录/文件：{e}，请确认可读权限"
         except Exception as e:
-            return f"Error searching files: {e}"
+            return f"Error: 搜索文件失败：{e}"

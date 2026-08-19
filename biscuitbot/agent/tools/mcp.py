@@ -408,7 +408,7 @@ class MCPToolWrapper(_MCPWrapperBase):
                 logger.warning(
                     "MCP tool '{}' timed out after {}s", self._name, self._tool_timeout
                 )
-                return f"(MCP tool call timed out after {self._tool_timeout}s)"
+                return f"(MCP 工具 '{self._name}' 调用超时（{self._tool_timeout}s）：请检查 MCP 服务器是否响应正常)"
             except asyncio.CancelledError:
                 # MCP SDK 的 anyio cancel scope 可能在超时/失败时泄漏 CancelledError。
                 # 仅当任务被外部取消（如 /stop）时才上抛。
@@ -416,7 +416,7 @@ class MCPToolWrapper(_MCPWrapperBase):
                 if task is not None and task.cancelling() > 0:
                     raise
                 logger.warning("MCP tool '{}' was cancelled by server/SDK", self._name)
-                return "(MCP tool call was cancelled)"
+                return f"(MCP 工具 '{self._name}' 调用被服务器/取消信号中断)"
             except Exception as exc:
                 # 会话终止 → 重连后重试
                 if await self._refresh_session_after_termination(
@@ -442,14 +442,14 @@ class MCPToolWrapper(_MCPWrapperBase):
                         self._name,
                         type(exc).__name__,
                     )
-                    return f"(MCP tool call failed after retry: {type(exc).__name__})"
+                    return f"(MCP 工具 '{self._name}' 调用失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
                 logger.exception(
                     "MCP tool '{}' failed: {}: {}",
                     self._name,
                     type(exc).__name__,
                     exc,
                 )
-                return f"(MCP tool call failed: {type(exc).__name__})"
+                return f"(MCP 工具 '{self._name}' 调用失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
             else:
                 # 成功 —— 提取结果文本
                 parts = []
@@ -529,13 +529,13 @@ class MCPResourceWrapper(_MCPWrapperBase):
                 logger.warning(
                     "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
                 )
-                return f"(MCP resource read timed out after {self._resource_timeout}s)"
+                return f"(MCP 资源 '{self._name}' 读取超时（{self._resource_timeout}s）：请检查 MCP 服务器是否响应正常)"
             except asyncio.CancelledError:
                 task = asyncio.current_task()
                 if task is not None and task.cancelling() > 0:
                     raise
                 logger.warning("MCP resource '{}' was cancelled by server/SDK", self._name)
-                return "(MCP resource read was cancelled)"
+                return f"(MCP 资源 '{self._name}' 读取被服务器/取消信号中断)"
             except Exception as exc:
                 if await self._refresh_session_after_termination(
                     exc,
@@ -559,14 +559,14 @@ class MCPResourceWrapper(_MCPWrapperBase):
                         self._name,
                         type(exc).__name__,
                     )
-                    return f"(MCP resource read failed after retry: {type(exc).__name__})"
+                    return f"(MCP 资源 '{self._name}' 读取失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
                 logger.exception(
                     "MCP resource '{}' failed: {}: {}",
                     self._name,
                     type(exc).__name__,
                     exc,
                 )
-                return f"(MCP resource read failed: {type(exc).__name__})"
+                return f"(MCP 资源 '{self._name}' 读取失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
             else:
                 # 提取资源内容：文本直接拼接，二进制输出字节摘要
                 parts: list[str] = []
@@ -664,13 +664,13 @@ class MCPPromptWrapper(_MCPWrapperBase):
                 logger.warning(
                     "MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout
                 )
-                return f"(MCP prompt call timed out after {self._prompt_timeout}s)"
+                return f"(MCP 提示 '{self._name}' 调用超时（{self._prompt_timeout}s）：请检查 MCP 服务器是否响应正常)"
             except asyncio.CancelledError:
                 task = asyncio.current_task()
                 if task is not None and task.cancelling() > 0:
                     raise
                 logger.warning("MCP prompt '{}' was cancelled by server/SDK", self._name)
-                return "(MCP prompt call was cancelled)"
+                return f"(MCP 提示 '{self._name}' 调用被服务器/取消信号中断)"
             except McpError as exc:
                 if await self._refresh_session_after_termination(
                     exc,
@@ -694,7 +694,7 @@ class MCPPromptWrapper(_MCPWrapperBase):
                     err_code,
                     err_message,
                 )
-                return f"(MCP prompt call failed: {err_message} [code {err_code}])"
+                return f"(MCP 提示 '{self._name}' 调用失败：{err_message} [code {err_code}])"
             except Exception as exc:
                 if await self._refresh_session_after_termination(
                     exc,
@@ -718,14 +718,14 @@ class MCPPromptWrapper(_MCPWrapperBase):
                         self._name,
                         type(exc).__name__,
                     )
-                    return f"(MCP prompt call failed after retry: {type(exc).__name__})"
+                    return f"(MCP 提示 '{self._name}' 调用失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
                 logger.exception(
                     "MCP prompt '{}' failed: {}: {}",
                     self._name,
                     type(exc).__name__,
                     exc,
                 )
-                return f"(MCP prompt call failed: {type(exc).__name__})"
+                return f"(MCP 提示 '{self._name}' 调用失败：{type(exc).__name__}: {exc}。请检查 MCP 服务器日志/配置)"
             else:
                 # 提取 prompt 消息内容
                 parts: list[str] = []

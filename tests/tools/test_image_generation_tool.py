@@ -98,7 +98,7 @@ async def test_generate_image_tool_reports_missing_key(tmp_path: Path) -> None:
 
     result = await tool.execute(prompt="draw")
 
-    assert result.startswith("Error: OpenAI API key is not configured")
+    assert result.startswith("Error: 图像生成失败：OpenAI API key is not configured")
 
 
 @pytest.mark.asyncio
@@ -146,7 +146,7 @@ async def test_generate_image_tool_reports_missing_aihubmix_key(tmp_path: Path) 
 
     result = await tool.execute(prompt="draw")
 
-    assert result.startswith("Error: AIHubMix API key is not configured")
+    assert result.startswith("Error: 图像生成失败：AIHubMix API key is not configured")
 
 
 @pytest.mark.asyncio
@@ -196,7 +196,7 @@ async def test_generate_image_tool_reports_missing_zhipu_key(tmp_path: Path) -> 
 
     result = await tool.execute(prompt="draw a cat")
 
-    assert result.startswith("Error: Zhipu API key is not configured")
+    assert result.startswith("Error: 图像生成失败：Zhipu API key is not configured")
 
 
 @pytest.mark.asyncio
@@ -212,4 +212,4 @@ async def test_generate_image_tool_rejects_reference_outside_workspace(tmp_path:
 
     result = await tool.execute(prompt="edit", reference_images=[str(outside)])
 
-    assert "reference_images must be inside the workspace" in result
+    assert "参考图路径越界" in result

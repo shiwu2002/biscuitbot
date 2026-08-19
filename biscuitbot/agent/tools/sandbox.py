@@ -84,4 +84,4 @@ def wrap_command(sandbox: str, command: str, workspace: str, cwd: str) -> str:
     """
     if backend := _BACKENDS.get(sandbox):
         return backend(command, workspace, cwd)
-    raise ValueError(f"Unknown sandbox backend {sandbox!r}. Available: {list(_BACKENDS)}")
+    raise ValueError(f"未知沙箱后端 {sandbox!r}，可用：{list(_BACKENDS)}")

@@ -160,7 +160,7 @@ def test_exec_blocks_writes_to_history_jsonl(command):
     tool = ExecTool()
     result = tool._guard_command(command, "/tmp")
     assert result is not None
-    assert "deny pattern filter" in result.lower()
+    assert "命令被安全策略拦截" in result
 
 
 @pytest.mark.parametrize(
@@ -330,7 +330,7 @@ def test_exec_blocks_format_command(command):
     tool = ExecTool()
     result = tool._guard_command(command, "/tmp")
     assert result is not None
-    assert "deny pattern filter" in result.lower()
+    assert "命令被安全策略拦截" in result
 
 
 @pytest.mark.parametrize(

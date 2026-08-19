@@ -311,7 +311,7 @@ async def test_execute_returns_timeout_message() -> None:
 
     result = await wrapper.execute()
 
-    assert result == "(MCP tool call timed out after 0.01s)"
+    assert result == "(MCP 工具 'mcp_test_demo' 调用超时（0.01s）：请检查 MCP 服务器是否响应正常)"
 
 
 @pytest.mark.asyncio
@@ -323,7 +323,7 @@ async def test_execute_handles_server_cancelled_error() -> None:
 
     result = await wrapper.execute()
 
-    assert result == "(MCP tool call was cancelled)"
+    assert result == "(MCP 工具 'mcp_test_demo' 调用被服务器/取消信号中断)"
 
 
 @pytest.mark.asyncio
@@ -354,7 +354,7 @@ async def test_execute_handles_generic_exception() -> None:
 
     result = await wrapper.execute()
 
-    assert result == "(MCP tool call failed: RuntimeError)"
+    assert result == "(MCP 工具 'mcp_test_demo' 调用失败：RuntimeError: boom。请检查 MCP 服务器日志/配置)"
 
 
 def _make_tool_def(name: str) -> SimpleNamespace:
@@ -777,7 +777,7 @@ async def test_resource_wrapper_execute_handles_timeout() -> None:
 
     wrapper = _make_resource_wrapper(SimpleNamespace(read_resource=read_resource), timeout=0.01)
     result = await wrapper.execute()
-    assert result == "(MCP resource read timed out after 0.01s)"
+    assert result == "(MCP 资源 'mcp_srv_resource_myres' 读取超时（0.01s）：请检查 MCP 服务器是否响应正常)"
 
 
 @pytest.mark.asyncio
@@ -787,7 +787,7 @@ async def test_resource_wrapper_execute_handles_error() -> None:
 
     wrapper = _make_resource_wrapper(SimpleNamespace(read_resource=read_resource))
     result = await wrapper.execute()
-    assert result == "(MCP resource read failed: RuntimeError)"
+    assert result == "(MCP 资源 'mcp_srv_resource_myres' 读取失败：RuntimeError: boom。请检查 MCP 服务器日志/配置)"
 
 
 # ---------------------------------------------------------------------------
@@ -863,7 +863,7 @@ async def test_prompt_wrapper_execute_handles_timeout() -> None:
 
     wrapper = _make_prompt_wrapper(SimpleNamespace(get_prompt=get_prompt), timeout=0.01)
     result = await wrapper.execute()
-    assert result == "(MCP prompt call timed out after 0.01s)"
+    assert result == "(MCP 提示 'mcp_srv_prompt_myprompt' 调用超时（0.01s）：请检查 MCP 服务器是否响应正常)"
 
 
 @pytest.mark.asyncio
@@ -887,7 +887,7 @@ async def test_prompt_wrapper_execute_handles_error() -> None:
 
     wrapper = _make_prompt_wrapper(SimpleNamespace(get_prompt=get_prompt))
     result = await wrapper.execute()
-    assert result == "(MCP prompt call failed: RuntimeError)"
+    assert result == "(MCP 提示 'mcp_srv_prompt_myprompt' 调用失败：RuntimeError: boom。请检查 MCP 服务器日志/配置)"
 
 
 # ---------------------------------------------------------------------------

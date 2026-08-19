@@ -245,8 +245,11 @@ class MyTool(Tool, ContextAware):
                         return None, f"'{part}' not found in dict"
                 else:
                     obj = getattr(obj, part)
-            except (KeyError, AttributeError) as e:
-                return None, f"'{part}' not found: {e}"
+            except (KeyError, AttributeError):
+                return None, (
+                    f"找不到属性 '{part}'（完整路径 '{path}'）。"
+                    "可用 check 不带 key 查看全部可读配置，或确认属性名拼写"
+                )
         return obj, None
 
     @staticmethod
@@ -377,7 +380,7 @@ class MyTool(Tool, ContextAware):
             return "Error: set is disabled (tools.my.allow_set is false)"
         if action in ("modify", "set"):
             return self._modify(key, value)
-        return f"Unknown action: {action}"
+        return f"未知操作 '{action}'，合法操作：check（查看配置）或 set（修改配置）"
 
     # -- 检查 --
 
@@ -522,7 +525,10 @@ class MyTool(Tool, ContextAware):
                 setattr(self._runtime_state, key, value)
             except (ValueError, KeyError) as e:
                 self._audit("modify", f"REJECTED {key}: {e}")
-                return f"Error: {e}"
+                return (
+                    f"Error: 无法设置 '{key}'：{e}。"
+                    f"请用 'check {key}' 查看其当前类型与取值后重新赋值"
+                )
             self._audit("modify", f"{key}: {old!r} -> {value!r}")
             return f"Set {key} = {value!r} (was {old!r})"
         if callable(value):

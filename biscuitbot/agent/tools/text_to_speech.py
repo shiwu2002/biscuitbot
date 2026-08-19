@@ -160,6 +160,15 @@ class TextToSpeechTool(Tool):
                 ensure_ascii=False,
             )
         except TtsServiceError as exc:
-            return f"Error: {exc}"
+            if exc.detail == "disabled":
+                msg = "TTS 未启用，请在 config 开启 tts.enabled"
+            elif exc.detail == "not_configured":
+                provider = exc.extra.get("provider", "当前 provider")
+                msg = f"TTS provider '{provider}' 缺少 API key，请在「模型厂商」页或 config 配置对应 API key"
+            elif exc.detail == "empty":
+                msg = "待合成文本为空，请提供非空 text"
+            else:
+                msg = str(exc)
+            return f"Error: {msg}"
         except Exception as exc:
-            return f"Error: {exc}"
+            return f"Error: 语音合成失败：{exc}。请检查所选 provider 的 API key 与网络"
