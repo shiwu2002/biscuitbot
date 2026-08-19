@@ -94,11 +94,17 @@ HIDDEN_IMPORTS=(
   --hidden-import biscuitbot.providers.tts
   --collect-all dashscope
 )
+# 工具模块由 ToolLoader 动态导入（pkgutil.iter_modules + import_module），
+# PyInstaller 静态分析捕捉不到，须显式收集，否则桌面端缺 cinematic_director /
+# discover / spawn / employee / employee_discover / knowledge / search /
+# long_task / text_to_speech 等按需发现工具（含 _cinematic 下划线子包）。
 "$PYTHON" -m PyInstaller --noconfirm --clean --onedir \
   --distpath "$DIST_DIR" \
   --workpath "$WORK_DIR" \
   --paths "$ROOT" \
   --collect-submodules biscuitbot.channels \
+  --collect-submodules biscuitbot.agent.tools \
+  --collect-submodules biscuitbot.agent.tools \
   --name biscuitbot-sidecar \
   --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
   --add-data "biscuitbot/templates:biscuitbot/templates" \
