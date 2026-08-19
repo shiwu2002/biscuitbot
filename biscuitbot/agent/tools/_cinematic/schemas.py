@@ -76,6 +76,7 @@ _SHOT_SCHEMA = ObjectSchema(
     action=StringSchema("动作"),
     emotion=StringSchema("情绪"),
     sound=StringSchema("声音"),
+    dialogue=BooleanSchema(description="本镜头是否有对白；有对白则 compile_prompt 前必须 attach_audio。"),
     asset_refs=ArraySchema(
         StringSchema("资产 ID，如 CHAR001 / LOC001"),
         description="本镜头引用的资产 ID 列表（需含至少一个 CHAR 与一个 LOC）",
@@ -139,6 +140,9 @@ def parameters_schema() -> dict[str, Any]:
         id=StringSchema("资产 ID，如 CHAR001。", nullable=True),
         appearance=StringSchema("稳定外观短语（prompt 直接引用的、保持一致的描述）。", nullable=True),
         reference_image=StringSchema("参考图路径（generate_image 生成的本地路径）。", nullable=True),
+        # ---- add_asset 角色强制字段（仅 CHAR）----
+        three_view=BooleanSchema(description="仅 CHAR：reference_image 是否为正/侧/背三视图合成图（CHAR 必须为 true）。", nullable=True),
+        voice=StringSchema("仅 CHAR：声线参考（本地路径 / URL），用于口型与音色一致（CHAR 必填）。", nullable=True),
         # ---- add_asset 空间字段（仅 LOC；设平面图后 position 必填）----
         position=_POINT_SCHEMA,
         orientation=NumberSchema(description="建筑朝向角（0=北，90=东）。", minimum=0, maximum=360, nullable=True),

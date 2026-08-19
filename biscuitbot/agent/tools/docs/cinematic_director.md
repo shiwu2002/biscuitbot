@@ -25,10 +25,11 @@ init → script_analysis → script_review → spatial_planning → world_buildi
 1. **三级审核 Gate**：`review_script`（剧本审核）不过 → 不能进入 spatial_planning；`review_assets`（资产审核）不过 → 不能进入 asset_lock；`record_qc`（视频审核）任一分数 < 阈值（默认 85）→ 镜头 `qc_fail`，`record_shot_result` 拒绝推进。
 2. **可选用户审核门**：调用 `request_user_review` 后项目进入 `script_review`，必须等 `approve_script(approved=true)` 才能进 `spatial_planning`；`approved=false` 打回 `script_analysis` 重写。不调用则跳过此门。
 3. **空间规划强制**：进入 spatial_planning 后必须 `set_floorplan` 才能进入 world_building；`add_asset(LOC)` 必须带 `position`；`compile_prompt` 强制校验「界内 / 建筑不叠放 / 人物不悬空 / 运动不穿墙」，不一致直接拒绝。
-4. **资产优先 + 参考图强制**：`add_asset` 必须有 `reference_image`；`lock_assets` 校验脚本引用的每个资产都已添加且有参考图。
+4. **资产优先 + 参考图/三视图/声线强制**：`add_asset` 必须有 `reference_image`；`CHAR` 额外强制 `three_view=true`（正/侧/背三视图合成图）与 `voice`（声线参考）；`lock_assets` 校验脚本引用的每个资产都已添加且有参考图、每个 CHAR 有三视图与声线。
 5. **数据冻结**：`review_script` 通过后 `write_script` 拒绝改剧本；`lock_assets` 后 `add_asset` 拒绝改资产；资产一旦创建**无「编辑/删除」动作**，角色定义天然不可变。
 6. **权限隔离**：本工具 `_scopes={"core"}`，只有主 Agent（导演）能改项目状态；`spawn` 出的子 Agent 无法调用本工具，只能用 `generate_image`/`read_file`/视觉能力**产出内容后回报**，由导演落库。
 7. **首尾帧连贯（可选，智能体逐镜头抉择）**：`compile_prompt` 仅当显式 `continuity=true` 时要求上一镜头已 `record_shot_frame` 并自动把该尾帧作为首帧引用（`image_urls[0]`）；时间连续/动作连续的镜头设 `true`，跨场景/跨剧情/硬切应省略或设 `false`。不强制。
+8. **音频强制（口型 + 音色一致）**：`CHAR` 资产必须提供 `voice` 声线参考（音色一致）；分镜里 `dialogue=true` 的镜头在 `compile_prompt` 前必须先 `attach_audio`（口型），否则拒绝。
 
 ## 动作（action）
 
@@ -61,7 +62,7 @@ init → script_analysis → script_review → spatial_planning → world_buildi
 |------|------|------|
 | project_id | 是 | 项目 ID |
 | scenes | 是 | 场景列表：`{id, location, time, function, duration}` |
-| shots | 是 | 分镜列表：`{id, scene_id, shot_size, camera, lens, action, emotion, sound, asset_refs, spatial}` |
+| shots | 是 | 分镜列表：`{id, scene_id, shot_size, camera, lens, action, emotion, sound, dialogue, asset_refs, spatial}` |
 | story | 否 | **剧情补充优化**：整体剧情 + 人物/环境描述词 + 空间/大局描述词，见下 |
 
 约束：每个 shot 的 `scene_id` 必须存在；`asset_refs` 必须含至少一个 `CHAR###` 与一个 `LOC###`。
@@ -133,6 +134,8 @@ shot 必填 `spatial`（空间布局站位，空间规划强制后每个镜头�
 | name | 是 | 资产名 |
 | appearance | 是 | **稳定外观短语**（prompt 直接引用的、保持一致的关键描述） |
 | reference_image | 是 | 参考图路径（`generate_image` 生成的本地路径） |
+| three_view | 是（CHAR） | **仅 CHAR**。`true` 表示 reference_image 是正/侧/背三视图合成图（视频生成强制） |
+| voice | 是（CHAR） | **仅 CHAR**。声线参考（本地路径 / URL），做口型与音色一致 |
 | position | 否 | **仅 LOC**。占地中心点 `{x,y}`（米）；**强制必填**（空间规划后 LOC 必须定位） |
 | orientation | 否 | **仅 LOC**。建筑朝向角（0=北，90=东） |
 | footprint | 否 | **仅 LOC**。占地尺寸 `{width,depth}`（米，以 `position` 为中心） |
@@ -196,7 +199,7 @@ Camera: tracking, 24fps（机位在 @LOC001 西南方 28 米）
 | project_id / shot_id | 是 | 定位镜头 |
 | audio | 是 | 音频资产路径（`text_to_speech` 生成的本地路径 / URL） |
 
-附加后 `compile_prompt` 会把它作为 `audio_urls` 返回，供 `generate_video` 使用。
+分镜中 `dialogue=true` 的镜头**必须**在 `compile_prompt` 前调用本动作，否则 `compile_prompt` 拒绝（口型 + 音频一致性）。附加后 `compile_prompt` 会把它作为 `audio_urls` 返回，供 `generate_video` 使用。
 
 ### attach_spatial_map —— 附加空间坐标关系资产图（set_floorplan 之后任意阶段）
 | 参数 | 必填 | 说明 |
@@ -256,10 +259,12 @@ cinematic_director(action="add_asset", project_id="snow-forest", kind="LOC", id=
                    name="雪林", appearance="黄昏暴雪的雪林，冷色月光",
                    reference_image="<场景参考图路径>",
                    position={"x":50,"y":40}, footprint={"width":20,"depth":16})
-generate_image(prompt="45岁男人，黑色羽绒服，三视图，写实", aspect_ratio="1:1")
+generate_image(prompt="45岁男人，黑色羽绒服，正/侧/背三视图合成图，写实", aspect_ratio="1:1")
+# 声线参考：用 text_to_speech 生成角色声线样本，作为 voice（口型 + 音色一致）
 cinematic_director(action="add_asset", project_id="snow-forest", kind="CHAR", id="CHAR001",
                    name="爸爸", appearance="45 岁男人，黑色羽绒服，胡茬严肃",
-                   reference_image="<角色参考图路径>")
+                   reference_image="<角色三视图合成图路径>", three_view=true,
+                   voice="<声线参考路径>")
 # ... 为每个资产重复 add_asset ...
 
 # 6. 资产审核 + 锁定

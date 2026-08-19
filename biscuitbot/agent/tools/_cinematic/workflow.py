@@ -448,6 +448,7 @@ def write_script(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
             "action": s.get("action") or "",
             "emotion": s.get("emotion") or "",
             "sound": s.get("sound") or "",
+            "dialogue": bool(s.get("dialogue")),
             "asset_refs": list(s.get("asset_refs") or []),
             "spatial": s.get("spatial") or {"characters": [], "props": [], "camera": {}},
             "status": "pending",
@@ -586,6 +587,17 @@ def add_asset(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
     else:
         require_stage(stage, f"add_asset({kind})", "world_building")
 
+    # 角色强制资产：三视图合成图（视频生成） + 声线（口型/音色一致）
+    if kind == "CHAR":
+        require(
+            kwargs.get("three_view") is True,
+            f"CHAR {asset_id!r} requires 'three_view'=true (reference_image 必须是正/侧/背三视图合成图)",
+        )
+        require(
+            bool(kwargs.get("voice")),
+            f"CHAR {asset_id!r} requires 'voice' (声线参考，用于口型与音色一致)",
+        )
+
     asset: dict[str, Any] = {
         "id": asset_id,
         "kind": kind,
@@ -594,6 +606,9 @@ def add_asset(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
         "reference_image": kwargs.get("reference_image"),
         "locked": False,
     }
+    if kind == "CHAR":
+        asset["three_view"] = True
+        asset["voice"] = kwargs.get("voice")
     # LOC 空间字段：空间规划已强制，LOC 必须有坐标；朝向/占地/入口可选
     if kind == "LOC":
         require(
@@ -664,12 +679,24 @@ def lock_assets(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
         r for r in sorted(refs)
         if r in data["assets"] and not data["assets"][r].get("reference_image")
     ]
-    if missing or no_image:
+    no_turnaround = [
+        r for r in sorted(refs)
+        if r in data["assets"] and r.startswith("CHAR") and not data["assets"][r].get("three_view")
+    ]
+    no_voice = [
+        r for r in sorted(refs)
+        if r in data["assets"] and r.startswith("CHAR") and not data["assets"][r].get("voice")
+    ]
+    if missing or no_image or no_turnaround or no_voice:
         parts = []
         if missing:
             parts.append(f"missing assets: {missing}")
         if no_image:
             parts.append(f"assets without reference_image: {no_image}")
+        if no_turnaround:
+            parts.append(f"characters without 三视图 (three_view): {no_turnaround}")
+        if no_voice:
+            parts.append(f"characters without 声线 (voice): {no_voice}")
         raise CinematicDirectorError(
             "assets are not fully locked; " + "; ".join(parts) + ". Add them with action=add_asset."
         )
@@ -797,6 +824,13 @@ def compile_prompt(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any
     if floorplan and floorplan.get("map_image"):
         image_urls.append(floorplan["map_image"])
     image_urls.extend(assets[r]["reference_image"] for r in refs)
+
+    # 有对白的镜头必须在生成前附音频（口型 + 音频一致性）
+    if shot.get("dialogue"):
+        require(
+            bool(shot.get("audio")),
+            f"shot {shot_id!r} has dialogue but no audio; call attach_audio first",
+        )
 
     audio_urls = [shot["audio"]] if shot.get("audio") else []
 
@@ -996,7 +1030,10 @@ def next_action(data: dict[str, Any]) -> str:
     if stage == "world_building":
         return "add_asset (LOC/PROP with position) for every world asset"
     if stage == "character_design":
-        return "add_asset (CHAR) for every character, then review_assets"
+        return (
+            "add_asset (CHAR) for every character — 每个 CHAR 必须提供三视图合成图 "
+            "reference_image（three_view=true）与声线 voice，然后 review_assets"
+        )
     if stage == "asset_lock":
         return "lock_assets"
     if stage == "storyboard":
@@ -1005,7 +1042,7 @@ def next_action(data: dict[str, Any]) -> str:
         return (
             "compile_prompt for the next pending shot (then generate_video → "
             "record_qc → record_shot_result → record_shot_frame if the next shot "
-            "needs continuity); optionally attach_audio first"
+            "needs continuity); 有对白的镜头必须先 attach_audio，否则 compile_prompt 拒绝"
         )
     if stage == "quality_check":
         for shot in data.get("shots", []):

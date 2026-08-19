@@ -70,7 +70,8 @@ def _review_script(store: ProjectStore, project_id: str = "demo", score: int = 9
 def _add_char(store: ProjectStore, project_id: str = "demo", asset_id: str = "CHAR001") -> dict:
     return _act(store, "add_asset", project_id=project_id, kind="CHAR", id=asset_id,
                 name="爸爸", appearance="45 岁男人，黑色羽绒服，胡茬严肃",
-                reference_image=f"assets/{asset_id}.png")
+                reference_image=f"assets/{asset_id}.png",
+                three_view=True, voice=f"assets/{asset_id}_voice.mp3")
 
 
 def _add_loc(store: ProjectStore, project_id: str = "demo", asset_id: str = "LOC001") -> dict:
@@ -823,3 +824,84 @@ def test_attach_spatial_map_requires_floorplan(tmp_path: Path) -> None:
     _review_script(store)  # spatial_planning，尚未 set_floorplan
     with pytest.raises(CinematicDirectorError, match="set_floorplan"):
         _act(store, "attach_spatial_map", project_id="demo", image="assets/map.png")
+
+
+# ---------------------------------------------------------------------------
+# 角色强制资产（三视图 + 声线）与音频一致性硬门
+# ---------------------------------------------------------------------------
+
+
+def _to_character_design(store: ProjectStore, project_id: str = "demo") -> None:
+    """推进到 character_design（add_asset(CHAR) 之前）。"""
+    _create_project(store, project_id)
+    _write_script(store, project_id)
+    _review_script(store, project_id)
+    _act(store, "set_floorplan", project_id=project_id, width=100, length=80)
+    _add_loc(store, project_id, "LOC001")  # → character_design
+
+
+def test_add_char_requires_three_view(tmp_path: Path) -> None:
+    """CHAR 资产必须声明 reference_image 为正/侧/背三视图合成图。"""
+    store = _store(tmp_path)
+    _to_character_design(store)
+    with pytest.raises(CinematicDirectorError, match="three_view"):
+        _act(store, "add_asset", project_id="demo", kind="CHAR", id="CHAR001",
+             name="爸爸", appearance="45 岁男人，黑色羽绒服",
+             reference_image="assets/CHAR001.png", voice="assets/CHAR001_voice.mp3")
+
+
+def test_add_char_requires_voice(tmp_path: Path) -> None:
+    """CHAR 资产必须提供声线参考（口型与音色一致）。"""
+    store = _store(tmp_path)
+    _to_character_design(store)
+    with pytest.raises(CinematicDirectorError, match="voice"):
+        _act(store, "add_asset", project_id="demo", kind="CHAR", id="CHAR001",
+             name="爸爸", appearance="45 岁男人，黑色羽绒服",
+             reference_image="assets/CHAR001.png", three_view=True)
+
+
+def test_lock_assets_rejects_char_without_three_view(tmp_path: Path) -> None:
+    """锁定前 CHAR 缺失三视图 → lock_assets 拒绝。"""
+    store = _store(tmp_path)
+    _setup_asset_lock(store)
+    data = store.load("demo")
+    data["assets"]["CHAR001"]["three_view"] = False
+    store.save("demo", data)
+    with pytest.raises(CinematicDirectorError, match="三视图"):
+        _lock_assets(store)
+
+
+def test_lock_assets_rejects_char_without_voice(tmp_path: Path) -> None:
+    """锁定前 CHAR 缺失声线 → lock_assets 拒绝。"""
+    store = _store(tmp_path)
+    _setup_asset_lock(store)
+    data = store.load("demo")
+    data["assets"]["CHAR001"]["voice"] = ""
+    store.save("demo", data)
+    with pytest.raises(CinematicDirectorError, match="声线"):
+        _lock_assets(store)
+
+
+def test_compile_prompt_rejects_dialogue_shot_without_audio(tmp_path: Path) -> None:
+    """有对白的镜头未 attach_audio → compile_prompt 拒绝（口型 + 音频一致性）。"""
+    store = _store(tmp_path)
+    _setup_locked(store)
+    data = store.load("demo")
+    data["shots"][0]["dialogue"] = True
+    store.save("demo", data)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    with pytest.raises(CinematicDirectorError, match="dialogue but no audio"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+
+
+def test_compile_prompt_allows_dialogue_shot_with_audio(tmp_path: Path) -> None:
+    """有对白的镜头 attach_audio 后 compile_prompt 放行。"""
+    store = _store(tmp_path)
+    _setup_locked(store)
+    data = store.load("demo")
+    data["shots"][0]["dialogue"] = True
+    store.save("demo", data)
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    _act(store, "attach_audio", project_id="demo", shot_id="Shot001", audio="assets/voice001.mp3")
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    assert result["audio_urls"] == ["assets/voice001.mp3"]
