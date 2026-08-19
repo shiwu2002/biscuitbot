@@ -614,6 +614,7 @@ class ContextBuilder:
             return text
 
         images = []
+        image_paths = []
         for path in media:
             p = Path(path)
             if not p.is_file():
@@ -628,7 +629,18 @@ class ContextBuilder:
                 "image_url": {"url": f"data:{mime};base64,{b64}"},
                 "_meta": {"path": str(p)},
             })
+            image_paths.append(str(p))
 
         if not images:
             return text
-        return images + [{"type": "text", "text": text}]
+
+        # 视觉模型可以读图片块本身；纯文本模型（如 Qwen 无视觉版、
+        # DeepSeek）只会忽略 image_url。这里把附件路径补进文本，保证
+        # 所有模型都能拿到路径，直接作为 reference_images / 参考图使用，
+        # 不必在思考时再去 find/ls 查找图片位置。
+        path_note = "，".join(image_paths)
+        if text:
+            full_text = f"{text}\n[用户附加图片：{path_note}]"
+        else:
+            full_text = f"[用户附加图片：{path_note}]"
+        return images + [{"type": "text", "text": full_text}]

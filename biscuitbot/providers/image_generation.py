@@ -1528,6 +1528,9 @@ class VolcanoImageGenerationClient(OpenAIImageGenerationClient):
         if not kwargs.get("api_key"):
             kwargs["api_key"] = os.environ.get("ARK_API_KEY")
         super().__init__(**kwargs)
+        # Seedream 默认关闭「AI 生成」水印；用户在 config 的 extraBody 里
+        # 显式设置 watermark 时以用户为准（后合并会覆盖该默认值）。
+        self.extra_body = {"watermark": False, **self.extra_body}
 
     def _default_base_url(self) -> str:
         return "https://ark.cn-beijing.volces.com/api/v3"

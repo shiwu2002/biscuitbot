@@ -247,7 +247,7 @@ class TestBuildUserContent:
         assert result[0]["type"] == "image_url"
         assert result[0]["image_url"]["url"].startswith("data:image/png;base64,")
         assert result[1]["type"] == "text"
-        assert result[1]["text"] == "hello"
+        assert result[1]["text"] == f"hello\n[用户附加图片：{png}]"
 
     def test_image_meta_includes_path(self, tmp_path):
         png = tmp_path / "test.png"
@@ -256,6 +256,18 @@ class TestBuildUserContent:
         result = builder._build_user_content("hello", [str(png)])
         assert "_meta" in result[0]
         assert "path" in result[0]["_meta"]
+
+    def test_image_path_note_added_for_text_models(self, tmp_path):
+        png1 = tmp_path / "test1.png"
+        png2 = tmp_path / "test2.png"
+        png1.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        png2.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 16)
+        builder = _builder(tmp_path)
+        result = builder._build_user_content("", [str(png1), str(png2)])
+        # 无文本时也能给出路径
+        assert isinstance(result, list)
+        text = result[-1]["text"]
+        assert f"[用户附加图片：{png1}，{png2}]" == text
 
 
 # ---------------------------------------------------------------------------
