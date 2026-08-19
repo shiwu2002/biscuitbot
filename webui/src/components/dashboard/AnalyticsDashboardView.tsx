@@ -54,14 +54,14 @@ function KpiCard({
   hint?: string;
 }) {
   return (
-    <div className="cyber-glass-panel relative overflow-hidden rounded-xl p-4">
+    <div className="cyber-glass-panel group relative overflow-hidden rounded-xl p-4 transition-transform duration-200 hover:-translate-y-0.5">
       <div className="cyber-kpi-icon mb-3 flex h-9 w-9 items-center justify-center rounded-full text-primary">
         {icon}
       </div>
-      <p className="text-[24px] font-semibold leading-none tracking-tight text-foreground sm:text-[28px]">
+      <p className="text-[24px] font-semibold leading-none tracking-tight text-foreground tabular-nums sm:text-[28px]">
         {value}
       </p>
-      <p className="mt-1.5 text-[12px] text-muted-foreground">{label}</p>
+      <p className="cyber-mono-label mt-1.5 text-muted-foreground">{label}</p>
       {hint ? (
         <p className="mt-1 text-[11px] text-muted-foreground/70">{hint}</p>
       ) : null}
@@ -181,12 +181,13 @@ export function AnalyticsDashboardView({
           <h1 className="text-[22px] font-semibold tracking-tight text-foreground sm:text-[28px]">
             {t("dashboard.title")}
           </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
+          <p className="mt-1 flex items-center gap-2 text-[13px] text-muted-foreground">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[hsl(var(--cyber-glow))] shadow-[0_0_6px_hsl(var(--cyber-glow)/0.8)]" aria-hidden />
             {t("dashboard.subtitle")}
           </p>
         </div>
         {loading ? (
-          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" aria-hidden />
+          <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden />
         ) : null}
       </header>
 

@@ -668,6 +668,24 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
     _write(None, workspace / "memory" / "history.jsonl")
     (workspace / "skills").mkdir(exist_ok=True)
 
+    # 同步工具使用说明 docs/<name>.md 到工作区，使按需工具的
+    # ``read_file(usage_md)`` 能真正读到。文档由系统生成（非用户文件），
+    # 直接覆盖以保持与代码一致。
+    try:
+        docs_src = pkg_files("biscuitbot") / "agent" / "tools" / "docs"
+        if docs_src.is_dir():
+            for item in docs_src.iterdir():
+                if not item.name.endswith(".md") or item.name.startswith("."):
+                    continue
+                content = item.read_text(encoding="utf-8")
+                dest = workspace / "docs" / item.name
+                if dest.exists() and dest.read_text(encoding="utf-8") == content:
+                    continue
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(content, encoding="utf-8")
+    except Exception:
+        logger.debug("Failed to sync tool docs into workspace", exc_info=True)
+
     if added and not silent:
         from rich.console import Console
 

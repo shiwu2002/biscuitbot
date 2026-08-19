@@ -68,6 +68,7 @@ from biscuitbot.utils.runtime import (  # 运行时辅助消息与判定
     ensure_nonempty_tool_result,  # 确保工具结果非空
     is_blank_text,  # 判断文本是否空白
     repeated_external_lookup_error,  # 重复外部查找错误检测
+    repeated_tool_call_error,  # 重复工具调用错误检测（死循环兜底）
     repeated_workspace_violation_error,  # 重复工作区越界错误检测
 )
 
@@ -594,6 +595,8 @@ class AgentRunner:
         external_lookup_counts: dict[str, int] = {}  # 外部查找重复次数（节流）
         # Per-turn throttle for repeated attempts against the same outside target.
         workspace_violation_counts: dict[str, int] = {}  # 工作区越界重复次数（逐轮节流）
+        # Per-turn throttle for repeated identical tool calls (generic loop guard).
+        tool_call_counts: dict[str, int] = {}  # 重复工具调用次数（死循环兜底）
         empty_content_retries = 0  # 空响应重试计数
         length_recovery_count = 0  # 截断恢复计数
         had_injections = False  # 是否发生过注入
@@ -696,6 +699,7 @@ class AgentRunner:
                     response.tool_calls,
                     external_lookup_counts,
                     workspace_violation_counts,
+                    tool_call_counts,
                 )
                 tool_events.extend(new_events)
                 tools_used.extend(
@@ -1365,6 +1369,7 @@ class AgentRunner:
         tool_calls: list[ToolCallRequest],
         external_lookup_counts: dict[str, int],
         workspace_violation_counts: dict[str, int],
+        tool_call_counts: dict[str, int],
     ) -> tuple[list[Any], list[dict[str, str]], BaseException | None]:
         """执行一批工具调用，返回结果、事件与首个致命错误。
 
@@ -1374,7 +1379,8 @@ class AgentRunner:
             spec: 执行规格；
             tool_calls: 工具调用请求列表；
             external_lookup_counts: 外部查找计数（节流用）；
-            workspace_violation_counts: 工作区越界计数（节流用）。
+            workspace_violation_counts: 工作区越界计数（节流用）；
+            tool_call_counts: 重复工具调用计数（死循环兜底）。
 
         返回:
             (结果列表, 事件列表, 首个致命错误或 None)。
@@ -1386,6 +1392,7 @@ class AgentRunner:
                 batch_results = await asyncio.gather(*(
                     self._run_tool(
                         spec, tool_call, external_lookup_counts, workspace_violation_counts,
+                        tool_call_counts,
                     )
                     for tool_call in batch
                 ))
@@ -1395,6 +1402,7 @@ class AgentRunner:
                 for tool_call in batch:
                     result = await self._run_tool(
                         spec, tool_call, external_lookup_counts, workspace_violation_counts,
+                        tool_call_counts,
                     )
                     tool_results.append(result)
                     batch_results.append(result)
@@ -1415,17 +1423,20 @@ class AgentRunner:
         tool_call: ToolCallRequest,
         external_lookup_counts: dict[str, int],
         workspace_violation_counts: dict[str, int],
+        tool_call_counts: dict[str, int],
     ) -> tuple[Any, dict[str, str], BaseException | None]:
         """执行单个工具调用，返回结果、事件与可能的致命错误。
 
-        处理流程：重复外部查找拦截 → prepare_call 预处理 → 文件编辑追踪启动 →
-        执行工具 → 错误分类（SSRF/工作区越界）→ 文件编辑追踪结束 → 发布追踪。
+        处理流程：重复外部查找拦截 → 重复工具调用拦截 → prepare_call 预处理 →
+        文件编辑追踪启动 → 执行工具 → 错误分类（SSRF/工作区越界）→
+        文件编辑追踪结束 → 发布追踪。
 
         参数:
             spec: 执行规格；
             tool_call: 工具调用请求；
             external_lookup_counts: 外部查找计数（节流用）；
-            workspace_violation_counts: 工作区越界计数（节流用）。
+            workspace_violation_counts: 工作区越界计数（节流用）；
+            tool_call_counts: 重复工具调用计数（死循环兜底）。
 
         返回:
             (结果, 事件字典, 致命错误或 None)。
@@ -1452,6 +1463,25 @@ class AgentRunner:
             if spec.fail_on_tool_error:
                 return lookup_error + hint, event, RuntimeError(lookup_error)
             return lookup_error + hint, event, None
+        repeat_error = repeated_tool_call_error(
+            tool_call.name,
+            tool_call.arguments,
+            tool_call_counts,
+        )
+        if repeat_error:
+            event = {
+                "name": tool_call.name,
+                "status": "error",
+                "detail": "repeated tool call blocked",
+            }
+            self._publish_tool_trace(
+                spec, tool_call, "failed",
+                duration_ms=(time.perf_counter() - tool_t0) * 1000,
+                detail={"error": "repeated tool call blocked"},
+            )
+            if spec.fail_on_tool_error:
+                return repeat_error + hint, event, RuntimeError(repeat_error)
+            return repeat_error + hint, event, None
         prepare_call = getattr(spec.tools, "prepare_call", None)
         tool, params, prep_error = None, tool_call.arguments, None
         if callable(prepare_call):

@@ -302,7 +302,7 @@ function SidebarActionButton({
       {active ? (
         <span
           aria-hidden
-          className="absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-full bg-[hsl(var(--cyber-glow)/0.95)] shadow-[0_0_8px_hsl(var(--cyber-glow)/0.7)]"
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-[hsl(var(--cyber-glow))] shadow-[0_0_10px_hsl(var(--cyber-glow)/0.9),0_0_18px_hsl(var(--cyber-glow)/0.45)]"
         />
       ) : null}
       <span

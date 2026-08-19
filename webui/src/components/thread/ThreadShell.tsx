@@ -785,7 +785,10 @@ export function ThreadShell({
   ) : undefined;
 
   return (
-    <section ref={shellRef} className="relative flex min-h-0 flex-1 overflow-hidden">
+    <section
+      ref={shellRef}
+      className="cyber-shell-bg relative flex min-h-0 flex-1 overflow-hidden"
+    >
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {!hideHeader ? (
           <ThreadHeader

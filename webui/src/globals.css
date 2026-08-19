@@ -6,69 +6,78 @@
 @layer base {
   :root {
     color-scheme: light;
-    --background: 210 40% 98%;
-    --foreground: 222 47% 14%;
+    --background: 204 44% 97%;
+    --foreground: 215 38% 16%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 14%;
+    --card-foreground: 215 38% 16%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 14%;
-    --primary: 214 85% 42%;
+    --popover-foreground: 215 38% 16%;
+    /* 主色：更鲜亮的电光青蓝 */
+    --primary: 195 90% 46%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 35% 95%;
-    --secondary-foreground: 222 47% 14%;
-    --muted: 210 30% 94%;
-    --muted-foreground: 215 16% 46%;
-    --accent: 199 88% 92%;
-    --accent-foreground: 199 80% 32%;
+    --secondary: 204 36% 95%;
+    --secondary-foreground: 215 38% 16%;
+    --muted: 204 30% 93%;
+    --muted-foreground: 210 14% 44%;
+    --accent: 192 86% 90%;
+    --accent-foreground: 195 80% 30%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 204 35% 86%;
-    --input: 204 35% 86%;
-    --ring: 204 82% 46%;
-    --radius: 0.4375rem;
-    --sidebar: 210 38% 97%;
-    --sidebar-foreground: 222 47% 14%;
-    --sidebar-accent: 204 70% 93%;
-    --sidebar-accent-foreground: 214 85% 35%;
-    --sidebar-border: 204 35% 88%;
-    --cyber-glow: 199 90% 55%;
-    --cyber-glow-soft: 204 82% 46%;
-    --cyber-panel-border: 199 90% 65%;
-    --scrollbar-thumb: hsl(var(--muted-foreground) / 0.26);
-    --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.42);
+    --border: 200 30% 86%;
+    --input: 200 30% 86%;
+    --ring: 195 88% 48%;
+    --radius: 0.5rem;
+    --sidebar: 206 40% 96%;
+    --sidebar-foreground: 215 38% 16%;
+    --sidebar-accent: 192 66% 91%;
+    --sidebar-accent-foreground: 195 84% 32%;
+    --sidebar-border: 200 30% 87%;
+    --cyber-glow: 195 92% 50%;
+    --cyber-glow-soft: 200 84% 44%;
+    --cyber-panel-border: 195 88% 58%;
+    --cyber-magenta: 285 90% 56%;
+    --cyber-violet: 260 85% 58%;
+    --scrollbar-thumb: hsl(var(--cyber-glow-soft) / 0.28);
+    --scrollbar-thumb-hover: hsl(var(--cyber-glow) / 0.45);
   }
 
   .dark {
     color-scheme: dark;
-    --background: 0 0% 10%;
-    --foreground: 240 4% 96%;
-    --card: 0 0% 12%;
-    --card-foreground: 240 4% 96%;
-    --popover: 0 0% 12%;
-    --popover-foreground: 240 4% 96%;
-    --primary: 199 90% 58%;
-    --primary-foreground: 224 44% 12%;
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 13%;
-    --muted-foreground: 0 0% 60%;
-    --accent: 199 88% 18%;
-    --accent-foreground: 199 90% 82%;
-    --destructive: 0 62.8% 30.6%;
+    /* 更深邃的近黑底色，带极淡的青蓝冷调，营造深空感 */
+    --background: 215 32% 6.5%;
+    --foreground: 200 18% 96%;
+    --card: 215 28% 9%;
+    --card-foreground: 200 18% 96%;
+    --popover: 215 30% 10%;
+    --popover-foreground: 200 18% 96%;
+    /* 主色：电光青蓝，饱和度更高，未来感更强 */
+    --primary: 192 95% 60%;
+    --primary-foreground: 215 40% 8%;
+    --secondary: 215 24% 12%;
+    --secondary-foreground: 200 14% 98%;
+    --muted: 215 22% 13%;
+    --muted-foreground: 205 12% 62%;
+    --accent: 192 88% 20%;
+    --accent-foreground: 192 92% 84%;
+    --destructive: 0 70% 32%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 18%;
-    --input: 0 0% 18%;
-    --ring: 199 90% 65%;
-    --sidebar: 0 0% 11.5%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-accent: 0 0% 15.5%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 18%;
-    --cyber-glow: 198 90% 72%;
-    --cyber-glow-soft: 204 82% 55%;
-    --cyber-panel-border: 199 80% 60%;
-    --scrollbar-thumb: hsl(var(--muted-foreground) / 0.28);
-    --scrollbar-thumb-hover: hsl(var(--muted-foreground) / 0.44);
+    --border: 200 22% 19%;
+    --input: 200 22% 19%;
+    --ring: 192 95% 62%;
+    --sidebar: 215 30% 7.5%;
+    --sidebar-foreground: 200 14% 98%;
+    --sidebar-accent: 192 60% 16%;
+    --sidebar-accent-foreground: 200 14% 98%;
+    --sidebar-border: 200 22% 20%;
+    /* 霓虹辉光色：更鲜亮的青蓝 + 电光紫调辅色 */
+    --cyber-glow: 190 98% 68%;
+    --cyber-glow-soft: 200 90% 58%;
+    --cyber-panel-border: 190 88% 62%;
+    /* 辅助霓虹色：电光紫与品红，用于点缀 */
+    --cyber-magenta: 285 95% 66%;
+    --cyber-violet: 260 90% 68%;
+    --scrollbar-thumb: hsl(var(--cyber-glow-soft) / 0.32);
+    --scrollbar-thumb-hover: hsl(var(--cyber-glow) / 0.55);
   }
 }
 
@@ -85,6 +94,25 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "cv11", "ss01", "ss03";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* 暗色模式：全局极淡的 HUD 网格 + 顶部青光，营造科技氛围层 */
+  .dark body {
+    background-image:
+      linear-gradient(hsl(var(--cyber-glow) / 0.022) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--cyber-glow) / 0.022) 1px, transparent 1px),
+      radial-gradient(
+        ellipse 70% 45% at 50% -8%,
+        hsl(var(--cyber-glow) / 0.09),
+        transparent 60%
+      );
+    background-size: 38px 38px, 38px 38px, 100% 100%;
+    background-attachment: fixed, fixed, fixed;
+    background-position: center center, center center, top center;
   }
 
   * {
@@ -115,7 +143,8 @@
   }
 
   ::selection {
-    @apply bg-primary/15;
+    @apply bg-primary/25;
+    color: hsl(var(--primary-foreground));
   }
 }
 
@@ -535,23 +564,23 @@
     background:
       radial-gradient(
         ellipse 90% 55% at 50% -15%,
-        hsl(var(--cyber-glow) / 0.14),
+        hsl(var(--cyber-glow) / 0.18),
         transparent 55%
       ),
       radial-gradient(
         ellipse 50% 35% at 100% 0%,
-        hsl(var(--cyber-glow-soft) / 0.1),
+        hsl(var(--cyber-violet) / 0.12),
         transparent 50%
       ),
       radial-gradient(
         ellipse 40% 30% at 0% 100%,
-        hsl(var(--cyber-glow-soft) / 0.06),
+        hsl(var(--cyber-glow-soft) / 0.1),
         transparent 45%
       ),
       linear-gradient(
         180deg,
         hsl(var(--background)) 0%,
-        hsl(210 35% 96%) 100%
+        hsl(206 40% 95%) 100%
       );
     background-attachment: fixed;
   }
@@ -559,18 +588,23 @@
     background:
       radial-gradient(
         ellipse 80% 50% at 50% -10%,
-        hsl(var(--cyber-glow) / 0.12),
+        hsl(var(--cyber-glow) / 0.16),
         transparent 55%
       ),
       radial-gradient(
         ellipse 45% 30% at 100% 0%,
-        hsl(var(--cyber-glow-soft) / 0.08),
+        hsl(var(--cyber-violet) / 0.1),
         transparent 50%
+      ),
+      radial-gradient(
+        ellipse 35% 28% at 0% 100%,
+        hsl(var(--cyber-magenta) / 0.06),
+        transparent 48%
       ),
       linear-gradient(
         180deg,
         hsl(var(--background)) 0%,
-        hsl(220 20% 9%) 100%
+        hsl(220 30% 5%) 100%
       );
     background-attachment: fixed;
   }
@@ -578,32 +612,59 @@
   /* Sci-fi sidebar surface: faint cyan glow over the base sidebar tint */
   .cyber-sidebar {
     background:
-      radial-gradient(ellipse 80% 42% at 50% -8%, hsl(var(--cyber-glow) / 0.12), transparent 58%),
-      radial-gradient(ellipse 55% 28% at 0% 0%, hsl(var(--cyber-glow-soft) / 0.07), transparent 50%),
+      radial-gradient(ellipse 80% 42% at 50% -8%, hsl(var(--cyber-glow) / 0.16), transparent 58%),
+      radial-gradient(ellipse 55% 28% at 0% 0%, hsl(var(--cyber-violet) / 0.09), transparent 50%),
       linear-gradient(180deg, hsl(var(--sidebar)) 0%, hsl(var(--sidebar)) 100%);
+    position: relative;
+  }
+  .cyber-sidebar::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(hsl(var(--cyber-glow) / 0.025) 1px, transparent 1px);
+    background-size: 100% 34px;
+    opacity: 0.6;
   }
   .dark .cyber-sidebar {
     background:
-      radial-gradient(ellipse 80% 40% at 50% -8%, hsl(var(--cyber-glow) / 0.1), transparent 58%),
+      radial-gradient(ellipse 80% 40% at 50% -8%, hsl(var(--cyber-glow) / 0.14), transparent 58%),
+      radial-gradient(ellipse 50% 26% at 0% 0%, hsl(var(--cyber-violet) / 0.07), transparent 52%),
       linear-gradient(180deg, hsl(var(--sidebar)) 0%, hsl(var(--sidebar)) 100%);
   }
 
-  /* Glassmorphic dashboard panels */
+  /* Glassmorphic dashboard panels — 全息玻璃质感 */
   .cyber-glass-panel {
-    background: hsl(var(--card) / 0.62);
-    -webkit-backdrop-filter: blur(14px) saturate(160%);
-    backdrop-filter: blur(14px) saturate(160%);
-    border: 1px solid hsl(var(--cyber-panel-border) / 0.28);
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--card) / 0.78) 0%,
+        hsl(var(--card) / 0.55) 100%
+      );
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+    backdrop-filter: blur(16px) saturate(180%);
+    border: 1px solid hsl(var(--cyber-panel-border) / 0.32);
     box-shadow:
-      0 0 24px hsl(var(--cyber-glow-soft) / 0.08),
-      inset 0 1px 0 hsl(var(--background) / 0.65);
+      0 0 0 1px hsl(var(--cyber-glow) / 0.04),
+      0 8px 32px -8px hsl(var(--cyber-glow-soft) / 0.18),
+      0 0 28px hsl(var(--cyber-glow-soft) / 0.1),
+      inset 0 1px 0 hsl(var(--background) / 0.7);
+    position: relative;
   }
   .dark .cyber-glass-panel {
-    background: hsl(var(--card) / 0.45);
-    border-color: hsl(var(--cyber-panel-border) / 0.2);
+    background:
+      linear-gradient(
+        135deg,
+        hsl(var(--card) / 0.5) 0%,
+        hsl(var(--card) / 0.28) 100%
+      );
+    border-color: hsl(var(--cyber-panel-border) / 0.22);
     box-shadow:
-      0 0 28px hsl(var(--cyber-glow-soft) / 0.1),
-      inset 0 1px 0 hsl(var(--foreground) / 0.06);
+      0 0 0 1px hsl(var(--cyber-glow) / 0.06),
+      0 8px 36px -8px rgb(0 0 0 / 0.55),
+      0 0 32px hsl(var(--cyber-glow-soft) / 0.14),
+      inset 0 1px 0 hsl(var(--foreground) / 0.08);
   }
 
   .cyber-glass-panel::before {
@@ -615,40 +676,105 @@
     background:
       linear-gradient(
         135deg,
-        hsl(var(--cyber-glow) / 0.06) 0%,
-        transparent 40%,
-        transparent 100%
+        hsl(var(--cyber-glow) / 0.1) 0%,
+        transparent 38%,
+        transparent 62%,
+        hsl(var(--cyber-violet) / 0.06) 100%
       );
+  }
+
+  /* 角标装饰：面板四角的科技感切角光点 */
+  .cyber-glass-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+      linear-gradient(
+        to right,
+        hsl(var(--cyber-glow) / 0.5),
+        hsl(var(--cyber-glow) / 0.5)
+      )
+      top left / 12px 1px no-repeat,
+      linear-gradient(
+        to bottom,
+        hsl(var(--cyber-glow) / 0.5),
+        hsl(var(--cyber-glow) / 0.5)
+      )
+      top left / 1px 12px no-repeat,
+      linear-gradient(
+        to left,
+        hsl(var(--cyber-glow) / 0.5),
+        hsl(var(--cyber-glow) / 0.5)
+      )
+      top right / 12px 1px no-repeat,
+      linear-gradient(
+        to bottom,
+        hsl(var(--cyber-glow) / 0.5),
+        hsl(var(--cyber-glow) / 0.5)
+      )
+      top right / 1px 12px no-repeat,
+      linear-gradient(
+        to right,
+        hsl(var(--cyber-glow) / 0.35),
+        hsl(var(--cyber-glow) / 0.35)
+      )
+      bottom left / 12px 1px no-repeat,
+      linear-gradient(
+        to top,
+        hsl(var(--cyber-glow) / 0.35),
+        hsl(var(--cyber-glow) / 0.35)
+      )
+      bottom left / 1px 12px no-repeat,
+      linear-gradient(
+        to left,
+        hsl(var(--cyber-glow) / 0.35),
+        hsl(var(--cyber-glow) / 0.35)
+      )
+      bottom right / 12px 1px no-repeat,
+      linear-gradient(
+        to top,
+        hsl(var(--cyber-glow) / 0.35),
+        hsl(var(--cyber-glow) / 0.35)
+      )
+      bottom right / 1px 12px no-repeat;
+    opacity: 0.55;
   }
 
   .cyber-kpi-icon {
     background: linear-gradient(
       135deg,
-      hsl(var(--cyber-glow-soft) / 0.18),
-      hsl(var(--cyber-glow) / 0.08)
+      hsl(var(--cyber-glow-soft) / 0.24),
+      hsl(var(--cyber-glow) / 0.12)
     );
-    box-shadow: 0 0 12px hsl(var(--cyber-glow-soft) / 0.2);
+    box-shadow:
+      0 0 16px hsl(var(--cyber-glow-soft) / 0.3),
+      inset 0 1px 0 hsl(var(--background) / 0.5);
   }
 
   .cyber-nav-active {
     background: linear-gradient(
       90deg,
-      hsl(214 85% 42%),
-      hsl(199 90% 52%)
+      hsl(200 90% 46%),
+      hsl(190 98% 58%)
     ) !important;
     color: hsl(0 0% 100%) !important;
     box-shadow:
-      0 0 18px hsl(var(--cyber-glow-soft) / 0.35),
-      inset 0 1px 0 hsl(0 0% 100% / 0.2) !important;
+      0 0 0 1px hsl(var(--cyber-glow) / 0.4),
+      0 0 22px hsl(var(--cyber-glow-soft) / 0.45),
+      inset 0 1px 0 hsl(0 0% 100% / 0.25) !important;
   }
 
   .cyber-progress-bar {
     background: linear-gradient(
       90deg,
-      hsl(204 82% 46%),
-      hsl(199 90% 58%)
+      hsl(200 90% 48%),
+      hsl(190 98% 62%)
     );
-    box-shadow: 0 0 8px hsl(var(--cyber-glow-soft) / 0.45);
+    box-shadow:
+      0 0 10px hsl(var(--cyber-glow-soft) / 0.55),
+      0 0 20px hsl(var(--cyber-glow) / 0.25);
   }
 
   @keyframes cyber-core-pulse {
@@ -690,10 +816,210 @@
   }
 
   .cyber-status-dot-running {
-    background: hsl(142 72% 45%);
-    box-shadow: 0 0 6px hsl(142 72% 45% / 0.7);
+    background: hsl(152 78% 52%);
+    box-shadow:
+      0 0 8px hsl(152 78% 52% / 0.8),
+      0 0 16px hsl(152 78% 52% / 0.35);
+    animation: cyber-status-pulse 2s ease-in-out infinite;
   }
   .cyber-status-dot-idle {
-    background: hsl(var(--muted-foreground) / 0.45);
+    background: hsl(var(--cyber-glow-soft) / 0.5);
+    box-shadow: 0 0 6px hsl(var(--cyber-glow-soft) / 0.4);
+  }
+  @keyframes cyber-status-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 8px hsl(152 78% 52% / 0.8), 0 0 16px hsl(152 78% 52% / 0.35);
+    }
+    50% {
+      opacity: 0.78;
+      box-shadow: 0 0 12px hsl(152 78% 52% / 0.9), 0 0 22px hsl(152 78% 52% / 0.45);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cyber-status-dot-running {
+      animation: none;
+    }
+  }
+
+  /* ===== 未来科技感增强效果 ===== */
+
+  /* 霓虹文字：电光青蓝辉光 */
+  .cyber-text-glow {
+    color: hsl(var(--cyber-glow));
+    text-shadow:
+      0 0 8px hsl(var(--cyber-glow) / 0.55),
+      0 0 18px hsl(var(--cyber-glow-soft) / 0.35);
+  }
+
+  /* 全息渐变边框：随时间流动的彩虹光边 */
+  .cyber-holo-border {
+    position: relative;
+    background-clip: padding-box;
+  }
+  .cyber-holo-border::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      120deg,
+      hsl(var(--cyber-glow)),
+      hsl(var(--cyber-violet)),
+      hsl(var(--cyber-magenta)),
+      hsl(var(--cyber-glow))
+    );
+    background-size: 300% 100%;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+    animation: cyber-holo-shift 6s linear infinite;
+  }
+  @keyframes cyber-holo-shift {
+    0% {
+      background-position: 0% 50%;
+    }
+    100% {
+      background-position: 300% 50%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cyber-holo-border::before {
+      animation: none;
+    }
+  }
+
+  /* 扫描线叠加：极淡的横向移动光带，用于面板顶部装饰 */
+  .cyber-scanline {
+    position: relative;
+    overflow: hidden;
+  }
+  .cyber-scanline::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      hsl(var(--cyber-glow) / 0.06) 48%,
+      hsl(var(--cyber-glow) / 0.12) 50%,
+      hsl(var(--cyber-glow) / 0.06) 52%,
+      transparent 100%
+    );
+    background-size: 100% 220%;
+    background-position: 0% -120%;
+    animation: cyber-scanline-sweep 4.5s ease-in-out infinite;
+  }
+  @keyframes cyber-scanline-sweep {
+    0% {
+      background-position: 0% -120%;
+    }
+    60%,
+    100% {
+      background-position: 0% 220%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cyber-scanline::after {
+      animation: none;
+      content: none;
+    }
+  }
+
+  /* 霓虹按钮辉光：悬停时电光环绕 */
+  .cyber-btn-glow {
+    transition: box-shadow 0.3s ease, transform 0.2s ease, filter 0.3s ease;
+  }
+  .cyber-btn-glow:hover {
+    box-shadow:
+      0 0 0 1px hsl(var(--cyber-glow) / 0.5),
+      0 0 18px hsl(var(--cyber-glow-soft) / 0.45),
+      0 0 32px hsl(var(--cyber-glow) / 0.22);
+  }
+  .cyber-btn-glow:active {
+    transform: scale(0.97);
+  }
+
+  /* 数据流光带：从左到右扫过的微光，用于活跃行/卡片 */
+  .cyber-data-stream {
+    position: relative;
+    overflow: hidden;
+  }
+  .cyber-data-stream::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+      110deg,
+      transparent 30%,
+      hsl(var(--cyber-glow) / 0.14) 50%,
+      transparent 70%
+    );
+    transform: translateX(-120%);
+    animation: cyber-stream-pass 3.5s ease-in-out infinite;
+  }
+  @keyframes cyber-stream-pass {
+    0%,
+    100% {
+      transform: translateX(-120%);
+    }
+    50% {
+      transform: translateX(120%);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cyber-data-stream::after {
+      animation: none;
+      content: none;
+    }
+  }
+
+  /* 终端式等宽标签：用于技术信息、ID、状态码 */
+  .cyber-mono-label {
+    font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-size: 0.6875rem;
+    font-weight: 600;
+  }
+
+  /* 六边形/切角面板：未来感容器 */
+  .cyber-clipped-panel {
+    clip-path: polygon(
+      0 8px,
+      8px 0,
+      calc(100% - 8px) 0,
+      100% 8px,
+      100% calc(100% - 8px),
+      calc(100% - 8px) 100%,
+      8px 100%,
+      0 calc(100% - 8px)
+    );
+  }
+
+  /* 激活态左侧光柱：用于导航选中行 */
+  .cyber-rail-active {
+    position: relative;
+  }
+  .cyber-rail-active::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 50%;
+    height: 18px;
+    width: 3px;
+    transform: translateY(-50%);
+    background: hsl(var(--cyber-glow));
+    border-radius: 0 999px 999px 0;
+    box-shadow:
+      0 0 8px hsl(var(--cyber-glow) / 0.85),
+      0 0 16px hsl(var(--cyber-glow) / 0.4);
   }
 }

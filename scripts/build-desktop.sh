@@ -103,6 +103,7 @@ HIDDEN_IMPORTS=(
   --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
   --add-data "biscuitbot/templates:biscuitbot/templates" \
   --add-data "biscuitbot/skills:biscuitbot/skills" \
+  --add-data "biscuitbot/agent/tools/docs:biscuitbot/agent/tools/docs" \
   "${HIDDEN_IMPORTS[@]}" \
   "${EXCLUDES[@]}" \
   scripts/desktop_sidecar_main.py

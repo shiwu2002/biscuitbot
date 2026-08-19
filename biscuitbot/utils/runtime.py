@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -14,6 +15,10 @@ _MAX_REPEAT_EXTERNAL_LOOKUPS = 2
 
 # Third same-target workspace violation in a turn escalates to "stop retrying".
 _MAX_REPEAT_WORKSPACE_VIOLATIONS = 2
+
+# Same tool call (after normalization) repeating this many times in a turn is
+# treated as a stuck loop and blocked. Attempts 1..N pass; attempt N+1 errors.
+_MAX_REPEAT_TOOL_CALLS = 3
 
 EMPTY_FINAL_RESPONSE_MESSAGE = (
     "I completed the tool steps but couldn't produce a final answer. "
@@ -194,4 +199,81 @@ def repeated_workspace_violation_error(
         "If the user genuinely needs this resource, tell them you cannot "
         "access it and ask how they want to proceed (e.g. copy the file "
         "into the workspace, or disable restrict_to_workspace for this run)."
+    )
+
+
+# Generic loop detection: block a tool call that repeats an identical
+# (normalized) call too many times in a single turn. This catches the common
+# "stuck model" pattern — e.g. re-running `find ... | grep ...` with a varying
+# grep tail — which the external-lookup and workspace-violation throttles miss.
+
+_SHELL_SEPARATORS = ("|", "&&", "||", ";")
+_TRAILING_REDIRECT = re.compile(r"\s+\d?>>?\s*(?:/dev/null|&[12])\s*$")
+
+
+def _shell_command_signature(cmd: str) -> str:
+    """Normalize a shell command down to its primary invocation.
+
+    The model often retries the same ``find``/``grep`` base command with a
+    varying ``| grep ... | head`` tail or a trailing ``2>/dev/null`` redirect.
+    Collapsing those onto the base command is what lets the loop detector treat
+    them as the same repeated call instead of a fresh one each time.
+    """
+    base = cmd.strip()
+    for sep in _SHELL_SEPARATORS:
+        base = base.split(sep, 1)[0]
+    return _TRAILING_REDIRECT.sub("", base).strip()
+
+
+def tool_call_signature(tool_name: str, arguments: Any) -> str | None:
+    """Return a stable signature for a tool call, or None when it can't be made.
+
+    Used to detect repeated identical tool calls. Shell/exec commands are
+    normalized via :func:`_shell_command_signature` so that a varying pipe tail
+    still collides on the same key; other tools serialize their arguments.
+    """
+    if not isinstance(arguments, dict):
+        return None
+    # Web lookups already have a dedicated throttle; skip them to avoid
+    # double-counting the same retry across two detectors.
+    if tool_name in {"web_fetch", "web_search"}:
+        return None
+    if tool_name in {"exec", "shell"}:
+        cmd = str(arguments.get("command") or "").strip()
+        if not cmd:
+            return None
+        return f"{tool_name}:{_shell_command_signature(cmd)}"
+    try:
+        serialized = json.dumps(arguments, sort_keys=True, ensure_ascii=False, default=str)
+    except (TypeError, ValueError):
+        return None
+    return f"{tool_name}:{serialized}"
+
+
+def repeated_tool_call_error(
+    tool_name: str,
+    arguments: Any,
+    seen_counts: dict[str, int],
+) -> str | None:
+    """Return a soft error after the same (normalized) tool call repeats too often.
+
+    Attempts up to ``_MAX_REPEAT_TOOL_CALLS`` pass through; the next identical
+    call is blocked and the model is nudged to change approach.
+    """
+    signature = tool_call_signature(tool_name, arguments)
+    if signature is None:
+        return None
+    count = seen_counts.get(signature, 0) + 1
+    seen_counts[signature] = count
+    if count <= _MAX_REPEAT_TOOL_CALLS:
+        return None
+    logger.warning(
+        "Blocking repeated tool call {} on attempt {}",
+        signature[:160],
+        count,
+    )
+    return (
+        "Error: you have repeated this same tool call several times without "
+        "making progress. Stop retrying. Use the results you already have, or "
+        "switch to a meaningfully different approach."
     )

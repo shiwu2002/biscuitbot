@@ -39,18 +39,18 @@ export function CyberPanel({
   return (
     <section
       className={cn(
-        "cyber-glass-panel relative overflow-hidden rounded-xl p-4 sm:p-5",
+        "cyber-glass-panel cyber-scanline relative overflow-hidden rounded-xl p-4 sm:p-5",
         className,
       )}
     >
       {title ? (
         <header className="mb-4 flex items-center gap-2">
           {icon ? (
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/12 text-primary shadow-[0_0_14px_hsl(var(--cyber-glow-soft)/0.35)]">
               {icon}
             </span>
           ) : null}
-          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <h2 className="cyber-mono-label text-muted-foreground">
             {title}
           </h2>
         </header>
