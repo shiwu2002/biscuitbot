@@ -2,9 +2,8 @@
 # 构建 biscuitbot 桌面应用（macOS / Linux）。
 #
 # 产物：
-#   - 应用包    src-tauri/target/release/bundle/macos/*.app（arm64）
-#   - 应用包    src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app（--intel）
-#   - 安装镜像  src-tauri/target/*/release/bundle/dmg/*.dmg（macOS）
+#   - 应用包 / 镜像  output/mac/*.app + *.dmg（arm64）
+#   - 应用包 / 镜像  output/mac-x86/*.app + *.dmg（--intel）
 #   - sidecar   src-tauri/binaries/biscuitbot-sidecar/（onedir 目录）
 #
 # 前置要求：
@@ -24,8 +23,9 @@ ROOT="$PWD"
 # 目标架构与对应构建环境（默认 arm64；--intel 切到 x86_64 交叉构建）
 TARGET_TRIPLE="aarch64-apple-darwin"
 PYTHON="$ROOT/.venv/bin/python"
-DIST_DIR="$ROOT/dist"
-WORK_DIR="$ROOT/build"
+OUTPUT_DIR="$ROOT/output/mac"
+DIST_DIR="$OUTPUT_DIR/dist"
+WORK_DIR="$OUTPUT_DIR/build"
 RELEASE_SUBPATH="release"        # target/<subpath>：arm64 走 target/release
 TAURI_BUILD_ARGS=()              # 额外传给 `tauri build` 的参数
 
@@ -38,8 +38,9 @@ while [[ $# -gt 0 ]]; do
       export PATH="$HOME/.cargo/bin:$PATH"
       TARGET_TRIPLE="x86_64-apple-darwin"
       PYTHON="$HOME/.venvs/biscuitbot-x86/bin/python"
-      DIST_DIR="$ROOT/dist-x86"
-      WORK_DIR="$ROOT/build-x86"
+      OUTPUT_DIR="$ROOT/output/mac-x86"
+      DIST_DIR="$OUTPUT_DIR/dist"
+      WORK_DIR="$OUTPUT_DIR/build"
       RELEASE_SUBPATH="x86_64-apple-darwin/release"
       # 应用名 / identifier 与 arm64 版一致（biscuitbot / com.biscuitbot.desktop），
       # 仅交叉编译目标不同；DMG 文件名按架构区分（_x64 vs _aarch64）。
@@ -78,12 +79,9 @@ EXCLUDES=(
   --exclude-module discord
   --exclude-module matrix_nio
   --exclude-module wechatpy
-  --exclude-module pywebview
   --exclude-module questionary
   --exclude-module pymupdf
   --exclude-module qrcode
-  --exclude-module PySide6
-  --exclude-module PyQt6
 )
 # TTS 适配器与 SDK 通过字符串/函数内动态导入（tts_registry.load_adapter 用
 # import_module、provider 内函数级 import dashscope/edge_tts），PyInstaller
@@ -148,6 +146,12 @@ if [ -d "$DMG_DIR" ]; then
   rm -f "$DMG_DIR/icon.icns" "$DMG_DIR/bundle_dmg.sh"
 fi
 
+# 将最终产物（.app / .dmg）复制到输出目录；target 内仍保留构建缓存。
+mkdir -p "$OUTPUT_DIR"
+BUNDLE_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle"
+cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
+cp -f "$BUNDLE_DIR/dmg/"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true
+
 echo
 echo "构建完成！产物："
-ls -1 "$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle/"*/ 2>/dev/null | sed 's/^/  /'
+ls -1 "$OUTPUT_DIR/" 2>/dev/null | sed 's/^/  /'

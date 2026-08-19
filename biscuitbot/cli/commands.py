@@ -5,7 +5,7 @@
 本文件位于 biscuitbot/cli 目录，是 CLI 模块的核心命令实现文件。
 在项目架构中起到的作用：
 - 定义 biscuitbot 命令行工具的所有子命令（onboard、agent、gateway、
-  serve、desktop、status、channels、plugins 等）；
+  serve、sidecar、status、channels、plugins 等）；
 - 通过 typer 框架注册命令，提供帮助文本与参数解析；
 - 承担交互式聊天、流式渲染、配置初始化、网关启动、定时任务注册等
   核心运行时逻辑；
@@ -1541,23 +1541,8 @@ def _run_gateway(
 
 
 # ============================================================================
-# Desktop Command
+# Desktop Sidecar Command
 # ============================================================================
-
-
-@app.command()
-def desktop(
-    port: int | None = typer.Option(None, "--port", "-p", help="网关端口"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="工作区目录"),
-    config_file: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
-    width: int = typer.Option(1200, "--width", help="窗口宽度"),
-    height: int = typer.Option(800, "--height", help="窗口高度"),
-):
-    """以原生桌面应用方式启动 biscuitbot。"""
-    from biscuitbot.desktop.app import run_desktop
-
-    cfg = _load_runtime_config(config_file, workspace)
-    run_desktop(cfg, port=port, width=width, height=height)
 
 
 @app.command()

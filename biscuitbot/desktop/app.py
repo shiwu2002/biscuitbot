@@ -1,29 +1,17 @@
-"""Desktop application runner.
+"""Headless gateway runtime for the desktop shell.
 
-Starts the biscuitbot gateway in a daemon thread and opens a native pywebview
-window that loads the WebUI.  When the window closes the process exits,
-taking the daemon gateway thread with it.
-
-The gateway start is factored out into :func:`start_gateway` so the Tauri
-sidecar (:mod:`biscuitbot.desktop.sidecar`) can reuse the exact same runtime
-without a window.
+Starts the biscuitbot gateway in a daemon thread without opening any window;
+the Tauri sidecar (:mod:`biscuitbot.desktop.sidecar`) reuses this runtime to
+serve the WebUI inside the shell's system WebView.
 """
 
 from __future__ import annotations
 
-import os
 import socket
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
-
-# 窗口默认尺寸
-_DEFAULT_WIDTH = 1200
-_DEFAULT_HEIGHT = 800
-_DEFAULT_MIN_WIDTH = 800
-_DEFAULT_MIN_HEIGHT = 600
 
 # 端口就绪轮询
 _PORT_TIMEOUT_S = 20.0
@@ -120,8 +108,8 @@ class GatewayHandle:
 def start_gateway(config: Any, *, port: int | None = None) -> GatewayHandle:
     """在 daemon 线程中启动 biscuitbot 网关，返回就绪轮询句柄。
 
-    与 ``run_desktop`` 共享同一运行时：不打开浏览器、WebUI 走静态 dist、
-    运行时表面标记为 ``native``、不启用健康检查服务器。调用方需要自行
+    供 Tauri sidecar 复用：不打开浏览器、WebUI 走静态 dist、运行时表面
+    标记为 ``native``、不启用健康检查服务器。调用方需要自行
     ``wait_until_ready()`` 并最终退出进程以终止 daemon 线程。
     """
     from biscuitbot.cli.commands import _run_gateway
@@ -153,50 +141,3 @@ def start_gateway(config: Any, *, port: int | None = None) -> GatewayHandle:
     )
     thread.start()
     return GatewayHandle(host=host, port=ws_port, thread=thread, errors=errors)
-
-
-def run_desktop(
-    config: Any,
-    *,
-    port: int | None = None,
-    width: int = _DEFAULT_WIDTH,
-    height: int = _DEFAULT_HEIGHT,
-    min_width: int = _DEFAULT_MIN_WIDTH,
-    min_height: int = _DEFAULT_MIN_HEIGHT,
-) -> None:
-    """
-    启动 gateway 后台线程，并打开原生窗口加载 WebUI。
-
-    gateway 运行在 daemon 线程中，窗口关闭后主线程退出，
-    daemon 线程随之终止。
-    """
-    import webview
-
-    handle = start_gateway(config, port=port)
-    url = f"http://{handle.host}:{handle.port}"
-
-    if not handle.wait_until_ready():
-        if handle.errors:
-            exc = handle.errors[0]
-            print(f"Gateway failed to start: {exc}", file=sys.stderr)
-        else:
-            print(
-                f"Gateway did not bind within timeout. Try visiting {url} manually.",
-                file=sys.stderr,
-            )
-
-    # 创建并运行原生窗口
-    webview.create_window(
-        title="biscuitbot",
-        url=url,
-        width=width,
-        height=height,
-        min_size=(min_width, min_height),
-        text_select=True,
-    )
-
-    # webview.start() 阻塞直到窗口关闭
-    webview.start()
-
-    # 窗口已关闭 —— 退出进程（daemon gateway 线程随之终止）
-    os._exit(0)

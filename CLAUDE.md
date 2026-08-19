@@ -38,7 +38,7 @@ cd webui && bun run test         # vitest
 cd webui && bun run lint         # eslint --max-warnings 0
 ```
 
-CLI 子命令：`onboard`、`serve`、`gateway`、`desktop`、`sidecar`、`agent`、`status`，以及 Typer 子应用 `channels`（`status`/`login`）、`plugins`（`list`）、`talent-market`。
+CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`，以及 Typer 子应用 `channels`（`status`/`login`）、`plugins`（`list`）、`talent-market`。
 
 ## 核心架构
 
@@ -58,7 +58,7 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`desktop`、`sidecar`、`agent
 
 ## 桌面打包（Tauri 2 + PyInstaller sidecar）
 
-桌面应用 = Tauri 2 壳（`src-tauri/`，系统 WebView 渲染 WebUI）+ PyInstaller onedir 打包的无头 Python gateway（sidecar 子进程）。构建脚本 `scripts/build-desktop.sh`（macOS/Linux）、`scripts/build-desktop.ps1`（Windows），sidecar 打包（排除 telegram/slack/lark 等 channel 依赖）内联在脚本中。`biscuitbot/desktop/` 含 pywebview 桌面入口（`run_desktop`）与 sidecar 看门狗（靠 `BISCUITBOT_PARENT_PID` 探测壳存活，每 5s `os.kill(pid,0)`）。
+桌面应用 = Tauri 2 壳（`src-tauri/`，系统 WebView 渲染 WebUI）+ PyInstaller onedir 打包的无头 Python gateway（sidecar 子进程）。构建脚本 `scripts/build-desktop.sh`（macOS/Linux）、`scripts/build-desktop.ps1`（Windows），sidecar 打包（排除 telegram/slack/lark 等 channel 依赖）内联在脚本中。`biscuitbot/desktop/` 含无头 gateway 运行时（`start_gateway`）与 sidecar 看门狗（靠 `BISCUITBOT_PARENT_PID` 探测壳存活，每 5s `os.kill(pid,0)`）。
 
 改完前端需重跑 `scripts/build-desktop.sh`（dist 嵌在 PyInstaller bundle 里）。
 

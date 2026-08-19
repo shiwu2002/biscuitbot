@@ -58,7 +58,6 @@ dependencies = [
     "filelock>=3.25.2",
     "pynput>=1.7.6,<2.0.0",
     "pyserial>=3.5,<4.0.0",
-    "pywebview>=5.0,<6.0.0; sys_platform == 'darwin' or sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]

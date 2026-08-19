@@ -1,7 +1,7 @@
 # 构建 biscuitbot 桌面应用（Windows）。
 #
 # 产物：
-#   - 安装包     src-tauri\target\release\bundle\nsis\*.exe
+#   - 安装包     output\windows\*.exe
 #   - sidecar    src-tauri\binaries\biscuitbot-sidecar\（onedir 目录）
 #
 # 前置要求：
@@ -27,8 +27,11 @@ Set-Location $Root
 
 $VenvPython = Join-Path $Root ".venv\Scripts\python.exe"
 $PyInstaller = Join-Path $Root ".venv\Scripts\pyinstaller.exe"
-$DistDir = Join-Path $Root "dist"
+$OutputDir = Join-Path $Root "output\windows"
+$DistDir = Join-Path $OutputDir "dist"
+$WorkDir = Join-Path $OutputDir "build"
 $BinariesDir = Join-Path $Root "src-tauri\binaries"
+New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
 Write-Info "==> 1/5 构建 WebUI（webui/dist → biscuitbot/web/dist）"
 Set-Location (Join-Path $Root "webui")
@@ -63,21 +66,36 @@ $Excludes = @(
     "--exclude-module", "discord",
     "--exclude-module", "matrix_nio",
     "--exclude-module", "wechatpy",
-    "--exclude-module", "pywebview",
     "--exclude-module", "questionary",
     "--exclude-module", "pymupdf",
-    "--exclude-module", "qrcode",
-    "--exclude-module", "PySide6",
-    "--exclude-module", "PyQt6"
+    "--exclude-module", "qrcode"
 )
+# TTS 适配器与 SDK 通过字符串/函数内动态导入（tts_registry.load_adapter 用
+# import_module、provider 内函数级 import dashscope/edge_tts），PyInstaller
+# 静态分析捕捉不到，须显式收集，否则桌面端 text_to_speech 会 ModuleNotFoundError
+# 或报「未安装 xxx SDK」。dashscope 用 --collect-all 以连其 tts_v2 子模块与
+# websocket-client 依赖一并收进。
+$HiddenImports = @(
+    "--hidden-import", "biscuitbot.providers.tts",
+    "--collect-all", "dashscope"
+)
+# 工具模块由 ToolLoader 动态导入（pkgutil.iter_modules + import_module），
+# PyInstaller 静态分析捕捉不到，须显式收集，否则桌面端缺 cinematic_director /
+# discover / spawn / employee / employee_discover / knowledge / search /
+# long_task / text_to_speech 等按需发现工具（含 _cinematic 下划线子包）。
 
 & $VenvPython -m PyInstaller --noconfirm --clean --onedir --windowed `
+    --distpath "$DistDir" `
+    --workpath "$WorkDir" `
     --paths "$Root" `
     --collect-submodules biscuitbot.channels `
+    --collect-submodules biscuitbot.agent.tools `
     --name biscuitbot-sidecar `
     --add-data "biscuitbot/web/dist;biscuitbot/web/dist" `
     --add-data "biscuitbot/templates;biscuitbot/templates" `
     --add-data "biscuitbot/skills;biscuitbot/skills" `
+    --add-data "biscuitbot/agent/tools/docs;biscuitbot/agent/tools/docs" `
+    @HiddenImports `
     @Excludes `
     scripts/desktop_sidecar_main.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller 打包失败" }
@@ -111,6 +129,10 @@ bun run tauri build --bundles nsis
 if ($LASTEXITCODE -ne 0) { throw "tauri build 失败" }
 Set-Location $Root
 
+# 将最终安装包复制到输出目录（NSIS 安装包仍留在 src-tauri\target 作为构建缓存）
+$NsisDir = Join-Path $Root "src-tauri\target\release\bundle\nsis"
+Copy-Item -Path (Join-Path $NsisDir "*.exe") -Destination $OutputDir -Force
+
 Write-Host ""
 Write-Host "构建完成！产物："
-Get-ChildItem (Join-Path $Root "src-tauri\target\release\bundle") -Recurse -Include *.exe | ForEach-Object { Write-Host "  $($_.FullName)" }
+Get-ChildItem $OutputDir -Filter *.exe | ForEach-Object { Write-Host "  $($_.FullName)" }
