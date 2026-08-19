@@ -6,6 +6,8 @@
 - 生成视频 ``media/generated_video/YYYY-MM-DD/vid_<12hex>.mp4`` + sidecar ``.json``
 - 生成文档 ``media/api/*_report.docx`` 等（外部 API 服务器产出，无 sidecar）
 - TTS 音频 ``<workspace>/generated/tts/<date>/tts_<12hex>.mp3``（无 sidecar）
+- 渠道入站媒体 ``media/channels/<channel>/...``（微信/飞书/钉钉/QQ/邮件/企业微信等
+  下载的用户媒体，无 sidecar，按扩展名推断 kind）
 
 图片/视频/文档都在 media 根内，直接用 ``sign_media`` 签名；TTS 在 media 根外，先
 **稳定 staging** 到 ``media/websocket/``（按源路径 sha256 定名，幂等）再签名，
@@ -50,7 +52,30 @@ _MEDIA_ASSET_DIRS: tuple[tuple[str, str, frozenset[str]], ...] = (
 
 _TTS_REL_DIR = Path("generated") / "tts"
 
+# 渠道入站媒体统一目录（media/channels/<channel>）。与生成资产分开，专门存放
+# 各渠道下载的用户媒体。按文件扩展名推断 kind，未知类型归为 document（列表可见）。
+_CHANNEL_ASSET_DIR = "channels"
+_CHANNEL_IMAGE_EXTS = _IMAGE_EXTS | {".svg", ".bmp", ".ico"}
+_CHANNEL_VIDEO_EXTS = _VIDEO_EXTS | {".m4v", ".avi", ".mkv", ".3gp"}
+_CHANNEL_AUDIO_EXTS = _AUDIO_EXTS | {".silk", ".amr", ".aac", ".opus", ".flac", ".wma"}
+# 顺序敏感：先匹配图片/视频/音频，最后 document；未知后缀走 document 兜底。
+_CHANNEL_KIND_EXTS: tuple[tuple[str, frozenset[str]], ...] = (
+    ("image", _CHANNEL_IMAGE_EXTS),
+    ("video", _CHANNEL_VIDEO_EXTS),
+    ("audio", _CHANNEL_AUDIO_EXTS),
+    ("document", _DOCUMENT_EXTS),
+)
+
 SignedMediaPath = Callable[[Path], str | None]
+
+
+def _channel_kind_for_suffix(suffix: str) -> str:
+    """按扩展名推断渠道媒体 kind；未知/无扩展名归 document（列表可见）。"""
+    suffix = suffix.lower()
+    for kind, exts in _CHANNEL_KIND_EXTS:
+        if suffix in exts:
+            return kind
+    return "document"
 
 
 def _iso_from_mtime(path: Path) -> str:
@@ -84,6 +109,7 @@ def _asset_item(
     created_at: str,
     caption: str,
     media_url: str,
+    channel: str = "",
 ) -> dict[str, Any]:
     return {
         "id": asset_id,
@@ -93,6 +119,7 @@ def _asset_item(
         "created_at": created_at,
         "caption": caption,
         "media_url": media_url,
+        "channel": channel,
     }
 
 
@@ -174,14 +201,45 @@ def _scan_tts_assets(
     return out
 
 
+def _scan_channel_assets(
+    media_root: Path,
+    sign_media: SignedMediaPath | None,
+) -> list[dict[str, Any]]:
+    """扫描 ``media/channels/**`` 下的渠道入站媒体，按扩展名推断 kind。"""
+    root = media_root / _CHANNEL_ASSET_DIR
+    if not root.is_dir():
+        return []
+    out: list[dict[str, Any]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file() or path.suffix.lower() == ".json":
+            continue
+        rel = path.relative_to(root)
+        channel = rel.parts[0] if len(rel.parts) > 1 else ""
+        media_url = sign_media(path) if sign_media is not None else None
+        out.append(
+            _asset_item(
+                path.stem,
+                path.name,
+                _channel_kind_for_suffix(path.suffix),
+                _file_size(path),
+                _iso_from_mtime(path),
+                caption="",
+                media_url=media_url or "",
+                channel=channel,
+            )
+        )
+    return out
+
+
 def assets_payload(sign_media: SignedMediaPath | None = None) -> dict[str, Any]:
-    """列出所有生成资产，按 created_at 降序。"""
+    """列出所有生成资产与渠道入站媒体，按 created_at 降序。"""
     config = load_config()
     workspace = config.workspace_path
     media_root = get_media_dir()
     items: list[dict[str, Any]] = []
     for subdir, kind, exts in _MEDIA_ASSET_DIRS:
         items.extend(_scan_media_assets(media_root, subdir, kind, exts, sign_media))
+    items.extend(_scan_channel_assets(media_root, sign_media))
     items.extend(_scan_tts_assets(workspace, sign_media))
     items.sort(key=lambda item: (item["created_at"], item["name"]), reverse=True)
     return {"assets": items}
@@ -213,20 +271,29 @@ def document_preview(query: QueryParams) -> dict[str, Any]:
     if not _ASSET_ID_RE.fullmatch(asset_id):
         raise WebUISettingsError("invalid asset id")
     media_root = get_media_dir()
-    root = media_root / "api"
-    if not root.is_dir():
-        raise WebUISettingsError("asset not found")
+    roots = [media_root / "api", media_root / _CHANNEL_ASSET_DIR]
     target: Path | None = None
-    for path in root.rglob(f"{asset_id}.*"):
-        if path.is_file() and path.suffix.lower() in _DOCUMENT_EXTS:
-            target = path
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in root.rglob(f"{asset_id}.*"):
+            if not path.is_file():
+                continue
+            # 生成文档只认文档扩展名；渠道媒体任何扩展名都可预览（未知类型提取为空）。
+            if root.name == _CHANNEL_ASSET_DIR or path.suffix.lower() in _DOCUMENT_EXTS:
+                target = path
+                break
+        if target is not None:
             break
     if target is None:
         raise WebUISettingsError("asset not found")
 
     from biscuitbot.utils.document import extract_text
 
-    text = extract_text(target) or ""
+    try:
+        text = extract_text(target) or ""
+    except Exception:
+        text = ""
     truncated = len(text) > _PREVIEW_MAX_CHARS
     if truncated:
         text = text[:_PREVIEW_MAX_CHARS]
@@ -279,6 +346,13 @@ def delete_asset(
                 continue
             if path.suffix.lower() in exts or path.suffix.lower() == ".json":
                 _safe_unlink(path, root)
+
+    # 渠道入站媒体（media/channels/<channel>）：按 id（文件 stem）删除
+    channel_root = media_root / _CHANNEL_ASSET_DIR
+    if channel_root.is_dir():
+        for path in channel_root.rglob(f"{asset_id}.*"):
+            if path.is_file() and path.suffix.lower() != ".json":
+                _safe_unlink(path, channel_root)
 
     # TTS 音频：源文件 + staging 副本
     root = workspace / _TTS_REL_DIR

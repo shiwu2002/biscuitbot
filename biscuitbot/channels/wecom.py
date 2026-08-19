@@ -396,7 +396,7 @@ class WecomChannel(BaseChannel):
                 )
                 return None
 
-            media_dir = get_media_dir("wecom")
+            media_dir = get_media_dir("channels/wecom")
             if not filename:
                 filename = fname or f"{media_type}_{hash(file_url) % 100000}"
             filename = _sanitize_filename(filename)

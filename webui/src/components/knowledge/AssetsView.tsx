@@ -9,6 +9,16 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { ImageLightbox } from "@/components/ImageLightbox";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { DocumentPreviewDialog } from "@/components/knowledge/DocumentPreviewDialog";
 import { VideoCard } from "@/components/knowledge/VideoCard";
@@ -46,6 +56,18 @@ const KIND_FALLBACK: Record<Asset["kind"], string> = {
   video: "视频",
   audio: "音频",
   document: "文档",
+};
+
+// 渠道入站媒体的渠道名 → 中文展示名（未知渠道回退为原始 id）。
+const CHANNEL_LABEL: Record<string, string> = {
+  weixin: "微信",
+  feishu: "飞书",
+  dingtalk: "钉钉",
+  qq: "QQ",
+  napcat: "QQ",
+  email: "邮件",
+  wecom: "企业微信",
+  websocket: "WebSocket",
 };
 
 function ImageThumb({
@@ -98,6 +120,8 @@ export function AssetsView() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
+  const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [pendingAsset, setPendingAsset] = useState<Asset | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,15 +140,9 @@ export function AssetsView() {
     };
   }, [token]);
 
-  const handleDelete = async (asset: Asset) => {
-    if (deleting) return;
-    const ok = window.confirm(
-      t("knowledge.assets.deleteConfirm", {
-        name: asset.name,
-        defaultValue: "确认删除「{{name}}」？",
-      }),
-    );
-    if (!ok) return;
+  const handleDelete = async () => {
+    const asset = pendingAsset;
+    if (!asset || deleting) return;
     setDeleting(asset.id);
     try {
       const payload = await deleteAsset(token, asset.id);
@@ -134,6 +152,7 @@ export function AssetsView() {
       setError((e as Error).message);
     } finally {
       setDeleting(null);
+      setPendingAsset(null);
     }
   };
 
@@ -141,8 +160,18 @@ export function AssetsView() {
     .filter((a) => a.kind === "image")
     .map((a) => ({ url: a.media_url, name: a.name }));
 
+  const channelOptions = Array.from(
+    new Set(
+      (assets ?? [])
+        .map((a) => a.channel)
+        .filter((c): c is string => typeof c === "string" && c.length > 0),
+    ),
+  ).sort();
+
   const visibleAssets = (assets ?? []).filter(
-    (a) => filter === "all" || a.kind === filter,
+    (a) =>
+      (filter === "all" || a.kind === filter) &&
+      (channelFilter === "all" || a.channel === channelFilter),
   );
 
   return (
@@ -194,6 +223,43 @@ export function AssetsView() {
               </button>
             ))}
           </div>
+
+          {channelOptions.length > 1 && (
+            <div className="mb-4 -mx-1 flex flex-wrap items-center gap-1.5">
+              <span className="px-1 text-[12px] font-medium text-muted-foreground">
+                {tx("knowledge.assets.channel", "渠道")}
+              </span>
+              <button
+                type="button"
+                aria-current={channelFilter === "all" ? "page" : undefined}
+                onClick={() => setChannelFilter("all")}
+                className={cn(
+                  "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
+                  channelFilter === "all"
+                    ? "bg-foreground/8 text-foreground"
+                    : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                )}
+              >
+                {tx("knowledge.assets.filter.all", "全部")}
+              </button>
+              {channelOptions.map((ch) => (
+                <button
+                  key={ch}
+                  type="button"
+                  aria-current={channelFilter === ch ? "page" : undefined}
+                  onClick={() => setChannelFilter(ch)}
+                  className={cn(
+                    "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
+                    channelFilter === ch
+                      ? "bg-foreground/8 text-foreground"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {CHANNEL_LABEL[ch] ?? ch}
+                </button>
+              ))}
+            </div>
+          )}
 
           {visibleAssets.length === 0 ? (
             <div className="cyber-glass-panel relative flex h-40 flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border border-dashed border-border/60 text-sm text-muted-foreground">
@@ -254,6 +320,11 @@ export function AssetsView() {
                         >
                           {tx(`knowledge.assets.kind.${asset.kind}`, KIND_FALLBACK[asset.kind])}
                         </span>
+                        {asset.channel ? (
+                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-blue-500/10 text-blue-700 dark:text-blue-300">
+                            {CHANNEL_LABEL[asset.channel] ?? asset.channel}
+                          </span>
+                        ) : null}
                         <span>{formatBytes(asset.size)}</span>
                       </div>
                     </div>
@@ -261,7 +332,7 @@ export function AssetsView() {
                       type="button"
                       size="sm"
                       variant="outline"
-                      onClick={() => handleDelete(asset)}
+                      onClick={() => setPendingAsset(asset)}
                       disabled={deleting === asset.id}
                       className={cn(
                         "h-8 rounded-[9px] text-[12.5px] text-destructive",
@@ -284,6 +355,50 @@ export function AssetsView() {
           )}
         </>
       ) : null}
+
+      <AlertDialog
+        open={pendingAsset !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAsset(null);
+        }}
+      >
+        <AlertDialogContent className="w-[min(calc(100vw-2rem),24rem)] gap-0 rounded-[28px] border border-white/70 bg-card/95 p-5 text-center shadow-[0_24px_80px_rgba(15,23,42,0.20)] backdrop-blur-xl data-[state=open]:zoom-in-95 sm:rounded-[28px]">
+          <AlertDialogHeader className="items-center space-y-0 text-center">
+            <div className="mb-5 grid h-16 w-16 place-items-center rounded-full bg-destructive/10 text-destructive">
+              <div className="grid h-9 w-9 place-items-center rounded-full border border-destructive/20 bg-destructive/5">
+                <Trash2 className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+              </div>
+            </div>
+            <AlertDialogTitle className="text-center text-[20px] font-semibold leading-tight tracking-[-0.02em] text-foreground">
+              {t("knowledge.assets.deleteConfirm", {
+                name: pendingAsset?.name ?? "",
+                defaultValue: "确认删除「{{name}}」？",
+              })}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="mt-3 max-w-[17rem] text-center text-[14px] leading-6 text-muted-foreground">
+              {t("deleteConfirm.description")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="mt-7 !grid grid-cols-1 gap-3 space-x-0 sm:grid-cols-2 sm:space-x-0">
+            <AlertDialogCancel
+              onClick={() => setPendingAsset(null)}
+              className="mt-0 h-11 w-full min-w-0 rounded-full border-0 bg-muted/70 px-5 text-[15px] font-semibold text-foreground shadow-none hover:bg-muted"
+            >
+              {t("deleteConfirm.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting !== null}
+              className="h-11 w-full min-w-0 !whitespace-normal rounded-full bg-destructive px-5 text-center text-[15px] font-semibold text-destructive-foreground shadow-[0_10px_25px_rgba(239,68,68,0.28)] hover:bg-destructive/90"
+            >
+              {deleting !== null ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+              ) : null}
+              {t("deleteConfirm.confirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ImageLightbox
         images={lightboxImages}

@@ -39,9 +39,75 @@ def get_media_dir(channel: str | None = None) -> Path:
     """返回媒体目录，可按渠道命名空间隔离。
 
     channel 非空时返回该渠道专属的媒体子目录，否则返回媒体根目录。
+    渠道入站媒体统一收敛到 ``media/channels/<channel>/``（如 ``channels/weixin``），
+    与生成资产（``generated`` / ``generated_video`` / ``api``）分开。
     """
     base = get_runtime_subdir("media")
     return ensure_dir(base / channel) if channel else base
+
+
+# 历史上直接把入站媒体写到 ``media/<channel>/`` 的渠道名，迁移时逐个收敛。
+_LEGACY_CHANNEL_MEDIA_NAMES: tuple[str, ...] = (
+    "weixin",
+    "feishu",
+    "dingtalk",
+    "qq",
+    "napcat",
+    "email",
+    "wecom",
+)
+
+
+def migrate_legacy_channel_media(media_root: Path | None = None) -> list[str]:
+    """把旧布局 ``media/<channel>/`` 的渠道入站媒体迁到 ``media/channels/<channel>/``。
+
+    仅迁移 ``_LEGACY_CHANNEL_MEDIA_NAMES`` 列出的已知渠道，不触碰 ``websocket`` /
+    ``generated`` / ``generated_video`` / ``api`` 等目录。同名文件冲突时旧文件加
+    ``_legacy<N>`` 后缀保留，不覆盖新文件。幂等：迁移后旧目录被清空移除。
+
+    返回实际迁移的渠道名列表。
+    """
+    import shutil
+
+    root = media_root or get_media_dir()
+    channels_dir = root / "channels"
+    migrated: list[str] = []
+
+    def _merge(src: Path, dst: Path) -> None:
+        dst.mkdir(parents=True, exist_ok=True)
+        for entry in sorted(src.iterdir(), key=lambda p: p.name):
+            dest = dst / entry.name
+            if entry.is_dir():
+                _merge(entry, dest)
+                continue
+            if dest.exists():
+                for i in range(1, 1000):
+                    alt = dest.with_suffix(f".legacy{i}{dest.suffix}")
+                    if not alt.exists():
+                        shutil.move(str(entry), str(alt))
+                        break
+                continue
+            shutil.move(str(entry), str(dest))
+
+    def _drop_empty(path: Path) -> None:
+        for child in list(path.iterdir()):
+            if child.is_dir():
+                _drop_empty(child)
+        try:
+            path.rmdir()
+        except OSError:
+            pass
+
+    for name in _LEGACY_CHANNEL_MEDIA_NAMES:
+        legacy = root / name
+        if not legacy.is_dir():
+            continue
+        _merge(legacy, channels_dir / name)
+        _drop_empty(legacy)
+        if not legacy.exists():
+            migrated.append(name)
+
+    return migrated
 
 
 def get_cron_dir() -> Path:

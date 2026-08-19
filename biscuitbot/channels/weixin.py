@@ -1136,7 +1136,7 @@ class WeixinChannel(BaseChannel):
                 return None
 
             # 保存到媒体目录
-            media_dir = get_media_dir("weixin")
+            media_dir = get_media_dir("channels/weixin")
             ext = _ext_for_type(media_type)
             if not filename:
                 # 未提供文件名时，基于时间戳和哈希生成

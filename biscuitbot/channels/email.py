@@ -883,7 +883,7 @@ class EmailChannel(BaseChannel):
             return []
 
         saved: list[Path] = []
-        media_dir = get_media_dir("email")
+        media_dir = get_media_dir("channels/email")
 
         for part in msg.walk():
             if len(saved) >= max_count:

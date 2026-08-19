@@ -776,7 +776,7 @@ class DingTalkChannel(BaseChannel):
                 return None
 
             # 保存到媒体目录（工作区可访问）
-            download_dir = get_media_dir("dingtalk") / sender_id
+            download_dir = get_media_dir("channels/dingtalk") / sender_id
             download_dir.mkdir(parents=True, exist_ok=True)
             file_path = download_dir / filename
             await asyncio.to_thread(file_path.write_bytes, file_resp.content)

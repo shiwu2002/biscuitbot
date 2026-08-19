@@ -11,6 +11,7 @@ from biscuitbot.config.paths import (
     get_runtime_subdir,
     get_workspace_path,
     is_default_workspace,
+    migrate_legacy_channel_media,
 )
 
 
@@ -47,3 +48,41 @@ def test_is_default_workspace_distinguishes_default_and_custom_paths() -> None:
     assert is_default_workspace(None) is True
     assert is_default_workspace(Path.home() / ".biscuitbot" / "workspace") is True
     assert is_default_workspace("~/custom-workspace") is False
+
+
+def _write(path: Path, data: bytes = b"x") -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+def test_migrate_legacy_channel_media_consolidates_and_skips_staging(tmp_path: Path) -> None:
+    _write(tmp_path / "weixin" / "img_1.png")
+    _write(tmp_path / "dingtalk" / "senderA" / "file.jpg")
+    _write(tmp_path / "websocket" / "staging.bin")  # staging 不迁移
+
+    migrated = migrate_legacy_channel_media(tmp_path)
+
+    assert set(migrated) == {"weixin", "dingtalk"}
+    assert (tmp_path / "channels" / "weixin" / "img_1.png").is_file()
+    assert (tmp_path / "channels" / "dingtalk" / "senderA" / "file.jpg").is_file()
+    assert not (tmp_path / "weixin").exists()
+    assert not (tmp_path / "dingtalk").exists()
+    assert (tmp_path / "websocket" / "staging.bin").is_file()
+
+
+def test_migrate_legacy_channel_media_does_not_overwrite_new_files(tmp_path: Path) -> None:
+    _write(tmp_path / "weixin" / "img_1.png", b"old")
+    _write(tmp_path / "channels" / "weixin" / "img_1.png", b"new")
+
+    migrate_legacy_channel_media(tmp_path)
+
+    assert (tmp_path / "channels" / "weixin" / "img_1.png").read_bytes() == b"new"
+    assert (tmp_path / "channels" / "weixin" / "img_1.legacy1.png").read_bytes() == b"old"
+    assert not (tmp_path / "weixin").exists()
+
+
+def test_migrate_legacy_channel_media_is_idempotent(tmp_path: Path) -> None:
+    _write(tmp_path / "feishu" / "img.png")
+
+    assert migrate_legacy_channel_media(tmp_path) == ["feishu"]
+    assert migrate_legacy_channel_media(tmp_path) == []

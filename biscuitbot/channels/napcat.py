@@ -88,7 +88,7 @@ class NapcatChannel(BaseChannel):
 
         self._ws: ClientConnection | None = None  # WebSocket 连接实例
         self._http: aiohttp.ClientSession | None = None  # HTTP 会话（图片下载）
-        self._media_root: Path = get_media_dir("napcat")  # 媒体文件根目录
+        self._media_root: Path = get_media_dir("channels/napcat")  # 媒体文件根目录
         self._self_id: int | None = None  # 机器人自身的 QQ 号
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}  # 待处理的 action 响应（echo → Future）
         self._processed_ids: deque[int] = deque(maxlen=2000)  # 已处理消息 ID 去重队列

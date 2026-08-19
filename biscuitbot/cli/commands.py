@@ -1018,6 +1018,13 @@ def _run_gateway(
     if open_browser_url:
         console.print(f"  WebUI 地址：[cyan]{open_browser_url}[/cyan]")
     sync_workspace_templates(config.workspace_path)
+    from biscuitbot.config.paths import migrate_legacy_channel_media
+
+    migrated_channels = migrate_legacy_channel_media()
+    if migrated_channels:
+        console.print(
+            f"[dim]已迁移旧渠道媒体目录 → media/channels/（{', '.join(migrated_channels)}）[/dim]"
+        )
     bus = MessageBus()
     runtime_events = RuntimeEventBus()
     try:

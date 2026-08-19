@@ -1151,7 +1151,7 @@ class FeishuChannel(BaseChannel):
             (file_path, content_text) - 下载失败时 file_path 为 None
         """
         loop = asyncio.get_running_loop()
-        media_dir = get_media_dir("feishu")
+        media_dir = get_media_dir("channels/feishu")
 
         data, filename = None, None
         fallback_filename = uuid.uuid4().hex

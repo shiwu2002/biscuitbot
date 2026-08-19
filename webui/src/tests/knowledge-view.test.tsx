@@ -190,7 +190,7 @@ describe("KnowledgeView 知识库视图", () => {
     expect(fetchDocumentPreview).toHaveBeenCalledWith("tok", "e9329aaeb3bc_report");
   });
 
-  it("删除资产走 confirm 并用返回值刷新列表", async () => {
+  it("删除资产走确认弹窗并用返回值刷新列表", async () => {
     vi.mocked(fetchAssets).mockResolvedValue({ assets: ASSETS });
     vi.mocked(deleteAsset).mockResolvedValue({
       assets: ASSETS.filter((a) => a.id !== "tts_1234567890ab"),
@@ -201,7 +201,10 @@ describe("KnowledgeView 知识库视图", () => {
     fireEvent.click(screen.getByRole("button", { name: "资产" }));
 
     const deleteButtons = await screen.findAllByRole("button", { name: "删除" });
-    fireEvent.click(deleteButtons[2]); // 第三个 = TTS
+    fireEvent.click(deleteButtons[2]); // 第三个 = TTS（打开确认弹窗）
+
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "删除" }));
 
     await waitFor(() => {
       expect(deleteAsset).toHaveBeenCalledWith("tok", "tts_1234567890ab");

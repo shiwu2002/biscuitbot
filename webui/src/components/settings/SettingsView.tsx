@@ -78,6 +78,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -2625,6 +2635,7 @@ function ProvidersSettings({
   } | null>(null);
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<string | null>(null);
+  const [pendingProvider, setPendingProvider] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const configuredProviders = settings.providers.filter((provider) => provider.configured);
@@ -2704,15 +2715,9 @@ function ProvidersSettings({
     }
   };
 
-  const deleteProvider = async (provider: SettingsPayload["providers"][number]) => {
-    if (deletingProvider) return;
-    const confirmed = window.confirm(
-      tx(
-        "settings.providers.deleteConfirm",
-        `确定删除厂商「${provider.label}」吗？其 API Key 与能力配置将被移除。`,
-      ),
-    );
-    if (!confirmed) return;
+  const deleteProvider = async () => {
+    const provider = settings.providers.find((p) => p.name === pendingProvider);
+    if (!provider || deletingProvider) return;
     setDeletingProvider(provider.name);
     setError(null);
     try {
@@ -2724,6 +2729,7 @@ function ProvidersSettings({
       setError((err as Error).message);
     } finally {
       setDeletingProvider(null);
+      setPendingProvider(null);
     }
   };
 
@@ -2875,7 +2881,7 @@ function ProvidersSettings({
                   variant="destructive"
                   className="ml-auto"
                   disabled={deletingProvider === provider.name}
-                  onClick={() => deleteProvider(provider)}
+                  onClick={() => setPendingProvider(provider.name)}
                 >
                   {deletingProvider === provider.name
                     ? tx("settings.providers.deleting", "删除中…")
@@ -2899,6 +2905,50 @@ function ProvidersSettings({
             </div>
           </div>
         ) : null}
+
+        <AlertDialog
+          open={pendingProvider === provider.name}
+          onOpenChange={(open) => {
+            if (!open) setPendingProvider(null);
+          }}
+        >
+          <AlertDialogContent className="w-[min(calc(100vw-2rem),24rem)] gap-0 rounded-[28px] border border-white/70 bg-card/95 p-5 text-center shadow-[0_24px_80px_rgba(15,23,42,0.20)] backdrop-blur-xl data-[state=open]:zoom-in-95 sm:rounded-[28px]">
+            <AlertDialogHeader className="items-center space-y-0 text-center">
+              <div className="mb-5 grid h-16 w-16 place-items-center rounded-full bg-destructive/10 text-destructive">
+                <div className="grid h-9 w-9 place-items-center rounded-full border border-destructive/20 bg-destructive/5">
+                  <Trash2 className="h-5 w-5" strokeWidth={2.4} aria-hidden />
+                </div>
+              </div>
+              <AlertDialogTitle className="text-center text-[20px] font-semibold leading-tight tracking-[-0.02em] text-foreground">
+                {tx(
+                  "settings.providers.deleteConfirm",
+                  `确定删除厂商「${provider.label}」吗？其 API Key 与能力配置将被移除。`,
+                )}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="mt-3 max-w-[17rem] text-center text-[14px] leading-6 text-muted-foreground">
+                {t("deleteConfirm.description")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter className="mt-7 !grid grid-cols-1 gap-3 space-x-0 sm:grid-cols-2 sm:space-x-0">
+              <AlertDialogCancel
+                onClick={() => setPendingProvider(null)}
+                className="mt-0 h-11 w-full min-w-0 rounded-full border-0 bg-muted/70 px-5 text-[15px] font-semibold text-foreground shadow-none hover:bg-muted"
+              >
+                {t("deleteConfirm.cancel")}
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={deleteProvider}
+                disabled={deletingProvider !== null}
+                className="h-11 w-full min-w-0 !whitespace-normal rounded-full bg-destructive px-5 text-center text-[15px] font-semibold text-destructive-foreground shadow-[0_10px_25px_rgba(239,68,68,0.28)] hover:bg-destructive/90"
+              >
+                {deletingProvider !== null ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />
+                ) : null}
+                {t("deleteConfirm.confirm")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   };

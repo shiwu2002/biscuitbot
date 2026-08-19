@@ -205,3 +205,43 @@ def test_document_preview_rejects_missing_or_bad_id(tmp_path, monkeypatch) -> No
         document_preview({"id": ["../x"]})  # 非法 id
     with pytest.raises(WebUISettingsError):
         document_preview({"id": [IMG_ID]})  # 非文档资产
+
+
+def test_assets_payload_lists_channel_inbound_media(tmp_path, monkeypatch) -> None:
+    """渠道入站媒体（media/channels/<channel>）按扩展名推断 kind，caption 记渠道。"""
+    media_root, _ = _make_env(tmp_path, monkeypatch)
+    _write(media_root / "channels" / "weixin" / "msg_abc.png")
+    _write(media_root / "channels" / "weixin" / "voice_def.silk")
+    _write(media_root / "channels" / "email" / "report.pdf")
+
+    assets = assets_payload(_fake_sign)["assets"]
+    assert len(assets) == 3
+    by_id = {a["id"]: a for a in assets}
+    assert by_id["msg_abc"]["kind"] == "image"
+    assert by_id["msg_abc"]["channel"] == "weixin"
+    assert by_id["voice_def"]["kind"] == "audio"
+    assert by_id["voice_def"]["channel"] == "weixin"
+    assert by_id["report"]["kind"] == "document"
+    assert by_id["report"]["channel"] == "email"
+
+
+def test_channel_unknown_extension_maps_to_document(tmp_path, monkeypatch) -> None:
+    """无扩展名/未知后缀（如 zip、二进制）归 document，列表可见不报错。"""
+    media_root, _ = _make_env(tmp_path, monkeypatch)
+    _write(media_root / "channels" / "wecom" / "archive.zip")
+    _write(media_root / "channels" / "weixin" / "noext")
+
+    assets = assets_payload(_fake_sign)["assets"]
+    by_id = {a["id"]: a for a in assets}
+    assert by_id["archive"]["kind"] == "document"
+    assert by_id["noext"]["kind"] == "document"
+
+
+def test_delete_asset_removes_channel_media(tmp_path, monkeypatch) -> None:
+    media_root, _ = _make_env(tmp_path, monkeypatch)
+    img = media_root / "channels" / "weixin" / "msg_abc.png"
+    _write(img)
+
+    payload = delete_asset({"id": ["msg_abc"]}, _fake_sign)
+    assert not img.exists()
+    assert payload["assets"] == []

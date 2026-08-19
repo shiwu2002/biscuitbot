@@ -140,7 +140,7 @@ class QQConfig(Base):
     msg_format: Literal["plain", "markdown"] = "plain"  # 消息格式：纯文本或 Markdown
     ack_message: str = "⏳ Processing..."  # 收到消息后的确认回复
 
-    # 可选：入站附件保存目录。为空时使用 biscuitbot 的 get_media_dir("qq")
+    # 可选：入站附件保存目录。为空时使用 biscuitbot 的 get_media_dir("channels/qq")
     media_dir: str = ""
 
     # 下载调优参数
@@ -184,11 +184,11 @@ class QQChannel(BaseChannel):
             root = Path(self.config.media_dir).expanduser()
         elif get_media_dir:
             try:
-                root = Path(get_media_dir("qq"))
+                root = Path(get_media_dir("channels/qq"))
             except Exception:
-                root = Path.home() / ".biscuitbot" / "media" / "qq"
+                root = Path.home() / ".biscuitbot" / "media" / "channels" / "qq"
         else:
-            root = Path.home() / ".biscuitbot" / "media" / "qq"
+            root = Path.home() / ".biscuitbot" / "media" / "channels" / "qq"
 
         root.mkdir(parents=True, exist_ok=True)
         self.logger.info("media directory: {}", str(root))

@@ -1127,6 +1127,8 @@ export interface Asset {
   created_at: string;
   caption: string;
   media_url: string;
+  /** 渠道入站媒体所属渠道（如 weixin/feishu/email）；生成资产为空字符串。 */
+  channel?: string;
 }
 
 /** Base64-encoded image attached to an outbound ``message`` envelope.
