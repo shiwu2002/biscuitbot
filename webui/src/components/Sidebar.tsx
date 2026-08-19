@@ -279,6 +279,7 @@ function SidebarActionButton({
 }) {
   const title = shortcut ? `${label} (${shortcut})` : collapsed ? label : undefined;
 
+  const isNewChat = label.includes("新") || label.includes("新建") || label.toLowerCase().includes("new");
   return (
     <Button
       type="button"
@@ -289,13 +290,19 @@ function SidebarActionButton({
       title={title}
       onClick={() => onClick()}
       className={cn(
-        "group relative h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
-        "transition-[width,padding,border-radius,color,background-color] duration-300 ease-out",
+        "group relative h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground cyber-btn-glow",
+        "transition-[width,padding,border-radius,color,background-color,box-shadow,transform] duration-300 ease-out",
         collapsed
           ? "w-9 justify-center gap-0 rounded-xl px-0"
           : "w-full justify-start gap-2 px-3 text-[12.5px]",
-        active && "cyber-nav-active shadow-none",
-        !active && "hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
+        active && "cyber-nav-active",
+        !active
+          && !isNewChat
+          && "hover:bg-[hsl(var(--cyber-glow)/0.10)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35),0_0_14px_hsl(var(--cyber-glow-soft)/0.25)]",
+        // "新建对话"按钮：霓虹渐变背景 + 环绕光晕 + 悬浮抬升
+        isNewChat
+          && !active
+          && "!bg-gradient-to-r !from-[hsl(var(--cyber-violet)/0.22)] !via-[hsl(var(--cyber-glow)/0.28)] !to-[hsl(var(--cyber-violet)/0.22)] !border !border-[hsl(var(--cyber-glow)/0.45)] !text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.25),0_0_18px_hsl(var(--cyber-glow)/0.25),0_0_30px_hsl(var(--cyber-violet)/0.18)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.55),0_0_22px_hsl(var(--cyber-glow)/0.38),0_0_40px_hsl(var(--cyber-violet)/0.28)] hover:-translate-y-px",
         className,
       )}
     >

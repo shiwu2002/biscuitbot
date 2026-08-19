@@ -147,9 +147,9 @@ export function MessageBubble({
         {hasText ? (
           <p
             className={cn(
-              "ml-auto w-fit rounded-[18px] border border-sky-500/15 bg-gradient-to-br from-sky-500/14 to-cyan-500/8 px-4 py-2",
-              "dark:border-sky-400/20 dark:from-sky-400/16 dark:to-cyan-400/8",
-              "text-left text-[16px]/[1.75] whitespace-pre-wrap break-words",
+              "ml-auto w-fit rounded-[18px] border px-4 py-2 shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35),0_0_18px_hsl(var(--cyber-glow)/0.22),0_0_32px_hsl(var(--cyber-violet)/0.12)]",
+              "border-[hsl(var(--cyber-glow)/0.55)] bg-[linear-gradient(135deg,hsl(var(--cyber-violet)/0.22),hsl(var(--cyber-glow)/0.18)_60%,hsl(var(--cyber-glow)/0.3))]",
+              "text-left text-[16px]/[1.75] whitespace-pre-wrap break-words text-foreground",
             )}
           >
             <CliAppMentionText
@@ -643,14 +643,14 @@ export function ReasoningBubble({
         type="button"
         onClick={onToggle}
         className={cn(
-          "group flex w-full items-center gap-2 rounded-md px-2 py-1.5",
-          "text-xs text-muted-foreground transition-colors hover:bg-muted/45",
+          "group flex w-full items-center gap-2 rounded-xl border border-[hsl(var(--cyber-violet)/0.35)] bg-[linear-gradient(90deg,hsl(var(--cyber-violet)/0.14),hsl(var(--cyber-glow)/0.08))] px-3 py-2 shadow-[0_0_0_1px_hsl(var(--cyber-violet)/0.22),0_0_18px_hsl(var(--cyber-violet)/0.18)]",
+          "text-xs text-[hsl(var(--cyber-glow))] transition-colors hover:bg-[hsl(var(--cyber-violet)/0.22)] hover:text-[hsl(var(--cyber-glow))]",
         )}
         aria-expanded={open}
         aria-live={streaming ? "polite" : undefined}
       >
         <Sparkles
-          className={cn("h-3.5 w-3.5", streaming && "animate-pulse")}
+          className={cn("h-3.5 w-3.5 drop-shadow-[0_0_5px_hsl(var(--cyber-violet)/0.85)]", streaming && "animate-pulse")}
           aria-hidden
         />
         <StreamingLabelSheen active={streaming} className="min-w-0 flex-1 text-left">
@@ -669,7 +669,7 @@ export function ReasoningBubble({
       {open && text.length > 0 && (
         <div
           className={cn(
-            "mt-1 min-w-0 border-l border-muted-foreground/20 pl-3",
+            "mt-1.5 min-w-0 rounded-xl border-l border-[hsl(var(--cyber-violet)/0.55)] bg-[hsl(var(--cyber-violet)/0.06)] pl-3.5 pr-3 py-2 shadow-[inset_0_1px_0_hsl(var(--cyber-glow)/0.06)]",
             !embeddedInCluster && "animate-in fade-in-0 slide-in-from-top-1 duration-200",
           )}
         >

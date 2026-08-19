@@ -1622,16 +1622,17 @@ export function ThreadComposer({
       ) : null}
       <div
         className={cn(
-          "group/composer relative mx-auto flex w-full flex-col overflow-visible transition-all duration-200",
-          "after:pointer-events-none after:absolute after:inset-[-1px] after:rounded-[inherit] after:border after:border-blue-300/75 after:opacity-0 after:transition-opacity after:duration-200 focus-within:after:opacity-100 dark:after:border-blue-400/55",
+          "group/composer relative mx-auto flex w-full flex-col overflow-visible transition-[box-shadow,border-color,transform] duration-250",
+          // 霓虹聚焦边框：青蓝→紫→品红全息扫光描边
+          "after:pointer-events-none after:absolute after:inset-[-1.5px] after:rounded-[inherit] after:p-px after:bg-[linear-gradient(120deg,hsl(var(--cyber-glow)/0),hsl(var(--cyber-glow)/0.75),hsl(var(--cyber-violet)/0.55),hsl(var(--cyber-magenta)/0.55),hsl(var(--cyber-glow)/0))] after:bg-[length:300%_100%] after:bg-[position:100%_50%] after:opacity-0 after:transition-all after:duration-500 after:ease-out after:[mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] after:[mask-composite:exclude] after:[webkit-mask-composite:xor] focus-within:after:opacity-100 focus-within:after:bg-[position:0_50%] focus-within:after:animate-[cyber-holo-shift_6s_linear_infinite]",
           isHero
-            ? "max-w-[58rem] rounded-[28px] border border-black/[0.035] bg-card shadow-[0_20px_55px_rgba(15,23,42,0.08)] dark:border-white/[0.06] dark:shadow-[0_24px_55px_rgba(0,0,0,0.34)]"
-            : "max-w-[49.5rem] rounded-[22px] border border-black/[0.035] bg-card shadow-[0_12px_30px_rgba(15,23,42,0.07)] dark:border-white/[0.06] dark:shadow-[0_16px_34px_rgba(0,0,0,0.28)]",
-          "focus-within:border-blue-300/75 dark:focus-within:border-blue-400/55",
+            ? "cyber-glass-panel cyber-scanline max-w-[58rem] rounded-[28px]"
+            : "cyber-glass-panel cyber-scanline max-w-[49.5rem] rounded-[22px]",
+          "hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.32),0_0_30px_hsl(var(--cyber-glow)/0.22),0_0_50px_hsl(var(--cyber-violet)/0.16)] focus-within:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.65),0_0_28px_hsl(var(--cyber-glow)/0.5),0_0_55px_hsl(var(--cyber-violet)/0.3)]",
           disabled && "opacity-60",
           isDragging && "ring-2 ring-primary/40 motion-reduce:ring-0 motion-reduce:border-primary",
           goalState?.active &&
-            "goal-shell-glow ring-1 ring-sky-400/35 motion-reduce:ring-sky-400/25 dark:ring-sky-400/45",
+            "ring-1 ring-sky-400/35 motion-reduce:ring-sky-400/25 dark:ring-sky-400/45",
         )}
       >
         {queuedPrompts.length > 0 ? (
@@ -1759,10 +1760,10 @@ export function ThreadComposer({
               aria-label={t("thread.composer.attachImage")}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
-                "rounded-full text-muted-foreground hover:text-foreground",
+                "rounded-full text-muted-foreground hover:text-foreground cyber-btn-glow",
                 isHero
-                  ? "h-8 w-8 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card"
-                  : "h-9 w-9 border border-border/55 bg-card shadow-[0_2px_8px_rgba(15,23,42,0.05)] hover:bg-card",
+                  ? "h-8 w-8 border border-[hsl(var(--cyber-panel-border)/0.35)] bg-[hsl(var(--card)/0.5)] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.08)] hover:bg-[hsl(var(--cyber-glow)/0.1)]"
+                  : "h-9 w-9 border border-[hsl(var(--cyber-panel-border)/0.35)] bg-[hsl(var(--card)/0.5)] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.08)] hover:bg-[hsl(var(--cyber-glow)/0.1)]",
               )}
             >
               <Plus className={cn(isHero ? "h-[18px] w-[18px]" : "h-4 w-4")} />
@@ -1856,14 +1857,14 @@ export function ThreadComposer({
               }
               onClick={showStopButton ? handleStop : modelNeedsSetup ? onModelBadgeClick : undefined}
               className={cn(
-                "rounded-full transition-transform",
+                "rounded-full transition-all duration-200",
                 showStopButton
-                  ? "border border-border/70 bg-card text-foreground/85 shadow-[0_3px_10px_rgba(15,23,42,0.08)] hover:bg-muted/65 hover:text-foreground disabled:text-muted-foreground/50"
+                  ? "border border-[hsl(var(--cyber-panel-border)/0.45)] bg-[hsl(var(--card)/0.5)] text-foreground/85 shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.12)] hover:bg-[hsl(var(--cyber-glow)/0.1)] hover:text-foreground disabled:text-muted-foreground/50"
                   : isHero
-                    ? "border border-foreground bg-foreground text-background shadow-[0_4px_12px_rgba(15,23,42,0.20)] hover:bg-foreground/90 disabled:border-foreground disabled:bg-foreground disabled:text-background"
-                    : "border border-foreground bg-foreground text-background shadow-[0_3px_10px_rgba(15,23,42,0.18)] hover:bg-foreground/90 disabled:border-foreground disabled:bg-foreground disabled:text-background",
+                    ? "!bg-gradient-to-br !from-[hsl(var(--cyber-glow))] !to-[hsl(var(--cyber-violet))] !text-[hsl(var(--primary-foreground))] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.55),0_0_14px_hsl(var(--cyber-glow)/0.55),0_0_26px_hsl(var(--cyber-violet)/0.35)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.75),0_0_18px_hsl(var(--cyber-glow)/0.7),0_0_36px_hsl(var(--cyber-violet)/0.45)] disabled:!opacity-70 disabled:!shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]"
+                    : "!bg-gradient-to-br !from-[hsl(var(--cyber-glow))] !to-[hsl(var(--cyber-violet))] !text-[hsl(var(--primary-foreground))] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.5),0_0_12px_hsl(var(--cyber-glow)/0.45),0_0_22px_hsl(var(--cyber-violet)/0.3)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.75),0_0_16px_hsl(var(--cyber-glow)/0.6),0_0_30px_hsl(var(--cyber-violet)/0.4)] disabled:!opacity-70 disabled:!shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3)]",
                 isHero ? "h-8 w-8" : "h-9 w-9",
-                (canSend || canOpenModelSettings || showStopButton) && "hover:scale-[1.03] active:scale-95",
+                (canSend || canOpenModelSettings || showStopButton) && "hover:scale-[1.04] active:scale-95",
               )}
             >
               {showStopButton ? (

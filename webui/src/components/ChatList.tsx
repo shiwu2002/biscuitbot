@@ -262,11 +262,11 @@ export const ChatList = memo(function ChatList({
                       <li key={s.key} className="min-w-0">
                         <div
                           className={cn(
-                            "group flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 text-[13px] transition-colors",
+                            "group flex min-w-0 max-w-full items-center gap-2 rounded-xl px-2 text-[13px] transition-[box-shadow,background-color,color,transform] duration-200",
                             compact ? "min-h-7" : "min-h-8",
                             active
-                              ? "bg-primary/12 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.25)]"
-                              : "text-sidebar-foreground/82 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+                              ? "cyber-rail-active text-primary shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.55),0_0_14px_hsl(var(--cyber-glow-soft)/0.35),inset_0_0_0_1px_hsl(var(--cyber-glow)/0.35)] bg-[hsl(var(--cyber-glow)/0.09)]"
+                              : "text-sidebar-foreground/82 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-sidebar-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.22)]",
                           )}
                         >
                           {s.employee && employeesById.has(s.employee) ? (
