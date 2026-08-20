@@ -110,7 +110,7 @@ cinematic_director(
      "lens":"35mm","action":"主角在暴雪中奔跑","emotion":"紧张",
      "sound":"风声呼啸","dialogue":true,
      "asset_refs":["CHAR001","LOC001"],
-     "spatial":{...}},   # 空间站位（后续补充也可）
+     "spatial":{...}},   # 空间站位（可选，写剧本没给就用第五步 plan_shot 的 spatial 补）
     ...
   ],
   story={
@@ -245,7 +245,10 @@ cinematic_director(action="lock_assets", project_id="<slug>")
 
 ## 第五步：分镜（storyboard）
 
-对每个镜头补充摄影参数（景别/机位/焦段/运镜/景深/光影已在剧本层给出，这里细化机位）：
+对每个镜头补充摄影参数（景别/机位/焦段/运镜/景深/光影已在剧本层给出，这里细化机位）。
+**写剧本时没给空间站位的镜头，用 `plan_shot` 的 `spatial` 参数回填**——设了平面图后，
+`compile_prompt` 会硬校验每个镜头的 `spatial.characters`（人物站位坐标），缺了会报
+「missing spatial.characters」，此时不需要重写剧本，补写 `spatial` 即可解开：
 
 ```
 cinematic_director(
@@ -256,9 +259,20 @@ cinematic_director(
   lens="35mm",
   movement="Tracking Shot",
   depth="浅景深",
-  lighting="冷色逆光"
+  lighting="冷色逆光",
+  spatial={                        # 可选：本镜头空间站位（人物/道具/机位，2D 俯视坐标）
+    "characters":[
+      {"asset_id":"CHAR001","position":{"x":20,"y":15},"facing":90},   # 朝东
+      {"asset_id":"CHAR002","position":{"x":15,"y":12}}
+    ],
+    "camera":{"position":{"x":10,"y":5},"target":{"x":20,"y":15}}
+  }
 )
 ```
+
+> `spatial.characters[].asset_id` 必须是本镜头 `asset_refs` 里的 CHAR；坐标在
+> 平面图界内；机位 `position`/`target` 同样须在界内。所有镜头 plan 完后工具自动进入
+> `video_generation`，此时若发现缺站位仍可再调 `plan_shot` 补 `spatial`。
 
 ***
 
@@ -401,6 +415,7 @@ ffprobe -v error -show_entries format=duration,size -show_entries stream=width,h
 | ------- | ------------------------------ | ----------------------------------- |
 | 跳阶段     | 状态机硬门                          | 每步前先 `status` 确认，按序执行               |
 | 忘做空间规划  | 资产/镜头无坐标                       | `set_floorplan` 是强制阶段，先生成资产前必做      |
+| 镜头缺站位    | compile\_prompt 报「missing spatial.characters」 | `plan_shot` 补 `spatial`（characters 含 asset\_id+position），不用重写剧本 |
 | 自己写剧本   | 对白互动少、角色无个性                    | 必须调用宫本（screenwriter）                |
 | 角色无三视图  | add\_asset 报错                  | CHAR 参考图必须是正/侧/背三视图合成图              |
 | 角色无声线   | add\_asset 报错                  | CHAR 必须先生成 `voice`                  |

@@ -714,11 +714,16 @@ def lock_assets(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
 
 
 def plan_shot(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """补摄影参数（storyboard 阶段）；全部分镜齐备后自动 → video_generation。"""
+    """补摄影参数 + 镜头空间站位（storyboard 阶段）；全部分镜齐备后自动 → video_generation。
+
+    ``spatial`` 可选：写剧本时镜头未给空间站位、且已设平面图的情况下，
+    compile_prompt 会被「missing spatial.characters」硬阻塞，这里提供回填入口
+    （storyboard / video_generation 阶段均可补写）。
+    """
     project_id = validate_project_id(kwargs.get("project_id"))
     check_role(kwargs.get("role"), "plan_shot")
     data = store.load(project_id)
-    require_stage(data["stage"], "plan_shot", "storyboard")
+    require_stage(data["stage"], "plan_shot", "storyboard", "video_generation")
 
     shot_id = kwargs.get("shot_id")
     shot = _get_shot(data, shot_id)
@@ -727,6 +732,10 @@ def plan_shot(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
         if kwargs.get(field) is not None:
             cin[field] = kwargs[field]
     shot["cinematography"] = cin
+
+    spatial = kwargs.get("spatial")
+    if spatial is not None:
+        shot["spatial"] = _parse_shot_spatial(spatial, shot.get("asset_refs", []), shot_id)
 
     if _all_shots_planned(data):
         data["stage"] = "video_generation"

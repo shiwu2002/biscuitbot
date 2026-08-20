@@ -905,3 +905,44 @@ def test_compile_prompt_allows_dialogue_shot_with_audio(tmp_path: Path) -> None:
     _act(store, "attach_audio", project_id="demo", shot_id="Shot001", audio="assets/voice001.mp3")
     result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
     assert result["audio_urls"] == ["assets/voice001.mp3"]
+
+
+def test_plan_shot_can_backfill_spatial_after_floorplan(tmp_path: Path) -> None:
+    """写剧本未带 spatial 时，compile_prompt 会被「missing spatial.characters」硬阻塞；
+    plan_shot 须能在 video_generation 阶段补写 spatial 解开死路。"""
+    store = _store(tmp_path)
+    _create_project(store)
+    # 写剧本：故意不带 spatial（对应智能体真实写法）
+    _act(store, "write_script", project_id="demo",
+         scenes=[{"id": "Scene001", "location": "雪林", "time": "黄昏",
+                  "function": "建立危机感", "duration": 10}],
+         shots=[{"id": "Shot001", "scene_id": "Scene001", "shot_size": "大全景",
+                 "camera": "无人机下降", "lens": "24mm", "action": "一家三口逃亡",
+                 "emotion": "恐惧", "sound": "风雪声",
+                 "asset_refs": ["CHAR001", "CHAR002", "LOC001"]}],
+         story=_story())
+    _review_script(store)
+    _act(store, "set_floorplan", project_id="demo", width=100, length=80)
+    _add_loc(store, "demo", "LOC001")
+    _add_char(store, "demo", "CHAR001")
+    _add_char(store, "demo", "CHAR002")
+    _review_assets(store)
+    _lock_assets(store)
+    # 只补摄影参数，不补 spatial → 单镜头全 part 后进入 video_generation
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001", movement="tracking")
+    assert store.load("demo")["stage"] == "video_generation"
+
+    # 复现死路：compile_prompt 硬阻塞
+    with pytest.raises(CinematicDirectorError, match="missing spatial.characters"):
+        _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+
+    # 修复：video_generation 阶段 plan_shot 补写 spatial → compile_prompt 放行
+    _act(store, "plan_shot", project_id="demo", shot_id="Shot001",
+         spatial={"characters": [
+             {"asset_id": "CHAR001", "position": {"x": 50, "y": 40}, "facing": 90},
+             {"asset_id": "CHAR002", "position": {"x": 45, "y": 36}, "facing": 0},
+         ],
+                  "camera": {"position": {"x": 30, "y": 20}, "target": {"x": 50, "y": 40}}})
+    result = _act(store, "compile_prompt", project_id="demo", shot_id="Shot001")
+    assert "error" not in result
+    assert result["prompt"].startswith("@CHAR001")

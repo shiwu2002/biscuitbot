@@ -155,6 +155,7 @@ def parameters_schema() -> dict[str, Any]:
         movement=StringSchema("运镜（Tracking Shot/Handheld…）。", nullable=True),
         depth=StringSchema("景深（浅景深/深景深）。", nullable=True),
         lighting=StringSchema("光影。", nullable=True),
+        spatial=_SHOT_SPATIAL_SCHEMA,
         # ---- record_qc ----
         character_score=IntegerSchema(description="人物一致度（0-100）。", minimum=0, maximum=100, nullable=True),
         scene_score=IntegerSchema(description="场景一致度（0-100）。", minimum=0, maximum=100, nullable=True),

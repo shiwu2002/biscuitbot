@@ -2,7 +2,7 @@
 name: seedance
 tier: user
 description: Seedance 视频生成的提示词创作与工作流指南（配合 generate_video 工具使用）。当需要为视频编写高质量提示词、规划分镜或迭代优化时使用；真正生成视频请直接调用 generate_video 工具，不要写脚本或 exec。
-metadata: {"biscuitbot":{"emoji":"🎬","requires":{"env":["ARK_API_KEY"]}}}
+metadata: {"biscuitbot":{"emoji":"🎬"}}
 ---
 
 # Seedance 视频提示词指南
