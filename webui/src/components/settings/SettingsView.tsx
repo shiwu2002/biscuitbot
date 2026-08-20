@@ -386,7 +386,7 @@ const DEFAULT_VIDEO_GENERATION_FORM: VideoGenerationSettingsUpdate = {
   defaultRatio: "16:9",
   defaultDuration: 5,
   defaultResolution: "",
-  generateAudio: false,
+  generateAudio: true,
   watermark: false,
 };
 

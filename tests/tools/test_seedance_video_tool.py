@@ -229,7 +229,7 @@ async def test_execute_defaults_generate_audio_true_in_r2v(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """带参考视频/音频时默认开启 generate_audio；纯文生仍用配置默认 false。"""
+    """未显式传 generate_audio 时一律默认开启音效（纯文生/图生同样默认开）。"""
     tool = _tool(tmp_path, api_key="ark-test")
     captured: dict[str, object] = {}
 
@@ -255,9 +255,9 @@ async def test_execute_defaults_generate_audio_true_in_r2v(
     await tool.execute(prompt="保持运镜", audio_urls=["https://example.com/a.mp3"])
     assert captured["body"]["generate_audio"] is True
 
-    # 纯文生视频：仍为配置默认 false
+    # 纯文生视频：未传参也默认开启音效
     await tool.execute(prompt="一只橘猫弹钢琴")
-    assert captured["body"]["generate_audio"] is False
+    assert captured["body"]["generate_audio"] is True
 
     # 显式关闭：覆盖 r2v 默认
     await tool.execute(
