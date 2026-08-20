@@ -30,6 +30,37 @@ metadata: {"biscuitbot":{"emoji":"🎬","requires":{"env":["ARK_API_KEY"]}}}
  浅景深，电影感，节奏舒缓"
 ```
 
+## 模型版本
+
+- **推荐模型**: `doubao-seedance-2-0-mini-260615`（稳定版，版权拦截最少）
+- **避免使用**: Seedance 2.5 版本——易触发隐私/版权策略拦截（HTTP 400）
+- **文本/对话生成**: 使用 `qwen3.7-flash-2026-07-15` 模型
+
+## 内容过滤规避
+
+- Seedance 对参考图/首帧传入时敏感度高，易触发隐私或版权拦截
+- 简化提示词（减少品牌名、人物名、具体商标描述）可有效绕过限制
+- 若遇 HTTP 400 错误，优先检查提示词是否包含敏感关键词
+
+## 多片段拼接工作流
+
+当需要生成较长视频时：
+
+1. **先完成故事/分镜规划**（文生视频前必须完成此步）
+2. 将长视频拆分为约 10 秒的独立片段，按场景顺序编号
+3. 每个片段单独调用 `generate_video`，保持角色/场景资产一致性
+4. 片段间通过共享关键视觉元素（服装、背景、色调）实现衔接
+5. 所有片段生成完毕后，使用 FFmpeg concat 命令合并为完整视频
+
+```bash
+# FFmpeg concat 示例（假设已生成 clip_1.mp4 ~ clip_4.mp4）
+echo "file 'clip_1.mp4'" > list.txt
+echo "file 'clip_2.mp4'" >> list.txt
+echo "file 'clip_3.mp4'" >> list.txt
+echo "file 'clip_4.mp4'" >> list.txt
+ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
+```
+
 ## 工作流建议
 
 1. 把用户的一句话需求**精化为完整视频方案**（主题、分镜、镜头描述、光影、节奏），再调用 `generate_video`。

@@ -7,6 +7,19 @@ description: 剪映 (JianYing) AI自动化剪辑的高级封装 API (JyWrapper)�
 
 Use this skill when the user wants to automate video editing, generate drafts, or manipulate media assets in JianYing Pro.
 
+## ⚠️ 已知问题与降级方案
+
+- **模块缺失**: `assets` 模块可能缺失，存在循环导入依赖冲突
+- **降级方案**: 当 jianying-editor 不可用时，使用 FFmpeg concat 命令合并视频片段
+- **适用场景**: 多片段拼接（如 Seedance 生成的 10s 片段序列）
+
+```bash
+# FFmpeg concat 示例
+echo "file 'clip_1.mp4'" > list.txt
+echo "file 'clip_2.mp4'" >> list.txt
+ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
+```
+
 Agent execution playbook: [docs/agent-playbook.md](docs/agent-playbook.md)
 Minimal command SOP: [docs/minimal-command-sop.md](docs/minimal-command-sop.md)
 Natural language usage guide: [usage.md](usage.md)

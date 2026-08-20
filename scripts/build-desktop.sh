@@ -102,7 +102,6 @@ HIDDEN_IMPORTS=(
   --paths "$ROOT" \
   --collect-submodules biscuitbot.channels \
   --collect-submodules biscuitbot.agent.tools \
-  --collect-submodules biscuitbot.agent.tools \
   --name biscuitbot-sidecar \
   --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
   --add-data "biscuitbot/templates:biscuitbot/templates" \
