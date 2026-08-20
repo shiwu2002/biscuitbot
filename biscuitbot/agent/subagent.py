@@ -77,6 +77,17 @@ class _SubagentHook(AgentHook):
         self._task_id = task_id  # 子 Agent 任务 ID
         self._status = status  # 可选的状态对象（为 None 时不更新状态）
 
+    def wants_streaming(self) -> bool:
+        """子 Agent 执行启用流式输出。
+
+        启用后 ``AgentRunner._call_llm`` 对外层墙钟超时（BISCUITBOT_LLM_TIMEOUT_S，
+        默认 300s）豁免，改由 provider 层的流式 idle 超时（BISCUITBOT_STREAM_IDLE_TIMEOUT_S）
+        兜底。否则子员工（数字员工）的长任务会因单次 LLM 调用超过 300s 被判
+        "timed out after 300s" 而失败（日志常见：``invoke_employee`` 报错）。
+        ``on_stream`` / ``emit_reasoning`` 走基类 no-op 实现，不会向前端推流。
+        """
+        return True
+
     async def before_execute_tools(self, context: AgentHookContext) -> None:
         """工具执行前：记录每个工具调用的调试日志。"""
         for tool_call in context.tool_calls:
@@ -567,6 +578,9 @@ class SubagentManager:
                     finalize_on_max_iterations=False,
                     error_message=None,
                     fail_on_tool_error=True,
+                    # 内联执行也启用流式：走 _SubagentHook.wants_streaming()=True，
+                    # 豁免外层 300s 墙钟超时，长任务（写分镜/剪辑）不再 "timed out after 300s"。
+                    hook=_SubagentHook(f"employee-inline-{employee.get('id', '?')}"),
                     workspace=root,
                 )
             )

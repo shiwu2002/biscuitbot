@@ -232,6 +232,23 @@ class TestRunEmployeeInline:
         system_content = spec.initial_messages[0]["content"]
         assert "内联返回约定" not in system_content
 
+    async def test_inline_run_uses_streaming_hook(self, tmp_path: Path) -> None:
+        """内联执行必须挂流式 hook：豁免外层 300s 墙钟超时（宫本超时回归）。"""
+        mgr = self._manager_with_fake_result(
+            tmp_path,
+            SimpleNamespace(
+                final_content="ok",
+                stop_reason="end_turn",
+                error=None,
+                tool_events=[],
+            ),
+        )
+        await mgr.run_employee_inline({"id": "x", "name": "剪影", "title": "剪辑"}, "任务")
+        run_mock: Any = mgr.runner.run  # 运行时是 AsyncMock
+        spec = run_mock.call_args.args[0]
+        assert spec.hook is not None
+        assert spec.hook.wants_streaming() is True
+
     async def test_returns_error_text_on_failure(self, tmp_path: Path) -> None:
         mgr = self._manager_with_fake_result(
             tmp_path,
