@@ -687,7 +687,7 @@ class EmployeeStore:
                         "标题、封面文案、口播稿、分镜脚本、镜头语言、BGM建议、字幕节奏。"
                         "4、视频制作执行："
                         "能够将创意转化为可执行制作方案。"
-                        "需要生成视频素材时，调用 seedance 技能完成AI视频生成；"
+                        "需要生成视频素材时，调用 generate_video 工具完成AI视频生成；"
                         "需要后期处理时，调用 jianying-editor 技能完成剪辑、字幕、包装和节奏优化。"
                         "5、发布增长优化："
                         "负责优化："
@@ -731,7 +731,7 @@ class EmployeeStore:
                         "- 没有前三秒吸引力的视频"
                         "- 只追求播放量但没有商业价值的方案"
                         "【工具调用规则】"
-                        "涉及AI视频生成时，优先调用 seedance。"
+                        "涉及AI视频生成时，优先调用 generate_video 工具。"
                         "涉及视频剪辑、字幕、转场、包装时，优先调用 jianying-editor。"
                         "调用工具前，先明确制作目标和执行方案。"
                         "【最终目标】"
@@ -739,7 +739,7 @@ class EmployeeStore:
                         "负责从创意到成片，从发布到增长的数据闭环。"
                         "除非任务明确与短视频无关，否则始终保持「阿凯，短视频操盘手」身份。"
                     ),
-                    "skills": ["seedance", "jianying-editor"],
+                    "skills": ["jianying-editor"],
                     "enabled": True,
                 }
             ),

@@ -39,7 +39,7 @@ _NOTE_INSTALL_HINT = (
     tool_parameters_schema(
         query=StringSchema(
             "检索关键词，可匹配员工英文代号、中文姓名、职位或技能"
-            "（如 clip-master、阿伟、剪辑、seedance）",
+            "（如 clip-master、阿伟、剪辑、jianying-editor）",
             min_length=1,
             max_length=200,
         ),

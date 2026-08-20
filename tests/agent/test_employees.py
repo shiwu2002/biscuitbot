@@ -57,10 +57,7 @@ class TestBuiltinSeed:
         store = _store(tmp_path)
         by_id = {e["id"]: e for e in store.list_employees()}
         assert by_id["clip-master"]["skills"] == ["jianying-editor"]
-        assert by_id["short-video-operator"]["skills"] == [
-            "seedance",
-            "jianying-editor",
-        ]
+        assert by_id["short-video-operator"]["skills"] == ["jianying-editor"]
         assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
         assert by_id["super-secretary"]["skills"] == ["secretary"]
         assert by_id["all-round-designer"]["skills"] == ["design"]

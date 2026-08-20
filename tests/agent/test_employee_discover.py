@@ -95,7 +95,7 @@ class TestInstalledSearch:
 
     async def test_search_by_skill(self, tmp_path: Path) -> None:
         tool = DiscoverEmployeesTool(employees=_store(tmp_path))
-        result = _payload(await tool.execute("seedance"))
+        result = _payload(await tool.execute("jianying-editor"))
         ids = {row["id"] for row in result["employees"]}
         assert "short-video-operator" in ids
 

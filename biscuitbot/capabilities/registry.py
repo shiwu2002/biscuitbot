@@ -32,7 +32,7 @@ _KIND_ALIASES = {
 }
 
 # 内置技能里「自带可执行代码、本质是应用」的条目 → 归为 process（bundled）。
-# 其余内置技能（含 douyin-windows / seedance，它们只是带 bins/env 依赖的指令）
+# 其余内置技能（含 douyin-windows，它们只是带 bins/env 依赖的指令）
 # 仍为 prompt。这是「内置技能 → capability runtime」迁移映射表。
 _BUILTIN_PROCESS_SKILLS = {
     "jianying-editor": "bundled",

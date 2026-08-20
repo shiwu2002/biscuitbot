@@ -16,7 +16,7 @@ const CLIP_MASTER: Employee = {
   title: "剪辑",
   avatar: "🎬",
   system_prompt: "你是「阿伟」，团队里的剪辑高手。",
-  skills: ["jianying-editor", "seedance"],
+  skills: ["jianying-editor"],
   enabled: true,
   created_at: "2026-08-13T00:00:00Z",
 };
@@ -36,13 +36,6 @@ const SKILLS: SkillSummary[] = [
   {
     name: "jianying-editor",
     description: "剪映自动化剪辑",
-    source: "builtin",
-    tier: "agent",
-    available: true,
-  },
-  {
-    name: "seedance",
-    description: "可灵视频生成",
     source: "builtin",
     tier: "agent",
     available: true,
@@ -200,7 +193,6 @@ describe("EmployeeChatView 员工专属对话页（对话框式布局）", () =>
     expect(screen.getByText("掌握的技能")).toBeInTheDocument();
     // 技能名同时出现在桌面技能区与移动端身份条
     expect(screen.getAllByText("jianying-editor").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("seedance").length).toBeGreaterThanOrEqual(1);
   });
 
   it("进入专属页自动打开最近一条历史会话并带 ▸ 游标高亮", () => {

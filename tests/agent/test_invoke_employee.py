@@ -176,9 +176,9 @@ class TestRunEmployeeInline:
             include_skills={"jianying-editor"},
         )
         assert "jianying-editor" in scoped
-        assert "seedance" not in scoped  # 白名单外技能不出现在摘要
+        assert "ip-positioning" not in scoped  # 白名单外技能不出现在摘要
         all_skills = mgr._build_subagent_prompt(employee=store.get_employee("clip-master"))
-        assert "seedance" in all_skills  # include=None 表示全部
+        assert "ip-positioning" in all_skills  # include=None 表示全部
 
     async def test_returns_final_content(self, tmp_path: Path) -> None:
         mgr = self._manager_with_fake_result(

@@ -91,7 +91,8 @@ class TestSkillBelongsToEmployee:
         cb = ContextBuilder(tmp_path)
         prompt = cb.build_system_prompt()
         # 主会话（未绑定员工）：摘要包含多个不同技能的目录名
-        for skill in ("seedance", "ip-positioning", "secretary", "design"):
+
+        for skill in ("ip-positioning", "secretary", "design"):
             assert skill in prompt, skill
 
     def test_employee_session_scopes_to_own_skills(self, tmp_path: Path) -> None:
@@ -109,8 +110,8 @@ class TestSkillBelongsToEmployee:
         prompt = cb.build_system_prompt(
             session_metadata={"employee": "short-video-operator"}
         )
-        assert "seedance" in prompt
         assert "jianying-editor" in prompt
+        assert "seedance" not in prompt  # seedance 技能已并入 generate_video 工具文档
         assert "ip-positioning" not in prompt
         # 技能归属自己：其它员工技能（加粗技能行）不得出现在本员工会话
         assert "- **secretary**" not in prompt
