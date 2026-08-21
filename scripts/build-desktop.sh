@@ -54,20 +54,38 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 
-echo "==> 1/5 构建 WebUI（webui/dist → biscuitbot/web/dist）"
+echo "==> 1/6 自动递增版本号（patch）"
+BEFORE_VERSION="$("$PYTHON" -c 'import json; print(json.load(open("src-tauri/tauri.conf.json"))["version"])' 2>/dev/null)" || true
+NEW_VERSION="$("$PYTHON" -c "
+import sys
+v = '$BEFORE_VERSION'.split('.')
+if len(v) != 3 or not all(p.isdigit() for p in v):
+    sys.exit(0)  # 非 X.Y.Z 纯数字格式 → 不递增
+print(f'{v[0]}.{v[1]}.{int(v[2]) + 1}')
+")" || true
+if [ -n "$BEFORE_VERSION" ] && [ -n "$NEW_VERSION" ] && [ "$NEW_VERSION" != "$BEFORE_VERSION" ]; then
+  # 版本统一递增：tauri.conf.json（bundle/DMG 命名）+ Cargo.toml（Tauri 2 以 Cargo 版本为权威）
+  perl -pi -e "s/^(\s*\"version\":\s*\")[^\"]*(\")/\${1}${NEW_VERSION}\${2}/" "$ROOT/src-tauri/tauri.conf.json"
+  perl -pi -e "s/^(\s*version\s*=\s*\")[^\"]*(\")/\${1}${NEW_VERSION}\${2}/" "$ROOT/src-tauri/Cargo.toml"
+  echo "    版本 $BEFORE_VERSION → $NEW_VERSION"
+else
+  echo "    版本 ${BEFORE_VERSION:-未知} 无法自动递增（非 X.Y.Z 纯数字格式），保持不动"
+fi
+
+echo "==> 2/6 构建 WebUI（webui/dist → biscuitbot/web/dist）"
 cd "$ROOT/webui"
 bun install --frozen-lockfile || bun install
 bun run build
 cd "$ROOT"
 
-echo "==> 2/5 准备 PyInstaller（${TARGET_TRIPLE}）"
+echo "==> 3/6 准备 PyInstaller（${TARGET_TRIPLE}）"
 if ! "$PYTHON" -m PyInstaller --version >/dev/null 2>&1; then
   echo "    安装 pyinstaller..."
   "$PYTHON" -m pip install pyinstaller 2>/dev/null || \
     "$PYTHON" -m pip install --index-url https://pypi.org/simple pyinstaller
 fi
 
-echo "==> 3/5 打包 gateway sidecar（PyInstaller onedir，${TARGET_TRIPLE}）"
+echo "==> 4/6 打包 gateway sidecar（PyInstaller onedir，${TARGET_TRIPLE}）"
 # 与 Python 解释器无关的运行时第三方依赖（GUI）被剔除；prompt_toolkit 在
 # cli/commands.py 顶部被导入，必须保留。渠道 SDK（lark_oapi / dingtalk_stream /
 # socketio / botpy 等）不要剔除：渠道模块是动态导入的，需 --collect-submodules
@@ -118,7 +136,7 @@ rm -rf "$ROOT/src-tauri/binaries/biscuitbot-sidecar"
 cp -R "$DIST_DIR/biscuitbot-sidecar" "$ROOT/src-tauri/binaries/biscuitbot-sidecar"
 echo "    sidecar → src-tauri/binaries/biscuitbot-sidecar/"
 
-echo "==> 4/5 准备 Tauri 壳依赖与图标（幂等）"
+echo "==> 5/6 准备 Tauri 壳依赖与图标（幂等）"
 cd "$ROOT/src-tauri"
 bun install --frozen-lockfile || bun install
 if [ ! -f icons/icon.icns ]; then
@@ -126,7 +144,7 @@ if [ ! -f icons/icon.icns ]; then
 fi
 cd "$ROOT"
 
-echo "==> 5/5 Tauri 构建（release，${TARGET_TRIPLE}）"
+echo "==> 6/6 Tauri 构建（release，${TARGET_TRIPLE}）"
 cd "$ROOT/src-tauri"
 # bash 3.2 下 `set -u` 会把空数组的 "${arr[@]}" 判为 unbound，须先判长度
 if [[ ${#TAURI_BUILD_ARGS[@]} -gt 0 ]]; then
