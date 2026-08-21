@@ -849,12 +849,22 @@ export interface ChannelRow {
   configured: boolean;
   has_qr_login: boolean;
   fields: ChannelField[];
+  /** SDK 依赖是否可用（缺失时前端显示「SDK 缺失」并支持自动安装）。 */
+  sdk_available?: boolean;
+  /** 该渠道 SDK 是否正在后台自动安装。 */
+  deps_installing?: boolean;
+  /** 自动安装失败信息。 */
+  deps_error?: string | null;
+  /** 是否开启静默放行（allow_all），所有用户可直接私聊。 */
+  allow_all?: boolean;
 }
 
 /** 渠道列表载荷。 */
 export interface ChannelsPayload {
   channels: ChannelRow[];
   requires_restart?: boolean;
+  /** 本次操作是否已触发某渠道 SDK 的后台自动安装。 */
+  deps_installing?: boolean;
 }
 
 export async function fetchChannels(
@@ -868,14 +878,16 @@ export async function updateChannelSettings(
   token: string,
   update: {
     channel: string;
-    enabled: boolean;
+    enabled?: boolean;
+    allow_all?: boolean;
     values?: Record<string, string | boolean>;
   },
   base: string = "",
 ): Promise<ChannelsPayload> {
   const query = new URLSearchParams();
   query.set("channel", update.channel);
-  query.set("enabled", String(update.enabled));
+  if (update.enabled !== undefined) query.set("enabled", String(update.enabled));
+  if (update.allow_all !== undefined) query.set("allow_all", String(update.allow_all));
   if (update.values) {
     for (const [key, value] of Object.entries(update.values)) {
       query.set(key, String(value));

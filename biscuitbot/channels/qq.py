@@ -137,6 +137,7 @@ class QQConfig(Base):
     app_id: str = ""  # QQ 开放平台应用 ID
     secret: str = ""  # QQ 开放平台应用密钥
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     msg_format: Literal["plain", "markdown"] = "plain"  # 消息格式：纯文本或 Markdown
     ack_message: str = "⏳ Processing..."  # 收到消息后的确认回复
 
@@ -153,6 +154,8 @@ class QQChannel(BaseChannel):
 
     name = "qq"
     display_name = "QQ"
+    requires_module = "botpy"  # 必需 SDK 模块（缺失时自动安装）
+    pip_requires = ["qq-botpy>=1.2.0"]
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:

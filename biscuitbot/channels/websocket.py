@@ -100,6 +100,7 @@ class WebSocketConfig(Base):
     token_ttl_s: int = Field(default=300, ge=30, le=86_400)
     websocket_requires_token: bool = True
     allow_from: list[str] = Field(default_factory=lambda: ["*"])
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     streaming: bool = True
     # 默认 36 MB，上限 40 MB：支持最多 4 张约 6 MB 的图片（经客户端
     # Worker 归一化后，见 webui Composer）。4 × 6 MB × 1.37（base64 开销）

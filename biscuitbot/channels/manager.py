@@ -31,6 +31,7 @@ from loguru import logger  # 日志记录
 from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
 from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
+from biscuitbot.channels.deps import channel_sdk_available, ensure_channel_deps  # 渠道 SDK 依赖检测/自动安装
 from biscuitbot.config.schema import Config  # 全局配置模型
 from biscuitbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message  # 重启通知处理
 
@@ -161,6 +162,9 @@ class ChannelManager:
                 )
                 self.channels[name] = channel
                 logger.info("{} channel enabled", cls.display_name)
+                # 已启用但 SDK 缺失：后台自动安装，避免私聊静默无响应。
+                if not channel_sdk_available(cls) and ensure_channel_deps(cls):
+                    logger.info("{} SDK 缺失，已触发后台自动安装", cls.display_name)
             except Exception as e:
                 logger.warning("{} channel not available: {}", name, e)
 
@@ -171,13 +175,15 @@ class ChannelManager:
         for name, ch in self.channels.items():
             cfg = ch.config
             if isinstance(cfg, dict):
+                allow_all = cfg.get("allow_all")
                 if "allow_from" in cfg:
                     allow = cfg.get("allow_from")
                 else:
                     allow = cfg.get("allowFrom")
             else:
+                allow_all = getattr(cfg, "allow_all", None)
                 allow = getattr(cfg, "allow_from", None)
-            if allow is None:
+            if allow is None and not allow_all:
                 # allowFrom omitted → pairing-only mode.  Unapproved senders
                 # receive a pairing code instead of being silently ignored.
                 logger.info(

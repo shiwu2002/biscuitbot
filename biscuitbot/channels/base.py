@@ -176,10 +176,14 @@ class BaseChannel(ABC):
         return bool(streaming) and type(self).send_delta is not BaseChannel.send_delta
 
     def is_allowed(self, sender_id: str) -> bool:
-        """校验发送者权限，优先级依次为：通配符 > 白名单 > 配对存储 > 拒绝。"""
+        """校验发送者权限，优先级依次为：静默放行 > 通配符 > 白名单 > 配对存储 > 拒绝。"""
         if isinstance(self.config, dict):
+            if self.config.get("allow_all"):
+                return True
             allow_list = self.config.get("allow_from") or self.config.get("allowFrom") or []
         else:
+            if getattr(self.config, "allow_all", None):
+                return True
             allow_list = getattr(self.config, "allow_from", None) or []
         if "*" in allow_list:  # 通配符 "*" 表示允许所有人
             return True

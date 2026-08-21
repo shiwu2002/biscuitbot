@@ -143,6 +143,7 @@ class WeixinConfig(Base):
 
     enabled: bool = False  # 是否启用
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     base_url: str = "https://ilinkai.weixin.qq.com"  # iLink API 基础 URL
     cdn_base_url: str = "https://novac2c.cdn.weixin.qq.com/c2c"  # CDN 基础 URL（媒体下载/上传）
     route_tag: str | int | None = None  # 路由标签（SKRouteTag 头）

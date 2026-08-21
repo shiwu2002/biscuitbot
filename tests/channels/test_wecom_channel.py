@@ -334,6 +334,65 @@ async def test_send_progress_with_frame() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_reuses_stream_id_across_progress_then_final() -> None:
+    """进度块与结束块必须复用同一个 stream_id，结束块发出后清除。
+
+    回归：此前每次 send 都新生成 stream_id，企业微信的 aibot_respond_msg
+    协议要求同一回复使用同一 stream_id；不同 id 的未结束流会把会话卡在
+    「思考中」，直到用户退出重新进入对话框才恢复。
+    """
+    channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["*"]), MessageBus())
+    client = _FakeWeComClient()
+    channel._client = client
+    channel._generate_req_id = lambda x: f"req_{x}"
+    channel._chat_frames["chat1"] = _FakeFrame()
+
+    await channel.send(
+        OutboundMessage(channel="wecom", chat_id="chat1", content="thinking...", metadata={"_progress": True})
+    )
+    await channel.send(
+        OutboundMessage(channel="wecom", chat_id="chat1", content="done")
+    )
+
+    assert client.reply_stream.call_count == 2
+    first_id = client.reply_stream.call_args_list[0][0][1]
+    final_id = client.reply_stream.call_args_list[1][0][1]
+    assert first_id == final_id  # 同一流
+    assert client.reply_stream.call_args_list[0][1]["finish"] is False
+    assert client.reply_stream.call_args_list[1][1]["finish"] is True
+
+    # 结束块发出后清除，下一轮回复重新生成新流。
+    assert "chat1" not in channel._stream_ids
+
+
+@pytest.mark.asyncio
+async def test_send_new_stream_after_final() -> None:
+    """结束时清除 stream_id，下一次回复生成新的流 id。"""
+    channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["*"]), MessageBus())
+    client = _FakeWeComClient()
+    channel._client = client
+    counter = {"n": 0}
+
+    def _uniq_req_id(prefix: str) -> str:
+        counter["n"] += 1
+        return f"{prefix}_{counter['n']}"
+
+    channel._generate_req_id = _uniq_req_id
+    channel._chat_frames["chat1"] = _FakeFrame()
+
+    await channel.send(
+        OutboundMessage(channel="wecom", chat_id="chat1", content="first")
+    )
+    first_id = client.reply_stream.call_args_list[0][0][1]
+
+    await channel.send(
+        OutboundMessage(channel="wecom", chat_id="chat1", content="second")
+    )
+    second_id = client.reply_stream.call_args_list[1][0][1]
+    assert first_id != second_id
+
+
+@pytest.mark.asyncio
 async def test_send_proactive_without_frame() -> None:
     """Without stored frame, send uses send_message with markdown."""
     channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["*"]), MessageBus())
@@ -463,7 +522,8 @@ async def test_enter_chat_ignores_unauthorized_user_before_welcome() -> None:
 
 
 @pytest.mark.asyncio
-async def test_process_message_ignores_unauthorized_sender_before_download() -> None:
+async def test_process_message_delegates_permission_to_handle_message() -> None:
+    """未授权发送者不再被静默丢弃——权限校验交由 _handle_message（私聊下发配对码）。"""
     channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["allowed"]), MessageBus())
     client = _FakeWeComClient()
     channel._client = client
@@ -472,15 +532,40 @@ async def test_process_message_ignores_unauthorized_sender_before_download() -> 
     frame = _FakeFrame(body={
         "msgid": "msg_blocked",
         "chatid": "chat1",
+        "chattype": "single",
         "from": {"userid": "blocked"},
-        "image": {"url": "https://example.com/img.png", "aeskey": "key123"},
+        "text": {"content": "hi"},
     })
 
-    await channel._process_message(frame, "image")
+    await channel._process_message(frame, "text")
 
-    client.download_file.assert_not_awaited()
-    channel._handle_message.assert_not_awaited()
-    assert channel.bus.inbound_size == 0
+    # 未授权用户也必须进入 _handle_message，才能收到配对码 / 拒绝提示。
+    channel._handle_message.assert_awaited_once()
+    kwargs = channel._handle_message.await_args.kwargs
+    assert kwargs["sender_id"] == "blocked"
+    assert kwargs["is_dm"] is True  # 单聊 → 走配对码流程
+
+
+@pytest.mark.asyncio
+async def test_process_message_group_chat_marks_not_dm() -> None:
+    """群聊消息 is_dm 应为 False（未授权时不发配对码）。"""
+    channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["allowed"]), MessageBus())
+    client = _FakeWeComClient()
+    channel._client = client
+    channel._handle_message = AsyncMock()
+
+    frame = _FakeFrame(body={
+        "msgid": "msg_group",
+        "chatid": "chat_group",
+        "chattype": "group",
+        "from": {"userid": "blocked"},
+        "text": {"content": "hi"},
+    })
+
+    await channel._process_message(frame, "text")
+
+    kwargs = channel._handle_message.await_args.kwargs
+    assert kwargs["is_dm"] is False
 
 
 @pytest.mark.asyncio

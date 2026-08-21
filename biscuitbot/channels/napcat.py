@@ -60,6 +60,7 @@ class NapcatConfig(Base):
     ws_url: str = "ws://127.0.0.1:3001"  # Napcat WebSocket 服务地址
     access_token: str = ""  # WebSocket 连接认证令牌
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     group_policy: GroupPolicy = "mention"  # 群聊响应策略
     # 按群 ID（字符串形式）覆盖的群聊策略，如 {"123456": "open"}。
     # 群 ID 未列出时回退到 group_policy。

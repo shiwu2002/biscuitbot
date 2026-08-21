@@ -275,6 +275,7 @@ class MochatConfig(Base):
     sessions: list[str] = Field(default_factory=list)  # 订阅的 session ID 列表（["*"] 表示自动发现）
     panels: list[str] = Field(default_factory=list)  # 订阅的 panel ID 列表（["*"] 表示自动发现）
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     mention: MochatMentionConfig = Field(default_factory=MochatMentionConfig)  # @mention 行为配置
     groups: dict[str, MochatGroupRule] = Field(default_factory=dict)  # 按群组 ID 覆盖的 @mention 规则
     reply_delay_mode: str = "non-mention"  # 延迟回复模式（non-mention=仅非@消息延迟）
@@ -290,6 +291,8 @@ class MochatChannel(BaseChannel):
 
     name = "mochat"
     display_name = "MoChat"
+    requires_module = "socketio"  # 必需 SDK 模块（缺失时自动安装）
+    pip_requires = ["python-socketio>=5.16.0"]
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:

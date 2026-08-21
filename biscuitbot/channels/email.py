@@ -53,6 +53,7 @@ class EmailConfig(Base):
 
     enabled: bool = False
     consent_granted: bool = False  # 用户是否明确授权（必须为 True 才会真正启用）
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
 
     imap_host: str = ""
     imap_port: int = 993

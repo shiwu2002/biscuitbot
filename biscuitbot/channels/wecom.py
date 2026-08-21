@@ -74,6 +74,7 @@ class WecomConfig(Base):
     bot_id: str = ""  # 企业微信 AI 机器人 ID
     secret: str = ""  # 企业微信 AI 机器人密钥
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     welcome_message: str = ""  # 用户进入聊天时的欢迎消息
 
 
@@ -97,6 +98,8 @@ class WecomChannel(BaseChannel):
 
     name = "wecom"
     display_name = "企业微信"
+    requires_module = "wecom_aibot_sdk"  # 必需 SDK 模块（缺失时自动安装）
+    pip_requires = ["wecom-aibot-sdk-python>=0.1.5"]
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
@@ -114,6 +117,11 @@ class WecomChannel(BaseChannel):
         self._generate_req_id = None  # 请求 ID 生成函数
         # 存储各会话的帧头信息，用于回复消息
         self._chat_frames: dict[str, Any] = {}
+        # 各会话当前流式回复的 stream_id。企业微信的 aibot_respond_msg 协议要求
+        # 同一回复的进度块（finish=False）与结束块（finish=True）必须使用同一个
+        # stream_id；若每次 send 都新生成，未结束的流会把会话卡在「思考中」，
+        # 直到用户退出重新进入对话框才恢复。结束块发出后清除，下一次回复重新开始。
+        self._stream_ids: dict[str, str] = {}
 
     async def start(self) -> None:
         """启动企业微信机器人，建立 WebSocket 长连接。"""
@@ -254,8 +262,9 @@ class WecomChannel(BaseChannel):
             # Extract sender info from "from" field (SDK format)
             from_info = body.get("from", {})
             sender_id = from_info.get("userid", "unknown") if isinstance(from_info, dict) else "unknown"
-            if not self.is_allowed(sender_id):
-                return
+
+            # 注意：不在此处拦截未授权用户——权限校验交由 _handle_message 统一处理
+            # （未授权私聊会下发配对码，避免静默无响应）。
 
             # Deduplication check
             if msg_id in self._processed_message_ids:
@@ -363,7 +372,8 @@ class WecomChannel(BaseChannel):
                     "message_id": msg_id,
                     "msg_type": msg_type,
                     "chat_type": chat_type,
-                }
+                },
+                is_dm=chat_type == "single",
             )
 
         except Exception:
@@ -545,13 +555,20 @@ class WecomChannel(BaseChannel):
                 # Both progress and final messages must use reply_stream (cmd="aibot_respond_msg").
                 # The plain reply() uses cmd="reply" which does not support "text" msgtype
                 # and causes errcode=40008 from WeCom API.
-                stream_id = self._generate_req_id("stream")
+                # 同一会话复用同一个 stream_id：进度块与结束块是同一流的两个片段。
+                stream_id = self._stream_ids.get(msg.chat_id)
+                if stream_id is None:
+                    stream_id = self._generate_req_id("stream")
+                    self._stream_ids[msg.chat_id] = stream_id
                 await self._client.reply_stream(
                     frame,
                     stream_id,
                     content,
                     finish=not is_progress,
                 )
+                if not is_progress:
+                    # 结束块已发出，清理流的 stream_id，供下一轮回复重新开始。
+                    self._stream_ids.pop(msg.chat_id, None)
                 self.logger.debug(
                     "{} sent to {}",
                     "progress" if is_progress else "message",

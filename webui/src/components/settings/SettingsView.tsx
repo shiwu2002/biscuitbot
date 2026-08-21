@@ -6813,6 +6813,7 @@ function ChannelsSettings({
   const [requiresRestart, setRequiresRestart] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
   const [configuring, setConfiguring] = useState<string | null>(null);
+  const [depsInstalling, setDepsInstalling] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -6856,6 +6857,25 @@ function ChannelsSettings({
       });
       setChannels(payload.channels);
       if (payload.requires_restart) setRequiresRestart(true);
+      if (payload.deps_installing) setDepsInstalling(true);
+      setError(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setToggling(null);
+    }
+  };
+
+  const handleAllowAll = async (channel: ChannelRow, allowAll: boolean) => {
+    if (toggling) return;
+    setToggling(channel.name);
+    try {
+      const payload = await updateChannelSettings(token, {
+        channel: channel.name,
+        allow_all: allowAll,
+      });
+      setChannels(payload.channels);
+      if (payload.requires_restart) setRequiresRestart(true);
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -6895,6 +6915,15 @@ function ChannelsSettings({
         </div>
       ) : null}
 
+      {depsInstalling ? (
+        <div className="rounded-[18px] border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-[13px] text-amber-700 dark:text-amber-300">
+          {tx(
+            "settings.channels.depsInstalling",
+            "已检测到渠道 SDK 缺失，正在后台自动安装… 安装完成后请重启网关生效。",
+          )}
+        </div>
+      ) : null}
+
       <SettingsGroup>
         {rows.map((channel) => (
           <div key={channel.name}>
@@ -6907,12 +6936,35 @@ function ChannelsSettings({
                       ? tx("settings.channels.disabled", "已禁用")
                       : tx("settings.channels.notConfigured", "未配置")}
                 </StatusPill>
+                {channel.sdk_available === false ? (
+                  <StatusPill tone="warning">
+                    {channel.deps_installing
+                      ? tx("settings.channels.sdkInstalling", "SDK 安装中…")
+                      : tx("settings.channels.sdkMissing", "SDK 缺失")}
+                  </StatusPill>
+                ) : null}
                 <ToggleButton
                   checked={channel.enabled}
                   onChange={(checked) => handleToggle(channel, checked)}
                   ariaLabel={channel.display_name}
                   label={channel.display_name}
                 />
+                <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
+                <span
+                  className="flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground"
+                  title={tx(
+                    "settings.channels.allowAllHint",
+                    "开启后所有用户可直接私聊，无需白名单或配对码。",
+                  )}
+                >
+                  <ToggleButton
+                    checked={!!channel.allow_all}
+                    onChange={(checked) => handleAllowAll(channel, checked)}
+                    ariaLabel={tx("settings.channels.allowAll", "全部放行")}
+                    label={tx("settings.channels.allowAll", "全部放行")}
+                  />
+                  {tx("settings.channels.allowAll", "全部放行")}
+                </span>
               </div>
             </SettingsRow>
             {configuring === channel.name ? (

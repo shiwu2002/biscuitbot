@@ -5,6 +5,7 @@ import pytest
 from biscuitbot.bus.events import OutboundMessage
 from biscuitbot.bus.queue import MessageBus
 from biscuitbot.channels.base import BaseChannel
+from biscuitbot.channels.wecom import WecomConfig
 
 
 class _DummyChannel(BaseChannel):
@@ -55,6 +56,37 @@ def test_is_allowed_handles_none_allow_from() -> None:
 def test_is_allowed_star_allows_all() -> None:
     channel = _DummyChannel({"allowFrom": ["*"]}, MessageBus())
     assert channel.is_allowed("anyone") is True
+
+
+def test_is_allowed_allow_all_dict() -> None:
+    channel = _DummyChannel({"allow_all": True}, MessageBus())
+    assert channel.is_allowed("anyone") is True
+    assert channel.is_allowed("") is True
+
+
+def test_is_allowed_allow_all_object() -> None:
+    channel = _DummyChannel(SimpleNamespace(allow_all=True), MessageBus())
+    assert channel.is_allowed("anyone") is True
+
+
+def test_is_allowed_allow_all_pydantic_config() -> None:
+    """真实渠道配置（WecomConfig）必须保留 allow_all 字段。
+
+    回归：Base 模型无 extra="allow"，model_validate 会静默丢弃未知字段，
+    导致 is_allowed 永远读不到 allow_all，静默放行不生效、私聊仍发配对码。
+    """
+    config = WecomConfig.model_validate(
+        {"enabled": True, "allow_all": True, "allowFrom": []}
+    )
+    channel = _DummyChannel(config, MessageBus())
+    assert channel.is_allowed("anyone") is True
+    assert channel.is_allowed("") is True
+
+
+def test_is_allowed_allow_all_false_ignores() -> None:
+    channel = _DummyChannel({"allow_all": False, "allowFrom": ["alice"]}, MessageBus())
+    assert channel.is_allowed("alice") is True
+    assert channel.is_allowed("stranger") is False
 
 
 def test_is_allowed_pairing_fallback(monkeypatch) -> None:

@@ -12,12 +12,14 @@ from biscuitbot.webui.settings_api import (
     _provider_capabilities,
     _resolve_model_list_provider,
     _unified_provider_rows,
+    channels_payload,
     create_model_configuration,
     delete_provider_settings,
     provider_models_payload,
     settings_payload,
     settings_usage_payload,
     update_agent_settings,
+    update_channel_settings,
     update_image_generation_settings,
     update_model_configuration,
     update_network_safety_settings,
@@ -1042,6 +1044,89 @@ def test_update_system_io_settings_rejects_unknown_action(
 
     with pytest.raises(WebUISettingsError, match="unknown system_io action"):
         update_system_io_settings({"allowActions": ["clipboard_read,format_c_drive"]})
+
+
+def test_channels_payload_reports_allow_all(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    setattr(config.channels, "feishu", {"enabled": True, "allow_all": True})
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = channels_payload()
+    feishu_row = next(r for r in payload["channels"] if r["name"] == "feishu")
+    assert feishu_row["allow_all"] is True
+
+
+def test_channels_payload_defaults_allow_all_off(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    setattr(config.channels, "feishu", {"enabled": True})
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = channels_payload()
+    feishu_row = next(r for r in payload["channels"] if r["name"] == "feishu")
+    assert feishu_row["allow_all"] is False
+
+
+def test_update_channel_settings_toggles_allow_all(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    setattr(config.channels, "feishu", {"enabled": True, "allowFrom": ["alice"]})
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    payload = update_channel_settings(
+        {"channel": ["feishu"], "allow_all": ["true"]}
+    )
+    assert payload["requires_restart"] is True
+
+    saved = load_config(config_path)
+    section = getattr(saved.channels, "feishu")
+    assert section.get("allow_all") is True
+    # allow_all 不覆盖已有白名单。
+    assert section.get("allowFrom") == ["alice"]
+
+
+def test_update_channel_settings_turns_off_allow_all(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    setattr(config.channels, "feishu", {"enabled": True, "allow_all": True})
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    update_channel_settings({"channel": ["feishu"], "allow_all": ["false"]})
+    saved = load_config(config_path)
+    section = getattr(saved.channels, "feishu")
+    assert section.get("allow_all") is False
+
+
+def test_update_channel_settings_creates_section_for_allow_all(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({})
+    save_config(config, config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    update_channel_settings({"channel": ["wecom"], "allow_all": ["true"]})
+    saved = load_config(config_path)
+    section = getattr(saved.channels, "wecom")
+    assert section.get("allow_all") is True
 
 
 

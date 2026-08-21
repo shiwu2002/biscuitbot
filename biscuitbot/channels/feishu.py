@@ -307,6 +307,7 @@ class FeishuConfig(Base):
     encrypt_key: str = ""  # 事件加密密钥（开放平台配置）
     verification_token: str = ""  # 事件验证令牌（开放平台配置）
     allow_from: list[str] = Field(default_factory=list)  # 允许的用户白名单（open_id）
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     react_emoji: str = "THUMBSUP"  # 处理中使用的表情回应（默认点赞）
     done_emoji: str | None = None  # 任务完成时显示的表情（如 "DONE"、"OK"）
     tool_hint_prefix: str = "\U0001f527"  # 内联工具提示前缀（默认：🔧）
@@ -343,6 +344,8 @@ class FeishuChannel(BaseChannel):
 
     name = "feishu"
     display_name = "飞书"
+    requires_module = "lark_oapi"  # 必需 SDK 模块（缺失时自动安装）
+    pip_requires = ["lark-oapi>=1.5.0"]
 
     _STREAM_EDIT_INTERVAL = 0.5  # CardKit 流式更新之间的节流间隔（秒）
 

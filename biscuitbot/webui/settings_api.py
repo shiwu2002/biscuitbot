@@ -28,6 +28,7 @@ from biscuitbot.audio.tts_registry import (
     resolve_tts_provider,
     tts_provider_names,
 )
+from biscuitbot.channels.deps import deps_status, ensure_channel_deps
 from biscuitbot.config.loader import get_config_path, load_config, save_config
 from biscuitbot.config.schema import ModelPresetConfig, ProviderConfig
 from biscuitbot.providers.image_generation import (
@@ -719,8 +720,21 @@ def channels_payload() -> dict[str, Any]:
             "has_qr_login": name == "weixin",
             # 微信走扫码登录，其余渠道暴露需填写的凭据字段供前端渲染表单。
             "fields": [] if name == "weixin" else _channel_field_schema(name, cls, section),
+            # SDK 依赖状态（缺失的渠道前端显示「SDK 缺失」并在启用时自动安装）。
+            **deps_status(cls),
+            # 静默放行开关（allow_all），前端据此渲染「全部放行」。
+            "allow_all": _channel_allow_all(section),
         })
     return {"channels": rows}
+
+
+def _channel_allow_all(section: Any) -> bool:
+    """渠道是否开启静默放行（allow_all）；未设置时视为关闭。"""
+    if section is None:
+        return False
+    if isinstance(section, dict):
+        return bool(section.get("allow_all"))
+    return bool(getattr(section, "allow_all", False))
 
 
 def _channel_configured(section: Any, cls: type) -> bool:
@@ -791,6 +805,7 @@ def update_channel_settings(query: QueryParams) -> dict[str, Any]:
         return default
 
     # 1) enabled 标志
+    enabled = False
     enabled_raw = _query_first(query, "enabled")
     if enabled_raw is not None:
         enabled = _parse_bool(enabled_raw, "enabled")
@@ -827,11 +842,29 @@ def update_channel_settings(query: QueryParams) -> dict[str, Any]:
                     setattr(section, key, coerced)
                 changed = True
 
+    # 3) allow_all 静默放行开关（仅显式传入时生效，不改动 allowFrom 白名单）。
+    allow_all_raw = _query_first(query, "allow_all")
+    if allow_all_raw is not None:
+        allow_all = _parse_bool(allow_all_raw, "allow_all")
+        if _current_value("allow_all", False) != allow_all:
+            if section is None:
+                section = {}
+                setattr(config.channels, name, section)
+            if isinstance(section, dict):
+                section["allow_all"] = allow_all
+            else:
+                setattr(section, "allow_all", allow_all)
+            changed = True
+
     if changed:
         save_config(config)
 
+    # 3) 启用渠道且 SDK 缺失时，后台自动安装依赖（幂等；已就绪则无操作）。
+    deps_installing = bool(enabled) and ensure_channel_deps(cls)
+
     payload = channels_payload()
     payload["requires_restart"] = changed
+    payload["deps_installing"] = deps_installing
     return payload
 
 

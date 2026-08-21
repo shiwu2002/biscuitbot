@@ -176,6 +176,7 @@ class DingTalkConfig(Base):
     client_id: str = ""  # 钉钉应用 AppKey
     client_secret: str = ""  # 钉钉应用 AppSecret
     allow_from: list[str] = Field(default_factory=list)  # 允许使用的发送者白名单
+    allow_all: bool = False  # 静默放行：为 True 时所有用户可直接私聊，无需白名单或配对码
     allow_remote_media_redirects: bool = False  # 是否允许媒体下载跟随重定向
     remote_media_redirect_allowed_hosts: list[str] = Field(default_factory=list)  # 允许重定向的目标主机白名单
     group_user_isolation: bool = False  # 为 True 时，群聊中每个用户拥有独立会话
@@ -190,6 +191,8 @@ class DingTalkChannel(BaseChannel):
 
     name = "dingtalk"
     display_name = "钉钉"
+    requires_module = "dingtalk_stream"  # 必需 SDK 模块（缺失时自动安装）
+    pip_requires = ["dingtalk-stream>=0.24.0"]
     _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}  # 图片扩展名集合
     _AUDIO_EXTS = {".amr", ".mp3", ".wav", ".ogg", ".m4a", ".aac"}  # 音频扩展名集合
     _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}  # 视频扩展名集合
