@@ -138,17 +138,17 @@ class DiscoverEmployeesTool(Tool):
 
         if tm is not None:
             try:
-                url = tm.read_talent_market_registry_url()
+                urls = tm.read_talent_market_registry_urls()
             except Exception:  # noqa: BLE001
                 logger.warning("discover_employees: 读取人才市场注册表配置失败", exc_info=True)
-                url = ""
+                urls = []
                 note_parts.append("读取人才市场注册表配置失败，本次仅检索已安装员工。")
-            if not url:
+            if not urls:
                 note_parts.append("未配置人才市场注册表，本次仅检索已安装员工。")
             else:
                 try:
                     catalog = await asyncio.to_thread(
-                        tm.talent_catalog_payload, url, self._employees
+                        tm.talent_catalog_payload, urls, self._employees
                     )
                     market_rows = [
                         row

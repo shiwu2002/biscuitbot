@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import shlex
@@ -13,7 +14,7 @@ import time
 from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 from urllib.parse import urlparse
 
 import httpx
@@ -21,6 +22,8 @@ import httpx
 from biscuitbot.apps.protocol import capability_manifest, compact_dict
 from biscuitbot.config.paths import get_runtime_subdir
 from biscuitbot.security.workspace_policy import is_path_within
+
+logger = logging.getLogger(__name__)
 
 # CLI-Anything 注册表（港大 HKUDS 维护的开源 Agent CLI 应用目录）
 # 来源: https://github.com/HKUDS/CLI-Anything
@@ -31,8 +34,19 @@ CLI_ANYTHING_REGISTRY_URL = "https://hkuds.github.io/CLI-Anything/registry.json"
 # 例如: {RAW_BASE}/skills/obsidian/SKILL.md
 CLI_ANYTHING_RAW_BASE = "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main"
 
+
+@dataclass(frozen=True, slots=True)
+class CatalogSource:
+    """CLI 应用目录来源：注册表元数据 URL + 原始文件基址 + 是否必需。"""
+
+    name: str
+    registry_url: str
+    raw_base: str = CLI_ANYTHING_RAW_BASE
+    required: bool = True
+
+
 _CATALOG_SOURCES = (
-    ("harness", CLI_ANYTHING_REGISTRY_URL, CLI_ANYTHING_RAW_BASE, True),
+    CatalogSource("harness", CLI_ANYTHING_REGISTRY_URL, CLI_ANYTHING_RAW_BASE, True),
 )
 
 _MAX_TOOL_OUTPUT_CHARS = 12_000
@@ -397,10 +411,49 @@ class CliAppManager:
         workspace: Path,
         data_dir: Path | None = None,
         runtime: CliAppsRuntimeConfig | None = None,
+        sources: Sequence[CatalogSource] | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()
         self.data_dir = Path(data_dir) if data_dir is not None else get_runtime_subdir("cli-apps")
         self.runtime = runtime or CliAppsRuntimeConfig()
+        # None → 惰性解析（内置 harness + config 额外来源），保持既有实例化点零改动
+        self._sources = list(sources) if sources is not None else None
+
+    def _resolved_sources(self) -> list[CatalogSource]:
+        if self._sources is None:
+            self._sources = self._default_sources()
+        return self._sources
+
+    @staticmethod
+    def _default_sources() -> list[CatalogSource]:
+        """内置 harness + config ``cliApps.catalogSources`` 额外来源。"""
+        sources = list(_CATALOG_SOURCES)
+        try:
+            from biscuitbot.config.loader import load_config
+
+            extras = load_config().tools.cli_apps.catalog_sources
+        except Exception:
+            logger.debug("cli-apps: 读取 catalogSources 失败，仅使用内置 harness", exc_info=True)
+            return sources
+        seen = {s.name for s in sources}
+        for item in extras or []:
+            name = _SAFE_NAME_RE.sub("-", str(item.name or "").lower()).strip("-")
+            url = str(item.registry_url or "").strip()
+            if not name or not url:
+                logger.warning("cli-apps: 跳过 catalogSources 中的无效条目（缺 name 或 registryUrl）")
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            sources.append(
+                CatalogSource(
+                    name=name,
+                    registry_url=url,
+                    raw_base=str(item.raw_base or "").strip() or CLI_ANYTHING_RAW_BASE,
+                    required=bool(item.required),
+                )
+            )
+        return sources
 
     @property
     def installed_path(self) -> Path:
@@ -454,7 +507,8 @@ class CliAppManager:
 
     def catalog(self, *, force_refresh: bool = False) -> tuple[list[dict[str, Any]], str | None]:
         registries: list[tuple[str, str, dict[str, Any]]] = []
-        for source, url, raw_base, required in _CATALOG_SOURCES:
+        for cs in self._resolved_sources():
+            source, url, raw_base, required = cs.name, cs.registry_url, cs.raw_base, cs.required
             try:
                 registry = self._fetch_registry(
                     url,

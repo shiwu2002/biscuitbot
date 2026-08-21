@@ -14,9 +14,11 @@ from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError
 from biscuitbot.webui.talent_market import (
     TalentMarketError,
     _http_get_json,
+    _talent_urls_from_gateway,
     _validate_registry_url,
     install_talent_employee,
     read_talent_market_registry_url,
+    read_talent_market_registry_urls,
     talent_catalog_payload,
 )
 
@@ -594,6 +596,167 @@ def test_read_registry_url_prefers_snake_key(tmp_path: Path) -> None:
     assert read_talent_market_registry_url(config_path) == "https://a.example/x.json"
 
 
+# ---- 多来源（list 优先 / 单值回退 / 合并去重） -------------------------------
+
+
+def test_talent_urls_from_gateway_list_preferred() -> None:
+    gateway = {
+        "talent_market_registry_urls": ["https://a.example/x.json", "https://b.example/y.json"],
+        "talent_market_registry_url": "https://legacy.example/z.json",
+    }
+    assert _talent_urls_from_gateway(gateway) == [
+        "https://a.example/x.json",
+        "https://b.example/y.json",
+    ]
+
+
+def test_talent_urls_from_gateway_camel_list() -> None:
+    assert _talent_urls_from_gateway(
+        {"talentMarketRegistryUrls": ["https://a.example/x.json"]}
+    ) == ["https://a.example/x.json"]
+
+
+def test_talent_urls_from_gateway_falls_back_to_single() -> None:
+    assert _talent_urls_from_gateway(
+        {"talent_market_registry_url": "https://a.example/x.json"}
+    ) == ["https://a.example/x.json"]
+    assert _talent_urls_from_gateway(
+        {"talentMarketRegistryUrl": "https://b.example/y.json"}
+    ) == ["https://b.example/y.json"]
+
+
+def test_talent_urls_from_gateway_strips_and_dedups_empty() -> None:
+    assert _talent_urls_from_gateway(
+        {"talent_market_registry_urls": [" https://a.example/x.json ", "", "  "]}
+    ) == ["https://a.example/x.json"]
+    assert _talent_urls_from_gateway({}) == []
+
+
+def test_read_registry_urls_plural(tmp_path: Path) -> None:
+    config_path = _write_config(
+        tmp_path,
+        {
+            "talent_market_registry_urls": ["https://a.example/x.json", "https://b.example/y.json"],
+            "talent_market_registry_url": "https://legacy.example/z.json",
+        },
+    )
+    assert read_talent_market_registry_urls(config_path) == [
+        "https://a.example/x.json",
+        "https://b.example/y.json",
+    ]
+    # 单值回退：单值读取仍取第一个
+    assert read_talent_market_registry_url(config_path) == "https://a.example/x.json"
+
+
+def _registry_a() -> dict:
+    return {
+        "schema": "talent-market.v1",
+        "meta": {"updated": "2026-08-01"},
+        "employees": [
+            {"id": "shared", "name": "共享员工", "system_prompt": "来自 A", "skills": []},
+            {"id": "a-only", "name": "A 独有", "system_prompt": "A 的", "skills": []},
+        ],
+    }
+
+
+def _registry_b() -> dict:
+    return {
+        "schema": "talent-market.v1",
+        "meta": {"updated": "2026-08-02"},
+        "employees": [
+            {"id": "shared", "name": "共享员工", "system_prompt": "来自 B", "skills": []},
+            {"id": "b-only", "name": "B 独有", "system_prompt": "B 的", "skills": []},
+        ],
+    }
+
+
+def test_multi_source_payload_merges_and_dedups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    by_url = {
+        "https://a.example/x.json": _registry_a(),
+        "https://b.example/y.json": _registry_b(),
+    }
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._http_get_json",
+        lambda url, **kwargs: by_url[url],
+    )
+
+    payload = talent_catalog_payload(
+        ["https://a.example/x.json", "https://b.example/y.json"], store
+    )
+
+    # 合并后 3 条；同 id "shared" 首来源胜出（保留 A 的字段）
+    assert len(payload["employees"]) == 3
+    by_id = {e["id"]: e for e in payload["employees"]}
+    assert by_id["shared"]["source_url"] == "https://a.example/x.json"
+    assert by_id["shared"]["system_prompt"] == "来自 A"
+    assert by_id["a-only"]["source_url"] == "https://a.example/x.json"
+    assert by_id["b-only"]["source_url"] == "https://b.example/y.json"
+    # 顶层兼容字段
+    assert payload["source_url"] == "https://a.example/x.json"
+    assert payload["catalog_updated_at"] == "2026-08-02"
+    assert payload["installed_count"] == 0
+    # 来源摘要
+    assert payload["sources"] == [
+        {
+            "source_url": "https://a.example/x.json",
+            "catalog_updated_at": "2026-08-01",
+            "installed_count": 0,
+        },
+        {
+            "source_url": "https://b.example/y.json",
+            "catalog_updated_at": "2026-08-02",
+            "installed_count": 0,
+        },
+    ]
+
+
+def test_multi_source_single_failure_still_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._http_get_json",
+        lambda url, **kwargs: (_ for _ in ()).throw(
+            TalentMarketError("boom", status=502)
+        ),
+    )
+    with pytest.raises(TalentMarketError) as exc:
+        talent_catalog_payload("https://example.com/x.json", store)
+    assert exc.value.status == 502
+
+
+def test_multi_source_one_failure_skips_others(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = _store(tmp_path)
+    by_url = {
+        "https://a.example/x.json": _registry_a(),
+        "https://b.example/y.json": _registry_b(),
+    }
+
+    def fake_fetch(url: str, **kwargs: object) -> dict:
+        if url == "https://a.example/x.json":
+            raise TalentMarketError("boom", status=502)
+        return by_url[url]
+
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._http_get_json", fake_fetch
+    )
+
+    payload = talent_catalog_payload(
+        ["https://a.example/x.json", "https://b.example/y.json"], store
+    )
+
+    # 失败来源被跳过，成功来源数据仍可用
+    assert len(payload["employees"]) == 2
+    assert all(e["source_url"] == "https://b.example/y.json" for e in payload["employees"])
+    assert len(payload["sources"]) == 1
+    assert payload["source_url"] == "https://a.example/x.json"  # 顶层仍取首个（配置顺序）
+
+
 # ---- 目录路由：使用后台配置的 URL，忽略客户端 url 参数 -----------------------
 
 
@@ -654,14 +817,16 @@ def test_catalog_handler_uses_configured_url_and_ignores_client_url(
 
     captured: dict[str, object] = {}
 
-    def fake_payload(url: str, store: object, *, force_refresh: bool = False) -> dict:
-        captured["url"] = url
+    def fake_payload(urls: str | list[str], store: object, *, force_refresh: bool = False) -> dict:
+        captured["url"] = urls
         captured["refresh"] = force_refresh
+        first = urls[0] if isinstance(urls, list) else urls
         return {
-            "source_url": url,
+            "source_url": first,
             "catalog_updated_at": None,
             "employees": [],
             "installed_count": 0,
+            "sources": [{"source_url": first, "catalog_updated_at": None, "installed_count": 0}],
         }
 
     monkeypatch.setattr(
@@ -682,8 +847,8 @@ def test_catalog_handler_uses_configured_url_and_ignores_client_url(
     assert resp.status_code == 200
     body = json.loads(resp.body.decode("utf-8"))
     assert body["configured"] is True
-    # 客户端传入的 url 被忽略，使用配置文件里写死的 URL
-    assert captured["url"] == "https://example.com/employees.json"
+    # 客户端传入的 url 被忽略，使用配置文件里写死的 URL（单值回退为列表）
+    assert captured["url"] == ["https://example.com/employees.json"]
     assert captured["refresh"] is True
 
 
@@ -716,4 +881,5 @@ def test_catalog_handler_unconfigured_returns_configured_false(
     assert body["configured"] is False
     assert body["employees"] == []
     assert body["source_url"] == ""
+    assert body["sources"] == []
     assert called == []

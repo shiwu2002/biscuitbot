@@ -1,10 +1,10 @@
 """人才市场注册表 URL 的 CLI 管理测试。
 
-验证 ``biscuitbot talent-market set/show/clear``：
-- ``set`` 手术式写入 ``gateway.talent_market_registry_url``，绝不触碰配置文件里
-  的其他键（含 API Key）；
-- ``set`` 校验 http/https，非法地址拒绝并保持文件不变；
-- ``clear`` 只移除该键，其余键原样保留。
+验证 ``biscuitbot talent-market set/add/remove/list/show/clear``：
+- ``set`` 整体替换为列表、``add`` 追加、``remove`` 精确删除、``list``/``show`` 打印全部；
+- 手术式写回 ``gateway`` 相关键，绝不触碰配置文件里的其他键（含 API Key）；
+- 校验 http/https，非法地址拒绝并保持文件不变；
+- 兼容旧单值键（``talent_market_registry_url``）迁移进列表。
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ def _config_with_secret(tmp_path: Path) -> Path:
     return path
 
 
-def test_set_writes_registry_url_and_preserves_api_key(tmp_path: Path) -> None:
+def test_set_replaces_all_registry_urls_and_preserves_api_key(tmp_path: Path) -> None:
     path = _config_with_secret(tmp_path)
     url = "https://example.com/employees.json"
 
@@ -56,7 +56,10 @@ def test_set_writes_registry_url_and_preserves_api_key(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw["gateway"]["talent_market_registry_url"] == url
+    assert raw["gateway"]["talent_market_registry_urls"] == [url]
+    # 旧单值键应被删除，避免遗留双形态
+    assert "talent_market_registry_url" not in raw["gateway"]
+    assert "talentMarketRegistryUrl" not in raw["gateway"]
     # API Key 等既有键必须原样保留
     assert raw["providers"]["openai"]["apiKey"] == "sk-should-survive"
     assert raw["gateway"]["host"] == "127.0.0.1"
@@ -72,7 +75,29 @@ def test_set_creates_config_when_missing(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw["gateway"]["talent_market_registry_url"] == url
+    assert raw["gateway"]["talent_market_registry_urls"] == [url]
+
+
+def test_set_overwrites_existing_multi_urls(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    runner.invoke(
+        app,
+        ["talent-market", "add", "https://a.example/x.json", "--config", str(path)],
+    )
+    runner.invoke(
+        app,
+        ["talent-market", "add", "https://b.example/y.json", "--config", str(path)],
+    )
+
+    result = runner.invoke(
+        app,
+        ["talent-market", "set", "https://c.example/z.json", "--config", str(path)],
+    )
+
+    assert result.exit_code == 0, result.stdout
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["gateway"]["talent_market_registry_urls"] == ["https://c.example/z.json"]
+    assert raw["providers"]["openai"]["apiKey"] == "sk-should-survive"
 
 
 @pytest.mark.parametrize("bad_url", ["file:///etc/passwd", "ftp://example.com/x", "  "])
@@ -114,7 +139,7 @@ def test_show_unconfigured(tmp_path: Path) -> None:
     assert "未配置" in result.stdout
 
 
-def test_clear_removes_only_registry_url(tmp_path: Path) -> None:
+def test_clear_removes_all_registry_url_keys(tmp_path: Path) -> None:
     path = _config_with_secret(tmp_path)
     runner.invoke(
         app,
@@ -127,7 +152,114 @@ def test_clear_removes_only_registry_url(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.stdout
     raw = json.loads(path.read_text(encoding="utf-8"))
+    assert "talent_market_registry_urls" not in raw["gateway"]
     assert "talent_market_registry_url" not in raw["gateway"]
     # 其余键保留
     assert raw["providers"]["openai"]["apiKey"] == "sk-should-survive"
     assert raw["gateway"]["host"] == "127.0.0.1"
+
+
+def test_add_appends_and_is_idempotent(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    url_a = "https://a.example/x.json"
+    url_b = "https://b.example/y.json"
+
+    for url in (url_a, url_b):
+        r = runner.invoke(app, ["talent-market", "add", url, "--config", str(path)])
+        assert r.exit_code == 0, r.stdout
+    # 重复 add 幂等
+    r = runner.invoke(app, ["talent-market", "add", url_a, "--config", str(path)])
+    assert r.exit_code == 0
+
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["gateway"]["talent_market_registry_urls"] == [url_a, url_b]
+    assert raw["providers"]["openai"]["apiKey"] == "sk-should-survive"
+
+
+def test_add_migrates_legacy_single_value(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    path.write_text(
+        json.dumps(
+            {
+                "gateway": {"talent_market_registry_url": "https://legacy.example/x.json"},
+                "providers": {"openai": {"apiKey": "sk-should-survive"}},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    r = runner.invoke(
+        app, ["talent-market", "add", "https://new.example/y.json", "--config", str(path)]
+    )
+
+    assert r.exit_code == 0, r.stdout
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["gateway"]["talent_market_registry_urls"] == [
+        "https://legacy.example/x.json",
+        "https://new.example/y.json",
+    ]
+    assert "talent_market_registry_url" not in raw["gateway"]
+
+
+def test_remove_deletes_exact_url(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    url_a = "https://a.example/x.json"
+    url_b = "https://b.example/y.json"
+    for url in (url_a, url_b):
+        runner.invoke(app, ["talent-market", "add", url, "--config", str(path)])
+
+    r = runner.invoke(app, ["talent-market", "remove", url_a, "--config", str(path)])
+
+    assert r.exit_code == 0, r.stdout
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert raw["gateway"]["talent_market_registry_urls"] == [url_b]
+
+
+def test_remove_last_url_clears_config(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    runner.invoke(
+        app,
+        ["talent-market", "add", "https://a.example/x.json", "--config", str(path)],
+    )
+
+    r = runner.invoke(
+        app, ["talent-market", "remove", "https://a.example/x.json", "--config", str(path)]
+    )
+
+    assert r.exit_code == 0, r.stdout
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    assert "talent_market_registry_urls" not in raw["gateway"]
+    assert raw["providers"]["openai"]["apiKey"] == "sk-should-survive"
+
+
+def test_remove_unknown_url_is_noop(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    runner.invoke(
+        app,
+        ["talent-market", "add", "https://a.example/x.json", "--config", str(path)],
+    )
+    original = path.read_text(encoding="utf-8")
+
+    r = runner.invoke(
+        app, ["talent-market", "remove", "https://nope.example/x.json", "--config", str(path)]
+    )
+
+    assert r.exit_code == 0, r.stdout
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_list_prints_all_urls(tmp_path: Path) -> None:
+    path = _config_with_secret(tmp_path)
+    url_a = "https://a.example/x.json"
+    url_b = "https://b.example/y.json"
+    for url in (url_a, url_b):
+        runner.invoke(app, ["talent-market", "add", url, "--config", str(path)])
+
+    result = runner.invoke(
+        app, ["talent-market", "list", "--config", str(path)]
+    )
+
+    assert result.exit_code == 0
+    assert url_a in result.stdout
+    assert url_b in result.stdout

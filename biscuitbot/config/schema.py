@@ -300,11 +300,18 @@ class GatewayConfig(Base):
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
     # 人才市场注册表 URL：后台写死在配置文件里，只能通过 CLI 修改
-    # （`biscuitbot talent-market set <url>`），WebUI/桌面应用不允许更改。
+    # （`biscuitbot talent-market add/set <url>`），WebUI/桌面应用不允许更改。
     talent_market_registry_url: str = Field(
         default="",
         validation_alias=AliasChoices(
             "talentMarketRegistryUrl", "talent_market_registry_url"
+        ),
+    )
+    # 多注册表 URL（列表优先；读取时兼容旧的单值 talent_market_registry_url）
+    talent_market_registry_urls: list[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices(
+            "talentMarketRegistryUrls", "talent_market_registry_urls"
         ),
     )
 

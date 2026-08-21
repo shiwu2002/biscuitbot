@@ -58,8 +58,8 @@ def _isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def _registry_unconfigured_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """默认注册表未配置，避免测试触碰真实 config 或发起真实网络请求。"""
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.read_talent_market_registry_url",
-        lambda *a, **k: "",
+        "biscuitbot.webui.talent_market.read_talent_market_registry_urls",
+        lambda *a, **k: [],
     )
 
 
@@ -67,8 +67,8 @@ def _configure_registry(
     monkeypatch: pytest.MonkeyPatch, url: str = "https://example.com/registry.json"
 ) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.read_talent_market_registry_url",
-        lambda *a, **k: url,
+        "biscuitbot.webui.talent_market.read_talent_market_registry_urls",
+        lambda *a, **k: [url],
     )
 
 

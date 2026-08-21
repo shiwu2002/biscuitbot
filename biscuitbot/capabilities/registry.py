@@ -217,7 +217,7 @@ class CapabilityRegistry:
                 "category": row.get("category") or "uncategorized",
                 "tags": [],
                 "runtime": "process",
-                "source": "cli-anything",
+                "source": row.get("source") or "cli-anything",
                 "instructions": {
                     "source": "skill_md" if row.get("skill_installed") else "generated",
                     "path": f"skills/cli-app-{name}/SKILL.md",

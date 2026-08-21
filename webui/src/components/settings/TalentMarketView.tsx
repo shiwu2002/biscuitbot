@@ -21,6 +21,16 @@ function talentErrorMessage(tx: (key: string, fallback: string) => string, error
   return tx("talentMarket.loadFailed", "加载人才市场失败，请检查注册表地址");
 }
 
+/** 来源 URL 的展示标签：取主机名，解析失败则回退原文。 */
+function talentSourceLabel(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 export function TalentMarketView({
   employees,
   onInstalled,
@@ -109,7 +119,7 @@ export function TalentMarketView({
           system_prompt: entry.system_prompt,
           skills: entry.skills ?? [],
         },
-        catalog?.source_url,
+        entry.source_url ?? catalog?.source_url,
       );
       setCatalog((prev) => {
         if (!prev) return prev;
@@ -182,6 +192,12 @@ export function TalentMarketView({
                 count: rows.length,
                 defaultValue: "共 {{count}} 名员工 · 每 30 分钟自动刷新",
               })}
+              {catalog?.sources && catalog.sources.length > 1
+                ? ` · ${t("talentMarket.sourceCount", {
+                    count: catalog.sources.length,
+                    defaultValue: "{{count}} 个来源",
+                  })}`
+                : null}
             </p>
           ) : null}
 
@@ -254,6 +270,11 @@ export function TalentMarketView({
                         {entry.category ? (
                           <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground/80">
                             {entry.category}
+                          </span>
+                        ) : null}
+                        {entry.source_url ? (
+                          <span className="shrink-0 rounded-full bg-muted/70 px-2 py-0.5 font-mono text-[10.5px] font-medium text-muted-foreground/70">
+                            {talentSourceLabel(entry.source_url)}
                           </span>
                         ) : null}
                       </div>

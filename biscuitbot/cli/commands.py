@@ -2014,12 +2014,33 @@ def _write_talent_config(path: Path, raw: dict) -> None:
         pass
 
 
+def _load_talent_config_raw(path: Path) -> dict:
+    """读取配置文件：缺失返回 {}；不可读则报错退出（Exit 1）。"""
+    import json as _json
+
+    if not path.exists():
+        return {}
+    try:
+        raw = _json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        console.print(f"[red]错误：无法读取配置文件 {path}：{e}[/red]")
+        raise typer.Exit(1)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _drop_talent_single_keys(gateway: dict) -> None:
+    """删除旧单值键（``talent_market_registry_url``/``talentMarketRegistryUrl``），
+    使列表成为唯一权威形态。"""
+    gateway.pop("talent_market_registry_url", None)
+    gateway.pop("talentMarketRegistryUrl", None)
+
+
 @talent_market_app.command("set")
 def talent_market_set(
     url: str,
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """设置人才市场注册表 URL（写入后台配置文件；WebUI/桌面应用只读，不可修改）。"""
+    """整体替换人才市场注册表 URL 列表（写入后台配置文件；WebUI/桌面应用只读，不可修改）。"""
     from biscuitbot.webui.talent_market import TalentMarketError, _validate_registry_url
 
     try:
@@ -2029,26 +2050,107 @@ def talent_market_set(
         raise typer.Exit(1)
 
     path = _resolve_talent_config_path(config_path)
-    import json as _json
-
-    if path.exists():
-        try:
-            raw = _json.loads(path.read_text(encoding="utf-8"))
-        except Exception as e:
-            console.print(f"[red]错误：无法读取配置文件 {path}：{e}[/red]")
-            raise typer.Exit(1)
-        if not isinstance(raw, dict):
-            raw = {}
-    else:
-        raw = {}
+    raw = _load_talent_config_raw(path)
     gateway = raw.get("gateway")
     if not isinstance(gateway, dict):
         gateway = {}
         raw["gateway"] = gateway
-    # 手术式写入：仅改这一键，绝不触碰配置文件里的其他键（含 API Key）
-    gateway["talent_market_registry_url"] = url
+    # 手术式写入：仅改人才市场相关键，绝不触碰配置文件里的其他键（含 API Key）
+    gateway["talent_market_registry_urls"] = [url]
+    _drop_talent_single_keys(gateway)
     _write_talent_config(path, raw)
     console.print(f"[green]已设置人才市场注册表：[/green]{url}")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
+@talent_market_app.command("add")
+def talent_market_add(
+    url: str,
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """追加一个人才市场注册表 URL（幂等，保留既有来源）。"""
+    from biscuitbot.webui.talent_market import (
+        TalentMarketError,
+        _talent_urls_from_gateway,
+        _validate_registry_url,
+    )
+
+    try:
+        url = _validate_registry_url(url)
+    except TalentMarketError as e:
+        console.print(f"[red]错误：{e.message}[/red]")
+        raise typer.Exit(1)
+
+    path = _resolve_talent_config_path(config_path)
+    raw = _load_talent_config_raw(path)
+    gateway = raw.get("gateway")
+    if not isinstance(gateway, dict):
+        gateway = {}
+        raw["gateway"] = gateway
+    urls = _talent_urls_from_gateway(gateway)
+    if url in urls:
+        console.print(f"人才市场注册表已存在：{url}")
+        console.print(f"[dim]配置文件：{path}[/dim]")
+        return
+    urls.append(url)
+    gateway["talent_market_registry_urls"] = urls
+    _drop_talent_single_keys(gateway)
+    _write_talent_config(path, raw)
+    console.print(f"[green]已添加人才市场注册表：[/green]{url}")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
+@talent_market_app.command("remove")
+def talent_market_remove(
+    url: str,
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """按精确 URL 删除一个人才市场注册表来源。"""
+    from biscuitbot.webui.talent_market import _talent_urls_from_gateway
+
+    url = (url or "").strip()
+    path = _resolve_talent_config_path(config_path)
+    raw = _load_talent_config_raw(path)
+    gateway = raw.get("gateway")
+    if not isinstance(gateway, dict):
+        console.print("人才市场注册表：[dim]未配置[/dim]")
+        console.print(f"[dim]配置文件：{path}[/dim]")
+        return
+    urls = _talent_urls_from_gateway(gateway)
+    if url not in urls:
+        console.print(f"未找到该注册表来源：{url}")
+        console.print(f"[dim]配置文件：{path}[/dim]")
+        return
+    urls = [u for u in urls if u != url]
+    if urls:
+        gateway["talent_market_registry_urls"] = urls
+    else:
+        gateway.pop("talent_market_registry_urls", None)
+        gateway.pop("talentMarketRegistryUrls", None)
+    _drop_talent_single_keys(gateway)
+    _write_talent_config(path, raw)
+    console.print(f"[green]已删除人才市场注册表：[/green]{url}")
+    console.print(f"[dim]配置文件：{path}[/dim]")
+
+
+@talent_market_app.command("list")
+def talent_market_list(
+    config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
+):
+    """列出全部人才市场注册表 URL。"""
+    from biscuitbot.webui.talent_market import read_talent_market_registry_urls
+
+    path = _resolve_talent_config_path(config_path)
+    urls = read_talent_market_registry_urls(path)
+    if urls:
+        for i, u in enumerate(urls, 1):
+            console.print(f"{i}. {u}")
+    else:
+        console.print("人才市场注册表：[dim]未配置[/dim]")
+        console.print(
+            "提示：使用 `biscuitbot talent-market add <url>`（追加）"
+            "或 `set <url>`（整体替换）进行配置。"
+        )
     console.print(f"[dim]配置文件：{path}[/dim]")
 
 
@@ -2056,40 +2158,28 @@ def talent_market_set(
 def talent_market_show(
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """显示当前人才市场注册表 URL。"""
-    from biscuitbot.webui.talent_market import read_talent_market_registry_url
-
-    path = _resolve_talent_config_path(config_path)
-    url = read_talent_market_registry_url(path)
-    if url:
-        console.print(f"人才市场注册表：{url}")
-    else:
-        console.print("人才市场注册表：[dim]未配置[/dim]")
-        console.print("提示：使用 `biscuitbot talent-market set <url>` 进行配置。")
-    console.print(f"[dim]配置文件：{path}[/dim]")
+    """显示当前全部人才市场注册表 URL（等价于 list）。"""
+    talent_market_list(config_path)
 
 
 @talent_market_app.command("clear")
 def talent_market_clear(
     config_path: str | None = typer.Option(None, "--config", "-c", help="配置文件路径"),
 ):
-    """清除人才市场注册表 URL 配置。"""
-    path = _resolve_talent_config_path(config_path)
-    import json as _json
+    """清除全部人才市场注册表 URL 配置。"""
+    from biscuitbot.webui.talent_market import _TALENT_URL_KEYS
 
-    if not path.exists():
-        console.print("人才市场注册表：[dim]未配置（配置文件不存在）[/dim]")
-        return
-    try:
-        raw = _json.loads(path.read_text(encoding="utf-8"))
-    except Exception as e:
-        console.print(f"[red]错误：无法读取配置文件 {path}：{e}[/red]")
-        raise typer.Exit(1)
-    if not isinstance(raw, dict):
-        raw = {}
+    path = _resolve_talent_config_path(config_path)
+    raw = _load_talent_config_raw(path)
     gateway = raw.get("gateway")
-    if isinstance(gateway, dict) and "talent_market_registry_url" in gateway:
-        del gateway["talent_market_registry_url"]
+    if not isinstance(gateway, dict):
+        console.print("人才市场注册表：[dim]未配置[/dim]")
+        console.print(f"[dim]配置文件：{path}[/dim]")
+        return
+    changed = any(k in gateway for k in _TALENT_URL_KEYS)
+    for k in _TALENT_URL_KEYS:
+        gateway.pop(k, None)
+    if changed:
         _write_talent_config(path, raw)
         console.print("已清除人才市场注册表 URL 配置。")
     else:

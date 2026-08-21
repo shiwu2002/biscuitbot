@@ -23,16 +23,35 @@ from biscuitbot.apps.cli import CliAppError, CliAppManager, CliAppsRuntimeConfig
 from biscuitbot.config_base import Base  # 配置基类
 
 
+class CatalogSourceConfig(Base):
+    """CLI 应用目录来源配置（内置 harness 之外的额外来源）。
+
+    JSON 键自动映射为 camelCase：``catalogSources`` / ``registryUrl`` /
+    ``rawBase`` / ``required``。字段宽松默认，空 name / 空 URL 的坏条目不会
+    导致整份 config 校验失败，而是在使用时被跳过并告警（见
+    ``CliAppManager._default_sources``）。``raw_base`` 为空时回退到内置
+    CLI-Anything 原始文件基址；``required`` 为 true 时该来源拉取失败会导致
+    目录整体失败。
+    """
+
+    name: str = ""  # 来源标识（缓存文件按它分文件）
+    registry_url: str = ""  # 注册表 JSON URL
+    raw_base: str = ""  # 技能等原始文件基址（可选）
+    required: bool = True  # 拉取失败是否视为致命
+
+
 class CliAppsToolConfig(Base):
     """CLI Apps 工具配置。
 
-    用于控制 CLI 应用的安装与运行超时、目录缓存有效期等运行时参数。
+    用于控制 CLI 应用的安装与运行超时、目录缓存有效期、额外目录来源等运行时参数。
     """
 
     enable: bool = True  # 是否启用 CLI Apps 工具
     install_timeout: int = Field(default=300, ge=1, le=3600)  # 安装超时（秒）
     run_timeout: int = Field(default=60, ge=1, le=600)  # 运行超时（秒）
     catalog_ttl_seconds: int = Field(default=3600, ge=60, le=86_400)  # 目录缓存有效期（秒）
+    # 额外目录来源（内置 CLI-Anything harness 始终存在，无需在此配置）
+    catalog_sources: list[CatalogSourceConfig] = Field(default_factory=list)
 
 
 @tool_parameters(

@@ -105,32 +105,62 @@ def _validate_registry_url(raw: str) -> str:
     return url
 
 
-def read_talent_market_registry_url(config_path: Path | None = None) -> str:
-    """从配置文件读取人才市场注册表 URL。
+_TALENT_URL_KEYS = (
+    "talent_market_registry_urls",
+    "talentMarketRegistryUrls",
+    "talent_market_registry_url",
+    "talentMarketRegistryUrl",
+)
 
-    注册表 URL 是后台写死在配置文件（``gateway.talentMarketRegistryUrl`` 或
-    ``gateway.talent_market_registry_url``）中的值，只能通过 CLI
-    ``biscuitbot talent-market set <url>`` 修改。这里直接读原始 JSON，绝不
-    触碰文件里其他键（含 API Key），也不写回任何内容。
+
+def _talent_urls_from_gateway(gateway: dict) -> list[str]:
+    """从 gateway 配置块解析注册表 URL 列表。
+
+    列表键（``talent_market_registry_urls``/``talentMarketRegistryUrls``）优先；
+    无列表时回退旧的单值键。空串 / 非字符串会被剔除。
+    """
+    for key in _TALENT_URL_KEYS[:2]:
+        value = gateway.get(key)
+        if isinstance(value, list):
+            urls = [u for u in (str(v).strip() for v in value) if u]
+            if urls:
+                return urls
+    for key in _TALENT_URL_KEYS[2:]:
+        value = gateway.get(key)
+        if isinstance(value, str) and value.strip():
+            return [value.strip()]
+    return []
+
+
+def read_talent_market_registry_urls(config_path: Path | None = None) -> list[str]:
+    """从配置文件读取人才市场注册表 URL 列表。
+
+    注册表 URL 是后台写死在配置文件（``gateway.talentMarketRegistryUrls`` 或
+    ``gateway.talent_market_registry_urls``；兼容旧的单值键）中的值，只能通过
+    CLI ``biscuitbot talent-market add/set <url>`` 修改。这里直接读原始 JSON，
+    绝不触碰文件里其他键（含 API Key），也不写回任何内容。
 
     Returns:
-        已配置的注册表 URL；未配置或文件不可读时返回空字符串。
+        已配置的注册表 URL 列表；未配置或文件不可读时返回空列表。
     """
     from biscuitbot.config.loader import get_config_path
 
     path = config_path or get_config_path()
     if not path.exists():
-        return ""
+        return []
     raw = _read_json(path)
     if raw is None:
-        return ""
+        return []
     gateway = raw.get("gateway")
     if not isinstance(gateway, dict):
-        return ""
-    value = gateway.get("talent_market_registry_url") or gateway.get(
-        "talentMarketRegistryUrl"
-    )
-    return value if isinstance(value, str) else ""
+        return []
+    return _talent_urls_from_gateway(gateway)
+
+
+def read_talent_market_registry_url(config_path: Path | None = None) -> str:
+    """读取第一个人才市场注册表 URL（向后兼容的单值读取）。"""
+    urls = read_talent_market_registry_urls(config_path)
+    return urls[0] if urls else ""
 
 
 def _http_get_json(url: str) -> dict[str, Any]:
@@ -233,14 +263,33 @@ def _normalize_talent_entry(raw: Any) -> dict[str, Any] | None:
 
 
 def talent_catalog_payload(
-    url: str,
+    urls: str | list[str],
     store: EmployeeStore | None,
     *,
     force_refresh: bool = False,
 ) -> dict[str, Any]:
-    """拉取注册表并返回前端目录 payload（含 installed 标注）。"""
-    validated = _validate_registry_url(url)
-    registry = _fetch_talent_catalog(validated, force_refresh=force_refresh)
+    """拉取注册表并返回前端目录 payload（含 installed 标注与多来源聚合）。
+
+    支持传单个 URL（向后兼容）或多个 URL。多个来源按配置顺序聚合：
+    - 每个条目打 ``source_url`` 戳，安装时据此定位权威数据；
+    - 同 id 跨来源去重、首来源胜出（确定性规则）；
+    - 顶层保留 ``source_url``（首个来源）与 ``catalog_updated_at``（各来源最新）。
+    """
+    if isinstance(urls, str):
+        urls = [urls]
+
+    # 校验所有 URL；非法来源跳过并记录首个错误，全部非法则抛错（保持单来源 400 行为）
+    validated: list[str] = []
+    first_error: TalentMarketError | None = None
+    for url in urls:
+        try:
+            validated.append(_validate_registry_url(url))
+        except TalentMarketError as e:
+            logger.warning("talent-market 忽略非法注册表 URL：{} ({})", url, e.message)
+            if first_error is None:
+                first_error = e
+    if not validated:
+        raise first_error or TalentMarketError("注册表 URL 不能为空", status=400)
 
     installed_ids: set[str] = set()
     if store is not None:
@@ -251,32 +300,57 @@ def talent_catalog_payload(
             installed_ids = set()
 
     rows: list[dict[str, Any]] = []
-    installed_count = 0
-    raw_rows = registry.get("employees")
-    if not isinstance(raw_rows, list):
-        # 兼容 "talent" 键名
-        raw_rows = registry.get("talent")
-    if isinstance(raw_rows, list):
-        for raw in raw_rows:
+    sources: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    updated_values: list[str] = []
+
+    for url in validated:
+        try:
+            registry = _fetch_talent_catalog(url, force_refresh=force_refresh)
+        except TalentMarketError:
+            if len(validated) == 1:
+                raise
+            logger.warning("talent-market 拉取失败，跳过该来源：{}", url)
+            continue
+
+        raw_rows = registry.get("employees")
+        if not isinstance(raw_rows, list):
+            raw_rows = registry.get("talent")  # 兼容 "talent" 键名
+        source_installed = 0
+        for raw in raw_rows if isinstance(raw_rows, list) else []:
             row = _normalize_talent_entry(raw)
             if row is None:
                 continue
+            if row["id"] in seen:
+                continue  # 跨来源去重：首来源胜出
+            seen.add(row["id"])
+            row["source_url"] = url
             installed = row["id"] in installed_ids
             if installed:
-                installed_count += 1
+                source_installed += 1
             row["installed"] = installed
             rows.append(row)
 
-    meta = registry.get("meta")
-    updated_at = meta.get("updated") if isinstance(meta, dict) else None
-    if not isinstance(updated_at, str):
-        updated_at = None
+        meta = registry.get("meta")
+        updated_at = meta.get("updated") if isinstance(meta, dict) else None
+        if isinstance(updated_at, str):
+            updated_values.append(updated_at)
+        else:
+            updated_at = None
+        sources.append(
+            {
+                "source_url": url,
+                "catalog_updated_at": updated_at,
+                "installed_count": source_installed,
+            }
+        )
 
     return {
-        "source_url": validated,
-        "catalog_updated_at": updated_at,
+        "source_url": validated[0],
+        "catalog_updated_at": max(updated_values) if updated_values else None,
         "employees": rows,
-        "installed_count": installed_count,
+        "installed_count": sum(1 for r in rows if r.get("installed")),
+        "sources": sources,
     }
 
 

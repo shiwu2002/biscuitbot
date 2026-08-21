@@ -96,7 +96,7 @@ from biscuitbot.webui.capabilities_api import (
 from biscuitbot.webui.talent_market import (
     TalentMarketError,
     install_talent_employee,
-    read_talent_market_registry_url,
+    read_talent_market_registry_urls,
     talent_catalog_payload,
 )
 from biscuitbot.webui.thread_disk import delete_webui_thread
@@ -959,9 +959,9 @@ class GatewayHTTPHandler:
             return _http_error(500, "failed to delete employee")
 
     async def _handle_webui_talent_catalog(self, request: WsRequest) -> Response:
-        """人才市场目录：拉取配置文件里写死的注册表 URL，返回规范化 + installed 标注。
+        """人才市场目录：拉取配置文件里写死的注册表 URL 列表，返回规范化 + installed 标注。
 
-        注册表 URL 只能由后台 CLI 设置（``biscuitbot talent-market set <url>``），
+        注册表 URL 只能由后台 CLI 设置（``biscuitbot talent-market add/set <url>``），
         客户端传入的 ``?url=`` 一律忽略，打包应用也因此无法更改注册表。
         """
         if not self.check_api_token(request):
@@ -969,8 +969,8 @@ class GatewayHTTPHandler:
         query = _parse_query(request.path)
         refresh = (_query_first(query, "refresh") or "").lower() in {"1", "true", "yes"}
 
-        configured_url = read_talent_market_registry_url()
-        if not configured_url:
+        configured_urls = read_talent_market_registry_urls()
+        if not configured_urls:
             # 未配置 → 返回 configured:false，前端展示 CLI 引导空态（HTTP 200）
             return _http_json_response(
                 {
@@ -979,12 +979,13 @@ class GatewayHTTPHandler:
                     "catalog_updated_at": None,
                     "employees": [],
                     "installed_count": 0,
+                    "sources": [],
                 }
             )
         try:
             payload = await asyncio.to_thread(
                 talent_catalog_payload,
-                configured_url,
+                configured_urls,
                 self.employees,
                 force_refresh=refresh,
             )

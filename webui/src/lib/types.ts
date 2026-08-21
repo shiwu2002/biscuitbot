@@ -262,6 +262,15 @@ export interface TalentEmployee {
   skills?: string[];
   category?: string;
   installed?: boolean;
+  /** 条目所属注册表来源 URL（多来源时用于定位权威数据）。 */
+  source_url?: string;
+}
+
+/** 单个人才市场注册表来源的摘要信息。 */
+export interface TalentCatalogSource {
+  source_url: string;
+  catalog_updated_at?: string | null;
+  installed_count: number;
 }
 
 export interface TalentCatalogPayload {
@@ -271,6 +280,8 @@ export interface TalentCatalogPayload {
   catalog_updated_at?: string | null;
   employees: TalentEmployee[];
   installed_count: number;
+  /** 多来源时的来源摘要列表（兼容旧版单来源后端，可能缺失）。 */
+  sources?: TalentCatalogSource[];
 }
 
 /** Structured UI blob on ``progress`` WS frames; channels may add more ``kind`` values later. */

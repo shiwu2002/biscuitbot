@@ -9,7 +9,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.apps.cli.service import CliAppError, CliAppManager, CliAppsRuntimeConfig
+from biscuitbot.apps.cli.service import (
+    CLI_ANYTHING_RAW_BASE,
+    CLI_ANYTHING_REGISTRY_URL,
+    CatalogSource,
+    CliAppError,
+    CliAppManager,
+    CliAppsRuntimeConfig,
+)
 
 
 def _write_cache(path: Path, registry: dict) -> None:
@@ -20,6 +27,13 @@ def _write_cache(path: Path, registry: dict) -> None:
     )
 
 
+def _harness_sources() -> list[CatalogSource]:
+    """显式传入内置 harness 来源，隔离真实 config 的 catalogSources。"""
+    return [
+        CatalogSource("harness", CLI_ANYTHING_REGISTRY_URL, CLI_ANYTHING_RAW_BASE, True)
+    ]
+
+
 def _manager(tmp_path: Path) -> CliAppManager:
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -27,6 +41,7 @@ def _manager(tmp_path: Path) -> CliAppManager:
         workspace=workspace,
         data_dir=tmp_path / "data",
         runtime=CliAppsRuntimeConfig(catalog_ttl_seconds=3600, install_timeout=5, run_timeout=5),
+        sources=_harness_sources(),
     )
 
 
@@ -110,6 +125,102 @@ def _seed_catalog(manager: CliAppManager) -> None:
         ],
     }
     _write_cache(manager._cache_path("harness"), harness)
+
+
+def test_catalog_merges_two_sources(tmp_path: Path) -> None:
+    """两个目录来源：同名去重（后来源字段覆盖 + _source 合并）、按来源分缓存文件。"""
+    manager = _manager(tmp_path)
+    _seed_catalog(manager)
+    _write_cache(
+        manager._cache_path("custom"),
+        {
+            "meta": {"updated": "2026-04-17"},
+            "clis": [
+                {
+                    "name": "acmetool",
+                    "display_name": "Acme",
+                    "description": "acme",
+                    "category": "dev",
+                    "install_cmd": "pip install acmetool",
+                    "entry_point": "acmetool",
+                },
+                {
+                    "name": "gimp",
+                    "display_name": "GIMP",
+                    "description": "custom gimp",
+                    "category": "image",
+                    "install_cmd": "pip install x",
+                    "entry_point": "gimp-custom",
+                },
+            ],
+        },
+    )
+    manager._sources = _harness_sources() + [
+        CatalogSource(
+            "custom",
+            "https://acme.example/registry.json",
+            "https://raw.acme.example/main",
+            False,
+        )
+    ]
+
+    apps, updated = manager.catalog()
+    by = {app["name"]: app for app in apps}
+    assert "acmetool" in by
+    assert by["acmetool"]["_source"] == "custom"
+    # 同名 gimp：后来源字段覆盖，来源名合并
+    assert by["gimp"]["_source"] == "harness+custom"
+    assert by["gimp"]["description"] == "custom gimp"
+    assert by["gimp"]["_raw_base"] == "https://raw.acme.example/main"
+    assert updated == "2026-04-17"
+    # 缓存按来源分文件
+    assert (manager.data_dir / "harness_registry_cache.json").exists()
+    assert (manager.data_dir / "custom_registry_cache.json").exists()
+
+
+def test_default_sources_merges_config_extras(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_default_sources：内置 harness + config 额外来源（坏条目 / 重名跳过）。"""
+    from types import SimpleNamespace
+
+    fake_source = SimpleNamespace(
+        name="Acme Corp",
+        registry_url="https://acme.example/registry.json",
+        raw_base="https://raw.acme.example/main",
+        required=False,
+    )
+    fake_cfg = SimpleNamespace(
+        tools=SimpleNamespace(
+            cli_apps=SimpleNamespace(
+                catalog_sources=[
+                    fake_source,
+                    SimpleNamespace(name="", registry_url="https://bad.example/x.json"),
+                    SimpleNamespace(name="harness", registry_url="https://dup.example/x.json"),
+                ]
+            )
+        )
+    )
+    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda *a, **k: fake_cfg)
+
+    sources = CliAppManager._default_sources()
+    assert [s.name for s in sources] == ["harness", "acme-corp"]
+    acme = sources[1]
+    assert acme.registry_url == "https://acme.example/registry.json"
+    assert acme.raw_base == "https://raw.acme.example/main"
+    assert acme.required is False
+
+
+def test_default_sources_falls_back_on_config_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """config 读取失败（如缺字段）时回退到内置 harness，不抛错。"""
+    def _boom(*a: object, **k: object) -> object:
+        raise RuntimeError("config load failed")
+
+    monkeypatch.setattr("biscuitbot.config.loader.load_config", _boom)
+    sources = CliAppManager._default_sources()
+    assert [s.name for s in sources] == ["harness"]
 
 
 def test_payload_merges_catalog_and_marks_unsupported_installs(tmp_path: Path) -> None:

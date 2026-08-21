@@ -760,11 +760,12 @@ function sourceLabel(source: string, t: TFunction): string {
   if (source === "builtin") {
     return t("settings.capabilities.sourceBuiltin", { defaultValue: "Built-in" });
   }
-  if (source === "cli-anything") {
+  if (source === "cli-anything" || source === "harness") {
     return t("settings.capabilities.sourceCliAnything", { defaultValue: "CLI-Anything" });
   }
   if (source === "mcp-preset") {
     return t("settings.capabilities.sourceMcpPreset", { defaultValue: "MCP Preset" });
   }
+  // 自定义目录来源（如 `custom`、`harness+custom`）保留原始来源名
   return source;
 }

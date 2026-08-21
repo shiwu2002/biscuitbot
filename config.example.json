@@ -221,7 +221,15 @@
       "model": "openai/gpt-5.4-image-2"
     },
     "cliApps": {
-      "enable": false
+      "enable": false,
+      "catalogSources": [
+        {
+          "name": "acme-corp",
+          "registryUrl": "https://example.com/apps-index.json",
+          "rawBase": "https://example.com",
+          "required": false
+        }
+      ]
     },
     "systemIo": {
       "enable": false,
@@ -264,6 +272,7 @@
     "host": "127.0.0.1",
     "port": 18790,
     "openBrowser": false,
+    "talentMarketRegistryUrls": [],
     "heartbeat": {
       "enabled": false,
       "intervalS": 300,

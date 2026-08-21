@@ -207,6 +207,37 @@ def test_registry_cli_apps_are_process(tmp_path: Path, empty_mcp) -> None:
     assert cap["instructions"]["available"] is False
 
 
+def test_registry_cli_app_custom_source_is_propagated(tmp_path: Path, empty_mcp) -> None:
+    """CLI 应用来自自定义目录时，capability 的 source 透传 row['source']（不硬编码）。"""
+    registry = CapabilityRegistry(
+        tmp_path,
+        cli_manager=_FakeCliManager(
+            [
+                {
+                    "name": "acmetool",
+                    "source": "custom",
+                    "display_name": "Acme",
+                    "description": "acme",
+                    "category": "dev",
+                    "skill_installed": False,
+                    "installed": False,
+                    "available": True,
+                    "install_supported": True,
+                    "requires": "",
+                    "logo_url": None,
+                    "brand_color": None,
+                    "status": "not_installed",
+                    "entry_point": "acmetool",
+                }
+            ]
+        ),
+    )
+
+    cap = registry.get("acmetool")
+    assert cap is not None
+    assert cap["source"] == "custom"
+
+
 def test_registry_mcp_presets_are_mcp(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
