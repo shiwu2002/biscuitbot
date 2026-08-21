@@ -373,6 +373,84 @@ def _install_bundled_skills(
     return installed
 
 
+# 市场头像下载上限（防御性，内置头像约 0.5MB）
+_AVATAR_MAX_BYTES = 4 * 1024 * 1024
+# 按 content-type 识别的图片扩展名白名单
+_AVATAR_CONTENT_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+    "image/avif": ".avif",
+}
+
+
+def _avatar_ext_from_magic(data: bytes) -> str | None:
+    """按文件魔数识别常见图片扩展名；无法识别返回 None。"""
+    if data[:3] == b"\xff\xd8\xff":
+        return ".jpg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return ".png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ".webp"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return ".gif"
+    return None
+
+
+def _install_market_avatar(employee_id: str, avatar: str) -> str:
+    """下载注册表条目的图片头像并落盘到实例头像目录，返回本地文件名。
+
+    - emoji / 已是本地文件名（头像制）→ 原样返回，不下载；
+    - http/https 图片 URL → 下载到 ``<config dir>/avatars/<id>.<ext>``（原子写），
+      返回裸文件名，供 WebUI ``/api/avatars`` 渲染；
+    - 下载失败 / 非识别图片 → 返回原值，前端按文本兜底（不阻断安装）。
+
+    只允许 http/https，带大小上限与魔数/Content-Type 校验，文件名取自
+    员工 slug + 扩展名白名单（无路径穿越）。
+    """
+    if not isinstance(avatar, str) or not avatar.strip():
+        return avatar or ""
+    name = avatar.strip()
+    parsed = urlparse(name)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return avatar  # emoji / 本地文件名 / 其它文本
+    try:
+        ctype = ""
+        chunks: list[bytes] = []
+        total = 0
+        with httpx.Client(timeout=_FETCH_TIMEOUT_SECONDS, follow_redirects=True) as client:
+            with client.stream("GET", name) as response:
+                response.raise_for_status()
+                ctype = response.headers.get("content-type", "")
+                for chunk in response.iter_bytes(_CHUNK_BYTES):
+                    total += len(chunk)
+                    if total > _AVATAR_MAX_BYTES:
+                        logger.warning(
+                            "talent-market 头像超过大小上限，跳过：{}", name
+                        )
+                        return avatar
+                    chunks.append(chunk)
+        data = b"".join(chunks)
+        ext = _avatar_ext_from_magic(data)
+        if ext is None:
+            ext = _AVATAR_CONTENT_TYPES.get(ctype.split(";")[0].strip().lower())
+        if ext is None:
+            logger.warning("talent-market 头像非识别图片，跳过：{}", name)
+            return avatar
+        target_dir = get_runtime_subdir("avatars")
+        target_dir.mkdir(parents=True, exist_ok=True)
+        target = target_dir / f"{employee_id}{ext}"
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_bytes(data)
+        tmp.replace(target)
+        logger.debug("talent-market 头像已下载：{} -> {}", name, target)
+        return target.name
+    except Exception as e:  # noqa: BLE001 - 单个头像失败不阻断整个安装
+        logger.warning("talent-market 头像下载失败，跳过：{}：{}", name, e)
+        return avatar
+
+
 def install_talent_employee(
     values: dict[str, Any],
     store: EmployeeStore,
@@ -389,7 +467,7 @@ def install_talent_employee(
     data = {key: values.get(key) for key in _INSTALL_KEYS if key in values}
     employee_id = str(data.get("id") or "").strip()
 
-    # 以注册表为权威来源解析自带技能（含文件内容），前端只回传技能名。
+    # 以注册表为权威来源解析自带技能（含文件内容）与头像，前端只回传技能名。
     bundled: dict[str, dict[str, str]] = {}
     if source_url and employee_id:
         try:
@@ -398,12 +476,19 @@ def install_talent_employee(
             if raw_entry is not None:
                 names, bundled = _parse_skill_spec(raw_entry.get("skills"))
                 data["skills"] = names
+                raw_avatar = raw_entry.get("avatar")
+                if isinstance(raw_avatar, str) and raw_avatar.strip():
+                    data["avatar"] = raw_avatar
         except TalentMarketError:
             logger.warning(
-                "talent-market 安装时无法拉取注册表，跳过技能下载：{}", source_url
+                "talent-market 安装时无法拉取注册表，跳过技能/头像下载：{}", source_url
             )
 
     installed_skills = _install_bundled_skills(store, employee_id, bundled) if employee_id else []
+
+    # 头像制：目录条目的图片头像下载到本地再落库（emoji / 本地文件名原样保留）。
+    if employee_id and isinstance(data.get("avatar"), str) and data["avatar"].strip():
+        data["avatar"] = _install_market_avatar(employee_id, data["avatar"])
 
     try:
         employee = store.create_employee(data)

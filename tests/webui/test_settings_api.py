@@ -884,13 +884,19 @@ def test_resolve_model_list_provider_synthesizes_non_llm_capabilities() -> None:
     assert groq_spec.default_api_base == "https://api.groq.com/openai/v1"
     assert groq_spec.is_direct is False
 
-    # image providers resolve (empty base) but are not treated as direct
-    for provider in ("volcengine", "gemini", "aihubmix"):
+    # image providers resolve with their client's built-in default base URL
+    # (apiBase 留空时「模型厂商」页展示该默认地址），但不视为 direct
+    expected_defaults = {
+        "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta",
+        "aihubmix": "https://aihubmix.com/v1",
+    }
+    for provider, default_base in expected_defaults.items():
         resolved = _resolve_model_list_provider(config, provider)
         assert resolved is not None, provider
         spec, name, _ = resolved
         assert name == provider
-        assert spec.default_api_base == ""
+        assert spec.default_api_base == default_base
         assert spec.is_direct is False
 
     # unknown names do not resolve

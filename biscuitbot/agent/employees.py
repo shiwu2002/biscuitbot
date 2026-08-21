@@ -37,12 +37,30 @@ EMPLOYEES_SCHEMA_VERSION = 1
 # 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工。
 # 注意：版本落后时会把本次新增的内置员工并入现有文件（不区分是否曾被用户删除）。
 
-BUILTIN_EMPLOYEES_VERSION = 10
+BUILTIN_EMPLOYEES_VERSION = 11
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
 # id 允许的字符：小写字母、数字、-、_（slug）
 _VALID_ID = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+
+# 头像制：avatar 字段可以是 emoji 文本，也可以是内置图片文件名（如 img_xxx.jpg）。
+# 图片文件名用于 WebUI 渲染 <img>，不进 LLM 文本上下文。
+_IMAGE_AVATAR_SUFFIXES = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif")
+
+
+def is_image_avatar(avatar: str | None) -> bool:
+    """判定 avatar 是否为图片文件名（头像制）而非 emoji 文本。
+
+    仅接受带图片后缀的简单文件名（不含路径分隔符），避免把 ``../x.png`` 之类
+    当作图片头像渲染。emoji 或任意其它字符串返回 ``False``。
+    """
+    if not isinstance(avatar, str):
+        return False
+    name = avatar.strip().lower()
+    if "/" in name or "\\" in name:
+        return False
+    return name.endswith(_IMAGE_AVATAR_SUFFIXES)
 
 # 内置数字人员工 id 集合：这些员工不可修改，只能删除。
 # 与 ``_seed_default`` 里的内置 id 一一对应（避免在此处派生自 _seed_default，
@@ -387,7 +405,7 @@ class EmployeeStore:
                     "id": "clip-master",
                     "name": "阿伟",
                     "title": "AI视频剪辑总监",
-                    "avatar": "🎬",
+                    "avatar": "img_dccb1217c046.jpg",
                     "system_prompt": (
                         "你是「阿伟」，团队里的AI视频剪辑总监、后期导演和内容包装专家。"
                         "你精通剪映（JianYing / CapCut）专业版自动化剪辑流程，"
@@ -534,7 +552,7 @@ class EmployeeStore:
                     "id": "ip-consultant",
                     "name": "灵溪",
                     "title": "个人IP战略顾问",
-                    "avatar": "🎙️",
+                    "avatar": "img_3bb7db1746fc.jpg",
                     "system_prompt": (
                         "你是「灵溪」，团队里的个人IP战略顾问、品牌定位专家和深度访谈顾问。"
                         "你的职责是帮助个人、企业创始人和品牌找到独特定位，打造长期可持续发展的内容IP。"
@@ -663,7 +681,7 @@ class EmployeeStore:
                     "id": "short-video-operator",
                     "name": "阿凯",
                     "title": "短视频增长操盘手",
-                    "avatar": "📱",
+                    "avatar": "img_b9fa4cd4d4c1.jpg",
                     "system_prompt": (
                         "你是「阿凯」，一名资深短视频增长操盘手，负责从0到1打造爆款内容和账号增长体系。"
                         "你长期研究抖音、视频号、小红书、快手等内容平台的推荐机制、用户心理和爆款规律。"
@@ -748,7 +766,7 @@ class EmployeeStore:
                     "id": "super-secretary",
                     "name": "静娴",
                     "title": "AI执行秘书",
-                    "avatar": "💼",
+                    "avatar": "img_6a2f29aa1e9d.jpg",
                     "system_prompt": (
                         "你是「静娴」，团队里的AI执行秘书、私人助理和事务管理中枢。"
                         "你的职责是帮助用户管理信息、规划任务、推进执行，并成为用户可靠的第二大脑。"
@@ -896,7 +914,7 @@ class EmployeeStore:
                     "id": "all-round-designer",
                     "name": "达芬奇",
                     "title": "AI广告设计师",
-                    "avatar": "🎨",
+                    "avatar": "img_4eca6f66a0b7.jpg",
                     "system_prompt": (
                         "你是「达芬奇」，团队里的一线AI广告设计师与视觉创意执行专家。"
                         "你负责将用户的想法、品牌目标和商业需求转化为可直接落地的广告视觉设计。"
@@ -995,7 +1013,7 @@ class EmployeeStore:
                     "id": "screenwriter",
                     "name": "宫本",
                     "title": "编剧",
-                    "avatar": "✍️",
+                    "avatar": "img_65374c03a54a.jpg",
                     "system_prompt": (
                         "你是「宫本」，团队里的资深编剧、小说家与世界观设计师，拥有丰富的影视剧本创作、"
                         "长篇小说构建和人物塑造经验。"

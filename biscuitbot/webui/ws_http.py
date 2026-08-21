@@ -121,6 +121,37 @@ def _decode_api_key(raw_key: str) -> str | None:
     return key
 
 
+_AVATAR_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _resolve_avatar_path(name: str) -> Path | None:
+    """定位员工头像文件，按优先级：源码 ``images/bot/`` → 打包内置 ``biscuitbot/avatars/``
+    → 实例数据目录（人才市场下载的头像，``<config dir>/avatars/``）。
+
+    仅接受简单文件名（拒绝路径分隔符/目录穿越），命中且文件存在才返回物理路径，
+    否则返回 ``None``。
+    """
+    if not _AVATAR_NAME_RE.match(name or ""):
+        return None
+    here = Path(__file__).resolve().parent  # biscuitbot/webui
+    candidates = (
+        here.parent.parent / "images" / "bot" / name,  # 源码运行（仓库根 images/bot）
+        here.parent / "avatars" / name,  # 打包（--add-data 内置到 biscuitbot/avatars）
+        _get_user_avatar_dir() / name,  # 实例数据目录（市场下载的头像）
+    )
+    for cand in candidates:
+        if cand.is_file():
+            return cand
+    return None
+
+
+def _get_user_avatar_dir() -> Path:
+    """返回实例级头像目录（``<config dir>/avatars/``），懒导入避免启动期循环依赖。"""
+    from biscuitbot.config.paths import get_runtime_subdir
+
+    return get_runtime_subdir("avatars")
+
+
 def _default_model_name_from_config() -> str | None:
     try:
         from biscuitbot.config.loader import load_config
@@ -715,6 +746,9 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/webui/capabilities/([^/]+)$", got)
         if m:
             return self._handle_webui_capability_detail(request, m.group(1))
+        m = re.match(r"^/api/avatars/([^/]+)$", got)
+        if m:
+            return self._handle_avatar(m.group(1))
         if got == "/api/webui/employees":
             return self._handle_webui_employees(request)
         if got == "/api/webui/employees/create":
@@ -840,6 +874,28 @@ class GatewayHTTPHandler:
             logger.exception("failed to delete skill '{}'", name)
             return _http_error(500, "failed to delete skill")
         return _http_json_response(result)
+
+    def _handle_avatar(self, raw_name: str) -> Response:
+        """返回员工头像图片字节（无鉴权，等同静态资源；``<img>`` 无法携带 Authorization）。
+
+        文件名来自内置员工 ``avatar`` 字段（如 ``img_dccb1217c046.jpg``），
+        经 ``_resolve_avatar_path`` 限定在头像目录内并防目录穿越。
+        """
+        name = unquote(raw_name)
+        path = _resolve_avatar_path(name)
+        if path is None:
+            return _http_error(404, "Not Found")
+        try:
+            data = path.read_bytes()
+        except OSError:
+            return _http_error(404, "Not Found")
+        content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        return _http_response(
+            data,
+            status=200,
+            content_type=content_type,
+            extra_headers=[("Cache-Control", "public, max-age=86400")],
+        )
 
     def _handle_webui_employees(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

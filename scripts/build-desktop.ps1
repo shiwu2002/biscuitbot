@@ -95,6 +95,7 @@ $HiddenImports = @(
     --add-data "biscuitbot/templates;biscuitbot/templates" `
     --add-data "biscuitbot/skills;biscuitbot/skills" `
     --add-data "biscuitbot/agent/tools/docs;biscuitbot/agent/tools/docs" `
+    --add-data "images/bot;biscuitbot/avatars" `
     @HiddenImports `
     @Excludes `
     scripts/desktop_sidecar_main.py

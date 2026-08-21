@@ -36,6 +36,7 @@ import {
   type ChatGroupLabels,
 } from "@/lib/chat-groups";
 import { cn } from "@/lib/utils";
+import { EmployeeAvatar } from "@/components/employees/EmployeeAvatar";
 import type { ChatSummary, Employee, SidebarDensity, SidebarSortMode } from "@/lib/types";
 
 const INITIAL_VISIBLE_SESSIONS = 160;
@@ -270,13 +271,12 @@ export const ChatList = memo(function ChatList({
                           )}
                         >
                           {s.employee && employeesById.has(s.employee) ? (
-                            <span
-                              title={employeesById.get(s.employee)?.name}
+                            <EmployeeAvatar
+                              avatar={employeesById.get(s.employee)?.avatar}
+                              alt={employeesById.get(s.employee)?.name}
                               className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-muted/70 text-[13px] leading-none"
-                              aria-hidden
-                            >
-                              {employeesById.get(s.employee)?.avatar || "🧑‍💼"}
-                            </span>
+                              imgClassName="h-6 w-6"
+                            />
                           ) : null}
                           <button
                             type="button"

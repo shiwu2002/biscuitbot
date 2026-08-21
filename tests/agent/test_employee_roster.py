@@ -6,7 +6,11 @@ import json
 from pathlib import Path
 
 from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.agent.employees import EmployeeStore
+from biscuitbot.agent.employees import (
+    BUILTIN_EMPLOYEES_VERSION,
+    EmployeeStore,
+    is_image_avatar,
+)
 
 
 def _store(tmp_path: Path) -> EmployeeStore:
@@ -22,7 +26,7 @@ def _write_empty_current(workspace: Path) -> None:
             {
                 "schema_version": 1,
                 "builtin_seeded": True,
-                "builtin_version": 10,
+                "builtin_version": BUILTIN_EMPLOYEES_VERSION,
                 "employees": [],
             },
             ensure_ascii=False,
@@ -64,8 +68,11 @@ class TestPersonaHeading:
         store = _store(tmp_path)
         clip = store.get_employee("clip-master")
         section = ContextBuilder._persona_section(clip)
-        assert section.splitlines()[0] == "# Persona — 阿伟（AI视频剪辑总监） 🎬"
+        # 内置员工已切换为图片头像：文件名不进入 LLM 文本上下文
+        assert section.splitlines()[0] == "# Persona — 阿伟（AI视频剪辑总监）"
         assert "你是「阿伟」" in section
+        assert is_image_avatar(clip["avatar"])
+        assert "img_" not in section
 
     def test_persona_heading_without_title_omits_brackets(self) -> None:
         emp = {"name": "无名", "title": "", "avatar": "", "system_prompt": "随便。"}

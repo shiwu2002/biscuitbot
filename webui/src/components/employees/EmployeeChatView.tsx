@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { displayTitle } from "@/lib/chat-groups";
 import { relativeTime } from "@/lib/format";
+import { EmployeeAvatar } from "@/components/employees/EmployeeAvatar";
 import type { ChatSummary, Employee, SkillSummary, WorkspaceScopePayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -274,12 +275,12 @@ export function EmployeeChatView({
             >
               <ChevronLeft className="h-4 w-4" aria-hidden />
             </button>
-            <span
+            <EmployeeAvatar
+              avatar={employee.avatar}
+              alt={employee.name}
               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-muted/70 text-[15px] leading-none"
-              aria-hidden
-            >
-              {employee.avatar || "🧑‍💼"}
-            </span>
+              imgClassName="h-8 w-8"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="truncate text-[13px] font-semibold text-foreground">
@@ -392,12 +393,12 @@ export function EmployeeChatView({
       >
         <div className="px-5 pb-4 pt-5">
           <div className="flex items-center gap-3">
-            <span
+            <EmployeeAvatar
+              avatar={employee.avatar}
+              alt={employee.name}
               className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-muted/70 text-[24px] leading-none"
-              aria-hidden
-            >
-              {employee.avatar || "🧑‍💼"}
-            </span>
+              imgClassName="h-12 w-12"
+            />
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <h2 className="truncate text-[15px] font-semibold text-foreground">

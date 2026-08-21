@@ -363,6 +363,19 @@ def _resolve_settings_provider(
     return None
 
 
+def _image_default_base_url(provider_cls: Any) -> str:
+    """取图像能力厂商客户端自带的兜底 base URL（``_default_base_url``）。
+
+    如火山方舟 volcengine → ``https://ark.cn-beijing.volces.com/api/v3``、
+    aihubmix → ``https://aihubmix.com/v1``。取不到（抛异常）返回空串，
+    仅影响「模型厂商」页 apiBase 留空时的默认地址展示，不阻断厂商解析。
+    """
+    try:
+        return str(provider_cls._default_base_url(provider_cls) or "")
+    except Exception:  # noqa: BLE001 - 拿不到默认值只影响占位，不阻断厂商解析
+        return ""
+
+
 def _resolve_model_list_provider(
     config: Any,
     provider_name: str,
@@ -396,7 +409,10 @@ def _resolve_model_list_provider(
         default_api_base = transcription_spec.default_api_base
         requires_api_key = True
     elif image_provider is not None:
-        default_api_base = None
+        # 图像能力厂商（volcengine 等）客户端自带兜底 base URL，这里把它作为
+        # 「模型厂商」页 apiBase 留空时的默认地址（火山方舟默认
+        # https://ark.cn-beijing.volces.com/api/v3）。
+        default_api_base = _image_default_base_url(image_provider)
         requires_api_key = name != "ollama"
     else:
         return None

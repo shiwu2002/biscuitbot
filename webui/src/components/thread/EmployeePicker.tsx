@@ -9,6 +9,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  EmployeeAvatar,
+  isImageAvatar,
+} from "@/components/employees/EmployeeAvatar";
 import type { Employee } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -37,8 +41,11 @@ export function EmployeePicker({
 
   if (mode === "readonly") {
     if (!selected) return null;
+    const imgAvatar = isImageAvatar(selected.avatar);
     const badgeText = t("thread.composer.employee.talkingWith", {
-      name: `${selected.avatar ? `${selected.avatar} ` : ""}${selected.name}`,
+      name: imgAvatar
+        ? selected.name
+        : `${selected.avatar ? `${selected.avatar} ` : ""}${selected.name}`,
       defaultValue: "正在与 {{name}} 对话",
     });
     const badgeClass = cn(
@@ -64,10 +71,26 @@ export function EmployeePicker({
               "cursor-pointer transition-colors hover:bg-blue-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
           >
+            {imgAvatar && (
+              <EmployeeAvatar
+                avatar={selected.avatar}
+                alt={selected.name}
+                className="h-3.5 w-3.5 shrink-0 rounded-full text-[11px] leading-none"
+                imgClassName="h-3.5 w-3.5 rounded-full"
+              />
+            )}
             <span className="truncate">{badgeText}</span>
           </button>
         ) : (
           <span className={badgeClass} title={fixedTitle}>
+            {imgAvatar && (
+              <EmployeeAvatar
+                avatar={selected.avatar}
+                alt={selected.name}
+                className="h-3.5 w-3.5 shrink-0 rounded-full text-[11px] leading-none"
+                imgClassName="h-3.5 w-3.5 rounded-full"
+              />
+            )}
             <span className="truncate">{badgeText}</span>
           </span>
         )}
@@ -80,6 +103,7 @@ export function EmployeePicker({
   const enabled = employees.filter((e) => e.enabled);
 
   if (selected) {
+    const imgAvatar = isImageAvatar(selected.avatar);
     return (
       <div className="flex items-center gap-2 px-3 pb-1.5 sm:px-4">
         <button
@@ -92,9 +116,19 @@ export function EmployeePicker({
             "transition-colors hover:bg-blue-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           )}
         >
+          {imgAvatar && (
+            <EmployeeAvatar
+              avatar={selected.avatar}
+              alt={selected.name}
+              className="h-3.5 w-3.5 shrink-0 rounded-full text-[11px] leading-none"
+              imgClassName="h-3.5 w-3.5 rounded-full"
+            />
+          )}
           <span className="truncate">
             {t("thread.composer.employee.talkingWith", {
-              name: `${selected.avatar ? `${selected.avatar} ` : ""}${selected.name}`,
+              name: imgAvatar
+                ? selected.name
+                : `${selected.avatar ? `${selected.avatar} ` : ""}${selected.name}`,
               defaultValue: "正在与 {{name}} 对话",
             })}
           </span>
@@ -130,9 +164,12 @@ export function EmployeePicker({
                 onSelect={() => onChange(employee)}
                 className="gap-2"
               >
-                <span className="text-[15px] leading-none" aria-hidden>
-                  {employee.avatar || "🧑‍💼"}
-                </span>
+                <EmployeeAvatar
+                  avatar={employee.avatar}
+                  alt={employee.name}
+                  className="h-[15px] w-[15px] shrink-0 rounded-full text-[13px] leading-none"
+                  imgClassName="h-[15px] w-[15px] rounded-full"
+                />
                 <span className="truncate">{employee.name}</span>
               </DropdownMenuItem>
             ))

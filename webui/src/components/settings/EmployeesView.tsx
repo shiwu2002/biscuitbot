@@ -29,6 +29,7 @@ import {
   updateEmployee,
   type EmployeeValues,
 } from "@/lib/api";
+import { EmployeeAvatar } from "@/components/employees/EmployeeAvatar";
 import type { Employee } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
@@ -169,12 +170,12 @@ export function EmployeesView({
                 )}
               >
                 <div className="flex min-w-0 items-center gap-3">
-                  <span
+                  <EmployeeAvatar
+                    avatar={employee.avatar}
+                    alt={employee.name}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-[22px] leading-none"
-                    aria-hidden
-                  >
-                    {employee.avatar || "🧑‍💼"}
-                  </span>
+                    imgClassName="h-11 w-11"
+                  />
                   <div className="min-w-0 flex-1">
                     <h3 className="truncate text-[15px] font-semibold leading-6 text-foreground">
                       {employee.name}
@@ -387,13 +388,13 @@ function EmployeeEditorDialog({
 
           <label className="block space-y-1.5">
             <span className="text-[12.5px] font-medium text-foreground/85">
-              {tx("employeesView.avatar", "头像（emoji）")}
+              {tx("employeesView.avatar", "头像（emoji 或图片文件名）")}
             </span>
             <Input
               value={form.avatar ?? ""}
               onChange={(e) => set({ avatar: e.target.value })}
-              placeholder="🎬"
-              maxLength={8}
+              placeholder="🎬 或 img_xxx.jpg"
+              maxLength={64}
             />
           </label>
 

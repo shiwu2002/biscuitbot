@@ -19,7 +19,10 @@ import re  # 用于提炼员工一句话能力简介
 from pathlib import Path  # 文件路径处理
 from typing import Any, Mapping, Sequence  # 类型注解支持
 
-from biscuitbot.agent.employees import EmployeeStore  # 数字人员工目录存储，按会话注入 persona
+from biscuitbot.agent.employees import (  # 数字人员工目录存储，按会话注入 persona
+    EmployeeStore,
+    is_image_avatar,
+)
 from biscuitbot.agent.memory import MemoryStore  # 记忆存储，提供长期记忆与历史读取
 from biscuitbot.agent.skills import SkillsLoader  # 技能加载器，提供技能内容与摘要
 from biscuitbot.agent.tools import mcp as mcp_tools  # MCP 工具相关运行时能力桥接
@@ -338,7 +341,9 @@ class ContextBuilder:
         title = employee.get("title", "")
         avatar = employee.get("avatar", "")
         system_prompt = employee.get("system_prompt", "").strip()
-        heading = f"# Persona — {name}" + (f"（{title}）" if title else "") + (f" {avatar}" if avatar else "")
+        # 图片头像仅用于 WebUI 渲染，不进入 LLM 文本上下文（只拼 emoji 头像）
+        text_avatar = "" if is_image_avatar(avatar) else avatar
+        heading = f"# Persona — {name}" + (f"（{title}）" if title else "") + (f" {text_avatar}" if text_avatar else "")
         return f"{heading}\n\n{system_prompt}"
 
     def _employee_roster_section(self) -> str:
@@ -361,7 +366,9 @@ class ContextBuilder:
             tag = f"{name}" + (f"（{title}）" if title else "")
             # 附带英文代号，方便主智能体用 invoke_employee 的 employee_id 正确点名
             roster_tag = f"{tag}〔代号 {emp.get('id', '')}〕"
-            line = f"- {avatar} {roster_tag} — {self._employee_summary(emp)}" if avatar else f"- {roster_tag} — {self._employee_summary(emp)}"
+            # 图片头像仅用于 WebUI 渲染，名单文本里只拼 emoji 头像
+            text_avatar = "" if is_image_avatar(avatar) else avatar
+            line = f"- {text_avatar} {roster_tag} — {self._employee_summary(emp)}" if text_avatar else f"- {roster_tag} — {self._employee_summary(emp)}"
             lines.append(line)
         if len(enabled) > self._ROSTER_QUALITY_THRESHOLD:
             lines.append(

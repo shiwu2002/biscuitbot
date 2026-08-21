@@ -3,6 +3,7 @@ import { Check, ChevronLeft, Loader2, Plus, Terminal } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
+import { EmployeeAvatar } from "@/components/employees/EmployeeAvatar";
 import { fetchTalentCatalog, installTalentEmployee } from "@/lib/api";
 import type {
   Employee,
@@ -239,12 +240,12 @@ export function TalentMarketView({
                     key={entry.id}
                     className="group flex min-w-0 items-center gap-3 rounded-none px-4 py-3 transition-colors hover:bg-muted/45"
                   >
-                    <span
+                    <EmployeeAvatar
+                      avatar={entry.avatar}
+                      alt={entry.name}
                       className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[12px] bg-muted/70 text-[18px] leading-none"
-                      aria-hidden
-                    >
-                      {entry.avatar || "🧑‍💼"}
-                    </span>
+                      imgClassName="h-10 w-10"
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex min-w-0 items-baseline gap-2">
                         <h3 className="truncate text-[14px] font-semibold leading-5 text-foreground">

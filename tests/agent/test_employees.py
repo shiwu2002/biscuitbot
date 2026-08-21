@@ -7,7 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError
+from biscuitbot.agent.employees import (
+    BUILTIN_EMPLOYEES_VERSION,
+    EmployeeStore,
+    EmployeeValidationError,
+    is_image_avatar,
+)
 
 BUILTIN_IDS = {
     "clip-master",
@@ -287,7 +292,7 @@ class TestBuiltinVersionMigration:
         store = _store(tmp_path)
         store.list_employees()
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 10
+        assert raw["builtin_version"] == BUILTIN_EMPLOYEES_VERSION
 
     def test_v1_file_syncs_builtin_names_and_keeps_custom(
         self, tmp_path: Path
@@ -317,7 +322,7 @@ class TestBuiltinVersionMigration:
         assert by_id["my-custom"]["name"] == "我的助理"
         assert by_id["my-custom"]["system_prompt"] == "自定义提示词"
         raw = json.loads(store.path.read_text(encoding="utf-8"))
-        assert raw["builtin_version"] == 10
+        assert raw["builtin_version"] == BUILTIN_EMPLOYEES_VERSION
 
     def test_v1_sync_updates_builtin_skills(self, tmp_path: Path) -> None:
         # 老 v1 文件：内置记录的空技能会被同步为新版绑定的技能

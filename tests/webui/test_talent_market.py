@@ -214,9 +214,16 @@ def test_force_refresh_bypasses_cache(
 
 
 class _FakeStreamResponse:
-    def __init__(self, content: bytes, status: int = 200) -> None:
+    def __init__(self, content: bytes, status: int = 200, headers: dict[str, str] | None = None) -> None:
         self._content = content
         self._status = status
+        self.headers = headers or {}
+
+    def __enter__(self) -> "_FakeStreamResponse":
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
 
     def raise_for_status(self) -> None:
         if self._status >= 400:
@@ -234,6 +241,7 @@ class _FakeClient:
         self._kwargs = kwargs
         self._content = b"{}"
         self._status = 200
+        self._headers: dict[str, str] = {}
 
     def __enter__(self) -> "_FakeClient":
         return self
@@ -242,7 +250,7 @@ class _FakeClient:
         return False
 
     def stream(self, method: str, url: str) -> _FakeStreamResponse:
-        return _FakeStreamResponse(self._content, self._status)
+        return _FakeStreamResponse(self._content, self._status, headers=self._headers)
 
 
 def test_http_get_json_rejects_non_dict(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -371,6 +379,143 @@ def test_install_downloads_bundled_skills(
     assert (workspace / "skills" / "my-bundled" / "refs" / "guide.md").exists()
     assert store.get_employee("bundled-bot")["skills"] == ["web_search", "my-bundled"]
     assert SkillOwnershipStore(workspace).owner_of("my-bundled") == "bundled-bot"
+
+
+# ---- 市场头像下载 -----------------------------------------------------------
+
+
+PNG_BYTES = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+    b"\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02"
+    b"\x00\x00\x00\x0bIDATx\xdacd\xfc\xff\x1f\x00\x03\x03"
+    b"\x02\x00\xef\xbf\xa7\xdb\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 16
+
+
+def test_avatar_ext_from_magic() -> None:
+    from biscuitbot.webui.talent_market import _avatar_ext_from_magic
+
+    assert _avatar_ext_from_magic(PNG_BYTES) == ".png"
+    assert _avatar_ext_from_magic(JPEG_BYTES) == ".jpg"
+    assert _avatar_ext_from_magic(b"RIFF\x00\x00\x00\x00WEBP") == ".webp"
+    assert _avatar_ext_from_magic(b"GIF89a") == ".gif"
+    assert _avatar_ext_from_magic(b"not an image") is None
+
+
+def test_install_downloads_market_avatar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """目录条目的图片头像 URL → 下载到实例头像目录，员工 avatar 存本地文件名。"""
+    store = _store(tmp_path)
+    client = _FakeClient()
+    client._content = PNG_BYTES
+    client._headers = {"content-type": "image/png"}
+    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        lambda url, **kw: {
+            "employees": [
+                {
+                    "id": "market-bot",
+                    "name": "市场员工",
+                    "avatar": "https://example.com/avatars/market.png",
+                    "system_prompt": "你是市场员工。",
+                }
+            ]
+        },
+    )
+    result = install_talent_employee(
+        {"id": "market-bot", "name": "市场员工", "system_prompt": "你是市场员工。"},
+        store,
+        source_url="https://example.com/registry.json",
+    )
+    employee = result["employee"]
+    assert employee["avatar"] == "market-bot.png"
+    avatar_file = tmp_path / "avatars" / "market-bot.png"
+    assert avatar_file.read_bytes() == PNG_BYTES
+    # 前端回传 URL 被注册表权威值覆盖
+    assert "https://" not in employee["avatar"]
+
+
+def test_install_keeps_emoji_avatar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """emoji 头像不触发下载，原样落库。"""
+    store = _store(tmp_path)
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        lambda url, **kw: {
+            "employees": [
+                {
+                    "id": "emoji-bot",
+                    "name": "Emoji 员工",
+                    "avatar": "✍️",
+                    "system_prompt": "p",
+                }
+            ]
+        },
+    )
+    result = install_talent_employee(
+        {"id": "emoji-bot", "name": "Emoji 员工", "system_prompt": "p"},
+        store,
+        source_url="https://example.com/registry.json",
+    )
+    assert result["employee"]["avatar"] == "✍️"
+
+
+def test_install_avatar_download_failure_keeps_original(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """头像下载失败不阻断安装：avatar 保留原值，前端按文本兜底。"""
+    store = _store(tmp_path)
+    client = _FakeClient()
+    client._status = 500
+    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        lambda url, **kw: {
+            "employees": [
+                {
+                    "id": "broken-bot",
+                    "name": "头像失败员工",
+                    "avatar": "https://example.com/avatars/x.jpg",
+                    "system_prompt": "p",
+                }
+            ]
+        },
+    )
+    result = install_talent_employee(
+        {"id": "broken-bot", "name": "头像失败员工", "system_prompt": "p"},
+        store,
+        source_url="https://example.com/registry.json",
+    )
+    assert result["employee"]["id"] == "broken-bot"
+    assert result["employee"]["avatar"] == "https://example.com/avatars/x.jpg"
+
+
+def test_install_market_avatar_rejects_non_http_scheme(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """file:// 等非 http 头像 URL 不下载，原样返回。"""
+    store = _store(tmp_path)
+    monkeypatch.setattr(
+        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        lambda url, **kw: {
+            "employees": [
+                {
+                    "id": "evil-bot",
+                    "name": "异常头像",
+                    "avatar": "file:///etc/passwd",
+                    "system_prompt": "p",
+                }
+            ]
+        },
+    )
+    result = install_talent_employee(
+        {"id": "evil-bot", "name": "异常头像", "system_prompt": "p"},
+        store,
+        source_url="https://example.com/registry.json",
+    )
+    assert result["employee"]["avatar"] == "file:///etc/passwd"
 
 
 def test_catalog_flattens_bundled_skill_names(
