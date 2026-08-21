@@ -6993,7 +6993,6 @@ function ChannelsSettings({
           dirty={false}
           saving={false}
           pendingRestart
-          onSave={() => {}}
           onRestart={onRestart}
           isRestarting={isRestarting}
           pendingMessage={tx(
@@ -7360,7 +7359,7 @@ function RestartSettingsFooter({
   message?: string;
   dirtyMessage?: string;
   pendingMessage?: string;
-  onSave: () => void;
+  onSave?: () => void;
   onRestart?: () => void;
   onReset?: () => void;
   isRestarting?: boolean;
@@ -7416,15 +7415,17 @@ function RestartSettingsFooter({
             {t("settings.actions.cancel")}
           </Button>
         ) : null}
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onSave}
-          disabled={!dirty || disabled || saving}
-          className="rounded-full"
-        >
-          {saving ? t("settings.actions.saving") : t("settings.actions.save")}
-        </Button>
+        {onSave ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onSave}
+            disabled={!dirty || disabled || saving}
+            className="rounded-full"
+          >
+            {saving ? t("settings.actions.saving") : t("settings.actions.save")}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
