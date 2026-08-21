@@ -260,7 +260,7 @@ function CapabilityRow({
         className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[16px]"
       >
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-muted-foreground">
-          <RuntimeIcon runtime={cap.runtime} />
+          <CapabilityIcon cap={cap} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
@@ -445,7 +445,7 @@ function CapabilityDetailSheet({
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <div className="flex items-start gap-3 pr-8">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[15px] bg-muted/70 text-muted-foreground">
-              <RuntimeIcon runtime={active.runtime} />
+              <CapabilityIcon cap={active} />
             </div>
             <div className="min-w-0">
               <SheetTitle className="truncate text-[20px] font-semibold">{active.display_name}</SheetTitle>
@@ -679,6 +679,53 @@ function RuntimeIcon({ runtime }: { runtime: string }) {
   if (runtime === "mcp") return <Boxes className="h-5 w-5" strokeWidth={1.8} aria-hidden />;
   if (runtime === "process") return <Terminal className="h-5 w-5" strokeWidth={1.8} aria-hidden />;
   return <Brain className="h-5 w-5" strokeWidth={1.8} aria-hidden />;
+}
+
+/** 品牌色首字母标记：favicon 加载失败时的离线兜底。 */
+function BrandMonogram({
+  color,
+  name,
+}: {
+  color?: string | null;
+  name: string;
+}) {
+  return (
+    <span
+      className="flex h-6 w-6 items-center justify-center rounded text-[12px] font-bold leading-none text-white"
+      style={{ backgroundColor: color || "#52525b" }}
+      aria-hidden
+    >
+      {(name.trim().charAt(0) || "?").toUpperCase()}
+    </span>
+  );
+}
+
+/** 能力图标：优先 logo_url（应用/MCP，加载失败回退品牌首字母），其次 emoji icon（技能），否则按 runtime 用默认图标。 */
+function CapabilityIcon({ cap }: { cap: Pick<CapabilityInfo, "icon" | "logo_url" | "brand_color" | "display_name" | "runtime"> }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  if (cap.logo_url && !imgFailed) {
+    return (
+      <img
+        src={cap.logo_url}
+        alt=""
+        referrerPolicy="no-referrer"
+        className="h-6 w-6 rounded object-contain"
+        onError={() => setImgFailed(true)}
+        aria-hidden
+      />
+    );
+  }
+  if (cap.icon) {
+    return (
+      <span className="text-[22px] leading-none" aria-hidden>
+        {cap.icon}
+      </span>
+    );
+  }
+  if (cap.brand_color || cap.display_name) {
+    return <BrandMonogram color={cap.brand_color} name={cap.display_name} />;
+  }
+  return <RuntimeIcon runtime={cap.runtime} />;
 }
 
 function kindFilterLabel(kind: KindFilter, t: TFunction): string {

@@ -425,6 +425,9 @@ class SkillsLoader:
                 return []
             return [str(item) for item in value]
 
+        # emoji 图标：优先 metadata.biscuitbot.emoji，兼容历史顶层 emoji。
+        emoji = biscuitbot.get("emoji") or meta.get("emoji")
+
         return {
             "runtime": runtime,
             "execution": execution,
@@ -435,4 +438,5 @@ class SkillsLoader:
                 "pkgs": _str_list(explicit.get("pkgs", requires.get("pkgs"))),
                 "models": _str_list(explicit.get("models")),
             },
+            "icon": str(emoji) if emoji else None,
         }

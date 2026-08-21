@@ -164,7 +164,7 @@ class CapabilityRegistry:
                     "level": source,
                     "review_status": "bundled" if source == "builtin" else "workspace",
                 },
-                icon=str(metadata.get("emoji")) if metadata.get("emoji") else None,
+                icon=cap.get("icon"),
             )
 
             out.append({
@@ -172,7 +172,7 @@ class CapabilityRegistry:
                 "name": name,
                 "display_name": display_name,
                 "description": self._description(metadata, name),
-                "icon": str(metadata.get("emoji")) if metadata.get("emoji") else None,
+                "icon": cap.get("icon"),
                 "category": "skill",
                 "tags": [],
                 "runtime": runtime,
