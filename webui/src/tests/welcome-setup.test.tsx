@@ -13,7 +13,7 @@ vi.mock("@/lib/api", async (importOriginal) => {
   };
 });
 
-import { completeSetup, fetchSettings } from "@/lib/api";
+import { ApiError, completeSetup, fetchSettings } from "@/lib/api";
 
 function settingsPayload(overrides: Partial<SettingsPayload> = {}): SettingsPayload {
   return {
@@ -136,6 +136,37 @@ describe("WelcomeSetup", () => {
       });
     });
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  it("retries with a fresh token when submit gets a 401", async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsPayload());
+    vi.mocked(completeSetup)
+      .mockRejectedValueOnce(new ApiError(401, "Unauthorized"))
+      .mockResolvedValueOnce({ ok: true, needs_setup: false });
+    const onRefreshToken = vi.fn().mockResolvedValue("fresh-tok");
+    const onDone = vi.fn();
+    render(
+      <WelcomeSetup token="tok" onDone={onDone} onRefreshToken={onRefreshToken} />,
+    );
+
+    fireEvent.click(await screen.findByText("OpenAI"));
+    fireEvent.change(screen.getByPlaceholderText("粘贴你的 API 密钥"), {
+      target: { value: "sk-test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始使用" }));
+
+    await waitFor(() => {
+      expect(onRefreshToken).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(completeSetup).toHaveBeenCalledWith("fresh-tok", {
+        provider: "openai",
+        apiKey: "sk-test",
+        apiBase: "https://api.openai.com/v1",
+        model: "openai/gpt-5.6-terra",
+      });
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it("skips setup by persisting the skip flag and calling onDone", async () => {

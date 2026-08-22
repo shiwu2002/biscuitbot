@@ -436,6 +436,13 @@ export default function App() {
     [],
   );
 
+  // 引导页（setup 状态）不跑令牌自动续期，令牌 5 分钟过期后提交会 401/403。
+  // 提供「重新 bootstrap 拿新令牌」的回调给 WelcomeSetup 在鉴权失败时重试。
+  const refreshSetupToken = useCallback(async (): Promise<string> => {
+    const boot = await fetchBootstrap("", bootstrapSecretRef.current);
+    return boot.token;
+  }, []);
+
   const bootstrapWithSecret = useCallback(
     (secret: string) => {
       let cancelled = false;
@@ -542,6 +549,7 @@ export default function App() {
     return (
       <WelcomeSetup
         token={state.token}
+        onRefreshToken={refreshSetupToken}
         onDone={() => bootstrapWithSecret(bootstrapSecretRef.current)}
       />
     );

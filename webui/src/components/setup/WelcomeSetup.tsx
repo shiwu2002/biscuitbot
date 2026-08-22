@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { WechatBridge } from "@/components/wechat/WechatBridge";
-import { completeSetup, fetchSettings } from "@/lib/api";
+import { ApiError, completeSetup, fetchSettings } from "@/lib/api";
 import type { SettingsPayload } from "@/lib/types";
 import { providerBrand } from "@/lib/provider-brand";
 
@@ -60,6 +60,10 @@ export function clearSetupSkip(): void {
   } catch {
     // ignore storage errors (private mode, etc.)
   }
+}
+
+function isReauthError(err: unknown): boolean {
+  return err instanceof ApiError && (err.status === 401 || err.status === 403);
 }
 
 type ProviderRow = SettingsPayload["providers"][number];
@@ -130,9 +134,11 @@ function ProviderOption({
 export function WelcomeSetup({
   token,
   onDone,
+  onRefreshToken,
 }: {
   token: string;
   onDone: () => void;
+  onRefreshToken?: () => Promise<string>;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string, options?: Record<string, unknown>) =>
@@ -202,15 +208,32 @@ export function WelcomeSetup({
     if (!selected || !apiKey.trim()) return;
     setSubmitting(true);
     setSubmitError(null);
+
+    const values = {
+      provider: selected,
+      apiKey: apiKey.trim(),
+      apiBase: apiBase.trim() || undefined,
+      model: model.trim() || undefined,
+    };
+
     try {
-      await completeSetup(token, {
-        provider: selected,
-        apiKey: apiKey.trim(),
-        apiBase: apiBase.trim() || undefined,
-        model: model.trim() || undefined,
-      });
+      await completeSetup(token, values);
       onDone();
     } catch (err) {
+      // 引导页不跑自动续期，令牌 5 分钟过期后提交会 401/403：
+      // 重新 bootstrap 拿新令牌后重试一次，避免用户重填密钥。
+      if (isReauthError(err) && onRefreshToken) {
+        try {
+          const freshToken = await onRefreshToken();
+          await completeSetup(freshToken, values);
+          onDone();
+          return;
+        } catch (retryErr) {
+          setSubmitError((retryErr as Error).message);
+          setSubmitting(false);
+          return;
+        }
+      }
       setSubmitError((err as Error).message);
       setSubmitting(false);
     }
