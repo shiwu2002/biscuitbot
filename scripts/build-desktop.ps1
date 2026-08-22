@@ -33,7 +33,23 @@ $WorkDir = Join-Path $OutputDir "build"
 $BinariesDir = Join-Path $Root "src-tauri\binaries"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-Write-Info "==> 1/5 构建 WebUI（webui/dist → biscuitbot/web/dist）"
+Write-Info "==> 1/6 自动递增版本号（patch）"
+$TauriConfPath = Join-Path $Root "src-tauri\tauri.conf.json"
+$CargoTomlPath = Join-Path $Root "src-tauri\Cargo.toml"
+$BeforeVersion = [string]((Get-Content $TauriConfPath -Raw | ConvertFrom-Json).version)
+if ($BeforeVersion -match '^\d+\.\d+\.\d+$') {
+    $v = $BeforeVersion -split '\.'
+    $NewVersion = "{0}.{1}.{2}" -f $v[0], $v[1], ([int]$v[2] + 1)
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($TauriConfPath, ((Get-Content $TauriConfPath -Raw) -replace '(?m)^(\s*"version"\s*:\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
+    [System.IO.File]::WriteAllText($CargoTomlPath, ((Get-Content $CargoTomlPath -Raw) -replace '(?m)^(\s*version\s*=\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
+    Write-Info "    版本 $BeforeVersion → $NewVersion"
+}
+else {
+    Write-Info "    版本 $BeforeVersion 无法自动递增（非 X.Y.Z 纯数字格式），保持不动"
+}
+
+Write-Info "==> 2/6 构建 WebUI（webui/dist → biscuitbot/web/dist）"
 Set-Location (Join-Path $Root "webui")
 bun install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { bun install }
@@ -42,7 +58,7 @@ bun run build
 if ($LASTEXITCODE -ne 0) { throw "bun run build 失败" }
 Set-Location $Root
 
-Write-Info "==> 2/5 准备 PyInstaller"
+Write-Info "==> 3/6 准备 PyInstaller"
 if (-not (Test-Path $PyInstaller)) {
     Write-Info "    安装 pyinstaller..."
     & $VenvPython -m pip install pyinstaller
@@ -52,7 +68,7 @@ if (-not (Test-Path $PyInstaller)) {
     if ($LASTEXITCODE -ne 0) { throw "pyinstaller 安装失败" }
 }
 
-Write-Info "==> 3/5 打包 gateway sidecar（PyInstaller onedir）"
+Write-Info "==> 4/6 打包 gateway sidecar（PyInstaller onedir）"
 # 剔除与 Python 解释器无关的运行时第三方依赖（渠道 SDK / GUI）；
 # prompt_toolkit 在 cli/commands.py 顶部被导入，必须保留。
 # 注意：不要剔除渠道 SDK（lark_oapi / dingtalk_stream / socketio / botpy 等）——
@@ -113,7 +129,7 @@ if ($SkipTauri) {
     return
 }
 
-Write-Info "==> 4/5 准备 Tauri 壳依赖与图标（幂等）"
+Write-Info "==> 5/6 准备 Tauri 壳依赖与图标（幂等）"
 Set-Location (Join-Path $Root "src-tauri")
 bun install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { bun install }
@@ -124,7 +140,7 @@ if (-not (Test-Path "icons\icon.ico")) {
 }
 Set-Location $Root
 
-Write-Info "==> 5/5 Tauri 构建（release，NSIS 安装包）"
+Write-Info "==> 6/6 Tauri 构建（release，NSIS 安装包）"
 Set-Location (Join-Path $Root "src-tauri")
 bun run tauri build --bundles nsis
 if ($LASTEXITCODE -ne 0) { throw "tauri build 失败" }
