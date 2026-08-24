@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { FileIcon, ImageIcon, PlaySquare } from "lucide-react";
+import { ChevronDown, Eye, FileIcon, ImageIcon, PlaySquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { getDocumentPreviewKind } from "@/lib/file-preview";
 import type { UIMediaAttachment } from "@/lib/types";
+import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
 
 interface AttachmentTileProps {
   attachment: UIMediaAttachment;
@@ -15,8 +17,11 @@ interface AttachmentTileProps {
 export function AttachmentTile({ attachment, className, inline = false, variant = "default" }: AttachmentTileProps) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const hasUrl = typeof attachment.url === "string" && attachment.url.length > 0;
   const label = attachmentLabel(attachment, t);
+  // 文档预览只作用于消息媒体路径（非 inline、非 compact）；其余调用点保持下载 chip。
+  const docKind = getDocumentPreviewKind(attachment.name ?? attachment.url);
 
   if (attachment.kind === "image" && hasUrl && !failed) {
     return (
@@ -83,6 +88,56 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
       <span className="min-w-0 truncate">{attachment.name ?? label}</span>
     </>
   );
+
+  // 文档类附件（pptx/docx/xlsx/csv/html）加一个「预览/收起预览」按钮，
+  // 点击后才 fetch 签名 URL 的字节（懒加载），折叠即卸载渲染器。
+  // inline/compact 路径保持纯下载 chip。
+  if (docKind !== null && hasUrl && !failed && !inline && variant !== "compact") {
+    return (
+      <div className={cn("flex max-w-full flex-col items-start gap-1.5", className)}>
+        <div className="flex items-center gap-1.5">
+          <a
+            href={attachment.url}
+            download={attachment.name ?? label}
+            title={attachment.name ?? undefined}
+            aria-label={label}
+            className={cn(
+              "flex max-w-[18rem] items-center gap-2 rounded-[14px]",
+              "border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground",
+              "transition-colors hover:bg-muted/55 hover:text-foreground",
+            )}
+          >
+            {body}
+          </a>
+          <button
+            type="button"
+            onClick={() => setPreviewOpen((v) => !v)}
+            aria-expanded={previewOpen}
+            aria-label={
+              previewOpen
+                ? t("documentPreview.collapse", { defaultValue: "收起预览" })
+                : t("documentPreview.preview", { defaultValue: "预览" })
+            }
+            className={cn(
+              "inline-flex items-center gap-1 rounded-[14px] px-2.5 py-2 text-xs",
+              "border border-border/60 bg-muted/40 text-muted-foreground",
+              "transition-colors hover:bg-muted/55 hover:text-foreground",
+            )}
+          >
+            <Eye className="h-4 w-4" aria-hidden />
+            {previewOpen
+              ? t("documentPreview.collapse", { defaultValue: "收起预览" })
+              : t("documentPreview.preview", { defaultValue: "预览" })}
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 transition-transform", previewOpen && "rotate-180")}
+              aria-hidden
+            />
+          </button>
+        </div>
+        {previewOpen ? <DocumentPreview attachment={attachment} kind={docKind} /> : null}
+      </div>
+    );
+  }
 
   if (hasUrl && !failed) {
     return (

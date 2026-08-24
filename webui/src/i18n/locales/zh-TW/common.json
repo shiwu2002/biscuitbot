@@ -1230,6 +1230,19 @@
     "resize": "調整檔案預覽寬度",
     "truncated": "檔案較大，目前只顯示前半部分預覽。"
   },
+  "documentPreview": {
+    "preview": "預覽",
+    "collapse": "收起預覽",
+    "loading": "正在載入預覽…",
+    "loadFailed": "預覽失敗，請下載查看",
+    "tooLarge": "檔案過大，無法預覽，請下載查看",
+    "download": "下載",
+    "emptySheet": "此工作表為空",
+    "prevSlide": "上一頁",
+    "nextSlide": "下一頁",
+    "slideCounter": "{{current}} / {{total}}",
+    "htmlTitle": "HTML 預覽"
+  },
   "code": {
     "fallbackLanguage": "程式碼",
     "copyAria": "複製程式碼",
