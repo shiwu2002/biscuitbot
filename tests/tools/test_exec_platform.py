@@ -27,7 +27,7 @@ class TestBuildEnvUnix:
 
     def test_expected_keys(self):
         with patch("biscuitbot.agent.tools.shell._IS_WINDOWS", False):
-            env = ExecTool()._build_env()
+            env = ExecTool(prefer_venv_python=False)._build_env()
         expected = {"HOME", "LANG", "TERM", "PYTHONUNBUFFERED"}
         assert expected <= set(env)
         if sys.platform != "win32":
@@ -195,7 +195,7 @@ class TestPathAppendPlatform:
             patch.object(ExecTool, "_spawn", side_effect=capture_spawn),
             patch.object(ExecTool, "_guard_command", return_value=None),
         ):
-            tool = ExecTool(path_append="/opt/bin; echo INJECTED")
+            tool = ExecTool(path_append="/opt/bin; echo INJECTED", prefer_venv_python=False)
             await tool.execute(command="ls")
 
         assert captured_cmd == 'export PATH="$PATH:$BISCUITBOT_PATH_APPEND"; ls'
@@ -224,7 +224,7 @@ class TestPathAppendPlatform:
             patch.object(ExecTool, "_spawn", side_effect=capture_spawn),
             patch.object(ExecTool, "_guard_command", return_value=None),
         ):
-            tool = ExecTool(path_prepend="/venv/bin; echo INJECTED")
+            tool = ExecTool(path_prepend="/venv/bin; echo INJECTED", prefer_venv_python=False)
             await tool.execute(command="python --version")
 
         assert captured_cmd == 'export PATH="$BISCUITBOT_PATH_PREPEND:$PATH"; python --version'
@@ -252,7 +252,7 @@ class TestPathAppendPlatform:
             patch.object(ExecTool, "_spawn", side_effect=capture_spawn),
             patch.object(ExecTool, "_guard_command", return_value=None),
         ):
-            tool = ExecTool(path_prepend="/venv/bin", path_append="/usr/sbin")
+            tool = ExecTool(path_prepend="/venv/bin", path_append="/usr/sbin", prefer_venv_python=False)
             await tool.execute(command="python --version")
 
         assert captured_cmd == (

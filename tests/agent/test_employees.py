@@ -62,10 +62,10 @@ class TestBuiltinSeed:
         store = _store(tmp_path)
         by_id = {e["id"]: e for e in store.list_employees()}
         assert by_id["clip-master"]["skills"] == ["jianying-editor"]
-        assert by_id["short-video-operator"]["skills"] == ["jianying-editor"]
+        assert by_id["short-video-operator"]["skills"] == ["jianying-editor", "rednote-post"]
         assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
         assert by_id["super-secretary"]["skills"] == ["secretary"]
-        assert by_id["all-round-designer"]["skills"] == ["design"]
+        assert by_id["all-round-designer"]["skills"] == ["design", "jingmei-ppt"]
 
     def test_builtin_personas_refine_before_executing(self, tmp_path: Path) -> None:
         """内置员工 persona 应「主动执行/产出/创作」，而非先反问用户。"""
@@ -354,7 +354,7 @@ class TestBuiltinVersionMigration:
         by_id = {e["id"]: e for e in employees}
         assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
         assert by_id["super-secretary"]["skills"] == ["secretary"]
-        assert by_id["all-round-designer"]["skills"] == ["design"]
+        assert by_id["all-round-designer"]["skills"] == ["design", "jingmei-ppt"]
 
     def test_deleted_builtin_stays_deleted_at_current_version(self, tmp_path: Path) -> None:
         store = _store(tmp_path)

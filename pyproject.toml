@@ -129,6 +129,8 @@ include = [
     "biscuitbot/skills/**/*.xsd",
     "biscuitbot/skills/**/*.csv",
     "biscuitbot/skills/**/*.xml",
+    "biscuitbot/skills/**/*.html",
+    "biscuitbot/skills/**/*.mjs",
     "biscuitbot/web/dist/**/*",
 ]
 # biscuitbot/web/dist/ is produced by `cd webui && bun run build` and is
