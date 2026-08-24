@@ -90,6 +90,13 @@ describe("provider brand for each supported provider", () => {
     expect(brand?.logoUrls).toContain("https://stepfun.com/favicon.ico");
   });
 
+  it("returns Kling (可灵) brand", () => {
+    const brand = providerBrand("kling");
+    expect(brand?.color).toBe("#4B6BFE");
+    expect(brand?.initials).toBe("K");
+    expect(brand?.logoUrls).toContain("https://klingai.com/favicon.ico");
+  });
+
   it("returns null for unknown provider", () => {
     expect(providerBrand("unknown_provider")).toBeNull();
     expect(providerBrand(null)).toBeNull();
@@ -140,6 +147,11 @@ describe("inferProviderFromModelName", () => {
     expect(inferProviderFromModelName("stepfun/step-2-16k")).toBe("stepfun");
     expect(inferProviderFromModelName("step-2-16k")).toBe("stepfun");
     expect(inferProviderFromModelName("step-1.5-flash")).toBe("stepfun");
+  });
+
+  it("infers kling from kling model names", () => {
+    expect(inferProviderFromModelName("kling-v3-omni")).toBe("kling");
+    expect(inferProviderFromModelName("kling/kling-v2.1-master")).toBe("kling");
   });
 
   it("returns null for unknown models", () => {

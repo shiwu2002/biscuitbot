@@ -33,6 +33,16 @@ from loguru import logger  # 结构化日志
 from pydantic import Field  # Pydantic 字段校验
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
+from biscuitbot.agent.tools.kling_video import (
+    _DEFAULT_BASE_URL as _KLING_DEFAULT_BASE_URL,
+)
+
+# 可灵厂商客户端（provider=kling 时走此路径）
+from biscuitbot.agent.tools.kling_video import (
+    _KLING_DEFAULT_MODEL,
+    KlingVideoClient,
+    KlingVideoError,
+)
 from biscuitbot.agent.tools.schema import (  # schema 构造器
     ArraySchema,
     BooleanSchema,
@@ -203,7 +213,8 @@ class SeedanceVideoTool(Tool):
     """
 
     _capability = (
-        "Generate or edit videos from text/image/video/audio with Seedance (returns file path)."
+        "Generate or edit videos from text/image/video/audio with Seedance or Kling "
+        "(returns file path)."
     )
     _usage_md = "docs/generate_video.md"  # 工具使用说明文档路径
 
@@ -222,16 +233,18 @@ class SeedanceVideoTool(Tool):
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         """从上下文创建工具实例。"""
-        # 密钥从统一 providers 配置按 seedance_video.provider 取用（默认火山方舟），
+        # 密钥/地址从统一 providers 配置按 seedance_video.provider 取用（默认火山方舟），
         # 与文生图解耦：两者可指向不同厂商，厂商密钥统一走「模型厂商」页配置。
         provider_configs = getattr(ctx, "provider_configs", None) or {}
         provider_name = ctx.config.seedance_video.provider
         provider_cfg = provider_configs.get(provider_name)
         ark_api_key = getattr(provider_cfg, "api_key", None)
+        provider_api_base = getattr(provider_cfg, "api_base", None)
         return cls(
             workspace=ctx.workspace,
             config=ctx.config.seedance_video,
             ark_api_key=ark_api_key,
+            provider_api_base=provider_api_base,
         )
 
     def __init__(
@@ -240,10 +253,12 @@ class SeedanceVideoTool(Tool):
         workspace: str | Path,
         config: SeedanceVideoToolConfig,
         ark_api_key: str | None = None,
+        provider_api_base: str | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser()  # 工作区路径，展开 ~
         self.config = config  # 工具配置
-        self._ark_api_key = ark_api_key  # 模型厂商页配置的火山方舟密钥（图像/视频共用）
+        self._ark_api_key = ark_api_key  # 模型厂商页配置的厂商密钥（图像/视频共用）
+        self.provider_api_base = provider_api_base  # 模型厂商页配置的厂商 apiBase
 
     @property
     def name(self) -> str:
@@ -254,7 +269,8 @@ class SeedanceVideoTool(Tool):
     def description(self) -> str:
         """工具描述，指导模型如何调用。"""
         return (
-            "Generate or edit a video with Seedance (ByteDance Seed video model). "
+            "Generate or edit a video with Seedance (ByteDance Seed video model) or Kling "
+            "(可灵 kling-v3-omni) depending on the configured provider. "
             "Accepts text, image, video and audio inputs. Runs asynchronously and returns the "
             "downloaded video file path. Pass local paths or public URLs for image/audio reference "
             "(local files are auto base64-encoded); for video reference pass a public HTTP(S) URL only. "
@@ -409,8 +425,14 @@ class SeedanceVideoTool(Tool):
             raise SeedanceVideoError(f"任务成功但未返回视频 URL：{task}")
         return str(url)
 
-    async def _download_and_store(self, client: httpx.AsyncClient, video_url: str) -> dict[str, Any]:
-        """下载生成的视频并落盘到媒体目录，返回元数据。"""
+    async def _download_and_store(
+        self,
+        client: httpx.AsyncClient,
+        video_url: str,
+        *,
+        model: str | None = None,
+    ) -> dict[str, Any]:
+        """下载生成的视频并落盘到媒体目录，返回元数据。``model`` 覆盖落盘元数据里的模型名。"""
         try:
             response = await client.get(video_url)
             response.raise_for_status()
@@ -433,13 +455,127 @@ class SeedanceVideoTool(Tool):
             "path": str(video_path),
             "ext": ext,
             "source_url": video_url,
-            "model": self.config.model,
+            "model": model or self.config.model,
             "created_at": datetime.now().astimezone().isoformat(),
         }
         metadata_path.write_text(
             json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         return metadata
+
+    # ---- 可灵（Kling）厂商路径 --------------------------------------------------
+
+    def _resolve_kling_key(self) -> str:
+        """解析可灵密钥：配置显式值优先，其次模型厂商页 kling 厂商的密钥。
+
+        可灵官方密钥为 ``AccessKey:SecretKey``（冒号分隔，自动生成 JWT）；
+        也可填中转网关的静态 token。
+        """
+        key = (self.config.api_key or "").strip() or (self._ark_api_key or "").strip()
+        if not key:
+            raise KlingVideoError(
+                "可灵 API key 未配置：请在「模型厂商」页配置 kling 厂商的 "
+                "AccessKey:SecretKey（或中转网关 token），或在 config.json 设置 "
+                "tools.seedance_video.apiKey。"
+            )
+        return key
+
+    def _kling_api_base(self) -> str:
+        """解析可灵 base URL：模型厂商页 apiBase → 配置 base_url（仅显式改过）→ 客户端默认。"""
+        if self.provider_api_base:
+            return self.provider_api_base.rstrip("/")
+        configured = (self.config.base_url or "").strip()
+        if configured and configured != _DEFAULT_BASE_URL:  # 仍是方舟默认则视为未改
+            return configured.rstrip("/")
+        return _KLING_DEFAULT_BASE_URL
+
+    def _kling_model(self, model: str | None) -> str:
+        """解析可灵模型名：若仍是 Seedance 模型名（切厂商未切模型）则回退可灵默认模型。"""
+        candidate = (model or "").strip() or (self.config.model or "").strip()
+        if candidate in {_MODEL_2_0, _MODEL_2_0_MINI, _MODEL_2_5}:
+            return _KLING_DEFAULT_MODEL
+        return candidate or _KLING_DEFAULT_MODEL
+
+    async def _execute_kling(
+        self,
+        *,
+        prompt: str,
+        image_urls: list[str] | None,
+        video_urls: list[str] | None,
+        audio_urls: list[str] | None,
+        ratio: str | None,
+        duration: int | None,
+        resolution: str | None,
+        generate_audio: bool | None,
+        model: str | None,
+    ) -> str:
+        """可灵（provider=kling）视频生成/编辑路径。
+
+        与方舟路径的差异：
+        - 可灵官方 image2video 仅接受公网图片 URL（base64 仅中转兼容），本地路径直接报错；
+        - 不支持参考音频 / 随机种子，忽略并记日志；清晰度可灵 3.0 支持 720p/1080p/4k，
+          透传给 settings.resolution；
+        - 画幅仅支持 16:9 / 9:16 / 1:1，时长 3–15s（build_request 内丢弃/截断）。
+        """
+        if audio_urls:
+            logger.info("可灵不支持参考音频，忽略 audio_urls：{}", audio_urls)
+
+        if generate_audio is None:
+            generate_audio = self.config.generate_audio
+        resolved_model = self._kling_model(model)
+
+        # 参考图：官方仅接受公网 HTTP(S) URL；base64 data URL 仅中转网关兼容。
+        kling_images: list[str] = []
+        for value in image_urls or []:
+            value = value.strip()
+            if _is_http_url(value) or _is_data_url(value):
+                kling_images.append(value)
+            else:
+                raise KlingVideoError(
+                    f"可灵参考图仅支持公网 HTTP(S) URL，本地文件请先上传：{value}"
+                )
+        # 参考视频：仅公网 URL（与方舟一致）。
+        kling_videos = [self._resolve_video_ref(v) for v in video_urls or []]
+
+        client = KlingVideoClient(
+            api_key=self._resolve_kling_key(),
+            api_base=self._kling_api_base(),
+            poll_interval_sec=self.config.poll_interval_sec,
+            max_poll_attempts=self.config.max_poll_attempts,
+            timeout=self.config.timeout_sec,
+        )
+        endpoint, body = client.build_request(
+            prompt=prompt,
+            image_urls=kling_images,
+            video_urls=kling_videos,
+            ratio=ratio,
+            duration=duration if duration is not None else self.config.default_duration,
+            resolution=resolution or self.config.default_resolution,
+            generate_audio=generate_audio,
+            model=resolved_model,
+        )
+
+        async with httpx.AsyncClient(timeout=self.config.timeout_sec) as http:
+            task_id = await client.create_task(http, endpoint, body)
+            logger.info(
+                "可灵任务已创建：{}（model={}，endpoint={}）", task_id, resolved_model, endpoint
+            )
+            data = await client.poll(http, task_id)
+            video_url = client.extract_video_url(data)
+            artifact = await self._download_and_store(http, video_url, model=resolved_model)
+
+        return json.dumps(
+            {
+                "video": artifact,
+                "task_id": task_id,
+                "model": resolved_model,
+                "next_step": (
+                    "视频已生成并保存到本地。可把 path 作为后续剪辑工具的输入，"
+                    "或通过 message 工具把视频文件交付给用户。"
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     async def execute(
         self,
@@ -475,6 +611,19 @@ class SeedanceVideoTool(Tool):
             包含视频本地路径与元数据的 JSON 字符串；出错时返回错误说明。
         """
         try:
+            # 厂商分流：provider=kling 走可灵路径，其余（默认 volcengine）走方舟路径。
+            if self.config.provider == "kling":
+                return await self._execute_kling(
+                    prompt=prompt,
+                    image_urls=image_urls,
+                    video_urls=video_urls,
+                    audio_urls=audio_urls,
+                    ratio=ratio,
+                    duration=duration,
+                    resolution=resolution,
+                    generate_audio=generate_audio,
+                    model=model,
+                )
             # 音效默认开启：未显式传参时自动打开（带参考视频/音频时始终开启）；
             # 显式传入 generate_audio 时以传入值为准（false 可关闭）。
             if generate_audio is None:
@@ -523,6 +672,8 @@ class SeedanceVideoTool(Tool):
                 ensure_ascii=False,
             )
         except SeedanceVideoError as exc:
+            return f"Error: {exc}"
+        except KlingVideoError as exc:
             return f"Error: {exc}"
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
             return f"Error: Seedance 请求失败：{exc}。请检查网络与 baseUrl，稍后重试"

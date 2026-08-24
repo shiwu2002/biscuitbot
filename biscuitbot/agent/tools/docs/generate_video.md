@@ -1,6 +1,6 @@
 # generate_video
 
-通过火山引擎方舟（Volcengine Ark）Seedance 视频大模型生成或编辑视频。支持文生视频、图生视频、以及基于参考图 / 参考视频 / 参考音频的编辑，任务异步执行，完成后返回下载到本地的视频文件路径。
+通过视频生成大模型生成或编辑视频，默认走火山引擎方舟（Volcengine Ark）Seedance，也可切换为可灵（Kling，默认模型 `kling-3.0`）。支持文生视频、图生视频、以及基于参考图 / 参考视频 / 参考音频的编辑，任务异步执行，完成后返回下载到本地的视频文件路径。
 
 ## 何时使用
 
@@ -84,6 +84,28 @@ echo "file 'clip_3.mp4'" >> list.txt
 echo "file 'clip_4.mp4'" >> list.txt
 ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 ```
+
+## 厂商选择（Seedance / 可灵）
+
+默认厂商为火山方舟 Seedance（`provider = "volcengine"`）。可在「模型厂商」页配置**可灵**（`provider = "kling"`）后切换：
+
+- 在「模型厂商」页添加厂商 `kling`，填写密钥为 `AccessKey:SecretKey`（冒号分隔，工具自动生成 JWT 签名）、控制台新建的单个 API Key、或中转网关的静态 token。
+- 在「视频生成」设置页把厂商切到「可灵」，模型填 `kling-3.0`（默认，或你的可灵模型 ID）。可灵官方**没有 `/models` 枚举接口**，下拉会直接给出内置模型列表（`kling-3.0` / `kling-3.0-pro` / `kling-3.0-turbo` / `kling-v3-omni` / `kling-video-o1` 等）。
+- 可灵官方 API 默认 `https://api-beijing.klingai.com`（中国大陆新域名；海外用 `api-singapore.klingai.com`；旧域名 `api.klingai.com` 会 401）。「模型厂商」页的 apiBase 留空即用默认。
+- 请求走可灵 3.0 的 `contents` + `settings` + `options` 结构，模型名内嵌在 URL 路径（如 `POST /image-to-video/kling-3.0`），任务用 `GET /v1/videos/{task_id}` 轮询。
+
+### 可灵参数差异
+
+| 能力 / 参数 | 可灵（kling） | 说明 |
+|------|------|------|
+| ratio | 仅 `16:9` / `9:16` / `1:1` | 其余值自动丢弃，回落默认 |
+| duration | 3–15s（带参考视频 3–10s） | 超出自动截断到边界 |
+| resolution | `720p` / `1080p` / `4k` | 3.0 支持，透传 `settings.resolution`（自动转小写） |
+| seed / watermark | 不支持 | 忽略（水印默认关闭） |
+| audio_urls（参考音频） | 不支持 | 忽略并记日志 |
+| image_urls | 仅公网 HTTP(S) URL | 官方拒 base64；base64 data URL 仅中转网关兼容；本地路径会直接报错提示上传 |
+| video_urls | 最多 1 段参考视频 | 映射到 `/video-to-video/{model}` 的 `contents`（`base_video` 类型） |
+| generate_audio | `settings.audio`（`on`/`off`） | 默认开启（同 Seedance） |
 
 ## 注意事项
 

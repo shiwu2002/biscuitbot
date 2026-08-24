@@ -16,6 +16,10 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from biscuitbot import __version__
+from biscuitbot.agent.tools.kling_video import (
+    get_video_gen_provider,
+    video_gen_provider_names,
+)
 from biscuitbot.audio.transcription import resolve_transcription_config
 from biscuitbot.audio.transcription_registry import (
     get_transcription_provider,
@@ -189,6 +193,20 @@ _MODEL_LIST_OFFICIAL_PROVIDERS = {
     "zhipu",
 }
 
+# 没有 OpenAI 风格 /models 端点的厂商，直接返回这份已知模型列表（避免请求 404）。
+# 可灵官方不提供模型枚举接口，模型名内嵌在 URL 路径（如 /image-to-video/kling-3.0）。
+_KNOWN_MODEL_LISTS: dict[str, list[dict[str, Any]]] = {
+    "kling": [
+        {"id": "kling-3.0", "label": "可灵 3.0（默认）"},
+        {"id": "kling-3.0-pro", "label": "可灵 3.0 Pro"},
+        {"id": "kling-3.0-turbo", "label": "可灵 3.0 Turbo"},
+        {"id": "kling-v3-omni", "label": "可灵 3.0 Omni"},
+        {"id": "kling-video-o1", "label": "可灵 Video O1"},
+        {"id": "kling-v2.1-master", "label": "可灵 2.1 Master"},
+        {"id": "kling-v2.1-turbo", "label": "可灵 2.1 Turbo"},
+    ],
+}
+
 
 class WebUISettingsError(ValueError):
     """User-facing settings validation failure."""
@@ -334,7 +352,7 @@ def _dynamic_provider_items(config: Any) -> list[tuple[str, ProviderConfig]]:
 def _provider_config_by_name(config: Any, name: str) -> ProviderConfig | None:
     """按名称取 ProviderConfig：先查固定字段，再查 model_extra 自定义厂商。
 
-    能力专用厂商（volcengine / gemini / aihubmix 等）不是 ProvidersConfig 的
+    能力专用厂商（volcengine / gemini / aihubmix / kling 等）不是 ProvidersConfig 的
     固定字段，「模型厂商」页会把它们存进 model_extra，直接 ``getattr`` 会漏掉。
     """
     pc = getattr(config.providers, name, None)
@@ -344,6 +362,21 @@ def _provider_config_by_name(config: Any, name: str) -> ProviderConfig | None:
         if extra_name == name:
             return extra_pc
     return None
+
+
+def _video_api_key_configured(config: Any) -> bool:
+    """按 ``seedance_video.provider`` 判断视频生成密钥是否已配置（WebUI 显示/启用校验用）。
+
+    火山方舟额外兜底 ``ARK_API_KEY`` 环境变量；其余厂商（可灵等）从统一
+    providers 配置按 provider 名取密钥，且支持 ``config.api_key`` 显式覆盖。
+    """
+    video_config = config.tools.seedance_video
+    if (video_config.api_key or "").strip():
+        return True
+    if video_config.provider == "volcengine" and os.environ.get("ARK_API_KEY", "").strip():
+        return True
+    provider_cfg = _provider_config_by_name(config, video_config.provider)
+    return bool(provider_cfg and (provider_cfg.api_key or "").strip())
 
 
 def _resolve_settings_provider(
@@ -390,7 +423,18 @@ def _resolve_model_list_provider(
     """
     resolved = _resolve_settings_provider(config, provider_name)
     if resolved is not None:
-        return resolved
+        spec, key, provider_config = resolved
+        # 视频能力厂商（可灵等）即使已作为自定义厂商存入 model_extra，其动态 spec
+        # 默认 ``is_direct=True``，会被误判为「免密钥 / 无需 apiBase」。按注册表
+        # 修正为需密钥，并带上客户端自带的默认 base URL。
+        if get_video_gen_provider(key) is not None:
+            default_api_base = _image_default_base_url(get_video_gen_provider(key))
+            spec = replace(
+                spec,
+                default_api_base=default_api_base or spec.default_api_base,
+                is_direct=False,
+            )
+        return spec, key, provider_config
 
     name = provider_name.strip()
     default_api_base: str | None = None
@@ -401,6 +445,11 @@ def _resolve_model_list_provider(
     image_provider = (
         get_image_gen_provider(name)
         if tts_spec is None and transcription_spec is None
+        else None
+    )
+    video_provider = (
+        get_video_gen_provider(name)
+        if tts_spec is None and transcription_spec is None and image_provider is None
         else None
     )
     if tts_spec is not None:
@@ -415,6 +464,10 @@ def _resolve_model_list_provider(
         # https://ark.cn-beijing.volces.com/api/v3）。
         default_api_base = _image_default_base_url(image_provider)
         requires_api_key = name != "ollama"
+    elif video_provider is not None:
+        # 视频能力厂商（kling 等）客户端自带兜底 base URL，同样作为 apiBase 默认展示。
+        default_api_base = _image_default_base_url(video_provider)
+        requires_api_key = True
     else:
         return None
 
@@ -447,6 +500,7 @@ def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
     is_capability_only = spec is None and (
         get_image_gen_provider(name) is not None
         or name == "volcengine"
+        or get_video_gen_provider(name) is not None
         or get_tts_provider(name) is not None
         or get_transcription_provider(name) is not None
     )
@@ -457,7 +511,7 @@ def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
             caps.append("vision")
     if get_image_gen_provider(name) is not None:
         caps.append("image")
-    if name == "volcengine":
+    if name == "volcengine" or get_video_gen_provider(name) is not None:
         caps.append("video")
     if get_tts_provider(name) is not None:
         caps.append("tts")
@@ -486,6 +540,8 @@ def _capability_provider_label(name: str, spec: Any) -> str:
         return spec.label if spec is not None else name
     if name == "volcengine":
         return "火山方舟"
+    if name == "kling":
+        return "可灵"
     if name == "edge-tts":
         return "Edge TTS"
     return name
@@ -518,7 +574,12 @@ def _unified_provider_rows(config: Any) -> list[dict[str, Any]]:
     各能力页不再各自维护厂商列表，统一从此处派生并按 ``capabilities`` 过滤。
     """
     names: list[str] = [spec.name for spec in PROVIDERS]
-    for extra in (*image_gen_provider_names(), *tts_provider_names(), *transcription_provider_names()):
+    for extra in (
+        *image_gen_provider_names(),
+        *video_gen_provider_names(),
+        *tts_provider_names(),
+        *transcription_provider_names(),
+    ):
         if extra not in names:
             names.append(extra)
     for extra_name, _ in _dynamic_provider_items(config):
@@ -974,6 +1035,15 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
         "message": None,
         "fetched_at": time.time(),
     }
+    # 无 /models 端点的厂商（如可灵）直接返回内置已知模型列表，避免对真实 API 发 404 请求。
+    known_models = _KNOWN_MODEL_LISTS.get(spec.name)
+    if known_models is not None:
+        return {
+            **base_payload,
+            "status": "available",
+            "models": known_models,
+            "model_count": len(known_models),
+        }
     if (
         spec.is_transcription_only
         or (
@@ -1230,14 +1300,7 @@ def settings_payload(
         },
         "video_generation": {
             "enabled": video_config.enabled,
-            "api_key_configured": bool(
-                (video_config.api_key or "").strip()
-                or (
-                    (volcengine_cfg := _provider_config_by_name(config, "volcengine"))
-                    and (volcengine_cfg.api_key or "").strip()
-                )
-                or os.environ.get("ARK_API_KEY", "").strip()
-            ),
+            "api_key_configured": _video_api_key_configured(config),
             "provider": video_config.provider,
             "model": video_config.model,
             "default_ratio": video_config.default_ratio,
@@ -2023,15 +2086,13 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
             video_config.save_dir = save_dir
             changed = True
 
-    if video_config.enabled:
-        volcengine_cfg = _provider_config_by_name(config, "volcengine")
-        has_key = bool(
-            (video_config.api_key or "").strip()
-            or (volcengine_cfg and (volcengine_cfg.api_key or "").strip())
-            or os.environ.get("ARK_API_KEY", "").strip()
-        )
-        if not has_key:
+    if video_config.enabled and not _video_api_key_configured(config):
+        provider = video_config.provider
+        if provider == "volcengine":
             raise WebUISettingsError("seedance api key is required to enable video generation")
+        raise WebUISettingsError(
+            f"video generation provider ({provider}) api key is required to enable video generation"
+        )
 
     if changed:
         save_config(config)
