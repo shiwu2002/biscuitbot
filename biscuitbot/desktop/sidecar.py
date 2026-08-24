@@ -15,9 +15,12 @@ The process then blocks forever; the Tauri shell kills it when the app quits.
 from __future__ import annotations
 
 import os
+import runpy
 import socket
+import sys
 import threading
 import time
+import traceback
 from typing import Any
 
 from loguru import logger
@@ -29,6 +32,11 @@ _PORT_SCAN_END = 8800
 
 # sidecar 等待 gateway 绑定端口的时间上限
 _READY_TIMEOUT_S = 30.0
+
+# 解释器模式的魔术首参：exec 生成的 python/pip shim 以
+# ``<本可执行> __biscuitbot_python__ <原始参数>`` 调用，命中后本进程充当
+# 通用 Python 解释器（复用打包进 bundle 的标准库与第三方依赖），而非启动网关。
+_PYTHON_MODE_MARKER = "__biscuitbot_python__"
 
 
 def _port_free(host: str, port: int) -> bool:
@@ -82,8 +90,75 @@ def ensure_runtime(config: Any = None) -> Any:
     return config
 
 
+def _system_exit_code(exc: SystemExit) -> int:
+    """把 SystemExit 归一为进程退出码（None → 0，str → 1）。"""
+    if isinstance(exc.code, int):
+        return exc.code
+    return 0 if exc.code is None else 1
+
+
+def _run_python_interpreter(argv: list[str]) -> int:
+    """以通用 Python 解释器模式执行请求（桌面 exec 落到打包解释器）。
+
+    行为对齐 CPython 常见调用形态：
+      - ``-c <code>``      执行代码片段
+      - ``-m <module>``    运行模块（pip 等）
+      - ``-V/--version``   打印版本
+      - 其余             视为脚本路径（runpy.run_path）
+    异常打 traceback 到 stderr 并返回 1，正常返回 0。
+    """
+    if not argv or argv[0] in ("-V", "--version"):
+        print(f"Python {sys.version.split()[0]}")
+        return 0
+
+    if argv[0] == "-c":
+        if len(argv) < 2:
+            print("python: -c requires an argument", file=sys.stderr)
+            return 2
+        sys.argv = [""] + argv[2:]
+        try:
+            exec(
+                compile(argv[1], "<string>", "exec"),
+                {"__name__": "__main__", "__file__": "<string>"},
+            )
+        except SystemExit as exc:
+            return _system_exit_code(exc)
+        except BaseException:
+            traceback.print_exc()
+            return 1
+        return 0
+
+    if argv[0] in ("-m", "--module"):
+        if len(argv) < 2:
+            print("python: -m requires an argument", file=sys.stderr)
+            return 2
+        sys.argv = argv
+        try:
+            runpy.run_module(argv[1], run_name="__main__", alter_sys=True)
+        except SystemExit as exc:
+            return _system_exit_code(exc)
+        except BaseException:
+            traceback.print_exc()
+            return 1
+        return 0
+
+    # 其余：视为脚本路径
+    sys.argv = argv
+    try:
+        runpy.run_path(argv[0], run_name="__main__")
+    except SystemExit as exc:
+        return _system_exit_code(exc)
+    except BaseException:
+        traceback.print_exc()
+        return 1
+    return 0
+
+
 def main(config: Any = None) -> None:
     """无头 sidecar 主入口：启动网关并打印握手行。"""
+    if len(sys.argv) > 1 and sys.argv[1] == _PYTHON_MODE_MARKER:
+        sys.exit(_run_python_interpreter(sys.argv[2:]))
+
     from biscuitbot.desktop.app import resolve_websocket_endpoint, start_gateway
 
     try:

@@ -116,3 +116,75 @@ class TestPrepareCommand:
     def test_prefer_venv_python_defaults_true(self) -> None:
         tool = ExecTool(guard_level="off", working_dir="/tmp")
         assert tool.prefer_venv_python is True
+
+
+class TestFrozenBundledShims:
+    """PyInstaller 冻结（桌面 sidecar）：生成指向 sidecar 解释器模式的 shim。"""
+
+    def test_bundled_bin_none_when_not_frozen(self) -> None:
+        tool = ExecTool(guard_level="off", working_dir="/tmp")
+        assert tool._bundled_python_bin() is None
+
+    def test_prefer_python_prefers_venv_over_frozen(self) -> None:
+        with (
+            patch.object(ExecTool, "_venv_bin_dir", return_value="/venv/bin"),
+            patch.object(ExecTool, "_bundled_python_bin", return_value="/frozen/shims"),
+        ):
+            tool = ExecTool(guard_level="off", working_dir="/tmp")
+            assert tool._prefer_python_bin() == "/venv/bin"
+
+    def test_prefer_python_falls_back_to_frozen(self) -> None:
+        with (
+            patch.object(ExecTool, "_venv_bin_dir", return_value=None),
+            patch.object(ExecTool, "_bundled_python_bin", return_value="/frozen/shims"),
+        ):
+            tool = ExecTool(guard_level="off", working_dir="/tmp")
+            assert tool._prefer_python_bin() == "/frozen/shims"
+
+    def test_bundled_bin_generates_shims(self, tmp_path: Path) -> None:
+        fake_exe = tmp_path / "biscuitbot-sidecar"
+        fake_exe.write_text("#!/bin/sh\n", encoding="utf-8")
+        fake_exe.chmod(0o755)
+        with (
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(sys, "executable", str(fake_exe)),
+            patch(
+                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                return_value=str(tmp_path),
+            ),
+        ):
+            tool = ExecTool(guard_level="off", working_dir="/tmp")
+            bindir = tool._bundled_python_bin()
+        assert bindir is not None
+        d = Path(bindir)
+        for name in ("python", "python3", "pip", "pip3"):
+            assert (d / name).exists(), name
+            assert (d / name).stat().st_mode & 0o111, f"{name} not executable"
+            content = (d / name).read_text(encoding="utf-8")
+            assert "__biscuitbot_python__" in content, name
+            assert str(fake_exe) in content, name
+        # pip shim 走 -m pip
+        assert "-m pip" in (d / "pip3").read_text(encoding="utf-8")
+        # 幂等：再次调用返回同一目录，不重复生成
+        with (
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(sys, "executable", str(fake_exe)),
+            patch(
+                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                return_value=str(tmp_path),
+            ),
+        ):
+            tool2 = ExecTool(guard_level="off", working_dir="/tmp")
+            assert tool2._bundled_python_bin() == bindir
+
+    def test_bundled_bin_none_when_executable_missing(self) -> None:
+        with (
+            patch.object(sys, "frozen", True, create=True),
+            patch.object(sys, "executable", "/no/such/sidecar"),
+            patch(
+                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                return_value="/tmp",
+            ),
+        ):
+            tool = ExecTool(guard_level="off", working_dir="/tmp")
+            assert tool._bundled_python_bin() is None
