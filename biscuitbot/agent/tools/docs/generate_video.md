@@ -11,7 +11,7 @@
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | prompt | string | 是 | - | 文本提示词：描述主体、运镜、景别、构图、光影、氛围、节奏 |
-| image_urls | array | 否 | - | 参考图列表（本地路径 / 公网 URL / base64 data URL，本地自动转 base64）。**首个元素可作为首帧参考**（片段连贯：把上一段视频尾帧放首位） |
+| image_urls | array | 否 | - | 参考图列表（本地路径 / 公网 URL / base64 data URL，本地自动转 base64）。**微信/渠道收到的图片本地路径可直接传入，无需上传公网**。**首个元素可作为首帧参考**（片段连贯：把上一段视频尾帧放首位） |
 | video_urls | array | 否 | - | 参考视频列表（**仅公网 HTTP(S) URL**，不支持本地文件） |
 | audio_urls | array | 否 | - | 参考音频列表（本地路径 / 公网 URL / base64 data URL） |
 | ratio | string | 否 | 16:9 | 画幅：16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive |
@@ -104,7 +104,7 @@ ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 | resolution | `720p` / `1080p` / `4k` | 3.0 支持，透传 `settings.resolution`（自动转小写） |
 | seed / watermark | 不支持 | 忽略（水印默认关闭） |
 | audio_urls（参考音频） | 不支持 | 忽略并记日志 |
-| image_urls | 仅公网 HTTP(S) URL | 官方拒 base64；base64 data URL 仅中转网关兼容；本地路径会直接报错提示上传 |
+| image_urls | 本地路径 / 公网 URL / base64 data URL | 本地路径自动转 base64（官方 3.0 实测接受）；参考视频仍仅公网 URL |
 | video_urls | 最多 1 段参考视频 | 映射到 `/video-to-video/{model}` 的 `contents`（`base_video` 类型） |
 | generate_audio | `settings.audio`（`native`/`off`） | 默认开启（`native` = 生成原生音频；同 Seedance 默认开启） |
 
@@ -112,7 +112,7 @@ ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 
 - 参考**视频**只接受公网可访问的 HTTP(S) URL；本地视频文件需先上传到可访问地址。
 - 带参考图 / 参考视频 / 参考音频（r2v）时**不要传 `resolution`**：该模式下模型按参考素材自动推导分辨率，显式传入会被方舟拒绝（`not valid ... in r2v`）。工具已自动忽略该参数。
-- 参考**图片 / 音频**支持本地路径（自动 base64）与公网 URL。
+- 参考**图片 / 音频**支持本地路径（自动 base64）与公网 URL；**微信/渠道收到的图片本地路径可直接传入可灵/Seedance，无需先上传到公网图床**。
 - 视频生成耗时较长（通常数分钟），工具内部会自动轮询直至完成。
 - 结果会下载到媒体目录并持久化，返回本地 `path`；可用该路径作为后续剪辑工具的输入，或通过 message 工具交付给用户。
 - 需要 `ARK_API_KEY`（或 config 的 `tools.seedance_video.apiKey`），且 `tools.seedance_video.enabled` 为 true。

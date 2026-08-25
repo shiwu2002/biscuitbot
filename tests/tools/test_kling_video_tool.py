@@ -438,15 +438,55 @@ async def test_execute_kling_missing_key_returns_error(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_execute_kling_rejects_local_image_path(tmp_path: Path) -> None:
-    """可灵官方 image2video 不接受 base64/本地路径，需公网 URL，直接报错提示。"""
+async def test_execute_kling_local_image_auto_base64(tmp_path: Path, monkeypatch) -> None:
+    """本地参考图自动转 base64 data URL（官方 kling-3.0 实测接受 base64）。"""
     tool = SeedanceVideoTool(
         workspace=tmp_path,
         config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
     )
-    result = await tool.execute(prompt="hello", image_urls=[str(tmp_path / "cat.jpg")])
+    img = tmp_path / "cat.jpg"
+    img.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 64)  # JPEG 魔数
+    captured: dict = {}
+
+    async def fake_create(self, client, endpoint, body):
+        captured["endpoint"] = endpoint
+        captured["body"] = body
+        return "kling-task"
+
+    async def fake_poll(self, client, task_id, **kwargs):
+        return {
+            "code": 0,
+            "data": {
+                "task_id": task_id,
+                "task_status": "succeed",
+                "task_result": {"videos": [{"url": "https://cdn.example/out.mp4"}]},
+            },
+        }
+
+    async def fake_download(self, client, video_url, *, model=None):
+        return {"path": str(tmp_path / "out.mp4"), "model": model}
+
+    monkeypatch.setattr(KlingVideoClient, "create_task", fake_create)
+    monkeypatch.setattr(KlingVideoClient, "poll", fake_poll)
+    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+
+    result = await tool.execute(prompt="hello", image_urls=[str(img)])
+    assert json.loads(result)["video"]["model"] == _KLING_DEFAULT_MODEL
+    first = captured["body"]["contents"][1]
+    assert first["type"] == "first_frame"
+    assert first["url"].startswith("data:image/jpeg;base64,")
+
+
+@pytest.mark.asyncio
+async def test_execute_kling_missing_local_image_errors(tmp_path: Path) -> None:
+    """本地参考图不存在时报错（复用 _resolve_image_ref 校验）。"""
+    tool = SeedanceVideoTool(
+        workspace=tmp_path,
+        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+    )
+    result = await tool.execute(prompt="hello", image_urls=[str(tmp_path / "missing.jpg")])
     assert result.startswith("Error:")
-    assert "公网" in result
+    assert "不存在" in result
 
 
 @pytest.mark.asyncio
