@@ -112,17 +112,12 @@ _SYSTEM_IO_ACTIONS: list[dict[str, Any]] = [
 ]
 _SYSTEM_IO_VALID_ACTIONS = {item["name"] for item in _SYSTEM_IO_ACTIONS}
 
+# 只保留实测可用的免费搜索源：duckduckgo（直连 Bing，无需 key）与 bocha（国内免费额度）。
+# 其余提供商（brave/tavily/jina/kagi/exa/searxng/olostep/volcengine）需海外 key 或自建，
+# 已在 WebUI 下拉中移除；config.json 里手动配置仍会被 web.py 原样执行。
 _WEB_SEARCH_PROVIDER_OPTIONS: tuple[dict[str, str], ...] = (
     {"name": "duckduckgo", "label": "DuckDuckGo", "credential": "none"},
-    {"name": "brave", "label": "Brave Search", "credential": "api_key"},
-    {"name": "tavily", "label": "Tavily", "credential": "api_key"},
-    {"name": "searxng", "label": "SearXNG", "credential": "base_url"},
-    {"name": "jina", "label": "Jina", "credential": "api_key"},
-    {"name": "kagi", "label": "Kagi", "credential": "api_key"},
-    {"name": "exa", "label": "Exa", "credential": "api_key"},
-    {"name": "olostep", "label": "Olostep", "credential": "api_key"},
     {"name": "bocha", "label": "Bocha", "credential": "api_key"},
-    {"name": "volcengine", "label": "Volcengine Search", "credential": "api_key"},
 )
 _WEB_SEARCH_PROVIDER_BY_NAME = {
     provider["name"]: provider for provider in _WEB_SEARCH_PROVIDER_OPTIONS
