@@ -191,7 +191,9 @@ class KlingVideoClient:
             endpoint = f"/text-to-video/{model}"
 
         settings: dict[str, Any] = {
-            "audio": "on" if generate_audio else "off",
+            # 官方 settings.audio 枚举为 "native"（生成原生音频）/ "off"；"on" 会被
+            # API 拒绝（code 1201 settings.audio value 'on' is invalid）。
+            "audio": "native" if generate_audio else "off",
             "multi_shot": False,
         }
         if ratio and ratio in _KLING_RATIOS:

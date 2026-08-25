@@ -30,6 +30,36 @@ def test_shell_signature_strips_trailing_redirect():
     assert tool_call_signature("exec", {"command": "ls -la 2>/dev/null"}) == "exec:ls -la"
 
 
+def test_shell_signature_keeps_and_chain_distinct():
+    """``&&`` 串联的不同操作（cd 进目录 + 不同命令）不应被折叠成同一签名。
+
+    回归：此前 ``&&`` 也被折叠，所有 ``cd <workspace> && ffprobe/ffmpeg...`` 命令
+    都坍缩成 ``cd <workspace>``，超过重复预算后合法命令链全被误伤拦截。
+    """
+    a = tool_call_signature(
+        "exec",
+        {"command": "cd /Users/x/ws && ffprobe -v error vo15.mp3 && ffmpeg -y -i promo.mp4 out.mp4"},
+    )
+    b = tool_call_signature(
+        "exec",
+        {"command": "cd /Users/x/ws && ffmpeg -y -i a.mp4 -frames:v 1 f.png"},
+    )
+    assert a != b
+    assert "ffprobe" in a
+    assert "ffmpeg" in b
+
+
+def test_shell_signature_repeated_and_chain_still_escalates():
+    """完全相同的 ``&&`` 链仍应被识别为重复调用（死循环兜底不失效）。"""
+    counts: dict[str, int] = {}
+    cmd = {"command": "cd /Users/x/ws && ffmpeg -y -i a.mp4 out.mp4"}
+    repeated_tool_call_error("exec", cmd, counts)  # 第 1 次
+    repeated_tool_call_error("exec", cmd, counts)  # 第 2 次
+    repeated_tool_call_error("exec", cmd, counts)  # 第 3 次
+    fourth = repeated_tool_call_error("exec", cmd, counts)  # 第 4 次 → 拦截
+    assert fourth is not None
+
+
 def test_generic_signature_serializes_arguments():
     sig = tool_call_signature("read_file", {"path": "docs/read_file.md", "offset": 1})
     assert sig is not None

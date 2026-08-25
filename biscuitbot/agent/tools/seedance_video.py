@@ -270,7 +270,7 @@ class SeedanceVideoTool(Tool):
         """工具描述，指导模型如何调用。"""
         return (
             "Generate or edit a video with Seedance (ByteDance Seed video model) or Kling "
-            "(可灵 kling-v3-omni) depending on the configured provider. "
+            "(可灵 kling-3.0, provider=\"kling\") depending on the configured provider. "
             "Accepts text, image, video and audio inputs. Runs asynchronously and returns the "
             "downloaded video file path. Pass local paths or public URLs for image/audio reference "
             "(local files are auto base64-encoded); for video reference pass a public HTTP(S) URL only. "
@@ -466,12 +466,16 @@ class SeedanceVideoTool(Tool):
     # ---- 可灵（Kling）厂商路径 --------------------------------------------------
 
     def _resolve_kling_key(self) -> str:
-        """解析可灵密钥：配置显式值优先，其次模型厂商页 kling 厂商的密钥。
+        """解析可灵密钥：模型厂商页 kling 厂商的密钥优先，其次配置显式值。
+
+        注意优先级不能反过来：``config.api_key`` 是工具级（方舟 Seedance）的 key，
+        切到可灵后可能残留方舟的 ``ark-`` 前缀 key，用它鉴权可灵必然 401。
+        因此可灵路径必须优先用「模型厂商」页 kling 厂商的密钥（``_ark_api_key``）。
 
         可灵官方密钥为 ``AccessKey:SecretKey``（冒号分隔，自动生成 JWT）；
         也可填中转网关的静态 token。
         """
-        key = (self.config.api_key or "").strip() or (self._ark_api_key or "").strip()
+        key = (self._ark_api_key or "").strip() or (self.config.api_key or "").strip()
         if not key:
             raise KlingVideoError(
                 "可灵 API key 未配置：请在「模型厂商」页配置 kling 厂商的 "
@@ -481,12 +485,14 @@ class SeedanceVideoTool(Tool):
         return key
 
     def _kling_api_base(self) -> str:
-        """解析可灵 base URL：模型厂商页 apiBase → 配置 base_url（仅显式改过）→ 客户端默认。"""
+        """解析可灵 base URL：模型厂商页 kling 厂商 apiBase → 可灵默认。
+
+        刻意不读 ``config.base_url``：那是方舟（Seedance）工具级 baseUrl，切到可灵
+        后可能仍残留方舟地址（如 ``ark.cn-beijing.volces.com/api/v3``），用在可灵
+        路径会打到错误端点。可灵的自定义网关地址请填在「模型厂商」页 kling 的 apiBase。
+        """
         if self.provider_api_base:
             return self.provider_api_base.rstrip("/")
-        configured = (self.config.base_url or "").strip()
-        if configured and configured != _DEFAULT_BASE_URL:  # 仍是方舟默认则视为未改
-            return configured.rstrip("/")
         return _KLING_DEFAULT_BASE_URL
 
     def _kling_model(self, model: str | None) -> str:

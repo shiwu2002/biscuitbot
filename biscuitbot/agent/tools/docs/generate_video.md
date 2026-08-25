@@ -105,7 +105,7 @@ ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 | audio_urls（参考音频） | 不支持 | 忽略并记日志 |
 | image_urls | 仅公网 HTTP(S) URL | 官方拒 base64；base64 data URL 仅中转网关兼容；本地路径会直接报错提示上传 |
 | video_urls | 最多 1 段参考视频 | 映射到 `/video-to-video/{model}` 的 `contents`（`base_video` 类型） |
-| generate_audio | `settings.audio`（`on`/`off`） | 默认开启（同 Seedance） |
+| generate_audio | `settings.audio`（`native`/`off`） | 默认开启（`native` = 生成原生音频；同 Seedance 默认开启） |
 
 ## 注意事项
 

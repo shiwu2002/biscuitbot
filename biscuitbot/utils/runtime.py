@@ -207,7 +207,10 @@ def repeated_workspace_violation_error(
 # "stuck model" pattern — e.g. re-running `find ... | grep ...` with a varying
 # grep tail — which the external-lookup and workspace-violation throttles miss.
 
-_SHELL_SEPARATORS = ("|", "&&", "||", ";")
+# 只在管道符 ``|`` 处折叠。``&&`` / ``;`` 是串联**不同**操作（如先 ``cd`` 进工作区再执行
+# ffprobe/ffmpeg），若一并折叠会把 ``cd X && cmdA`` 与 ``cd X && cmdB`` 判成同一调用，
+# 导致带 ``cd <workspace> &&`` 前缀的合法命令链被误伤拦截（死循环兜底反成假死循环）。
+_SHELL_SEPARATORS = ("|",)
 _TRAILING_REDIRECT = re.compile(r"\s+\d?>>?\s*(?:/dev/null|&[12])\s*$")
 
 
@@ -218,6 +221,10 @@ def _shell_command_signature(cmd: str) -> str:
     varying ``| grep ... | head`` tail or a trailing ``2>/dev/null`` redirect.
     Collapsing those onto the base command is what lets the loop detector treat
     them as the same repeated call instead of a fresh one each time.
+
+    Only pipe tails collapse: ``&&`` / ``;`` chains keep distinct segments in the
+    signature so that e.g. ``cd ws && ffprobe a`` and ``cd ws && ffmpeg b`` are
+    treated as different calls (they are different operations).
     """
     base = cmd.strip()
     for sep in _SHELL_SEPARATORS:

@@ -122,7 +122,7 @@ def test_build_request_text2video() -> None:
     assert endpoint == f"/text-to-video/{_KLING_DEFAULT_MODEL}"
     assert body == {
         "contents": [{"type": "prompt", "text": "一只橘猫弹钢琴"}],
-        "settings": {"audio": "on", "multi_shot": False},
+        "settings": {"audio": "native", "multi_shot": False},
         "options": {"watermark_info": {"enabled": False}},
     }
 
@@ -408,7 +408,7 @@ async def test_execute_kling_full_flow(tmp_path: Path, monkeypatch) -> None:
     }
     assert captured["body"]["settings"]["aspect_ratio"] == "16:9"
     assert captured["body"]["settings"]["duration"] == 8
-    assert captured["body"]["settings"]["audio"] == "on"
+    assert captured["body"]["settings"]["audio"] == "native"
 
 
 @pytest.mark.asyncio
