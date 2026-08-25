@@ -23,7 +23,8 @@
   - 文生视频：``POST /text-to-video/kling-3.0``
   - 图生视频：``POST /image-to-video/kling-3.0``
   - 参考视频：``POST /video-to-video/kling-3.0``
-  - 轮询：``GET /v1/videos/{task_id}``
+  - 轮询：``GET /v1/videos/{text2video|image2video|video2video}/{task_id}``
+    （按任务类型区分；统一 ``/v1/videos/{task_id}`` 对 3.0 任务返回 404）
 - 请求体：``contents``（多模态输入数组）+ ``settings``（时长/画幅/清晰度/音频/
   多镜头）+ ``options``（回调/水印）。与经典 ``/v1/videos/image2video`` 的平铺
   ``image_list`` 结构不同，见 ``build_request``。
@@ -159,23 +160,27 @@ class KlingVideoClient:
         - 有参考图 → ``/image-to-video/{model}``（单图作首帧，多图末张作尾帧）；
         - 否则 → ``/text-to-video/{model}``。
 
-        请求体采用可灵 3.0 的 ``contents`` + ``settings`` + ``options`` 结构：
-        ``contents`` 是「提示词 + 首尾帧 + 参考视频」的多模态输入数组；``settings``
-        放时长/画幅/清晰度/音频/多镜头。ratio 不在可灵支持集合内时丢弃；duration
-        截断到 3–15（带参考视频为 3–10）。
+        请求体采用可灵 3.0 的 ``settings`` + ``options`` + （``contents`` 或顶层
+        ``prompt``）：图/视频生视频时提示词与参考素材放在 ``contents`` 多模态输入
+        数组；文生视频时提示词在**顶层 ``prompt`` 字段**（官方不接受 contents 里的
+        提示词，会报 code 1201 "prompt cannot be empty"）。``settings`` 放时长/画幅/
+        清晰度/音频/多镜头。ratio 不在可灵支持集合内时丢弃；duration 截断到
+        3–15（带参考视频为 3–10）。
         """
-        contents: list[dict[str, Any]] = [{"type": "prompt", "text": prompt}]
+        contents: list[dict[str, Any]] | None = None
         max_duration = _KLING_DURATION_MAX
         if video_urls:
             endpoint = f"/video-to-video/{model}"
             # 可灵每次任务最多 1 段参考视频。contents 里参考视频类型为 base_video
             # （待编辑/变换的底视频）；具体类型名以官方文档为准。
+            contents = [{"type": "prompt", "text": prompt}]
             for url in video_urls[:1]:
                 contents.append({"type": "base_video", "url": url})
             max_duration = 10  # 带参考视频仅支持 3–10s
         elif image_urls:
             endpoint = f"/image-to-video/{model}"
             # 单张参考图作为首帧；多图时前段作首帧参考、最后一张作尾帧锚点。
+            contents = [{"type": "prompt", "text": prompt}]
             for i, url in enumerate(image_urls):
                 contents.append(
                     {
@@ -188,6 +193,9 @@ class KlingVideoClient:
                     }
                 )
         else:
+            # 官方文生视频接口的提示词在顶层 prompt 字段，不放进 contents
+            # （contents 仅供图/视频生视频）；否则返回 code 1201
+            # "prompt cannot be empty"。
             endpoint = f"/text-to-video/{model}"
 
         settings: dict[str, Any] = {
@@ -206,10 +214,13 @@ class KlingVideoClient:
             settings["resolution"] = str(resolution).lower()
 
         body: dict[str, Any] = {
-            "contents": contents,
             "settings": settings,
             "options": {"watermark_info": {"enabled": False}},
         }
+        if contents is not None:
+            body["contents"] = contents
+        else:
+            body["prompt"] = prompt
         return endpoint, body
 
     async def create_task(
@@ -232,14 +243,49 @@ class KlingVideoClient:
         if response.status_code >= 400 or data.get("code") != 0:
             msg = data.get("message") or f"HTTP {response.status_code}"
             raise KlingVideoError(f"创建可灵任务失败：{msg}（{data}）")
-        task_id = (data.get("data") or {}).get("task_id")
+        data_obj = data.get("data") or {}
+        # 官方 3.0 创建响应返回 data.id；经典 v1 形态返回 data.task_id，两者兼容。
+        task_id = data_obj.get("id") or data_obj.get("task_id")
         if not task_id:
             raise KlingVideoError(f"创建可灵任务未返回 task_id：{data}")
         return str(task_id)
 
-    async def poll(self, client: httpx.AsyncClient, task_id: str) -> dict[str, Any]:
-        """轮询可灵任务直至 succeed/failed，返回完整响应 JSON。"""
-        url = f"{self.api_base.rstrip('/')}/v1/videos/{task_id}"
+    @staticmethod
+    def poll_path_for(endpoint: str) -> str:
+        """从创建端点派生统一轮询路径。
+
+        官方 3.0 的轮询路径按任务类型区分：``/v1/videos/text2video/{id}``、
+        ``/v1/videos/image2video/{id}``、``/v1/videos/video2video/{id}``；
+        统一的 ``/v1/videos/{id}`` 对 3.0 任务返回 404。无匹配时回退 ``/v1/videos``。
+        """
+        kind = next(
+            (
+                kind
+                for marker, kind in (
+                    ("text-to-video", "text2video"),
+                    ("image-to-video", "image2video"),
+                    ("video-to-video", "video2video"),
+                )
+                if marker in endpoint
+            ),
+            None,
+        )
+        return f"/v1/videos/{kind}" if kind else "/v1/videos"
+
+    async def poll(
+        self,
+        client: httpx.AsyncClient,
+        task_id: str,
+        *,
+        poll_path: str | None = None,
+    ) -> dict[str, Any]:
+        """轮询可灵任务直至 succeed/failed，返回完整响应 JSON。
+
+        ``poll_path`` 建议由 :meth:`poll_path_for` 从创建端点派生；缺省时用经典
+        ``/v1/videos/{task_id}``（兼容旧版/中转形态）。
+        """
+        poll_path = poll_path or "/v1/videos"
+        url = f"{self.api_base.rstrip('/')}{poll_path}/{task_id}"
         headers = {"Authorization": self._authorization()}
         for attempt in range(self.max_poll_attempts):
             await asyncio.sleep(self.poll_interval_sec)

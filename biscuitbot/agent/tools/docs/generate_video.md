@@ -92,7 +92,8 @@ ffmpeg -f concat -safe 0 -i list.txt -c copy output.mp4
 - 在「模型厂商」页添加厂商 `kling`，填写密钥为 `AccessKey:SecretKey`（冒号分隔，工具自动生成 JWT 签名）、控制台新建的单个 API Key、或中转网关的静态 token。
 - 在「视频生成」设置页把厂商切到「可灵」，模型填 `kling-3.0`（默认，或你的可灵模型 ID）。可灵官方**没有 `/models` 枚举接口**，下拉会直接给出内置模型列表（`kling-3.0` / `kling-3.0-pro` / `kling-3.0-turbo` / `kling-v3-omni` / `kling-video-o1` 等）。
 - 可灵官方 API 默认 `https://api-beijing.klingai.com`（中国大陆新域名；海外用 `api-singapore.klingai.com`；旧域名 `api.klingai.com` 会 401）。「模型厂商」页的 apiBase 留空即用默认。
-- 请求走可灵 3.0 的 `contents` + `settings` + `options` 结构，模型名内嵌在 URL 路径（如 `POST /image-to-video/kling-3.0`），任务用 `GET /v1/videos/{task_id}` 轮询。
+- 请求走可灵 3.0 的 `settings` + `options` + （`contents` 或顶层 `prompt`）结构，模型名内嵌在 URL 路径（如 `POST /image-to-video/kling-3.0`）。**文生视频的提示词在顶层 `prompt`**（官方不接受 `contents` 里的提示词，会报 1201 `prompt cannot be empty`）；图/视频生视频才用 `contents`。
+- 轮询路径按任务类型区分：`GET /v1/videos/text2video/{task_id}`（文生）、`/v1/videos/image2video/{task_id}`（图生）、`/v1/videos/video2video/{task_id}`（参考视频）；统一 `GET /v1/videos/{task_id}` 对 3.0 任务返回 404。
 
 ### 可灵参数差异
 

@@ -566,7 +566,9 @@ class SeedanceVideoTool(Tool):
             logger.info(
                 "可灵任务已创建：{}（model={}，endpoint={}）", task_id, resolved_model, endpoint
             )
-            data = await client.poll(http, task_id)
+            data = await client.poll(
+                http, task_id, poll_path=client.poll_path_for(endpoint)
+            )
             video_url = client.extract_video_url(data)
             artifact = await self._download_and_store(http, video_url, model=resolved_model)
 

@@ -50,12 +50,14 @@ class FakeHttp:
         self.post_response = post_response
         self.get_response = get_response
         self.posted: tuple | None = None
+        self.getted: tuple | None = None
 
     async def post(self, url, headers=None, json=None):
         self.posted = (url, headers, json)
         return self.post_response
 
     async def get(self, url, headers=None):
+        self.getted = (url, headers)
         return self.get_response
 
 
@@ -120,8 +122,10 @@ def test_build_request_text2video() -> None:
         model=_KLING_DEFAULT_MODEL,
     )
     assert endpoint == f"/text-to-video/{_KLING_DEFAULT_MODEL}"
+    # 官方文生视频提示词在顶层 prompt，不在 contents（否则 1201 prompt cannot be empty）
+    assert "contents" not in body
     assert body == {
-        "contents": [{"type": "prompt", "text": "一只橘猫弹钢琴"}],
+        "prompt": "一只橘猫弹钢琴",
         "settings": {"audio": "native", "multi_shot": False},
         "options": {"watermark_info": {"enabled": False}},
     }
@@ -185,6 +189,15 @@ def test_build_request_discards_unsupported_ratio_and_clamps_duration() -> None:
     assert body["settings"]["resolution"] == "4k"
 
 
+def test_poll_path_for_derives_type_specific_path() -> None:
+    """官方 3.0 轮询路径按任务类型区分，统一 /v1/videos/{id} 返回 404。"""
+    assert KlingVideoClient.poll_path_for("/text-to-video/kling-3.0") == "/v1/videos/text2video"
+    assert KlingVideoClient.poll_path_for("/image-to-video/kling-3.0") == "/v1/videos/image2video"
+    assert KlingVideoClient.poll_path_for("/video-to-video/kling-3.0") == "/v1/videos/video2video"
+    # 未知端点回退经典路径
+    assert KlingVideoClient.poll_path_for("/unknown") == "/v1/videos"
+
+
 # ---- create_task / poll / extract_video_url ----------------------------------
 
 
@@ -243,9 +256,12 @@ async def test_poll_succeed_and_extract_video_url() -> None:
             },
         )
     )
-    data = await client.poll(http, "t-1")
+    data = await client.poll(http, "t-1", poll_path="/v1/videos/text2video")
     assert data["data"]["task_status"] == "succeed"
     assert client.extract_video_url(data) == "https://cdn.example/out.mp4"
+    # 轮询 URL 按任务类型派生（非统一 /v1/videos/{id}）
+    url, _headers = http.getted
+    assert url == f"{_DEFAULT_BASE_URL}/v1/videos/text2video/t-1"
 
 
 @pytest.mark.asyncio
@@ -373,7 +389,7 @@ async def test_execute_kling_full_flow(tmp_path: Path, monkeypatch) -> None:
         captured["body"] = body
         return "kling-task"
 
-    async def fake_poll(self, client, task_id):
+    async def fake_poll(self, client, task_id, **kwargs):
         return {
             "code": 0,
             "data": {
@@ -444,7 +460,7 @@ async def test_execute_kling_poll_failure_returns_error(tmp_path: Path, monkeypa
     async def fake_create(self, client, endpoint, body):
         return "kling-task"
 
-    async def fake_poll(self, client, task_id):
+    async def fake_poll(self, client, task_id, **kwargs):
         raise KlingVideoError("可灵任务失败：内容违规")
 
     monkeypatch.setattr(KlingVideoClient, "create_task", fake_create)
