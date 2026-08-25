@@ -93,6 +93,39 @@ def build_goal_continue_message(custom: str | None = None) -> dict[str, str]:
     return {"role": "user", "content": custom or SUSTAINED_GOAL_CONTINUE_PROMPT}
 
 
+def error_signature(tool_name: str, error_text: str) -> str:
+    """把一次工具错误归一化为稳定签名，用于检测「模型反复撞同一个错误」。
+
+    剥离易变信息（URL、路径、邮箱、hex、数字/ID/时间戳、引号内容），只保留
+    错误类型与语义骨架，使本质相同但细节不同的两条错误映射到同一签名。
+    例：搜索超时的两条错误即使 URL/主机名不同，签名也应一致。
+    """
+    text = str(error_text or "").lower()
+    text = re.sub(r"https?://[^\s\"'）)\]]+", "<url>", text)
+    text = re.sub(r"[\w./-]+@[\w./-]+", "<email>", text)
+    text = re.sub(r"\b0x[0-9a-f]+\b", "<hex>", text)
+    text = re.sub(r"(?<![\w:./-])\b\d[\d_:.,-]*\b", "<num>", text)
+    text = re.sub(r"['\"`](?:[^'\"`]|\\.)*['\"`]", "<quote>", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return f"{tool_name}:{text[:240]}"
+
+
+def build_repeated_error_reminder_message(error_text: str, threshold: int = 3) -> str:
+    """构造「连续重复同一工具错误」的中转提醒（user 角色，与 finalization retry 等一致）。
+
+    触发后模型下一轮会看到该提醒，引导其换一种思路，而不是继续用相同方式重试。
+    """
+    snippet = re.sub(r"\s+", " ", str(error_text or "")).strip()
+    if len(snippet) > 120:
+        snippet = snippet[:120] + "…"
+    return (
+        f"系统提示：你已连续 {threshold} 次在同一个错误上尝试并失败，最后一次错误：{snippet}。"
+        "请停止重复刚才的做法，换一种完全不同的思路（检查前置条件 / 改用其他工具 / "
+        "先执行只读排查），而不是继续用相同方式重试。若换方式后仍无法解决，请直接告知用户"
+        "当前障碍与已尝试的方案。"
+    )
+
+
 def external_lookup_signature(tool_name: str, arguments: Any) -> str | None:
     """Stable signature for repeated external lookups we want to throttle."""
     if not isinstance(arguments, dict):

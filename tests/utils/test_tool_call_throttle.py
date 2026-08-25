@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from biscuitbot.utils.runtime import (
+    build_repeated_error_reminder_message,
+    error_signature,
     repeated_tool_call_error,
     tool_call_signature,
 )
@@ -124,3 +126,58 @@ def test_repeated_tool_call_independent_per_signature():
     repeated_tool_call_error("exec", {"command": "ls"}, counts)
 
     assert repeated_tool_call_error("exec", {"command": "pwd"}, counts) is None
+
+
+# ---- error_signature / build_repeated_error_reminder_message（连续同类错误提醒） ----
+
+
+def test_error_signature_collapses_transient_details():
+    """URL、路径、引号、数字/ID 差异应坍缩，本质相同的错误映射到同一签名。"""
+    a = error_signature("web_search", "Error: TimeoutError: https://cn.bing.com/search?q=foo timed out")
+    b = error_signature("web_search", "Error: TimeoutError: https://cn.bing.com/search?q=bar timed out")
+    assert a == b
+    assert a.startswith("web_search:error:")
+    assert "timeouterror" in a
+    assert "<url>" in a
+
+
+def test_error_signature_strips_quoted_and_ids():
+    """引号内容与数字 ID 是易变信息，不应区分不同错误。"""
+    a = error_signature("read_file", "Error: FileNotFoundError: no such file '/a/b/c.txt' (id 123)")
+    b = error_signature("read_file", "Error: FileNotFoundError: no such file '/x/y/z.md' (id 456)")
+    assert a == b
+
+
+def test_error_signature_keeps_error_type_distinct():
+    """不同错误类型（类型名不同）应保持不同签名。"""
+    a = error_signature("web_fetch", "Error: TimeoutError: request timed out")
+    b = error_signature("web_fetch", "Error: HTTPStatusError: server returned 500")
+    assert a != b
+
+
+def test_error_signature_different_tool_stays_distinct():
+    """工具名参与签名：同名错误发生在不同工具上不算「同一个错误」。"""
+    a = error_signature("web_search", "Error: TimeoutError: timed out")
+    b = error_signature("web_fetch", "Error: TimeoutError: timed out")
+    assert a != b
+
+
+def test_error_signature_truncates_long_text():
+    sig = error_signature("exec", "Error: RuntimeError: " + "x" * 500)
+    assert sig.startswith("exec:")
+    assert len(sig) <= 240 + len("exec:")
+
+
+def test_repeated_error_reminder_message_mentions_threshold():
+    msg = build_repeated_error_reminder_message("Error: TimeoutError: down", 3)
+    assert "3" in msg
+    assert "换一种完全不同的思路" in msg
+    assert "系统提示：" in msg
+
+
+def test_repeated_error_reminder_message_truncates_snippet():
+    long_err = "boom " * 50
+    msg = build_repeated_error_reminder_message(long_err, 3)
+    # 片段截断到 120 字符 + 省略号
+    assert "…" in msg
+    assert "boom" in msg

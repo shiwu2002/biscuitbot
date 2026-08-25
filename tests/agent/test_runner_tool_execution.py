@@ -126,6 +126,7 @@ async def test_runner_batches_read_only_tools_before_exclusive_work():
         ],
         {},
         {},
+        {},
     )
 
     assert shared_events[0:2] == ["start:read_a", "start:read_b"]
@@ -167,6 +168,7 @@ async def test_runner_does_not_batch_exclusive_read_only_tools():
             ToolCallRequest(id="ddg1", name="ddg_like", arguments={}),
             ToolCallRequest(id="ro2", name="read_b", arguments={}),
         ],
+        {},
         {},
         {},
     )
@@ -358,3 +360,112 @@ async def test_runner_blocks_repeated_external_fetches():
         if msg.get("role") == "tool" and msg.get("tool_call_id") == "call_3"
     ][0]
     assert "repeated external lookup blocked" in blocked_tool_message["content"]
+
+
+# ---- 连续同类工具错误的 system reminder ----
+
+def _is_reminder(msg: dict) -> bool:
+    """判断消息是否为「连续同类错误」的系统提醒（user 角色，正文以「系统提示：」开头）。"""
+    return (
+        msg.get("role") == "user"
+        and "系统提示：你已连续" in str(msg.get("content") or "")
+    )
+
+
+async def _run_with_repeating_error_tool(
+    error_sequence: list[str],
+    *,
+    threshold: int = 3,
+    max_iterations: int = 10,
+):
+    """模型逐轮调用 web_search（换 query），工具按 error_sequence 逐次返回结果。
+
+    返回 (result, last_messages)，last_messages 为最后一次 LLM 请求收到的消息。
+    """
+    provider = MagicMock()
+    call_count = {"n": 0}
+    last_messages: list[dict] = []
+
+    async def chat_with_retry(*, messages, **kwargs):
+        call_count["n"] += 1
+        n = call_count["n"]
+        if n <= len(error_sequence):
+            return LLMResponse(
+                content="working",
+                tool_calls=[ToolCallRequest(
+                    id=f"call_{n}",
+                    name="web_search",
+                    arguments={"q": f"query {n}"},
+                )],
+                usage={},
+            )
+        last_messages[:] = messages
+        return LLMResponse(content="done", tool_calls=[], usage={})
+
+    provider.chat_with_retry = chat_with_retry
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+    tools.execute = AsyncMock(side_effect=error_sequence)
+
+    result = await AgentRunner(provider).run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "research task"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=max_iterations,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        repeated_error_reminder_threshold=threshold,
+    ))
+    return result, last_messages
+
+
+async def test_runner_injects_reminder_after_three_same_errors():
+    """连续 3 次同一错误 → 注入一条「换一种方式」提醒，且位置紧跟失败结果之后。"""
+    err = "Error: TimeoutError: search timed out"
+    result, _ = await _run_with_repeating_error_tool([err, err, err])
+    reminders = [m for m in result.messages if _is_reminder(m)]
+    assert len(reminders) == 1
+    assert "换一种完全不同的思路" in reminders[0]["content"]
+    # 提醒紧跟第 3 条失败工具结果之后
+    third_tool_idx = next(
+        i for i, m in enumerate(result.messages)
+        if m.get("role") == "tool" and m.get("tool_call_id") == "call_3"
+    )
+    assert result.messages[third_tool_idx + 1] is reminders[0]
+
+
+async def test_runner_resets_streak_on_success():
+    """2 次失败后成功一次 → 计数归零，不再触发。"""
+    err = "Error: TimeoutError: search timed out"
+    result, _ = await _run_with_repeating_error_tool([err, err, "ok result", err])
+    assert [m for m in result.messages if _is_reminder(m)] == []
+
+
+async def test_runner_resets_streak_on_different_error():
+    """错误签名不同 → 从新错误重新计数，不触发。"""
+    result, _ = await _run_with_repeating_error_tool([
+        "Error: TimeoutError: A timed out",
+        "Error: HTTPStatusError: 500",
+        "Error: HTTPStatusError: 500",
+    ])
+    assert [m for m in result.messages if _is_reminder(m)] == []
+
+
+async def test_runner_reminder_disabled_with_threshold_zero():
+    """repeated_error_reminder_threshold=0 → 关闭，不注入。"""
+    err = "Error: TimeoutError: search timed out"
+    result, _ = await _run_with_repeating_error_tool([err, err, err], threshold=0)
+    assert [m for m in result.messages if _is_reminder(m)] == []
+
+
+async def test_runner_reinjects_after_more_same_errors():
+    """触发后若继续撞同一错误，会再次计数并周期提醒（第 6 次再注入一条）。"""
+    err = "Error: TimeoutError: search timed out"
+    result, _ = await _run_with_repeating_error_tool([err] * 6)
+    assert len([m for m in result.messages if _is_reminder(m)]) == 2
+
+
+async def test_runner_reminder_seen_by_model_on_next_call():
+    """提醒消息应出现在下一次 LLM 请求的消息列表里。"""
+    err = "Error: TimeoutError: search timed out"
+    _, last_messages = await _run_with_repeating_error_tool([err, err, err])
+    assert [m for m in last_messages if _is_reminder(m)]
