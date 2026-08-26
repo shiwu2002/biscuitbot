@@ -19,10 +19,13 @@
 from __future__ import annotations
 
 import asyncio  # 异步 IO，用于子进程管理
+import hashlib  # sha256 生成冻结环境 shim 目录指纹
 import os  # 操作系统接口
 import re  # 正则表达式，用于 deny-list 匹配
+import shlex  # shim 内容里的路径安全引用
 import shutil  # shell 工具查找（which）
-import sys  # 系统相关（平台判断）
+import sys  # 系统相关（平台判断 / 冻结环境检测）
+import tempfile  # 冻结环境 shim 目录
 from contextlib import suppress  # 上下文管理器，忽略异常
 from dataclasses import dataclass  # 数据类装饰器
 from pathlib import Path  # 路径处理
@@ -111,6 +114,7 @@ class ExecToolConfig(Base):
     path_prepend: str = ""  # 前置 PATH
     path_append: str = ""  # 后置 PATH
     sandbox: str = ""  # 沙箱后端名称（如 "bwrap"）
+    prefer_venv_python: bool = True  # exec 命令的 python3/pip3 优先解析到当前 venv
     allowed_env_keys: list[str] = Field(default_factory=list)  # 允许透传的环境变量键
     allow_patterns: list[str] = Field(default_factory=list)  # 用户自定义允许列表
     deny_patterns: list[str] = Field(default_factory=list)  # 用户自定义拒绝列表
@@ -214,6 +218,7 @@ class ExecTool(Tool):
             sandbox=cfg.sandbox,
             path_prepend=cfg.path_prepend,
             path_append=cfg.path_append,
+            prefer_venv_python=cfg.prefer_venv_python,
             allowed_env_keys=cfg.allowed_env_keys,
             allow_patterns=cfg.allow_patterns,
             deny_patterns=cfg.deny_patterns,
@@ -232,6 +237,7 @@ class ExecTool(Tool):
         sandbox: str = "",
         path_prepend: str = "",
         path_append: str = "",
+        prefer_venv_python: bool = True,
         allowed_env_keys: list[str] | None = None,
         guard_level: str = "standard",
         session_manager: Any | None = None,
@@ -260,6 +266,7 @@ class ExecTool(Tool):
         self.webui_allow_local_service_access = webui_allow_local_service_access
         self.path_prepend = path_prepend
         self.path_append = path_append
+        self.prefer_venv_python = prefer_venv_python
         self.allowed_env_keys = allowed_env_keys or []
         self._session_manager = session_manager or DEFAULT_EXEC_SESSION_MANAGER
 
@@ -503,11 +510,16 @@ class ExecTool(Tool):
         effective_timeout = self._resolve_timeout(timeout)
         env = self._build_env()
 
-        if self.path_prepend or self.path_append:
+        # 把「项目解释器」（venv 网关 → venv bin；PyInstaller 冻结 → sidecar
+        # 解释器模式 shim）的可执行目录排到 PATH 最前，使 exec 里的 python3/pip3
+        # 默认解析到打包/项目的解释器，核心依赖开箱即用，避免 agent 落入系统
+        # python + pip 调试泥潭。
+        venv_bin = self._prefer_python_bin() if self.prefer_venv_python else None
+        if venv_bin or self.path_prepend or self.path_append:
             if _IS_WINDOWS:
-                env["PATH"] = self._compose_path(env.get("PATH", ""))
+                env["PATH"] = self._compose_path(env.get("PATH", ""), venv_bin)
             else:
-                command = self._wrap_path_export(command, env)
+                command = self._wrap_path_export(command, env, venv_bin)
 
         shell_program, shell_error = self._resolve_shell(shell)
         if shell_error:
@@ -522,8 +534,10 @@ class ExecTool(Tool):
             login=True if login is None else login,
         )
 
-    def _compose_path(self, current_path: str) -> str:
+    def _compose_path(self, current_path: str, venv_bin: str | None = None) -> str:
         parts = []
+        if venv_bin:
+            parts.append(venv_bin)
         if self.path_prepend:
             parts.append(self.path_prepend)
         if current_path:
@@ -532,8 +546,13 @@ class ExecTool(Tool):
             parts.append(self.path_append)
         return os.pathsep.join(parts)
 
-    def _wrap_path_export(self, command: str, env: dict[str, str]) -> str:
+    def _wrap_path_export(
+        self, command: str, env: dict[str, str], venv_bin: str | None = None
+    ) -> str:
         segments = []
+        if venv_bin:
+            env["BISCUITBOT_VENV_BIN"] = venv_bin
+            segments.append("$BISCUITBOT_VENV_BIN")
         if self.path_prepend:
             env["BISCUITBOT_PATH_PREPEND"] = self.path_prepend
             segments.append("$BISCUITBOT_PATH_PREPEND")
@@ -625,11 +644,97 @@ class ExecTool(Tool):
                 except (ProcessLookupError, ChildProcessError) as e:
                     logger.debug("Process already reaped or not found: {}", e)
 
+    @staticmethod
+    def _venv_bin_dir() -> str | None:
+        """返回当前进程所在 venv 的可执行目录（Unix: bin / Windows: Scripts）。
+
+        网关以 ``.venv/bin/python`` 启动时，``sys.prefix`` 指向 venv 根，
+        可执行目录即 ``sys.prefix/bin``（或 Scripts）。以系统解释器 /
+        PyInstaller 冻结环境运行（``sys.prefix == sys.base_prefix``）时
+        返回 None，exec 命令解析行为保持原样。
+        """
+        if sys.prefix == sys.base_prefix:
+            return None
+        bindir = Path(sys.prefix) / ("Scripts" if _IS_WINDOWS else "bin")
+        if not bindir.is_dir():
+            return None
+        # 防御：确认 sys.executable 确实位于该目录，排除前缀异常等情况
+        if not str(Path(sys.executable).parent).startswith(str(bindir)):
+            return None
+        return str(bindir)
+
+    def _prefer_python_bin(self) -> str | None:
+        """返回应前置到 PATH 的 Python 可执行目录，None 表示不注入：
+
+        - venv 网关（开发）→ 项目 venv bin（:meth:`_venv_bin_dir`）
+        - PyInstaller 冻结（桌面 sidecar）→ 解释器 shim 目录（:meth:`_bundled_python_bin`）
+        """
+        return self._venv_bin_dir() or self._bundled_python_bin()
+
+    def _bundled_python_bin(self) -> str | None:
+        """PyInstaller 冻结（桌面 sidecar）：生成指向 sidecar 解释器模式的 shim。
+
+        bundle 内没有独立 python 可执行文件（唯一可执行是 sidecar 本体，跑网关
+        主程序），因此在临时目录生成 python/python3/pip/pip3 shim，exec 时以
+        ``<sidecar> __biscuitbot_python__ ...`` 把请求转给 sidecar 的「解释器
+        模式」（``biscuitbot.desktop.sidecar``），复用打包进 bundle 的标准库与
+        第三方依赖。目录以可执行路径指纹命名，sidecar 重装后自动失效重建。
+        """
+        if not getattr(sys, "frozen", False):
+            return None
+        exe = Path(sys.executable).resolve()
+        if not exe.is_file():
+            return None
+        key = hashlib.sha256(str(exe).encode()).hexdigest()[:12]
+        bindir = Path(tempfile.gettempdir()) / f"biscuitbot-py-{key}"
+        if bindir.is_dir() and (bindir / "python3").exists():
+            return str(bindir)
+        try:
+            bindir.mkdir(parents=True, exist_ok=True)
+            if _IS_WINDOWS:
+                for name in ("python.cmd", "python3.cmd"):
+                    (bindir / name).write_text(
+                        f'@echo off\r\n"{exe}" __biscuitbot_python__ %*\r\n',
+                        encoding="utf-8",
+                    )
+                for name in ("pip.cmd", "pip3.cmd"):
+                    (bindir / name).write_text(
+                        f'@echo off\r\n"{exe}" __biscuitbot_python__ -m pip %*\r\n',
+                        encoding="utf-8",
+                    )
+            else:
+                exe_q = shlex.quote(str(exe))
+                for name in ("python", "python3"):
+                    (bindir / name).write_text(
+                        f'#!/bin/sh\nexec {exe_q} __biscuitbot_python__ "$@"\n',
+                        encoding="utf-8",
+                    )
+                for name in ("pip", "pip3"):
+                    (bindir / name).write_text(
+                        f'#!/bin/sh\nexec {exe_q} __biscuitbot_python__ -m pip "$@"\n',
+                        encoding="utf-8",
+                    )
+            for shim in bindir.iterdir():
+                shim.chmod(0o755)
+        except OSError:
+            logger.warning("无法创建 bundled python shim 目录：{}", bindir)
+            return None
+        return str(bindir)
+
+    def _inject_venv_env(self, env: dict[str, str]) -> None:
+        """开启 prefer_venv_python 且运行在 venv 时，注入 VIRTUAL_ENV 指向 venv 根。"""
+        if not self.prefer_venv_python:
+            return
+        venv_bin = self._venv_bin_dir()
+        if venv_bin:
+            env["VIRTUAL_ENV"] = str(Path(venv_bin).parent)
+
     def _build_env(self) -> dict[str, str]:
         """为子进程构建最小环境变量集合。
 
         Unix 上仅传递 HOME/LANG/TERM；``bash -l`` 会 source 用户 profile 来
-        设置 PATH 及其他必需变量。
+        设置 PATH 及其他必需变量。开启 ``prefer_venv_python`` 时额外注入
+        VIRTUAL_ENV，配合 PATH 前置的 venv bin 目录让 python/pip 落到项目 venv。
 
         Windows 上 ``cmd.exe`` 没有 login-profile 机制，因此转发一组精选的
         系统变量（含 PATH）。API key 和其他密钥始终被排除。
@@ -654,6 +759,7 @@ class ExecTool(Tool):
                 "ProgramFiles(x86)": os.environ.get("ProgramFiles(x86)", ""),
                 "ProgramW6432": os.environ.get("ProgramW6432", ""),
             }
+            self._inject_venv_env(env)
             for key in self.allowed_env_keys:
                 val = os.environ.get(key)
                 if val is not None:
@@ -666,6 +772,7 @@ class ExecTool(Tool):
             "TERM": os.environ.get("TERM", "dumb"),
             "PYTHONUNBUFFERED": "1",
         }
+        self._inject_venv_env(env)
         for key in self.allowed_env_keys:
             val = os.environ.get(key)
             if val is not None:

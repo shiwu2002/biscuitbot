@@ -4,11 +4,14 @@ import {
   Boxes,
   Brain,
   Check,
+  ChevronDown,
   CircleAlert,
   Download,
   KeyRound,
   Loader2,
   Play,
+  RotateCcw,
+  Search,
   Terminal,
   Trash2,
   X,
@@ -25,6 +28,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import {
   deleteSkill,
@@ -46,6 +57,17 @@ const KIND_FILTERS: Array<{ key: KindFilter; runtime?: string }> = [
   { key: "mcp", runtime: "mcp" },
 ];
 
+type TierFilter = "all" | "system" | "agent" | "user";
+type AvailabilityFilter = "all" | "available" | "unavailable";
+type SourceFilter = "all" | "builtin" | "workspace" | "cli-anything" | "mcp-preset" | "custom";
+
+const TIER_FILTERS: TierFilter[] = ["all", "system", "agent", "user"];
+const AVAILABILITY_FILTERS: AvailabilityFilter[] = ["all", "available", "unavailable"];
+const SOURCE_FILTERS: SourceFilter[] = ["all", "builtin", "workspace", "cli-anything", "mcp-preset", "custom"];
+
+/** 已知来源集合，用于「自定义来源」兜底匹配（其余来源名落到 custom）。 */
+const KNOWN_SOURCES = new Set(["builtin", "workspace", "cli-anything", "mcp-preset"]);
+
 export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => void }) {
   const { t } = useTranslation();
   const { token } = useClient();
@@ -59,6 +81,10 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [acting, setActing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [tier, setTier] = useState<TierFilter>("all");
+  const [availability, setAvailability] = useState<AvailabilityFilter>("all");
+  const [source, setSource] = useState<SourceFilter>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,7 +104,30 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
     void load();
   }, [load]);
 
-  const installedCount = capabilities.filter((cap) => cap.installed).length;
+  const query = search.trim().toLowerCase();
+  const filtered = capabilities.filter((cap) => {
+    if (tier !== "all" && (cap.tier ?? "user") !== tier) return false;
+    if (availability === "available" && !cap.available) return false;
+    if (availability === "unavailable" && cap.available) return false;
+    if (source !== "all" && !matchesSource(cap.source, source)) return false;
+    if (query) {
+      const haystack = [cap.display_name, cap.name, cap.id, cap.description, ...cap.tags, cap.category]
+        .filter((part): part is string => typeof part === "string" && part.length > 0)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    return true;
+  });
+  const hasActiveFilters = query !== "" || tier !== "all" || availability !== "all" || source !== "all";
+  const installedCount = filtered.filter((cap) => cap.installed).length;
+
+  const resetFilters = () => {
+    setSearch("");
+    setTier("all");
+    setAvailability("all");
+    setSource("all");
+  };
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -158,6 +207,66 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
         ))}
       </section>
 
+      <section className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[220px] flex-1">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("settings.capabilities.searchPlaceholder", {
+              defaultValue: "搜索名称、描述…",
+            })}
+            className="h-9 pl-9 pr-8"
+            aria-label={t("settings.capabilities.searchPlaceholder", {
+              defaultValue: "搜索名称、描述…",
+            })}
+          />
+          {search ? (
+            <button
+              type="button"
+              aria-label={t("settings.capabilities.searchClear", { defaultValue: "清除搜索" })}
+              onClick={() => setSearch("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+
+        <FilterMenu
+          label={t("settings.capabilities.tierLabel", { defaultValue: "层级" })}
+          value={tier}
+          options={TIER_FILTERS.map((v) => ({ value: v, label: tierFilterLabel(v, t) }))}
+          onValueChange={(v) => setTier(v as TierFilter)}
+        />
+        <FilterMenu
+          label={t("settings.capabilities.availabilityLabel", { defaultValue: "可用性" })}
+          value={availability}
+          options={AVAILABILITY_FILTERS.map((v) => ({ value: v, label: availabilityFilterLabel(v, t) }))}
+          onValueChange={(v) => setAvailability(v as AvailabilityFilter)}
+        />
+        <FilterMenu
+          label={t("settings.capabilities.sourceLabel", { defaultValue: "来源" })}
+          value={source}
+          options={SOURCE_FILTERS.map((v) => ({ value: v, label: sourceFilterLabel(v, t) }))}
+          onValueChange={(v) => setSource(v as SourceFilter)}
+        />
+
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="flex h-9 items-center gap-1.5 rounded-full border border-border/60 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+          >
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+            {t("settings.capabilities.resetFilters", { defaultValue: "重置筛选" })}
+          </button>
+        ) : null}
+      </section>
+
       {actionError ? (
         <div className="rounded-[14px] bg-destructive/10 px-3 py-2.5 text-[13px] text-destructive">
           {actionError}
@@ -173,9 +282,9 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
         <div className="rounded-[14px] bg-destructive/10 px-3 py-3 text-sm text-destructive">
           {loadError}
         </div>
-      ) : capabilities.length ? (
+      ) : filtered.length ? (
         <div className="grid gap-x-10 gap-y-1 py-1 md:grid-cols-2">
-          {capabilities.map((cap) => (
+          {filtered.map((cap) => (
             <CapabilityRow
               key={`${cap.source}:${cap.id}`}
               cap={cap}
@@ -189,7 +298,12 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
         </div>
       ) : (
         <div className="px-3 py-12 text-center text-sm text-muted-foreground">
-          {t("settings.capabilities.empty", { defaultValue: "No capabilities match this filter." })}
+          {query
+            ? t("settings.capabilities.emptySearch", {
+                query,
+                defaultValue: "没有匹配「{{query}}」的能力。",
+              })
+            : t("settings.capabilities.empty", { defaultValue: "没有符合此筛选的能力。" })}
         </div>
       )}
 
@@ -273,6 +387,14 @@ function CapabilityRow({
             <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none", runtimeBadgeClass(cap.runtime))}>
               {runtimeLabel(cap.runtime, t)}
             </span>
+            {cap.tier ? (
+              <span
+                className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none", tierBadgeClass(cap.tier))}
+                title={tierLabel(cap.tier, t)}
+              >
+                {tierLabel(cap.tier, t)}
+              </span>
+            ) : null}
           </div>
           <p className="mt-1 line-clamp-2 text-[13px] leading-5 text-muted-foreground">
             {cap.description || cap.id}
@@ -768,4 +890,101 @@ function sourceLabel(source: string, t: TFunction): string {
   }
   // 自定义目录来源（如 `custom`、`harness+custom`）保留原始来源名
   return source;
+}
+
+/** 来源筛选匹配：已知来源精确匹配，其余来源名归入「自定义来源」。 */
+function matchesSource(source: string, filter: SourceFilter): boolean {
+  if (filter === "custom") return !KNOWN_SOURCES.has(source);
+  return source === filter;
+}
+
+function tierFilterLabel(value: TierFilter, t: TFunction): string {
+  if (value === "system") return t("settings.capabilities.tierSystem", { defaultValue: "系统" });
+  if (value === "agent") return t("settings.capabilities.tierAgent", { defaultValue: "Agent" });
+  if (value === "user") return t("settings.capabilities.tierUser", { defaultValue: "用户" });
+  return t("settings.capabilities.filterAll", { defaultValue: "全部" });
+}
+
+function availabilityFilterLabel(value: AvailabilityFilter, t: TFunction): string {
+  if (value === "available") return t("settings.capabilities.available", { defaultValue: "可用" });
+  if (value === "unavailable") return t("settings.capabilities.unavailable", { defaultValue: "不可用" });
+  return t("settings.capabilities.filterAll", { defaultValue: "全部" });
+}
+
+function sourceFilterLabel(value: SourceFilter, t: TFunction): string {
+  switch (value) {
+    case "builtin":
+      return t("settings.capabilities.sourceBuiltin", { defaultValue: "内置" });
+    case "workspace":
+      return t("settings.capabilities.sourceWorkspace", { defaultValue: "自定义" });
+    case "cli-anything":
+      return t("settings.capabilities.sourceCliAnything", { defaultValue: "CLI-Anything" });
+    case "mcp-preset":
+      return t("settings.capabilities.sourceMcpPreset", { defaultValue: "MCP 预设" });
+    case "custom":
+      return t("settings.capabilities.sourceCustom", { defaultValue: "自定义来源" });
+    default:
+      return t("settings.capabilities.filterAll", { defaultValue: "全部" });
+  }
+}
+
+/** 具体层级值的展示标签（行内徽标用）。 */
+function tierLabel(tier: string, t: TFunction): string {
+  if (tier === "system") return t("settings.capabilities.tierSystem", { defaultValue: "系统" });
+  if (tier === "agent") return t("settings.capabilities.tierAgent", { defaultValue: "Agent" });
+  return t("settings.capabilities.tierUser", { defaultValue: "用户" });
+}
+
+function tierBadgeClass(tier: string): string {
+  if (tier === "system") return "bg-rose-500/12 text-rose-700 dark:text-rose-300";
+  if (tier === "agent") return "bg-teal-500/12 text-teal-700 dark:text-teal-300";
+  return "bg-zinc-500/12 text-zinc-700 dark:text-zinc-300";
+}
+
+/** 单选下拉筛选：选中非「全部」时在触发器上高亮并显示当前值。 */
+function FilterMenu({
+  label,
+  value,
+  options,
+  onValueChange,
+}: {
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+  onValueChange: (value: string) => void;
+}) {
+  const active = value !== "all";
+  const current = options.find((o) => o.value === value);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "flex h-9 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium transition-colors",
+            active
+              ? "border-foreground/35 bg-foreground/[0.04] text-foreground"
+              : "border-border/60 text-muted-foreground hover:bg-muted/50",
+          )}
+        >
+          {label}
+          {active && current ? (
+            <span className="rounded-full bg-foreground/[0.07] px-1.5 py-0.5 text-[11px] font-semibold">
+              {current.label}
+            </span>
+          ) : null}
+          <ChevronDown className="h-3.5 w-3.5 opacity-70" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-44">
+        <DropdownMenuRadioGroup value={value} onValueChange={(v) => onValueChange(v)}>
+          {options.map((o) => (
+            <DropdownMenuRadioItem key={o.value} value={o.value} className="text-[13px]">
+              {o.label}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }

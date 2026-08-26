@@ -12,7 +12,13 @@ from __future__ import annotations
 from pathlib import Path  # 跨平台路径处理
 from typing import TYPE_CHECKING, Any, Literal  # 类型标注工具
 
-from pydantic import AliasChoices, ConfigDict, Field, field_validator, model_validator  # Pydantic 模型构建组件
+from pydantic import (  # Pydantic 模型构建组件
+    AliasChoices,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings  # 支持环境变量注入的设置基类
 
 from biscuitbot.config_base import Base  # 项目内 Pydantic 模型基类
@@ -149,6 +155,12 @@ class AgentDefaults(Base):
     temperature: float = 0.1
     fallback_models: list[FallbackCandidate] = Field(default_factory=list)
     max_tool_iterations: int = 200
+    repeated_error_reminder_threshold: int = Field(
+        default=3,
+        ge=0,
+        validation_alias=AliasChoices("repeatedErrorReminderThreshold"),
+        serialization_alias="repeatedErrorReminderThreshold",
+    )  # 连续 N 次相同工具错误后注入「换一种方式」提醒（0 = 关闭）
     max_concurrent_subagents: int = Field(default=1, ge=1)
     max_tool_result_chars: int = 16_000
     provider_retry_mode: Literal["standard", "persistent"] = "standard"

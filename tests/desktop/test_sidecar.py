@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import os
 import socket
+import sys
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
@@ -174,3 +175,63 @@ def test_main_prints_error_line_on_startup_failure(tmp_path, monkeypatch) -> Non
 
     assert excinfo.value.code == 1
     assert "BISCUITBOT_GATEWAY_ERROR" in buf.getvalue()
+
+
+class TestPythonInterpreterMode:
+    """桌面 exec 解释器模式：-c / -m / 脚本路径 / -V，异常归一为退出码。"""
+
+    def test_version_flag(self, capsys) -> None:
+        assert sidecar._run_python_interpreter(["-V"]) == 0
+        assert "Python" in capsys.readouterr().out
+
+    def test_c_executes_code(self, capsys) -> None:
+        assert sidecar._run_python_interpreter(["-c", "print(6*7)"]) == 0
+        assert capsys.readouterr().out.strip() == "42"
+
+    def test_c_sets_argv(self, capsys) -> None:
+        assert (
+            sidecar._run_python_interpreter(
+                ["-c", "import sys; print(sys.argv[1])", "hello"]
+            )
+            == 0
+        )
+        assert capsys.readouterr().out.strip() == "hello"
+
+    def test_c_syntax_error_returns_1(self, capsys) -> None:
+        assert sidecar._run_python_interpreter(["-c", "x = "]) == 1
+        assert "SyntaxError" in capsys.readouterr().err
+
+    def test_c_system_exit_code_passthrough(self) -> None:
+        assert sidecar._run_python_interpreter(["-c", "raise SystemExit(3)"]) == 3
+
+    def test_module_mode(self, capsys) -> None:
+        # stdlib json.tool 的 --help 走 argparse → SystemExit(0)
+        assert sidecar._run_python_interpreter(["-m", "json.tool", "--help"]) == 0
+        assert "usage:" in capsys.readouterr().out
+
+    def test_script_path(self, tmp_path, capsys) -> None:
+        script = tmp_path / "t.py"
+        script.write_text("print('script-ok')", encoding="utf-8")
+        assert sidecar._run_python_interpreter([str(script)]) == 0
+        assert capsys.readouterr().out.strip() == "script-ok"
+
+    def test_missing_script_returns_1(self, capsys) -> None:
+        assert sidecar._run_python_interpreter(["/no/such/file.py"]) == 1
+
+    def test_marker_intercepts_before_gateway(self, monkeypatch, capsys) -> None:
+        """main() 命中魔术标记时直接解释执行，不启动网关。"""
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["biscuitbot-sidecar", sidecar._PYTHON_MODE_MARKER, "-c", "print('early')"],
+        )
+        with pytest.raises(SystemExit) as excinfo:
+            sidecar.main()
+        assert excinfo.value.code == 0
+        assert "early" in capsys.readouterr().out
+
+    def test_system_exit_code_helper(self) -> None:
+        assert sidecar._system_exit_code(SystemExit(0)) == 0
+        assert sidecar._system_exit_code(SystemExit(7)) == 7
+        assert sidecar._system_exit_code(SystemExit(None)) == 0
+        assert sidecar._system_exit_code(SystemExit("msg")) == 1

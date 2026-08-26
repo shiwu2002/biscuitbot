@@ -49,6 +49,52 @@ _CATALOG_SOURCES = (
     CatalogSource("harness", CLI_ANYTHING_REGISTRY_URL, CLI_ANYTHING_RAW_BASE, True),
 )
 
+# 本地内置 CLI 工具表（与远程目录并列维护的「本地表」）。
+# 随包分发、无需网络拉取；只要目录能加载（含命中远程缓存后离线），本地表就
+# 参与聚合，可安装、可运行。每条字段与 CLI-Anything 目录条目对齐
+# （name / display_name / description / category / package_manager /
+# npm_package / install_cmd / entry_point / requires）。
+_BUILTIN_CLI_APPS: tuple[dict[str, str], ...] = (
+    {
+        "name": "officecli",
+        "display_name": "OfficeCLI",
+        "description": (
+            "AI 时代的 Office 文档处理 CLI：用一行命令读写、转换、生成 Word/Excel/PPT "
+            "文档并校验质量，无需打开桌面办公软件（iOfficeAI 开源项目）。"
+        ),
+        "category": "office",
+        "package_manager": "npm",
+        "npm_package": "@officecli/officecli",
+        "install_cmd": "npm install -g @officecli/officecli",
+        "entry_point": "officecli",
+        "requires": "Node.js >= 18；macOS / Linux / Windows",
+        "skill_md": "https://officecli.ai/SKILL.md",
+    },
+    {
+        "name": "wecom-cli",
+        "display_name": "WeCom CLI",
+        "description": (
+            "企业微信开放平台命令行工具：让人类和 AI Agent 都能在终端中操作企业微信"
+            "（通讯录、消息、客户、群聊等），WeComTeam 官方开源。"
+        ),
+        "category": "communication",
+        "package_manager": "npm",
+        "npm_package": "@wecom/cli",
+        "install_cmd": "npm install -g @wecom/cli",
+        "entry_point": "wecom-cli",
+        "requires": "Node.js >= 18；macOS / Linux / Windows",
+    },
+)
+
+# 允许作为技能源（skill_md）直接抓取的受信任域名白名单——这是技能抓取的
+# SSRF / 供应链边界：域名固定、不取自用户输入，白名单之外的一律拒绝。
+# 除 CLI-Anything 的 raw.githubusercontent.com 外，内置工具可声明官方技能
+# 地址（如 OfficeCLI 的 officecli.ai）。
+_TRUSTED_SKILL_HOSTS: frozenset[str] = frozenset({
+    "raw.githubusercontent.com",
+    "officecli.ai",
+})
+
 _MAX_TOOL_OUTPUT_CHARS = 12_000
 _MAX_ARTIFACT_SCAN_PATHS = 4_000
 _MAX_ARTIFACT_REPORT = 12
@@ -146,6 +192,7 @@ _BRANDS: dict[str, tuple[str, str]] = {
     "notebooklm": ("googlenotebooklm", "#4285F4"),
     "obs-studio": ("obsstudio", "#302E31"),
     "obsidian": ("obsidian", "#7C3AED"),
+    "officecli": ("microsoftoffice", "#D83B01"),
     "ollama": ("ollama", "#000000"),
     "pm2": ("pm2", "#2B037A"),
     "qgis": ("qgis", "#589632"),
@@ -380,13 +427,17 @@ def _skill_content_url(skill_md: str, *, raw_base: str = CLI_ANYTHING_RAW_BASE) 
     if safe_path:
         return f"{raw_base.rstrip('/')}/{safe_path}"
     parsed = urlparse(skill_md)
-    if parsed.scheme != "https" or parsed.netloc != "raw.githubusercontent.com":
+    if parsed.scheme != "https" or parsed.netloc not in _TRUSTED_SKILL_HOSTS:
         return None
-    raw_prefix = raw_base.rstrip("/") + "/"
-    if not skill_md.startswith(raw_prefix):
-        return None
-    suffix = skill_md.removeprefix(raw_prefix)
-    return skill_md if _safe_skill_path(suffix) else None
+    # raw.githubusercontent.com 上的路径仍须落在 raw_base 前缀内，防目录穿越。
+    if parsed.netloc == "raw.githubusercontent.com":
+        raw_prefix = raw_base.rstrip("/") + "/"
+        if not skill_md.startswith(raw_prefix):
+            return None
+        suffix = skill_md.removeprefix(raw_prefix)
+        return skill_md if _safe_skill_path(suffix) else None
+    # 其他受信任域名（如内置工具的官方技能页 officecli.ai）直接放行。
+    return skill_md
 
 
 def _truncate(text: str, limit: int = _MAX_TOOL_OUTPUT_CHARS) -> str:
@@ -520,6 +571,9 @@ class CliAppManager:
                     raise
                 continue
             registries.append((source, raw_base, registry))
+        # 本地内置表：随包分发、无需网络拉取，随目录一同聚合。
+        # 与远程条目同名时在合并循环中以后来源字段覆盖 + 来源名合并。
+        registries.append(("builtin", "", {"clis": list(_BUILTIN_CLI_APPS)}))
         apps_by_name: dict[str, dict[str, Any]] = {}
         updated_values: list[str] = []
         for source, raw_base, registry in registries:
@@ -548,10 +602,17 @@ class CliAppManager:
         source = str(app.get("_source") or "harness")
         if source == "extensions":
             return "biscuitbot-extension"
+        if source == "builtin":
+            return "biscuitbot-builtin"
         return f"cli-anything:{source}"
 
     def _trust_registry(self, app: dict[str, Any]) -> str:
-        return "biscuitbot-extension" if str(app.get("_source") or "") == "extensions" else "cli-anything"
+        source = str(app.get("_source") or "")
+        if source == "extensions":
+            return "biscuitbot-extension"
+        if source == "builtin":
+            return "biscuitbot-builtin"
+        return "cli-anything"
 
     def get_app(self, name: str, *, force_refresh: bool = False) -> dict[str, Any]:
         wanted = name.lower()

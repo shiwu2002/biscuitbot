@@ -30,9 +30,17 @@ from typing import Any, Callable  # 类型注解支持
 
 from loguru import logger  # 日志记录
 
-from biscuitbot.agent.hook import AgentHook, AgentHookContext, AgentRunHookContext  # 生命周期钩子基类与上下文
+from biscuitbot.agent.hook import (  # 生命周期钩子基类与上下文
+    AgentHook,
+    AgentHookContext,
+    AgentRunHookContext,
+)
 from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表
-from biscuitbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest  # LLM 提供商基类、响应与工具调用请求类型
+from biscuitbot.providers.base import (  # LLM 提供商基类、响应与工具调用请求类型
+    LLMProvider,
+    LLMResponse,
+    ToolCallRequest,
+)
 from biscuitbot.utils.file_edit_events import (  # 文件编辑流式事件追踪与构建
     StreamingFileEditTracker,
     build_file_edit_end_event,
@@ -65,7 +73,9 @@ from biscuitbot.utils.runtime import (  # 运行时辅助消息与判定
     build_finalization_retry_message,  # 终结化重试提示
     build_goal_continue_message,  # 目标延续提示
     build_length_recovery_message,  # 输出截断后的恢复提示
+    build_repeated_error_reminder_message,  # 连续同一错误的中转提醒
     ensure_nonempty_tool_result,  # 确保工具结果非空
+    error_signature,  # 工具错误签名（剥离易变信息）
     is_blank_text,  # 判断文本是否空白
     repeated_external_lookup_error,  # 重复外部查找错误检测
     repeated_tool_call_error,  # 重复工具调用错误检测（死循环兜底）
@@ -140,6 +150,7 @@ class AgentRunSpec:
     model: str  # 模型名
     max_iterations: int  # 最大迭代次数
     max_tool_result_chars: int  # 工具结果最大字符数（超出将截断或落盘）
+    repeated_error_reminder_threshold: int = 3  # 连续 N 次相同工具错误后注入「换一种方式」提醒（0=关闭）
     temperature: float | None = None  # 采样温度
     max_tokens: int | None = None  # 单次生成最大 token 数
     reasoning_effort: str | None = None  # 推理强度（部分模型支持）
@@ -601,6 +612,8 @@ class AgentRunner:
         length_recovery_count = 0  # 截断恢复计数
         had_injections = False  # 是否发生过注入
         injection_cycles = 0  # 注入循环计数
+        repeated_error_streak = 0  # 连续同类工具错误计数（用于「换一种方式」提醒）
+        repeated_error_last_key: str | None = None  # 上一个错误签名
 
         for iteration in range(spec.max_iterations):
             try:
@@ -710,7 +723,8 @@ class AgentRunner:
                 context.tool_results = list(results)
                 context.tool_events = list(new_events)
                 completed_tool_results: list[dict[str, Any]] = []
-                for tool_call, result in zip(response.tool_calls, results):
+                reminder_threshold = spec.repeated_error_reminder_threshold  # 0 = 关闭
+                for i, (tool_call, result) in enumerate(zip(response.tool_calls, results)):
                     tool_message = {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
@@ -724,6 +738,29 @@ class AgentRunner:
                     }
                     messages.append(tool_message)
                     completed_tool_results.append(tool_message)
+                    # system reminder：连续 N 次撞同一类工具错误时，注入「换一种方式」提示。
+                    # 计数基于错误结果签名（剥离 URL/数字等易变信息），成功或换错误即归零。
+                    if reminder_threshold and new_events[i].get("status") == "error":
+                        sig = error_signature(
+                            tool_call.name,
+                            result if isinstance(result, str) else str(result),
+                        )
+                        if sig == repeated_error_last_key:
+                            repeated_error_streak += 1
+                        else:
+                            repeated_error_streak = 1
+                            repeated_error_last_key = sig
+                        if repeated_error_streak >= reminder_threshold:
+                            messages.append({
+                                "role": "user",
+                                "content": build_repeated_error_reminder_message(
+                                    str(result), reminder_threshold
+                                ),
+                            })
+                            repeated_error_streak = 0  # 保留 last_key：继续撞同一错误会再次计数
+                    else:
+                        repeated_error_streak = 0
+                        repeated_error_last_key = None
                 if fatal_error is not None:  # 致命工具错误：收尾并尝试注入延续
                     error = f"Error: {type(fatal_error).__name__}: {fatal_error}"
                     final_content = error

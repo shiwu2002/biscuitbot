@@ -38,10 +38,22 @@ from biscuitbot.agent.cron_turns import CronTurnCoordinator  # cron 轮次协调
 from biscuitbot.agent.hook import AgentHook, CompositeHook  # 生命周期钩子与组合钩子
 from biscuitbot.agent.memory import Consolidator  # 记忆合并器
 from biscuitbot.agent.progress_hook import AgentProgressHook  # 进度/流式输出钩子
-from biscuitbot.agent.runner import _MAX_INJECTIONS_PER_TURN, AgentRunner, AgentRunSpec  # Runner 与运行规格
+from biscuitbot.agent.runner import (  # Runner 与运行规格
+    _MAX_INJECTIONS_PER_TURN,
+    AgentRunner,
+    AgentRunSpec,
+)
 from biscuitbot.agent.subagent import SubagentManager  # 子代理管理器
-from biscuitbot.agent.tools.context import RequestContext, bind_request_context, reset_request_context  # 请求上下文绑定
-from biscuitbot.agent.tools.file_state import FileStateStore, bind_file_states, reset_file_states  # 文件状态跟踪
+from biscuitbot.agent.tools.context import (  # 请求上下文绑定
+    RequestContext,
+    bind_request_context,
+    reset_request_context,
+)
+from biscuitbot.agent.tools.file_state import (  # 文件状态跟踪
+    FileStateStore,
+    bind_file_states,
+    reset_file_states,
+)
 from biscuitbot.agent.tools.message import MessageTool  # 消息工具（用于抑制响应等判断）
 from biscuitbot.agent.tools.registry import ToolRegistry  # 工具注册表
 from biscuitbot.agent.tools.self import MyTool  # 自我状态查询工具
@@ -53,8 +65,15 @@ from biscuitbot.bus.runtime_events import (  # 运行时事件总线与发布器
     RuntimeEventPublisher,
     ensure_runtime_event_publisher,
 )
-from biscuitbot.command import CommandContext, CommandRouter, register_builtin_commands  # 命令路由与内置命令注册
-from biscuitbot.config.schema import AgentDefaults, ModelPresetConfig  # Agent 默认配置与模型预设配置
+from biscuitbot.command import (  # 命令路由与内置命令注册
+    CommandContext,
+    CommandRouter,
+    register_builtin_commands,
+)
+from biscuitbot.config.schema import (  # Agent 默认配置与模型预设配置
+    AgentDefaults,
+    ModelPresetConfig,
+)
 from biscuitbot.cron.session_turns import (  # cron 会话轮次辅助
     cron_history_overrides,
 )
@@ -73,7 +92,10 @@ from biscuitbot.session.goal_state import (  # 目标状态相关
 )
 from biscuitbot.session.keys import UNIFIED_SESSION_KEY, session_key_for_channel  # 会话 key 生成
 from biscuitbot.session.manager import Session, SessionManager  # 会话与 会话管理器
-from biscuitbot.utils.document import extract_documents, reference_non_image_attachments  # 文档抽取与附件引用
+from biscuitbot.utils.document import (  # 文档抽取与附件引用
+    extract_documents,
+    reference_non_image_attachments,
+)
 from biscuitbot.utils.helpers import image_placeholder_text  # 图片占位文本
 from biscuitbot.utils.helpers import truncate_text as truncate_text_fn  # 文本截断（别名）
 from biscuitbot.utils.image_generation_intent import image_generation_prompt  # 图像生成意图识别
@@ -228,6 +250,7 @@ class AgentLoop:
         context_window_tokens: int | None = None,
         context_block_limit: int | None = None,
         max_tool_result_chars: int | None = None,
+        repeated_error_reminder_threshold: int | None = None,
         provider_retry_mode: str = "standard",
         tool_hint_max_length: int | None = None,
         cron_service: CronService | None = None,
@@ -285,6 +308,11 @@ class AgentLoop:
             max_tool_result_chars
             if max_tool_result_chars is not None
             else defaults.max_tool_result_chars
+        )
+        self.repeated_error_reminder_threshold = (
+            repeated_error_reminder_threshold
+            if repeated_error_reminder_threshold is not None
+            else defaults.repeated_error_reminder_threshold
         )
         self.provider_retry_mode = provider_retry_mode
         self.tool_hint_max_length = (
@@ -458,6 +486,7 @@ class AgentLoop:
             context_window_tokens=context_window_tokens,
             context_block_limit=defaults.context_block_limit,
             max_tool_result_chars=defaults.max_tool_result_chars,
+            repeated_error_reminder_threshold=defaults.repeated_error_reminder_threshold,
             provider_retry_mode=defaults.provider_retry_mode,
             tool_hint_max_length=defaults.tool_hint_max_length,
             restrict_to_workspace=config.tools.restrict_to_workspace,
@@ -1034,6 +1063,7 @@ class AgentLoop:
                 model=self.model,
                 max_iterations=self.max_iterations,
                 max_tool_result_chars=self.max_tool_result_chars,
+                repeated_error_reminder_threshold=self.repeated_error_reminder_threshold,
                 hook=hook,
                 error_message="Sorry, I encountered an error calling the AI model.",
                 concurrent_tools=True,

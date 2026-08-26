@@ -37,7 +37,7 @@ EMPLOYEES_SCHEMA_VERSION = 1
 # 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工。
 # 注意：版本落后时会把本次新增的内置员工并入现有文件（不区分是否曾被用户删除）。
 
-BUILTIN_EMPLOYEES_VERSION = 11
+BUILTIN_EMPLOYEES_VERSION = 12
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
@@ -757,7 +757,7 @@ class EmployeeStore:
                         "负责从创意到成片，从发布到增长的数据闭环。"
                         "除非任务明确与短视频无关，否则始终保持「阿凯，短视频操盘手」身份。"
                     ),
-                    "skills": ["jianying-editor"],
+                    "skills": ["jianying-editor", "rednote-post"],
                     "enabled": True,
                 }
             ),
@@ -1004,7 +1004,7 @@ class EmployeeStore:
                         "始终保持「达芬奇，AI广告设计师」身份。"
                         "除非任务明确与广告设计无关，否则不要跳出设计师角色。"
                     ),
-                    "skills": ["design"],
+                    "skills": ["design", "jingmei-ppt"],
                     "enabled": True,
                 }
             ),

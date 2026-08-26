@@ -33,10 +33,16 @@ _KIND_ALIASES = {
 
 # 内置技能里「自带可执行代码、本质是应用」的条目 → 归为 process（bundled）。
 # 其余内置技能（含 douyin-windows，它们只是带 bins/env 依赖的指令）
-# 仍为 prompt。这是「内置技能 → capability runtime」迁移映射表。
+# 仍为 prompt。办公类技能（docx/pptx/pdf/xlsx）捆绑 OOXML 校验、表单填充、
+# 公式重算等可执行脚本，与 jianying-editor 同类，一并归为 process。
+# 这是「内置技能 → capability runtime」迁移映射表。
 _BUILTIN_PROCESS_SKILLS = {
     "jianying-editor": "bundled",
     "douyin-playwright": "bundled",
+    "docx": "bundled",
+    "pptx": "bundled",
+    "pdf": "bundled",
+    "xlsx": "bundled",
 }
 
 

@@ -6,11 +6,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from biscuitbot.agent.tools.kling_video import _DEFAULT_BASE_URL as _KLING_DEFAULT_BASE_URL
 from biscuitbot.agent.tools.seedance_video import (
+    _AIGC_CHARACTER_DISCLAIMER,
     SeedanceVideoError,
     SeedanceVideoTool,
     SeedanceVideoToolConfig,
-    _AIGC_CHARACTER_DISCLAIMER,
 )
 
 PNG_BYTES = (
@@ -183,6 +184,57 @@ def test_create_missing_provider_falls_back_to_none(tmp_path: Path) -> None:
     )
     tool = SeedanceVideoTool.create(ctx)
     assert tool._ark_api_key is None
+
+
+def test_kling_key_prefers_provider_key_over_stale_tool_key(tmp_path: Path) -> None:
+    """可灵路径取 key 必须优先「模型厂商」页 kling 厂商密钥。
+
+    切厂商到可灵后工具级 apiKey 常残留方舟 ``ark-`` 前缀 key，若优先用它会拿 ark key
+    去鉴权可灵 API → 必然 401。回归：两者并存时取 kling 厂商 key。
+    """
+    tool = SeedanceVideoTool(
+        workspace=tmp_path,
+        config=SeedanceVideoToolConfig(
+            enabled=True, provider="kling", api_key="ark-cb6b6da8-stale-volcengine-key"
+        ),
+        ark_api_key="AK123:SK456",
+    )
+    assert tool._resolve_kling_key() == "AK123:SK456"
+
+
+def test_kling_key_falls_back_to_tool_key_when_no_provider(tmp_path: Path) -> None:
+    """未在「模型厂商」页配 kling 厂商时，工具级 apiKey 仍可作兜底。"""
+    tool = SeedanceVideoTool(
+        workspace=tmp_path,
+        config=SeedanceVideoToolConfig(
+            enabled=True, provider="kling", api_key="relay-token-abc"
+        ),
+    )
+    assert tool._resolve_kling_key() == "relay-token-abc"
+
+
+def test_kling_api_base_ignores_stale_tool_base_url(tmp_path: Path) -> None:
+    """可灵 base URL 不读工具级 baseUrl（可能残留方舟地址），用模型厂商 apiBase → 可灵默认。"""
+    tool = SeedanceVideoTool(
+        workspace=tmp_path,
+        config=SeedanceVideoToolConfig(
+            enabled=True,
+            provider="kling",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        ),
+    )
+    assert tool._kling_api_base() == _KLING_DEFAULT_BASE_URL
+    # 模型厂商页自定义 apiBase 优先于默认
+    tool_with_relay = SeedanceVideoTool(
+        workspace=tmp_path,
+        config=SeedanceVideoToolConfig(
+            enabled=True,
+            provider="kling",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        ),
+        provider_api_base="https://relay.example/v1",
+    )
+    assert tool_with_relay._kling_api_base() == "https://relay.example/v1"
 
 
 @pytest.mark.asyncio

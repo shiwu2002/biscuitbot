@@ -756,11 +756,19 @@ class WebSearchTool(Tool):
         return _format_results(query, items, n)
 
     async def _search_duckduckgo(self, query: str, n: int) -> str:
+        """DuckDuckGo/Bing 免费搜索（无需 API key）。
+
+        优先用 httpx 直连 ``cn.bing.com`` 解析 HTML：ddgs 库（9.x，用 primp 模拟
+        浏览器 TLS 指纹）请求 Bing 在部分网络（如中国大陆）会被连接层卡死导致超时，
+        而 httpx 直连实测 0.5s 即可返回。直连失败或无结果时回退 ddgs 的 "bing"
+        后端（原实现，其他环境可用）。
+        """
+        direct_items = await self._search_bing_direct(query, n)
+        if direct_items:
+            return _format_results(query, direct_items, n)
         try:
-            # ddgs (9.x) is a metasearch library supporting multiple backends.
-            # The default "auto" backend includes startpage.com which is blocked
-            # in some regions (e.g. mainland China). We use the "bing" backend
-            # which is directly accessible in those regions and requires no API key.
+            # ddgs (9.x) 是元搜索库，支持多后端。默认 "auto" 后端含 startpage.com，
+            # 在中国大陆不可达；用 "bing" 后端（无需 key）作为直连的备用。
             from ddgs import DDGS
 
             ddgs = DDGS(proxy=self.proxy, timeout=10)
@@ -778,6 +786,56 @@ class WebSearchTool(Tool):
         except Exception as e:
             logger.warning("DuckDuckGo/Bing search failed: {}", e, exc_info=True)
             return f"Error: DuckDuckGo/Bing 搜索失败（{type(e).__name__}: {e}）。可稍后重试或改用其他搜索提供商"
+
+    async def _search_bing_direct(self, query: str, n: int) -> list[dict[str, Any]]:
+        """用 httpx 直连 Bing 搜索页解析结果（免费、无需 key）。
+
+        ddgs（9.x）用 primp 模拟 TLS 指纹请求 Bing，在部分网络会被连接层卡死超时；
+        httpx 直连 ``cn.bing.com/search`` 则正常（实测 0.5s 返回、含 9 条 b_algo）。
+        返回空列表表示无结果或抓取/解析失败——由调用方决定是否回退 ddgs。
+        """
+        headers = {"User-Agent": self.user_agent or _DEFAULT_USER_AGENT}
+        params = {
+            "q": query,
+            "mkt": "zh-CN",  # 固定中文市场，避免被 302 到其他区域域名
+            "setlang": "zh-CN",
+            "count": "10",  # 一页默认 ≥10 条，多取后由 _format_results 截断
+        }
+        try:
+            async with httpx.AsyncClient(
+                proxy=self.proxy,
+                timeout=min(float(self.config.timeout), 10.0),
+                follow_redirects=True,
+            ) as client:
+                r = await client.get(
+                    "https://cn.bing.com/search", params=params, headers=headers
+                )
+                r.raise_for_status()
+            text = r.text
+        except Exception as e:
+            logger.warning("Bing 直连搜索失败（回退 ddgs）：{}", e)
+            return []
+        items: list[dict[str, Any]] = []
+        for li in re.findall(r'<li class="b_algo.*?</li>', text, flags=re.S):
+            title_m = re.search(
+                r'<h2[^>]*>.*?<a[^>]*href="([^"]+)"[^>]*>(.*?)</a>', li, flags=re.S
+            )
+            body_m = re.search(r'<p[^>]*>(.*?)</p>', li, flags=re.S)
+            if not title_m:
+                continue
+            url = html.unescape(title_m.group(1))
+            if not url.startswith("http"):
+                continue
+            items.append(
+                {
+                    "title": _strip_tags(title_m.group(2)),
+                    "url": url,
+                    "content": _strip_tags(body_m.group(1)) if body_m else "",
+                }
+            )
+            if len(items) >= n:
+                break
+        return items
 
     async def _search_bocha(self, query: str, n: int, freshness: str = "noLimit") -> str:
         api_key = self.config.api_key or os.environ.get("BOCHA_API_KEY", "")

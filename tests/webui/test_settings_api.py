@@ -27,6 +27,7 @@ from biscuitbot.webui.settings_api import (
     update_system_io_settings,
     update_transcription_settings,
     update_tts_settings,
+    update_video_generation_settings,
 )
 
 DYNAMIC_PROVIDER_NAME = "my-company-api"
@@ -874,6 +875,35 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
     assert payload["models"][0]["id"] == "custom-gpt"
 
 
+def test_provider_models_payload_kling_returns_known_list_without_network(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """可灵没有 /models 端点：不发起任何 HTTP 请求，直接返回内置已知模型列表。
+
+    未配置密钥也应能列出模型（前端在配置后拉取，后端不依赖密钥即可给出候选）。
+    """
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    def fail_get(url: str, **kwargs):  # pragma: no cover - 不应被调用
+        raise AssertionError(f"可灵不应请求 /models：{url}")
+
+    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fail_get)
+
+    payload = provider_models_payload({"provider": ["kling"]})
+
+    assert payload["provider"] == "kling"
+    assert payload["status"] == "available"
+    assert payload["catalog_kind"] == "official"
+    assert payload["model_count"] >= 3
+    ids = [model["id"] for model in payload["models"]]
+    assert "kling-3.0" in ids
+    assert "kling-v3-omni" in ids
+    assert any(model["label"] for model in payload["models"])
+
+
 def test_resolve_model_list_provider_synthesizes_non_llm_capabilities() -> None:
     """Non-LLM capability providers (image/TTS/transcription) resolve to a spec."""
     config = Config()
@@ -1130,3 +1160,85 @@ def test_update_channel_settings_creates_section_for_allow_all(
 
 
 
+
+
+# ---- 可灵（Kling）视频厂商 ------------------------------------------------
+
+
+def test_unified_provider_rows_includes_kling_video_provider() -> None:
+    """可灵出现在单一厂商来源：label=可灵、capability=[video]、configured 随 key。"""
+    config = Config.model_validate({"providers": {"kling": {"apiKey": "AK:SK"}}})
+    rows = {row["name"]: row for row in _unified_provider_rows(config)}
+
+    row = rows.get("kling")
+    assert row is not None
+    assert row["label"] == "可灵"
+    assert row["capabilities"] == ["video"]
+    assert row["configured"] is True
+    assert row["model_selectable"] is False
+
+    # 未配 key → 未配置
+    empty = {r["name"]: r for r in _unified_provider_rows(Config())}
+    assert empty["kling"]["configured"] is False
+    assert empty["kling"]["capabilities"] == ["video"]
+    assert empty["kling"]["default_api_base"] == "https://api-beijing.klingai.com"
+
+
+def test_resolve_model_list_provider_kling_video_capability() -> None:
+    """可灵解析为视频能力厂商：default_api_base 为官方地址，且需要密钥。"""
+    config = Config()
+    resolved = _resolve_model_list_provider(config, "kling")
+    assert resolved is not None
+    spec, name, _ = resolved
+    assert name == "kling"
+    assert spec.default_api_base == "https://api-beijing.klingai.com"
+    assert spec.is_direct is False
+
+
+def test_provider_capabilities_kling_video_only() -> None:
+    config = Config()
+    assert _provider_capabilities("kling", config) == ["video"]
+
+
+def test_update_video_generation_settings_kling_requires_key(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """provider=kling 时启用校验：无 key 抛错，配 key 后成功。"""
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    # 未配任何密钥 → 启用被拒
+    with pytest.raises(WebUISettingsError, match="api key is required"):
+        update_video_generation_settings(
+            {
+                "provider": ["kling"],
+                "model": ["kling-v3-omni"],
+                "enabled": ["true"],
+            }
+        )
+
+    # 在「模型厂商」页配置可灵密钥后 → 可启用
+    update_provider_settings(
+        {
+            "provider": ["kling"],
+            "apiKey": ["AK123:SK456"],
+        }
+    )
+    payload = update_video_generation_settings(
+        {
+            "provider": ["kling"],
+            "model": ["kling-v3-omni"],
+            "enabled": ["true"],
+        }
+    )
+    assert payload["video_generation"]["enabled"] is True
+    assert payload["video_generation"]["provider"] == "kling"
+    assert payload["video_generation"]["model"] == "kling-v3-omni"
+    assert payload["video_generation"]["api_key_configured"] is True
+
+    saved = load_config(config_path)
+    assert saved.tools.seedance_video.enabled is True
+    assert saved.tools.seedance_video.provider == "kling"
+    assert saved.providers.model_extra["kling"].api_key == "AK123:SK456"

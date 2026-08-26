@@ -28,6 +28,11 @@ def _response(
     return r
 
 
+async def _bing_direct_empty(self, query: str, n: int) -> list:
+    """让直连 Bing 返回空，强制走 ddgs 兜底路径（用于 ddgs 相关用例）。"""
+    return []
+
+
 def test_duckduckgo_search_is_exclusive():
     tool = _tool(provider="duckduckgo")
     assert tool.exclusive is True
@@ -174,6 +179,7 @@ async def test_bocha_missing_key_falls_back_to_duckduckgo(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("BOCHA_API_KEY", raising=False)
 
     tool = _tool(provider="bocha")
@@ -242,6 +248,7 @@ async def test_volcengine_missing_key_falls_back_to_duckduckgo(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("VOLCENGINE_SEARCH_API_KEY", raising=False)
     monkeypatch.delenv("WEB_SEARCH_API_KEY", raising=False)
 
@@ -288,6 +295,7 @@ async def test_duckduckgo_search(monkeypatch):
     monkeypatch.setattr(web_mod, "DDGS", MockDDGS, raising=False)
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
 
     tool = _tool(provider="duckduckgo")
     result = await tool.execute(query="hello")
@@ -304,6 +312,7 @@ async def test_brave_fallback_to_duckduckgo_when_no_key(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("BRAVE_API_KEY", raising=False)
 
     tool = _tool(provider="brave", api_key="")
@@ -449,6 +458,7 @@ async def test_searxng_no_base_url_falls_back(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("SEARXNG_BASE_URL", raising=False)
 
     tool = _tool(provider="searxng", base_url="")
@@ -482,6 +492,7 @@ async def test_jina_422_falls_back_to_duckduckgo(monkeypatch):
 
     monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
 
     tool = _tool(provider="jina", api_key="jina-key")
     result = await tool.execute(query="test")
@@ -498,6 +509,7 @@ async def test_kagi_fallback_to_duckduckgo_when_no_key(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("KAGI_API_KEY", raising=False)
 
     tool = _tool(provider="kagi", api_key="")
@@ -515,6 +527,7 @@ async def test_exa_fallback_to_duckduckgo_when_no_key(monkeypatch):
             return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
 
     monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     monkeypatch.delenv("EXA_API_KEY", raising=False)
 
     tool = _tool(provider="exa", api_key="")
@@ -555,11 +568,99 @@ async def test_duckduckgo_timeout_returns_error(monkeypatch):
             return []
 
     monkeypatch.setattr("ddgs.DDGS", HangingDDGS)
+    monkeypatch.setattr(WebSearchTool, "_search_bing_direct", _bing_direct_empty)
     tool = _tool(provider="duckduckgo")
     tool.config.timeout = 0.2
     result = await tool.execute(query="test")
     gate.set()
     assert "Error" in result
+
+
+@pytest.mark.asyncio
+async def test_duckduckgo_direct_bing_parses_results(monkeypatch):
+    """直连 Bing 优先：httpx 返回 b_algo HTML 即解析格式化，ddgs 不被调用。"""
+    bing_html = """
+    <li class="b_algo">
+      <h2><a href="https://example.cn/ai-toy">AI玩具行业<strong>报告</strong></a></h2>
+      <div class="b_caption"><p>市场规模与趋势摘要。</p></div>
+    </li>
+    <li class="b_algo">
+      <h2><a href="https://example.cn/news">AI玩具热点</a></h2>
+    </li>
+    """
+    called = {"ddgs": False}
+
+    async def mock_get(self, url, **kw):
+        assert "cn.bing.com/search" in str(url)
+        r = httpx.Response(200, text=bing_html)
+        r._request = httpx.Request("GET", str(url))
+        return r
+
+    class MockDDGS:
+        def __init__(self, **kw):
+            pass
+
+        def text(self, query, max_results=5, **kwargs):
+            called["ddgs"] = True
+            return [{"title": "DDG", "href": "https://ddg.example", "body": "x"}]
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+    monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+
+    tool = _tool(provider="duckduckgo", user_agent="biscuitbot-search-test")
+    result = await tool.execute(query="AI玩具", count=2)
+
+    assert "AI玩具行业报告" in result  # 嵌套 <strong> 已剥离
+    assert "https://example.cn/ai-toy" in result
+    assert called["ddgs"] is False
+
+
+@pytest.mark.asyncio
+async def test_duckduckgo_direct_bing_empty_falls_back_to_ddgs(monkeypatch):
+    """直连 Bing 无结果时回退 ddgs bing 后端。"""
+    class MockDDGS:
+        def __init__(self, **kw):
+            pass
+
+        def text(self, query, max_results=5, **kwargs):
+            return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
+
+    async def mock_get(self, url, **kw):
+        r = httpx.Response(200, text="<html><body>no results</body></html>")
+        r._request = httpx.Request("GET", str(url))
+        return r
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+    monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+
+    tool = _tool(provider="duckduckgo")
+    result = await tool.execute(query="test")
+
+    assert "DuckDuckGo fallback" in result
+
+
+@pytest.mark.asyncio
+async def test_duckduckgo_direct_bing_http_error_falls_back_to_ddgs(monkeypatch):
+    """直连 Bing 网络/HTTP 异常时回退 ddgs bing 后端。"""
+    class MockDDGS:
+        def __init__(self, **kw):
+            pass
+
+        def text(self, query, max_results=5, **kwargs):
+            return [{"title": "Fallback", "href": "https://ddg.example", "body": "DuckDuckGo fallback"}]
+
+    async def mock_get(self, url, **kw):
+        raise httpx.ConnectError(
+            "connection refused", request=httpx.Request("GET", str(url))
+        )
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+    monkeypatch.setattr("ddgs.DDGS", MockDDGS)
+
+    tool = _tool(provider="duckduckgo")
+    result = await tool.execute(query="test")
+
+    assert "DuckDuckGo fallback" in result
 
 
 @pytest.mark.asyncio
@@ -623,7 +724,9 @@ async def test_olostep_missing_key_falls_back_to_duckduckgo(monkeypatch):
     monkeypatch.setitem(sys.modules, "olostep", fake_mod)
 
     monkeypatch.delenv("OLOSTEP_API_KEY", raising=False)
-    with patch("ddgs.DDGS", MockDDGS):
+    with patch("ddgs.DDGS", MockDDGS), patch.object(
+        WebSearchTool, "_search_bing_direct", _bing_direct_empty
+    ):
         tool = _tool(provider="olostep", api_key="")
         result = await tool.execute(query="test query")
 

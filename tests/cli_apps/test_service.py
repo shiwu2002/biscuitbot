@@ -237,11 +237,25 @@ def test_payload_merges_catalog_and_marks_unsupported_installs(tmp_path: Path) -
         "feishu",
         "gimp",
         "jimeng",
+        "officecli",
         "shopify",
         "suno",
+        "wecom-cli",
     }
     assert apps["gimp"]["install_supported"] is True
     assert apps["gimp"]["source"] == "harness"
+    # 本地内置表随目录合并，来源标记为 builtin，manifest 来源为 biscuitbot-builtin
+    assert apps["officecli"]["source"] == "builtin"
+    assert apps["officecli"]["entry_point"] == "officecli"
+    assert apps["officecli"]["install_supported"] is True
+    assert apps["officecli"]["manifest"]["source"] == "biscuitbot-builtin"
+    assert apps["officecli"]["manifest"]["execution"]["entry_point"] == "officecli"
+    assert apps["officecli"]["manifest"]["provisioning"]["strategy"] == "npm"
+    assert apps["wecom-cli"]["source"] == "builtin"
+    assert apps["wecom-cli"]["entry_point"] == "wecom-cli"
+    assert apps["wecom-cli"]["logo_url"] == (
+        "https://cdn.simpleicons.org/wechat/07C160"
+    )
     assert apps["gimp"]["description"] == "Image editing"
     assert apps["feishu"]["description"] == "Lark CLI"
     assert apps["feishu"]["manifest"]["description"] == "Lark CLI"
@@ -289,9 +303,65 @@ def test_payload_uses_anygen_official_domain_for_logo(tmp_path: Path) -> None:
 
     payload = manager.payload()
 
-    app = payload["apps"][0]
+    app = next(item for item in payload["apps"] if item["name"] == "anygen")
     assert app["name"] == "anygen"
     assert app["logo_url"] == "https://www.google.com/s2/favicons?domain=anygen.io&sz=64"
+
+
+def test_builtin_local_table_install_uses_npm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """本地内置表条目随目录聚合，走 npm 安装策略并记录 builtin 来源。"""
+    manager = _manager(tmp_path)
+    _seed_catalog(manager)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], *, timeout: int) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(manager, "_run_argv", fake_run)
+    monkeypatch.setattr(
+        "biscuitbot.apps.cli.service.shutil.which",
+        lambda command: "/usr/bin/npm" if command == "npm" else None,
+    )
+    # 官方 skill_md 走 _fetch_skill_content，测试里不联网，注入固定内容
+    monkeypatch.setattr(
+        manager,
+        "_fetch_skill_content",
+        lambda app: "---\nname: cli-app-officecli\ndescription: OfficeCLI\n---\n# OfficeCLI\n",
+    )
+
+    payload = manager.install("officecli")
+
+    assert calls == [["/usr/bin/npm", "install", "-g", "@officecli/officecli"]]
+    assert payload["last_action"]["ok"] is True
+    installed = json.loads(manager.installed_path.read_text(encoding="utf-8"))["apps"]
+    assert installed["officecli"]["strategy"] == "npm"
+    assert installed["officecli"]["source"] == "builtin"
+    # 安装时写入官方技能（含 run_cli_app 执行注记），供 agent 以 @officecli 引用
+    skill = manager.workspace / "skills" / "cli-app-officecli" / "SKILL.md"
+    assert skill.is_file()
+    assert "OfficeCLI" in skill.read_text(encoding="utf-8")
+    assert 'run_cli_app` tool with `name="officecli"' in skill.read_text(encoding="utf-8")
+
+
+def test_skill_content_url_allows_trusted_builtin_host() -> None:
+    """技能源白名单：officecli.ai（内置工具官方技能）放行，未知域名拒绝。"""
+    from biscuitbot.apps.cli.service import _skill_content_url
+
+    assert _skill_content_url("https://officecli.ai/SKILL.md") == "https://officecli.ai/SKILL.md"
+    assert _skill_content_url("https://example.com/SKILL.md") is None
+    # raw.githubusercontent.com 仍须落在 raw_base 前缀内
+    assert (
+        _skill_content_url("https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md")
+        == "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md"
+    )
+    assert (
+        _skill_content_url("https://raw.githubusercontent.com/evil/other/SKILL.md")
+        is None
+    )
 
 
 def test_install_dispatches_safe_pip_and_installs_skill(
