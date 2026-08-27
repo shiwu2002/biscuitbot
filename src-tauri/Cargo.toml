@@ -1,7 +1,7 @@
 [package]
 name = "biscuitbot"
-version = "0.3.6"
-description = "biscuitbot 桌面壳：启动无头 gateway sidecar 并加载其 WebUI"
+version = "0.3.7"
+description = "biscuitbot 妗岄潰澹筹細鍚姩鏃犲ご gateway sidecar 骞跺姞杞藉叾 WebUI"
 authors = ["biscuitbot"]
 edition = "2021"
 
