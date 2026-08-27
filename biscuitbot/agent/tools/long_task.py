@@ -247,9 +247,12 @@ class LongTaskTool(Tool, _GoalToolsMixin):
             nullable=True,
         ),
         acknowledge_pending=BooleanSchema(
-            "Set true only after the user has explicitly agreed to close the goal with unfinished "
-            "tasks remaining (e.g. scope reduced, cancelled, or superseded). Ignored when every "
-            "task is marked done. Without it, complete_goal refuses to close while tasks are pending.",
+            description=(
+                "Set true only after the user has explicitly agreed to close the goal with "
+                "unfinished tasks remaining (e.g. scope reduced, cancelled, or superseded). "
+                "Ignored when every task is marked done. Without it, complete_goal refuses to "
+                "close while tasks are pending."
+            ),
             default=False,
         ),
         required=[],
@@ -289,6 +292,27 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
     def enabled(cls, ctx: Any) -> bool:
         """仅当上下文提供 sessions 时启用。"""
         return getattr(ctx, "sessions", None) is not None
+
+    @staticmethod
+    def _pending_block(
+        tasks: list[dict[str, Any]],
+        pending: list[dict[str, Any]],
+    ) -> str:
+        """构造「存在未完成任务，禁止完结」的报错文案，附剩余项 id+状态供对账。"""
+        done = len(tasks) - len(pending)
+        lines = [
+            f"Error: cannot close the goal while {len(pending)} task(s) are not marked done "
+            f"({done}/{len(tasks)} done).",
+            "Finish them with update_task(set, id=..., status=\"done\"), or ask the user to revise "
+            "the scope. Remaining:",
+        ]
+        for t in pending:
+            lines.append(f"- [{t['status']}] {t['id']} · {truncate_text(t['text'], 60)}")
+        lines.append(
+            "If the user has already agreed to close with these pending, call complete_goal again "
+            "with acknowledge_pending=true."
+        )
+        return "\n".join(lines)
 
     @property
     def name(self) -> str:

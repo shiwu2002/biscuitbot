@@ -11,11 +11,13 @@
 | 参数 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | recap | string | 否 | - | 完成总结，描述成果和关键产出（最大 8000 字符）。目标成功时确认成果；用户取消、转向或替换目标时也需如实说明 |
+| acknowledge_pending | boolean | 否 | false | 仅当用户明确同意在存在未完成任务时关闭目标才置 true（如范围缩减、取消、被取代）。清单所有任务都已 done 时忽略 |
 
 ## 调用示例
 
 ```
 complete_goal(recap="已将认证模块从 session 迁移至 JWT，新增测试 12 个全部通过。")
+complete_goal(recap="用户决定缩减范围，仅完成 API，测试后续再做。", acknowledge_pending=true)
 ```
 
 ## 注意事项
@@ -26,3 +28,4 @@ complete_goal(recap="已将认证模块从 session 迁移至 JWT，新增测试 
 - 调用后目标标记为完成状态，不再作为激活目标注入上下文
 - 未完成时请勿调用，避免错误收尾
 - 若期间用 update_task 维护了任务清单，complete_goal 会保留原始清单供审计，但不再重新展示给模型
+- **若清单存在未完成任务，complete_goal 会拒绝完结**：要么先用 update_task 标记完成，要么先与用户沟通修改需求，再带 acknowledge_pending=true 重调；否则清单会阻塞目标关闭

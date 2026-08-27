@@ -77,6 +77,8 @@ Use `update_task` to turn the objective into a **small, verifiable checklist** o
 4. **Reconcile by id** — Every task carries a stable `(id)`. Each turn the Runtime Context re-injects the checklist, so ids persist. If an id no longer matches, either match by a **unique text substring** or use the current id+text listing the tool returns on `not found` to re-sync.
 5. **Reflect reality in `complete_goal`** — Completing the goal does not auto-mark remaining steps `done`. If work genuinely finished and some steps were dropped, `complete_goal`'s recap should say so honestly and the leftover checklist stays in the blob for audit.
 
+6. **`complete_goal` refuses to close with pending tasks** — If any checklist task is not `done`, calling `complete_goal` returns an error listing the remaining steps. Do **not** force it: either finish the remaining steps (`update_task` → `done`) or **ask the user** to revise the scope, then re-call with `acknowledge_pending=true` only after the user agrees. Never pass the flag to bypass work the user still expects.
+
 ## Project-shaped work (avoid the “mega file” trap)
 
 Use this when the goal is to **build or reshape a codebase** (app, service, tooling, sizeable feature):

@@ -194,6 +194,106 @@ async def test_complete_goal_without_active_is_noop_message(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_complete_goal_blocks_when_tasks_pending(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    cg = CompleteGoalTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    cg.set_context(rc)
+
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="add", text="Run CI")
+    await ut.execute(action="set", id="t1", status="done")
+
+    out = await cg.execute(recap="Done.")
+    assert "cannot close the goal" in out
+    assert "Run CI" in out
+    assert "acknowledge_pending=true" in out
+
+    # blob 仍是 active（未关闭）
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_complete_goal_allows_acknowledge_pending(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    cg = CompleteGoalTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    cg.set_context(rc)
+
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="add", text="Run CI")
+    await ut.execute(action="set", id="t1", status="done")
+
+    out = await cg.execute(recap="User reduced scope; API only.", acknowledge_pending=True)
+    assert "marked complete" in out
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["status"] == "completed"
+    assert blob["tasks"] == [
+        {"id": "t1", "text": "Write tests", "status": "done"},
+        {"id": "t2", "text": "Run CI", "status": "pending"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_complete_goal_all_done_requires_no_flag(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    cg = CompleteGoalTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    cg.set_context(rc)
+
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="set", id="t1", status="done")
+
+    out = await cg.execute(recap="All done.")
+    assert "marked complete" in out
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_complete_goal_without_tasks_still_closes(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, _ut = _goal_tools(sm)
+    cg = CompleteGoalTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    cg.set_context(rc)
+
+    await lt.execute(goal="Ship feature")
+    out = await cg.execute(recap="No checklist.")
+    assert "marked complete" in out
+    assert sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]["status"] == "completed"
+
+
+@pytest.mark.asyncio
 async def test_long_task_skips_ws_publish_without_bus(tmp_path):
     sm = SessionManager(tmp_path)
     lt, _cg = _tools(sm)
