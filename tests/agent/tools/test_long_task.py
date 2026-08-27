@@ -12,10 +12,11 @@ from biscuitbot.agent.tools.context import RequestContext
 from biscuitbot.agent.tools.long_task import (
     CompleteGoalTool,
     LongTaskTool,
+    UpdateTaskTool,
 )
 from biscuitbot.bus.queue import MessageBus
 from biscuitbot.bus.runtime_events import RuntimeEventBus
-from biscuitbot.session.goal_state import GOAL_STATE_KEY
+from biscuitbot.session.goal_state import GOAL_STATE_KEY, _MAX_TASKS
 from biscuitbot.session.manager import SessionManager
 from biscuitbot.session.webui_turns import WebuiTurnCoordinator
 
@@ -211,3 +212,219 @@ async def test_long_task_and_complete_goal_registered(tmp_path):
     cg = loop.tools.get("complete_goal")
     assert lt is not None and lt.name == "long_task"
     assert cg is not None and cg.name == "complete_goal"
+
+
+# ---------------------------------------------------------------------------
+# update_task — structured task checklist
+# ---------------------------------------------------------------------------
+
+
+def _goal_tools(sm: SessionManager) -> tuple[LongTaskTool, UpdateTaskTool]:
+    lt = LongTaskTool(sessions=sm)
+    ut = UpdateTaskTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    lt.set_context(rc)
+    ut.set_context(rc)
+    return lt, ut
+
+
+@pytest.mark.asyncio
+async def test_update_task_registered(tmp_path):
+    bus = MessageBus()
+    provider = MagicMock()
+    provider.get_default_model.return_value = "test-model"
+    loop = AgentLoop(bus=bus, provider=provider, workspace=tmp_path, model="test-model")
+
+    ut = loop.tools.get("update_task")
+    assert ut is not None
+    assert ut.name == "update_task"
+
+
+@pytest.mark.asyncio
+async def test_update_task_add_appends_to_blob(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+
+    out = await ut.execute(action="add", text="Write tests")
+    assert "Updated task checklist: 0/1 tasks done." in out
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["tasks"] == [{"id": "t1", "text": "Write tests", "status": "pending"}]
+
+
+@pytest.mark.asyncio
+async def test_update_task_add_with_status_defaults_and_increments_id(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+
+    await ut.execute(action="add", text="first", status="in_progress")
+    await ut.execute(action="add", text="second")
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert [t["id"] for t in blob["tasks"]] == ["t1", "t2"]
+    assert blob["tasks"][0]["status"] == "in_progress"
+    assert blob["tasks"][1]["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_update_task_set_status_and_text(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+
+    out = await ut.execute(action="set", id="t1", status="done")
+    assert "1/1 tasks done." in out
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["tasks"][0]["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_update_task_set_matches_by_unique_text(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="add", text="Run CI")
+
+    out = await ut.execute(action="set", text="Run CI", status="done")
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["tasks"][1]["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_update_task_remove_deletes_entry(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="add", text="Run CI")
+    await ut.execute(action="add", text="Deploy")
+
+    out = await ut.execute(action="remove", id="t2")
+    assert "Run CI" not in out
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert [t["text"] for t in blob["tasks"]] == ["Write tests", "Deploy"]
+
+
+@pytest.mark.asyncio
+async def test_update_task_requires_active_goal(tmp_path):
+    sm = SessionManager(tmp_path)
+    _lt, ut = _goal_tools(sm)
+    out = await ut.execute(action="add", text="x")
+    assert "requires an active sustained goal" in out
+
+
+@pytest.mark.asyncio
+async def test_update_task_add_requires_text(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    out = await ut.execute(action="add")
+    assert "requires a non-empty 'text'" in out
+
+
+@pytest.mark.asyncio
+async def test_update_task_set_requires_status(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    out = await ut.execute(action="set", id="t1")
+    assert "requires a 'status'" in out
+
+
+@pytest.mark.asyncio
+async def test_update_task_unknown_id_returns_current_listing(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="add", text="Run CI")
+
+    out = await ut.execute(action="set", id="t99", status="done")
+    assert "task not found" in out
+    assert "t1: Write tests" in out
+    assert "t2: Run CI" in out
+
+
+@pytest.mark.asyncio
+async def test_update_task_rejects_at_capacity(tmp_path):
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    await lt.execute(goal="Ship feature")
+    for i in range(_MAX_TASKS):
+        await ut.execute(action="add", text=f"step {i}")
+
+    out = await ut.execute(action="add", text="overflow")
+    assert "at capacity" in out
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert len(blob["tasks"]) == _MAX_TASKS
+
+
+@pytest.mark.asyncio
+async def test_goal_tasks_flow_retained_through_complete_goal(tmp_path):
+    """long_task -> update_task(add/set) -> complete_goal keeps the task list in blob."""
+    sm = SessionManager(tmp_path)
+    lt, ut = _goal_tools(sm)
+    cg = CompleteGoalTool(sessions=sm)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="c1",
+        session_key="websocket:c1",
+        metadata={},
+    )
+    cg.set_context(rc)
+
+    await lt.execute(goal="Ship feature")
+    await ut.execute(action="add", text="Write tests")
+    await ut.execute(action="set", id="t1", status="done")
+
+    await cg.execute(recap="Done.")
+
+    blob = sm.get_or_create("websocket:c1").metadata[GOAL_STATE_KEY]
+    assert blob["status"] == "completed"
+    assert blob["tasks"] == [{"id": "t1", "text": "Write tests", "status": "done"}]
+
+
+@pytest.mark.asyncio
+async def test_update_task_publishes_ws_blob_with_tasks(tmp_path):
+    bus = MagicMock()
+    bus.publish_outbound = AsyncMock()
+    runtime_events = RuntimeEventBus()
+    sm = SessionManager(tmp_path)
+    WebuiTurnCoordinator(
+        bus=bus,
+        sessions=sm,
+        schedule_background=lambda _coro: None,
+    ).subscribe(runtime_events)
+    lt = LongTaskTool(sessions=sm, runtime_events=runtime_events)
+    ut = UpdateTaskTool(sessions=sm, runtime_events=runtime_events)
+    rc = RequestContext(
+        channel="websocket",
+        chat_id="chat-task",
+        session_key="websocket:chat-task",
+        metadata={},
+    )
+    lt.set_context(rc)
+    ut.set_context(rc)
+
+    await lt.execute(goal="Objective", ui_summary="o")
+    bus.publish_outbound.reset_mock()
+    await ut.execute(action="add", text="first step")
+
+    bus.publish_outbound.assert_awaited_once()
+    call = bus.publish_outbound.await_args.args[0]
+    assert call.metadata.get("_goal_state_sync") is True
+    assert call.metadata["goal_state"]["active"] is True
+    assert call.metadata["goal_state"]["tasks"] == [
+        {"id": "t1", "text": "first step", "status": "pending"}
+    ]

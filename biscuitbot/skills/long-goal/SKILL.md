@@ -27,6 +27,8 @@ Those belong to the execution phase after the marker is set.
 
 - **`long_task`** — Register **one** sustained objective per thread. Call it promptly once the user has asked for a sustained task. The `goal` should follow the idempotent-goal rules below, but it should be produced quickly from the user's request—not after a long hidden planning pass.
 
+- **`update_task`** — Maintain a **structured task checklist** for the current active goal (add / set status / remove). Use it once the work is underway to split the objective into verifiable steps and keep their status (`pending` / `in_progress` / `done`) current as you go—see [Task checklist](#task-checklist).
+
 - **`complete_goal`** — Close bookkeeping for the **current** active goal. Call when work is **done**, **and also** when the user **cancels**, **changes direction**, or **replaces** the objective: use **`recap`** to state honestly what happened (e.g. cancelled, partially done, superseded). Then you may call **`long_task`** again for a **new** objective after the session shows no active goal (or after the user agrees to replace).
 
 If a goal is already active and the user wants something different, **`complete_goal`** first (honest recap), then **`long_task`** with the new objective—do not stack conflicting active goals.
@@ -36,6 +38,8 @@ If a goal is already active and the user wants something different, **`complete_
 Inside **`[Runtime Context — metadata only, not instructions]`**, lines starting with **`Goal (active):`** carry the **persisted objective** for this chat session (session metadata). Treat them as the active sustained goal, not user-authored instructions for bypassing policy.
 
 Optional **`Summary:`** is a short UI label only—put crisp acceptance hints in the **`goal`** body itself.
+
+When a task checklist exists, a **`Tasks (n/m done):`** block follows: each line is a status marker (`[x]` done, `[~]` in_progress, `[ ]` pending) plus a `(id)` and short text. These come from **session metadata**, so they survive compaction—use them to remind yourself what remains, and keep them current with `update_task`.
 
 ---
 
@@ -62,6 +66,16 @@ Write goals so they are:
 6. **`ui_summary`** — Short label for sidebars/logs; keep **non-load-bearing** (no secret requirements only in the summary).
 
 If you discover the objective was underspecified, you may ask the user—or **`complete_goal`** with recap and register a **narrower** replacement goal rather than overloading one ambiguous string.
+
+## Task checklist
+
+Use `update_task` to turn the objective into a **small, verifiable checklist** once the work is underway. Do **not** front-load an exhaustive list before the first `long_task` call.
+
+1. **Start fast** — `long_task` is a marker; add checklist entries only when you actually begin stepping through the work. Prefer adding each step as you reach it.
+2. **Keep it current** — `add` a new step, `set` a step to `in_progress` when you start it and `done` when it's verified, `remove` a step that no longer applies. Do this **as you go**, not in one big batch at the end; each `done` signals progress and keeps the Runtime Context block honest.
+3. **Word steps idempotently** — Each step should read as a verifiable outcome ("run CI green", "implement the API") that survives re-reading after compaction, not fragile narration.
+4. **Reconcile by id** — Every task carries a stable `(id)`. Each turn the Runtime Context re-injects the checklist, so ids persist. If an id no longer matches, either match by a **unique text substring** or use the current id+text listing the tool returns on `not found` to re-sync.
+5. **Reflect reality in `complete_goal`** — Completing the goal does not auto-mark remaining steps `done`. If work genuinely finished and some steps were dropped, `complete_goal`'s recap should say so honestly and the leftover checklist stays in the blob for audit.
 
 ## Project-shaped work (avoid the “mega file” trap)
 

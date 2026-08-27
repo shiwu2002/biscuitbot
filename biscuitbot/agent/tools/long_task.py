@@ -29,14 +29,20 @@ from typing import TYPE_CHECKING, Any  # 类型检查与任意类型
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
 from biscuitbot.agent.tools.context import ContextAware, RequestContext  # 上下文感知混入与请求上下文
-from biscuitbot.agent.tools.schema import StringSchema, tool_parameters_schema  # 字符串 schema 与参数 schema 构造器
+from biscuitbot.agent.tools.schema import BooleanSchema, StringSchema, tool_parameters_schema  # schema 构造器
 from biscuitbot.bus.runtime_events import GoalStateChanged, RuntimeEventBus, RuntimeEventContext  # 运行时事件总线与目标状态变更事件
 from biscuitbot.session.goal_state import (  # 会话目标状态存取工具
     GOAL_STATE_KEY,  # 会话元数据中存储目标状态的键名
+    _MAX_TASKS,  # 任务存储上限（add 超限拒绝）
+    _MAX_TASKS_IN_RUNTIME,  # 返回文案中任务清单的显示上限
+    _TASK_STATUSES,  # 合法任务状态枚举
+    _normalize_tasks,  # 归一化目标 blob 中的任务列表
+    _next_task_id,  # 生成下一个单调递增的任务 id
     discard_legacy_goal_state_key,  # 丢弃遗留的目标状态键
     goal_state_raw,  # 读取原始目标状态
     parse_goal_state,  # 解析目标状态为字典
 )
+from biscuitbot.utils.helpers import truncate_text  # 文本截断，用于任务清单文案
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免运行时循环依赖
     from biscuitbot.session.manager import SessionManager  # 会话管理器
@@ -240,6 +246,12 @@ class LongTaskTool(Tool, _GoalToolsMixin):
             max_length=8000,
             nullable=True,
         ),
+        acknowledge_pending=BooleanSchema(
+            "Set true only after the user has explicitly agreed to close the goal with unfinished "
+            "tasks remaining (e.g. scope reduced, cancelled, or superseded). Ignored when every "
+            "task is marked done. Without it, complete_goal refuses to close while tasks are pending.",
+            default=False,
+        ),
         required=[],
     )
 )
@@ -291,18 +303,28 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
             "Use when the objective is fully achieved and verified—recap what was delivered. "
             "Also call when the user cancels, redirects, or replaces the goal: recap must reflect "
             "what actually happened (not necessarily success). "
+            "If a task checklist is set and any task is not marked done, complete_goal refuses to "
+            "close unless you first finish the remaining tasks with update_task, or you explicitly "
+            "confirm with the user and re-call with acknowledge_pending=true. "
             "If no goal is active, the tool reports that and leaves metadata unchanged."
         )
 
-    async def execute(self, recap: str | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self,
+        recap: str | None = None,
+        acknowledge_pending: bool = False,
+        **kwargs: Any,
+    ) -> str:
         """完成活跃目标。
 
         参数:
             recap: 给用户的简要回顾（纯文本）。成功时确认成果；取消/转向/
                 替换时如实说明情况。
+            acknowledge_pending: 用户已明确同意在存在未完成任务时关闭目标时才
+                置真；仅在确实存在未完成任务时生效。
 
         返回:
-            操作结果字符串；无活跃目标或会话缺失时返回相应说明。
+            操作结果字符串；无活跃目标/任务未完成/会话缺失时返回相应说明。
         """
         sess = self._session()
         if sess is None:
@@ -312,9 +334,15 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
         if not isinstance(prior, dict) or prior.get("status") != "active":
             return "No active goal to complete."
 
+        # 清单存在未完成任务时阻止完结：要么先完成，要么先与用户沟通再显式确认。
+        tasks = _normalize_tasks(prior)
+        pending = [t for t in tasks if t["status"] != "done"]
+        if pending and not acknowledge_pending:
+            return self._pending_block(tasks, pending)
+
         ended = _iso_now()
         sess.metadata[GOAL_STATE_KEY] = {
-            **prior,  # 保留原有字段（如 objective、started_at）
+            **prior,  # 保留原有字段（如 objective、started_at、tasks）
             "status": "completed",
             "completed_at": ended,
             "recap": (recap or "").strip(),
@@ -326,3 +354,202 @@ class CompleteGoalTool(Tool, _GoalToolsMixin):
         if tail:
             return f"Goal marked complete ({ended}). Recap:\n{tail}"
         return f"Goal marked complete ({ended})."
+
+
+@tool_parameters(
+    tool_parameters_schema(
+        action=StringSchema(
+            "What to do with the task: 'add' (append a new task), "
+            "'set' (change a task's status or text), or 'remove' (delete a task).",
+            enum=["add", "set", "remove"],
+        ),
+        text=StringSchema(
+            "The task text. Required for 'add'. For 'set'/'remove', an optional "
+            "substring used to uniquely match an existing task when its id is unknown.",
+            max_length=200,
+            nullable=True,
+        ),
+        id=StringSchema(
+            "The task id (e.g. 't1'), shown next to each task in Runtime Context. Required for "
+            "'set'/'remove' unless 'text' uniquely matches. For 'add', leave empty to auto-generate.",
+            max_length=32,
+            nullable=True,
+        ),
+        status=StringSchema(
+            "New status for 'set': pending / in_progress / done. Ignored for 'add'/'remove'.",
+            enum=list(_TASK_STATUSES),
+            nullable=True,
+        ),
+        required=["action"],
+    )
+)
+class UpdateTaskTool(Tool, _GoalToolsMixin):
+    """维护活跃目标的子步骤任务清单（添加 / 更新状态 / 移除）。
+
+    职责：为持续目标建立可更新的结构化清单。状态存于会话元数据的目标 blob，
+    每轮随 Runtime Context 重注入，避免长对话中遗忘分析出的未完成子步骤。
+    与 ``LongTaskTool`` / ``CompleteGoalTool`` 共用目标读写与会话路由逻辑。
+    """
+
+    _capability = (
+        "Update the active goal's structured task checklist (add / set status / remove)."
+    )
+    _usage_md = "docs/update_task.md"  # 工具使用说明文档路径
+
+    def __init__(
+        self,
+        sessions: Any,
+        runtime_events: RuntimeEventBus | None = None,
+    ) -> None:
+        _GoalToolsMixin.__init__(self, sessions, runtime_events)
+
+    @classmethod
+    def create(cls, ctx: Any) -> Tool:
+        """从上下文创建工具实例。"""
+        sess = getattr(ctx, "sessions", None)
+        assert sess is not None  # 由 enabled() 保证非空
+        return cls(
+            sessions=sess,
+            runtime_events=getattr(ctx, "runtime_events", None),
+        )
+
+    @classmethod
+    def enabled(cls, ctx: Any) -> bool:
+        """仅当上下文提供 sessions 时启用。"""
+        return getattr(ctx, "sessions", None) is not None
+
+    @property
+    def name(self) -> str:
+        """工具名称。"""
+        return "update_task"
+
+    @property
+    def description(self) -> str:
+        """工具描述，指导模型何时调用。"""
+        return (
+            "Maintain the active goal's structured task checklist. Use after long_task is active "
+            "to break the objective into verifiable steps and keep their status current. "
+            "'add' appends a new step (status defaults to pending). 'set' updates a step's status "
+            "(pending/in_progress/done) or its text. 'remove' deletes a step. "
+            "The checklist is re-injected into Runtime Context each turn, so keep it current to avoid "
+            "losing sight of remaining work. If a task id is unknown, match by a unique text substring."
+        )
+
+    @staticmethod
+    def _find_task_index(
+        tasks: list[dict[str, Any]],
+        id_field: str,
+        text_field: str,
+    ) -> int | None:
+        """定位任务索引：优先按 id 精确匹配，否则按 text 唯一子串匹配。"""
+        if id_field:
+            for i, t in enumerate(tasks):
+                if t["id"] == id_field:
+                    return i
+        if text_field:
+            matches = [i for i, t in enumerate(tasks) if text_field in t["text"]]
+            if len(matches) == 1:
+                return matches[0]
+        return None
+
+    @staticmethod
+    def _not_found(tasks: list[dict[str, Any]]) -> str:
+        """构造任务未找到的报错文案，附当前有效 id+text 清单供模型对账。"""
+        if not tasks:
+            return (
+                "Error: task not found. The goal has no tasks yet — "
+                "use update_task(add, text='...') to create one."
+            )
+        listing = " | ".join(f"{t['id']}: {t['text']}" for t in tasks)
+        return f"Error: task not found. Current tasks: {listing}"
+
+    @staticmethod
+    def _summary(tasks: list[dict[str, Any]]) -> str:
+        """构造更新后的清单摘要：完成计数 + 已完成项 + 剩余项（带 id）。"""
+        done = sum(1 for t in tasks if t["status"] == "done")
+        lines = [f"Updated task checklist: {done}/{len(tasks)} tasks done."]
+        over = len(tasks) > _MAX_TASKS_IN_RUNTIME
+        shown = tasks if not over else tasks[:_MAX_TASKS_IN_RUNTIME]
+        done_items = [t for t in shown if t["status"] == "done"]
+        if done_items:
+            lines.append(
+                "Done: "
+                + " | ".join(
+                    f"{t['id']} · {truncate_text(t['text'], 60)}" for t in done_items
+                )
+            )
+        remaining = [t for t in shown if t["status"] != "done"]
+        if remaining:
+            lines.append("Remaining:")
+            for t in remaining:
+                lines.append(f"[{t['status']}] {t['id']} · {truncate_text(t['text'], 60)}")
+        if over:
+            lines.append(f"… {len(tasks) - _MAX_TASKS_IN_RUNTIME} more tasks")
+        return "\n".join(lines)
+
+    async def execute(
+        self,
+        action: str,
+        text: str | None = None,
+        id: str | None = None,
+        status: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """添加/更新/移除当前活跃目标上的任务。
+
+        参数:
+            action: ``add`` / ``set`` / ``remove``。
+            text: 任务文本（``add`` 必填；``set``/``remove`` 可选用于文本匹配）。
+            id: 任务 id（``set``/``remove`` 首选定位方式）。
+            status: ``set`` 时的新状态。
+
+        返回:
+            更新后的清单摘要；会话缺失/无活跃目标/参数错误时返回相应说明。
+        """
+        sess = self._session()
+        if sess is None:
+            return "Error: update_task requires an active chat session."
+        prior = parse_goal_state(goal_state_raw(sess.metadata))
+        if not isinstance(prior, dict) or prior.get("status") != "active":
+            return (
+                "Error: update_task requires an active sustained goal. "
+                "Call long_task first to register a goal."
+            )
+        tasks = _normalize_tasks(prior)
+        id_field = (id or "").strip()
+        text_field = (text or "").strip()
+
+        if action == "add":
+            if not text_field:
+                return "Error: update_task(add) requires a non-empty 'text' for the new task."
+            if len(tasks) >= _MAX_TASKS:
+                return f"Error: task list is at capacity ({_MAX_TASKS}). Complete or remove tasks first."
+            tasks.append({
+                "id": _next_task_id(tasks),
+                "text": text_field,
+                "status": status if status in _TASK_STATUSES else "pending",
+            })
+        elif action == "set":
+            if status not in _TASK_STATUSES:
+                return "Error: update_task(set) requires a 'status' of pending / in_progress / done."
+            idx = self._find_task_index(tasks, id_field, text_field)
+            if idx is None:
+                return self._not_found(tasks)
+            tasks[idx]["status"] = status
+            if text_field:
+                tasks[idx]["text"] = text_field
+        elif action == "remove":
+            idx = self._find_task_index(tasks, id_field, text_field)
+            if idx is None:
+                return self._not_found(tasks)
+            tasks.pop(idx)
+        else:
+            return "Error: update_task 'action' must be add / set / remove."
+
+        # 重建 blob（与 complete_goal 的 {**prior} 风格一致），不原地修改 prior 传引用。
+        new_blob = {**prior, "tasks": tasks}
+        sess.metadata[GOAL_STATE_KEY] = new_blob
+        discard_legacy_goal_state_key(sess.metadata)  # 清理遗留键
+        self._sessions.save(sess)
+        await self._publish_goal_state_changed(sess.metadata)
+        return self._summary(tasks)

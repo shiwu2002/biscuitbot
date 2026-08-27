@@ -290,11 +290,19 @@ export interface AgentUIBlob {
   data?: unknown;
 }
 
+/** A structured sub-task on a sustained-goal checklist. */
+export interface GoalTask {
+  id: string;
+  text: string;
+  status: "pending" | "in_progress" | "done";
+}
+
 /** WebSocket snapshot for sustained goals (`goal_state` events; keyed by ``chat_id``). */
 export interface GoalStateWsPayload {
   active: boolean;
   ui_summary?: string;
   objective?: string;
+  tasks?: GoalTask[];
 }
 
 export interface ToolProgressEvent {

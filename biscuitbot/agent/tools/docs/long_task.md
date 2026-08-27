@@ -27,3 +27,4 @@ long_task(goal="新建快件管理微服务，含 CRUD API 和单元测试，通
 - ui_summary 是给人看的简短标签，不是详细描述
 - 目标完成后需调用 complete_goal 结束
 - 一轮对话通常只有一个活动目标
+- 登记后可用 update_task 把目标拆分为可更新的结构化子步骤清单，逐项推进

@@ -1496,6 +1496,37 @@ async def test_send_goal_state_emits_blob_per_chat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_goal_state_emits_blob_with_tasks() -> None:
+    bus = MagicMock()
+    channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus, gateway=_basic_handler(bus))
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+
+    blob = {
+        "active": True,
+        "objective": "Ship.",
+        "tasks": [
+            {"id": "t1", "text": "Write tests", "status": "done"},
+            {"id": "t2", "text": "Run CI", "status": "pending"},
+        ],
+    }
+    await channel.send(OutboundMessage(
+        channel="websocket",
+        chat_id="chat-1",
+        content="",
+        metadata={"_goal_state_sync": True, "goal_state": blob},
+    ))
+
+    mock_ws.send.assert_awaited_once()
+    body = json.loads(mock_ws.send.await_args.args[0])
+    assert body == {
+        "event": "goal_state",
+        "chat_id": "chat-1",
+        "goal_state": blob,
+    }
+
+
+@pytest.mark.asyncio
 async def test_maybe_push_active_goal_state_noop_without_session_manager() -> None:
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus, gateway=_basic_handler(bus))
@@ -1550,6 +1581,41 @@ async def test_maybe_push_active_goal_state_notifies_when_goal_active_on_disk() 
     assert body["goal_state"]["active"] is True
     assert body["goal_state"]["objective"] == "finish docs"
     assert body["goal_state"]["ui_summary"] == "Docs"
+
+
+@pytest.mark.asyncio
+async def test_maybe_push_active_goal_state_propagates_tasks() -> None:
+    bus = MagicMock()
+    sm = MagicMock()
+    sm.read_session_file.return_value = {
+        "metadata": {
+            "goal_state": {
+                "status": "active",
+                "objective": "finish docs",
+                "ui_summary": "Docs",
+                "tasks": [
+                    {"id": "t1", "text": "Write tests", "status": "done"},
+                    {"id": "t2", "text": "Run CI", "status": "pending"},
+                ],
+            },
+        },
+        "messages": [],
+    }
+    channel = WebSocketChannel(
+        {"enabled": True, "allowFrom": ["*"]},
+        bus,
+        gateway=_basic_handler(bus, session_manager=sm),
+    )
+    mock_ws = AsyncMock()
+    channel._attach(mock_ws, "chat-1")
+    await channel._maybe_push_active_goal_state("chat-1")
+    mock_ws.send.assert_awaited_once()
+    body = json.loads(mock_ws.send.await_args.args[0])
+    assert body["event"] == "goal_state"
+    assert body["goal_state"]["tasks"] == [
+        {"id": "t1", "text": "Write tests", "status": "done"},
+        {"id": "t2", "text": "Run CI", "status": "pending"},
+    ]
 
 
 @pytest.mark.asyncio

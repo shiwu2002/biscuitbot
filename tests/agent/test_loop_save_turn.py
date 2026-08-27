@@ -991,6 +991,49 @@ async def test_run_agent_loop_goal_continue_message_reads_latest_metadata(
 
 
 @pytest.mark.asyncio
+async def test_run_agent_loop_goal_continue_message_includes_task_checklist(
+    tmp_path: Path,
+) -> None:
+    from biscuitbot.agent.runner import AgentRunResult
+
+    loop = _make_full_loop(tmp_path)
+    session = loop.sessions.get_or_create("websocket:tasked-goal")
+    session.metadata[GOAL_STATE_KEY] = {
+        "status": "active",
+        "objective": "Ship the feature.",
+        "tasks": [
+            {"id": "t1", "text": "Write tests", "status": "done"},
+            {"id": "t2", "text": "Run CI", "status": "pending"},
+        ],
+    }
+    loop.sessions.save(session)
+    seen: dict[str, str] = {}
+
+    async def fake_run(spec):
+        assert callable(spec.goal_continue_message)
+        seen["goal_continue"] = spec.goal_continue_message()
+        return AgentRunResult(
+            final_content="ok",
+            messages=[{"role": "assistant", "content": "ok"}],
+        )
+
+    loop.runner.run = fake_run  # type: ignore[method-assign]
+
+    await loop._run_agent_loop(
+        [],
+        session=session,
+        channel="websocket",
+        chat_id="tasked-goal",
+        session_key=session.key,
+    )
+
+    assert "Tasks (1/2 done):" in seen["goal_continue"]
+    assert "[x] (t1) Write tests" in seen["goal_continue"]
+    assert "[ ] (t2) Run CI" in seen["goal_continue"]
+    assert "update_task" in seen["goal_continue"]
+
+
+@pytest.mark.asyncio
 async def test_process_direct_skip_user_persist_does_not_save_retry_user(
     tmp_path: Path,
 ) -> None:

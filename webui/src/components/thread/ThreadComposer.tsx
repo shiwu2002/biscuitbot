@@ -72,6 +72,7 @@ import type {
   CliAppInfo,
   Employee,
   GoalStateWsPayload,
+  GoalTask,
   McpPresetInfo,
   OutboundCliAppMention,
   OutboundMcpPresetMention,
@@ -458,16 +459,48 @@ function getVisibleBounds(el: HTMLElement): { top: number; bottom: number } {
   return { top, bottom };
 }
 
+function goalTaskStatusMeta(status: GoalTask["status"], t: (key: string) => string) {
+  if (status === "done") {
+    return {
+      icon: "✓",
+      className: "text-emerald-500",
+      label: t("thread.composer.goalTaskDone"),
+    };
+  }
+  if (status === "in_progress") {
+    return {
+      icon: "◐",
+      className: "text-amber-500",
+      label: t("thread.composer.goalTaskInProgress"),
+    };
+  }
+  return {
+    icon: "○",
+    className: "text-muted-foreground/60",
+    label: t("thread.composer.goalTaskPending"),
+  };
+}
+
 function goalStateStripPreview(
   goal: GoalStateWsPayload | undefined,
   t: (key: string) => string,
 ): string | null {
   if (!goal?.active) return null;
+  let label: string | null = null;
   const summary = goal.ui_summary?.trim();
-  if (summary) return summary;
-  const obj = goal.objective?.trim();
-  if (obj) return obj.length > 72 ? `${obj.slice(0, 72)}…` : obj;
-  return t("thread.composer.goalStateFallback");
+  if (summary) {
+    label = summary;
+  } else {
+    const obj = goal.objective?.trim();
+    if (obj) label = obj.length > 72 ? `${obj.slice(0, 72)}…` : obj;
+  }
+  if (!label) label = t("thread.composer.goalStateFallback");
+  const tasks = goal.tasks ?? [];
+  if (tasks.length) {
+    const done = tasks.filter((task) => task.status === "done").length;
+    label = `${label} · ${done}/${tasks.length}`;
+  }
+  return label;
 }
 
 const GOAL_PANEL_VIEWPORT_TOP_PAD = 20;
@@ -588,7 +621,11 @@ function RunElapsedStrip({
 
   const objectiveFull = displayGoalState?.objective?.trim() ?? "";
   const summaryFull = displayGoalState?.ui_summary?.trim() ?? "";
-  const canExpandGoal = !!(active && displayGoalState?.active && (objectiveFull || summaryFull));
+  const goalTasks = displayGoalState?.tasks ?? [];
+  const hasTasks = goalTasks.length > 0;
+  const canExpandGoal = !!(
+    active && displayGoalState?.active && (objectiveFull || summaryFull || hasTasks)
+  );
 
   const markdownBody =
     objectiveFull || summaryFull
@@ -672,7 +709,7 @@ function RunElapsedStrip({
       className="composer-status-strip relative z-30"
       data-state={leaving ? "exit" : "enter"}
     >
-      {goalPanelOpen && canExpandGoal && markdownBody ? (
+      {goalPanelOpen && canExpandGoal && (markdownBody || hasTasks) ? (
         <div
           ref={panelRef}
           id="biscuitbot-goal-panel-root"
@@ -711,9 +748,47 @@ function RunElapsedStrip({
             id="biscuitbot-goal-panel-scroll"
             className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-3 pb-3 pt-2"
           >
-            <MarkdownText className="max-w-none text-[13.5px] leading-relaxed text-foreground/90">
-              {markdownBody}
-            </MarkdownText>
+            {hasTasks ? (
+              <div className="mb-3">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
+                  {t("thread.composer.goalTasks")}
+                </p>
+                <ul className="space-y-1">
+                  {goalTasks.map((task) => {
+                    const meta = goalTaskStatusMeta(task.status, t);
+                    return (
+                      <li key={task.id} className="flex items-start gap-1.5">
+                        <span
+                          className={cn("mt-0.5 shrink-0 leading-none", meta.className)}
+                          title={meta.label}
+                          aria-label={meta.label}
+                        >
+                          {meta.icon}
+                        </span>
+                        <span
+                          className={cn(
+                            "min-w-0 text-[12.5px] leading-relaxed text-foreground/80",
+                            task.status === "done" &&
+                              "text-muted-foreground/55 line-through",
+                          )}
+                        >
+                          {task.text}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="mb-3 text-[12px] text-muted-foreground/70">
+                {t("thread.composer.goalTasksEmpty")}
+              </p>
+            )}
+            {markdownBody ? (
+              <MarkdownText className="max-w-none text-[13.5px] leading-relaxed text-foreground/90">
+                {markdownBody}
+              </MarkdownText>
+            ) : null}
           </div>
         </div>
       ) : null}

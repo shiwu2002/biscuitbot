@@ -364,6 +364,31 @@ class TestBuildMessages:
         assert "Goal (active):" in user_msg
         assert "Finish docs migration." in user_msg
 
+    def test_session_metadata_injects_task_checklist(self, tmp_path):
+        builder = _builder(tmp_path)
+        meta = {
+            GOAL_STATE_KEY: {
+                "status": "active",
+                "objective": "Finish docs migration.",
+                "tasks": [
+                    {"id": "t1", "text": "Write tests", "status": "done"},
+                    {"id": "t2", "text": "Run CI", "status": "in_progress"},
+                ],
+            },
+        }
+        messages = builder.build_messages(
+            [],
+            "hi",
+            channel="cli",
+            chat_id="x",
+            session_metadata=meta,
+        )
+        user_msg = str(messages[-1]["content"])
+        assert "Tasks (1/2 done):" in user_msg
+        assert "[x] (t1) Write tests" in user_msg
+        assert "[~] (t2) Run CI" in user_msg
+        assert "update_task" in user_msg
+
     def test_goal_state_does_not_leak_without_session_metadata(self, tmp_path):
         builder = _builder(tmp_path)
         other_session_meta = {
