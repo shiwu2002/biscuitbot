@@ -40,6 +40,7 @@ export function ThreadHeader({
         "cyber-glass-panel cyber-scanline relative z-10 flex items-center justify-between gap-3 border-b-0 px-3 py-2",
         minimal && "h-11",
         !minimal && hostChromeTitleInset && "lg:pl-[128px]",
+        hideSidebarToggleForHostChrome && "lg:pr-[136px]",
       )}
       style={{ borderRadius: 0 }}
     >

@@ -21,6 +21,7 @@ import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { WindowTitlebarControls } from "@/components/WindowTitlebarControls";
 
 import { useSessions } from "@/hooks/useSessions";
 import { useDeferredTitleRefresh } from "@/hooks/useDeferredTitleRefresh";
@@ -368,12 +369,6 @@ function HostChrome({
   return (
     <header className="host-drag-region pointer-events-none absolute inset-x-0 top-0 z-40 h-11 bg-transparent text-foreground/90">
       <div className="host-no-drag pointer-events-auto absolute left-3 top-2 flex items-center gap-1">
-        <img
-          src="/brand/biscuitbot_icon.png"
-          alt=""
-          className="h-7 w-7 shrink-0 select-none object-contain"
-          draggable={false}
-        />
         {onToggleSidebar ? (
           <Button
             type="button"
@@ -392,11 +387,12 @@ function HostChrome({
           </Button>
         ) : null}
       </div>
-      {rightAction ? (
-        <div className="host-no-drag pointer-events-auto absolute right-3 top-2">
-          {rightAction}
-        </div>
-      ) : null}
+      <div className="host-no-drag pointer-events-auto absolute right-0 top-0 flex h-11 items-center">
+        {rightAction ? (
+          <div className="flex items-center pr-1">{rightAction}</div>
+        ) : null}
+        <WindowTitlebarControls />
+      </div>
     </header>
   );
 }

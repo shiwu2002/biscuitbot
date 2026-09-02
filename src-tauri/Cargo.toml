@@ -1,7 +1,7 @@
 [package]
 name = "biscuitbot"
-version = "0.3.10"
-description = "biscuitbot 濠碘剝顨呴惌鍌氼焽閻楀牏鐝剁紒娑樻贡缁愭鏌涘鐓庣仩濠殿喒鏅犲顕€鎮╃仦鍌欑矒 gateway sidecar 濡ょ姷鍋犲▔娑欐叏閻愬瓨濮滈柦妯侯槸瀵?WebUI"
+version = "0.3.12"
+description = "biscuitbot 濠电姷顣介崜婵嬨€冮崨瀛樺剹闁稿本鍑归悞浠嬫煟濡も偓閻楀繘鎮甸崜浣虹＜婵炴垶蓱鐠愶紕绱掗幇顓ф疁闁哄本绋戦～婵嬫偂鎼达絼鍝楀┑鐘愁問閸犳帡寮查悩宸殨妞ゆ洍鍋撻柟顔规櫇娴狅箓宕掑▎鎴犵厜 gateway sidecar 濠德板€楁慨鐑藉磻閻樻祴鏋栨繛鎴炵懄閸欏繘鏌ｉ幇顒傛憼濠殿喗绮撻弻锕€螣娓氼垱笑閻?WebUI"
 authors = ["biscuitbot"]
 edition = "2021"
 
