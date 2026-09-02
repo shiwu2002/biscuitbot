@@ -17,6 +17,7 @@
     "shell:allow-spawn",
     "shell:allow-kill",
     "shell:allow-execute",
-    "process:default"
+    "process:default",
+    "dialog:allow-open"
   ]
 }

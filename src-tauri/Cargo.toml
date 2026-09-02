@@ -1,7 +1,7 @@
 [package]
 name = "biscuitbot"
-version = "0.3.13"
-description = "biscuitbot 婵犵數濮烽。浠嬪礈濠靛鈧啴宕ㄧ€涙ê鍓归梺绋挎湰閸戝綊鎮炴禒瀣厽婵°倐鍋撻柣妤€绻橀幃鐢稿礈娴ｈ櫣锛滃┑鐐村灦钃遍悹鎰剁磿缁辨帡骞囬褎鐤侀梺鍝勬湰缁嬫垿锝炲┑瀣亗閹艰揪绲奸崫妤€鈹戦悩鎰佸晱闁哥姵甯″鏌ユ偐瀹割喖娈ㄥ銈嗘磵閸嬫捇鏌熼瑙勬珖濞寸媴绠撳畷鎺戔枎閹寸姷鍘?gateway sidecar 婵犲痉鏉库偓妤佹叏閻戣棄纾婚柣妯荤ゴ閺嬫牗绻涢幋鐐垫噭闁告瑥绻橀弻锝夊箛椤掑倹鎲兼繝娈垮枟缁捇寮婚敃鈧灒濞撴凹鍨辩瑧闁?WebUI"
+version = "0.3.14"
+description = "biscuitbot 濠电姷鏁告慨鐑姐€傛禒瀣婵犻潧顑冮埀顒€鍟村畷銊р偓娑櫭崜褰掓⒑缁嬫寧婀伴柛鎴濈秺閹偞绂掔€ｎ偆鍘藉┑掳鍊愰崑鎾绘煟濡も偓缁绘﹢骞冮悽绋跨濞达綀娅ｉ敍婊冣攽閻愭潙鐏﹂拑閬嶆偣閹板墎纾跨紒杈ㄥ浮楠炲洭顢樿閻や線姊洪崫鍕拱缂佸鍨块敐鐐测攽鐎ｎ偄浜楅柟鑹版彧缁插ジ宕Δ鈧埞鎴︽偐閹颁礁鏅遍梺鍝ュУ鐢€愁嚕閺屻儲鍋愮€瑰壊鍠栧▓銊ヮ渻閵堝棙纾甸柛瀣崌閺岀喖顢欑憴鍕彇婵炲濯寸粻鎾崇暦閹烘垟鏋庨柟瀵稿Х閸?gateway sidecar 濠电姴鐥夐弶搴撳亾濡や焦鍙忛柣鎴ｆ绾惧鏌ｅΟ鑽ゃ偞闁哄鐗楃换娑㈠箣閻愬灚鍣梺鍛婄懃缁绘﹢寮婚敐澶婄疀妞ゆ帒鍊归幉鍏肩節濞堝灝鏋熺紒顔芥崌瀵鏁冮埀顒冪亽婵炴挻鍑归崹杈╃懅闂?WebUI"
 authors = ["biscuitbot"]
 edition = "2021"
 
@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

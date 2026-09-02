@@ -59,12 +59,45 @@ const HOST_WS_CLOSED = 3;
 declare global {
   interface Window {
     biscuitbotHost?: BiscuitbotHostApi;
+    __TAURI__?: TauriHostGlobal;
   }
+}
+
+/** `withGlobalTauri` 注入的 `window.__TAURI__` 中，我们只用 `core.invoke`。 */
+interface TauriHostGlobal {
+  core?: {
+    invoke?: (cmd: string, args?: unknown) => Promise<unknown>;
+  };
 }
 
 export function getHostApi(): BiscuitbotHostApi | null {
   if (typeof window === "undefined") return null;
-  return window.biscuitbotHost ?? null;
+  const existing = window.biscuitbotHost;
+  if (existing) return existing;
+  return deriveTauriHostApi();
+}
+
+/**
+ * 桌面壳目前不注入 `window.biscuitbotHost`，但 Tauri 壳启用了 `withGlobalTauri`，
+ * 会暴露 `window.__TAURI__`。这里据此现场派生一个宿主对象：仅提供 `pickFolder`
+ * （走系统目录选择框），其余方法保持 `undefined`——这样 `getHostApi()?.restartEngine`
+ * 依旧落到 HTTP 兜底、`isNativeHost` 也不受影响（其已由 `surface === "native"` 决定）。
+ * 浏览器下 `window.__TAURI__` 不存在，返回值仍为 `null`，行为不变。
+ */
+function deriveTauriHostApi(): BiscuitbotHostApi | null {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return null;
+  const host = {
+    pickFolder: async (): Promise<string | null> => {
+      const result = await invoke("plugin:dialog|open", {
+        options: { directory: true, multiple: false, title: "选择项目工作目录" },
+      });
+      if (Array.isArray(result)) return result[0] ?? null;
+      return (result as string | null) ?? null;
+    },
+  } as unknown as BiscuitbotHostApi;
+  window.biscuitbotHost = host;
+  return host;
 }
 
 export function toRuntimeSurface(surface: string | null | undefined): RuntimeSurface {
