@@ -2,15 +2,24 @@
 //!
 //! 启动无头 gateway sidecar（PyInstaller 打包的 Python 进程），解析其 stdout
 //! 握手行 ``BISCUITBOT_GATEWAY_READY <host> <port>`` 后把窗口导航到 WebUI。
-//! 应用退出时杀掉 sidecar 子进程，避免残留后台 gateway；sidecar 请求引擎重启
-//! （``/api/desktop/restart``）退出后，壳会自动重新拉起并导航回 WebUI。
+//! 关闭〔X〕按键时窗口**隐藏到系统托盘**，壳与 gateway（sidecar）进程继续存活，
+//! 后台 cron/自动化任务因此持续执行；仅托盘菜单「退出」才杀掉 sidecar 并退出应用，
+//! 避免残留后台 gateway。sidecar 请求引擎重启（``/api/desktop/restart``）退出后，
+//! 壳会自动重新拉起并导航回 WebUI。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Manager, RunEvent, Url};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+
+/// 托盘菜单项 id：重新显示主窗口。
+const TRAY_SHOW: &str = "show";
+/// 托盘菜单项 id：真正退出应用（杀掉 sidecar）。
+const TRAY_QUIT: &str = "quit";
 
 /// sidecar 就绪握手行前缀（后接空格 + host + 空格 + port）
 const READY_PREFIX: &str = "BISCUITBOT_GATEWAY_READY";
@@ -162,6 +171,41 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     }
 }
 
+/// 创建系统托盘图标，提供「打开 biscuitbot / 退出」菜单。
+///
+/// icon 复用窗口默认图标；``TrayIconBuilder::build`` 内部会将 ``TrayIcon`` clone
+/// 进 app 资源表，因此无需保留返回句柄。菜单项 id 见 :const:`TRAY_SHOW` /
+/// :const:`TRAY_QUIT`。
+fn create_tray(app: &AppHandle) -> tauri::Result<()> {
+    let show = MenuItemBuilder::with_id(TRAY_SHOW, "打开 biscuitbot").build(app)?;
+    let quit = MenuItemBuilder::with_id(TRAY_QUIT, "退出").build(app)?;
+    let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
+
+    let icon = app
+        .default_window_icon()
+        .cloned()
+        .expect("missing default window icon");
+
+    TrayIconBuilder::with_id("biscuitbot-main-tray")
+        .icon(icon)
+        .tooltip("biscuitbot")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_SHOW => {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.set_focus();
+                }
+            }
+            TRAY_QUIT => app.exit(0),
+            _ => {}
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
@@ -169,6 +213,19 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
             spawn_sidecar(app.handle());
+
+            // 关闭主窗口 → 隐藏到托盘（不退出进程，gateway 继续跑自动化任务）。
+            if let Some(window) = app.get_webview_window("main") {
+                let win = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+            }
+
+            create_tray(app.handle())?;
             Ok(())
         })
         .build(tauri::generate_context!())

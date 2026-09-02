@@ -291,8 +291,9 @@ def _parent_vanished(original_parent_pid: int, watch_pid: int | None = None) -> 
 def _block_until_killed() -> None:
     """阻塞主线程直到进程被终止（或收到 KeyboardInterrupt）。
 
-    每 5 秒检查宿主 PID：若 Tauri 壳被强杀（无法走优雅退出清理），
-    本进程也应随之退出，保证不留后台进程。
+    每 5 秒检查宿主 PID：壳进程**存活**（包括关闭窗口后最小化到托盘、仍在后台
+    跑自动化任务）时保持运行；仅当壳被强杀/真正退出（无法走优雅退出清理）时，
+    本进程也随之退出，保证不留后台进程。
     """
     _keep_alive = threading.Event()
     original_parent_pid = os.getppid()
