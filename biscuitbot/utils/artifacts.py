@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path, PurePosixPath  # 安全拼接相对路径
 from typing import Any
 
-from biscuitbot.config.paths import get_media_dir  # 获取媒体根目录
+from biscuitbot.config.paths import get_workspace_path  # 获取工作区路径（生成资产跟随工作区落盘）
 from biscuitbot.utils.helpers import detect_image_mime, ensure_dir  # MIME 嗅探与建目录
 
 # 匹配 base64 图片 data URL，捕获声明 MIME 与编码内容
@@ -69,14 +69,14 @@ def _safe_relative_dir(save_dir: str) -> Path:
     return Path(*rel.parts)
 
 
-def _artifact_root(save_dir: str) -> Path:
-    """计算工件存储根目录，并校验未越出媒体根目录。"""
-    media_root = get_media_dir().resolve()
-    root = (media_root / _safe_relative_dir(save_dir)).resolve()
+def _artifact_root(save_dir: str, workspace: str | Path | None = None) -> Path:
+    """计算工件存储根目录，并校验未越出工作区根目录。"""
+    workspace_root = get_workspace_path(workspace).resolve()
+    root = (workspace_root / _safe_relative_dir(save_dir)).resolve()
     try:
-        root.relative_to(media_root)  # 确保结果仍在媒体根之下
+        root.relative_to(workspace_root)  # 确保结果仍在工作区根之下
     except ValueError as exc:
-        raise ArtifactError("artifact directory escapes media root") from exc
+        raise ArtifactError("artifact directory escapes workspace root") from exc
     return root
 
 
@@ -89,15 +89,16 @@ def store_generated_image_artifact(
     save_dir: str = "generated",
     provider: str = "openrouter",
     created_at: datetime | None = None,
+    workspace: str | Path | None = None,
 ) -> dict[str, Any]:
-    """持久化生成图片及其 sidecar 元数据到媒体根目录下。"""
+    """持久化生成图片及其 sidecar 元数据到工作区目录下。"""
     raw, mime = decode_image_data_url(data_url)
     ext = _MIME_EXTENSIONS.get(mime)
     if ext is None:
         raise ArtifactError(f"unsupported image MIME type: {mime}")
 
     now = created_at or datetime.now().astimezone()  # 缺省使用当前本地时区时间
-    day_dir = ensure_dir(_artifact_root(save_dir) / now.strftime("%Y-%m-%d"))  # 按日期归档
+    day_dir = ensure_dir(_artifact_root(save_dir, workspace) / now.strftime("%Y-%m-%d"))  # 按日期归档
     artifact_id = f"img_{uuid.uuid4().hex[:12]}"  # 生成唯一工件 ID
     image_path = day_dir / f"{artifact_id}{ext}"
     metadata_path = day_dir / f"{artifact_id}.json"

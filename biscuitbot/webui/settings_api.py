@@ -10,6 +10,7 @@ import os
 import re
 import time
 from dataclasses import replace
+from pathlib import Path
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -34,6 +35,7 @@ from biscuitbot.audio.tts_registry import (
 )
 from biscuitbot.channels.deps import deps_status, ensure_channel_deps
 from biscuitbot.config.loader import get_config_path, load_config, save_config
+from biscuitbot.config.paths import get_workspace_path
 from biscuitbot.config.schema import ModelPresetConfig, ProviderConfig
 from biscuitbot.providers.image_generation import (
     get_image_gen_provider,
@@ -1495,6 +1497,16 @@ def update_agent_settings(query: QueryParams) -> dict[str, Any]:
             defaults.tool_hint_max_length = parsed
             changed = True
             restart_required = True
+
+    workspace = _query_first_alias(query, "workspace", "workspacePath")
+    if workspace is not None:
+        workspace = workspace.strip()
+        if not workspace:
+            raise WebUISettingsError("workspace is required")
+        resolved = get_workspace_path(workspace)
+        if Path(defaults.workspace).expanduser() != resolved:
+            defaults.workspace = str(resolved)
+            changed = True
 
     if changed:
         save_config(config)

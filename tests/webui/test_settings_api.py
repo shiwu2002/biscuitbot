@@ -435,6 +435,53 @@ def test_update_agent_settings_accepts_context_window_options(
     assert saved.agents.defaults.context_window_tokens == 262144
 
 
+def test_update_agent_settings_accepts_workspace(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    workspace = tmp_path / "workspace"
+    payload = update_agent_settings({"workspace": [str(workspace)]})
+
+    assert payload["runtime"]["workspace_path"] == str(workspace.resolve())
+    saved = load_config(config_path)
+    assert saved.agents.defaults.workspace == str(workspace.resolve())
+    assert workspace.is_dir()
+
+
+def test_update_agent_settings_accepts_workspace_alias(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    workspace = tmp_path / "workspace"
+    update_agent_settings({"workspacePath": [str(workspace)]})
+
+    saved = load_config(config_path)
+    assert saved.agents.defaults.workspace == str(workspace.resolve())
+
+
+def test_update_agent_settings_rejects_blank_workspace(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    with pytest.raises(WebUISettingsError, match="workspace is required"):
+        update_agent_settings({"workspace": ["   "]})
+
+    saved = load_config(config_path)
+    assert saved.agents.defaults.workspace != "   "
+
+
 def test_update_model_configuration_accepts_context_window_options(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,

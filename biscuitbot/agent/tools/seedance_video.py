@@ -50,7 +50,7 @@ from biscuitbot.agent.tools.schema import (  # schema 构造器
     StringSchema,
     tool_parameters_schema,
 )
-from biscuitbot.config.paths import get_media_dir  # 媒体目录获取函数
+from biscuitbot.config.paths import get_workspace_path  # 工作区路径（生成资产跟随工作区落盘）
 from biscuitbot.config_base import Base  # 配置基类
 from biscuitbot.utils.helpers import detect_image_mime, ensure_dir  # MIME 探测与建目录
 
@@ -453,8 +453,8 @@ class SeedanceVideoTool(Tool):
             raise SeedanceVideoError("下载的视频为空")
 
         ext = _detect_video_ext(raw)
-        media_root = get_media_dir().resolve()
-        day_dir = ensure_dir(media_root / self.config.save_dir / datetime.now().astimezone().strftime("%Y-%m-%d"))
+        workspace_root = get_workspace_path(self.workspace).resolve()
+        day_dir = ensure_dir(workspace_root / self.config.save_dir / datetime.now().astimezone().strftime("%Y-%m-%d"))
         artifact_id = f"vid_{uuid.uuid4().hex[:12]}"
         video_path = day_dir / f"{artifact_id}{ext}"
         metadata_path = day_dir / f"{artifact_id}.json"

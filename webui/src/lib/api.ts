@@ -702,7 +702,32 @@ export async function updateSettings(
   if (update.toolHintMaxLength !== undefined) {
     query.set("tool_hint_max_length", String(update.toolHintMaxLength));
   }
+  if (update.workspace !== undefined) {
+    query.set("workspace", update.workspace);
+  }
   return request<SettingsPayload>(`${base}/api/settings/update?${query}`, token);
+}
+
+/** 请求后端在系统文件管理器中打开日志目录（打包桌面端兜底通道）。 */
+export async function openNativeLogs(
+  token: string,
+  base: string = "",
+): Promise<{ ok: boolean; path: string }> {
+  return request<{ ok: boolean; path: string }>(
+    `${base}/api/desktop/open-logs`,
+    token,
+  );
+}
+
+/** 请求后端生成诊断报告文件并返回其绝对路径（打包桌面端兜底通道）。 */
+export async function exportHostDiagnostics(
+  token: string,
+  base: string = "",
+): Promise<{ ok: boolean; path: string }> {
+  return request<{ ok: boolean; path: string }>(
+    `${base}/api/desktop/export-diagnostics`,
+    token,
+  );
 }
 
 export async function createModelConfiguration(

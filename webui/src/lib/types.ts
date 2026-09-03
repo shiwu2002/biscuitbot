@@ -902,6 +902,7 @@ export interface SettingsUpdate {
   botName?: string;
   botIcon?: string;
   toolHintMaxLength?: number;
+  workspace?: string;
 }
 
 export interface ModelConfigurationCreate {

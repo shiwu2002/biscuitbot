@@ -13,7 +13,10 @@ import asyncio
 import json
 import mimetypes
 import os
+import platform
 import re
+import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -774,6 +777,10 @@ class GatewayHTTPHandler:
             return await self._handle_webui_weixin_login_status(request)
         if got == "/api/desktop/restart":
             return self._handle_desktop_restart(request)
+        if got == "/api/desktop/open-logs":
+            return self._handle_desktop_open_logs(request)
+        if got == "/api/desktop/export-diagnostics":
+            return self._handle_desktop_export_diagnostics(request)
         return None
 
     def _handle_desktop_restart(self, request: WsRequest) -> Response:
@@ -790,6 +797,117 @@ class GatewayHTTPHandler:
         # 延迟退出，确保 JSON 响应先写回前端；os._exit 直接结束进程，跳过优雅清理。
         threading.Timer(0.2, os._exit, args=(0,)).start()
         return _http_json_response({"ok": True, "restarting": True})
+
+    def _handle_desktop_open_logs(self, request: WsRequest) -> Response:
+        """打包桌面端：在系统文件管理器中打开日志目录。
+
+        桌面壳未注入 ``window.biscuitbotHost``，前端无法直接调用宿主的
+        ``openLogs``，改为走后端 HTTP。桌面 sidecar 以 ``native`` runtime surface
+        启动，仅在该环境下允许调用（与 ``_handle_desktop_restart`` 一致）。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._runtime_surface != "native":
+            return _http_error(400, "open logs is only available in the native desktop runtime")
+        from biscuitbot.config.paths import get_logs_dir
+
+        logs_dir = get_logs_dir()
+        try:
+            self._open_directory(logs_dir)
+        except OSError as exc:
+            return _http_error(500, f"failed to open logs directory: {exc}")
+        return _http_json_response({"ok": True, "path": str(logs_dir)})
+
+    def _handle_desktop_export_diagnostics(self, request: WsRequest) -> Response:
+        """打包桌面端：生成诊断报告文件并返回其绝对路径。
+
+        报告包含运行时元数据、最近日志尾部与少量非敏感配置摘要，便于用户
+        粘贴给开发/排障。绝不写入任何密钥或令牌。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if self._runtime_surface != "native":
+            return _http_error(400, "export diagnostics is only available in the native desktop runtime")
+        try:
+            report = self._build_diagnostics_report()
+        except Exception as exc:  # noqa: BLE001 - 报告生成失败不应向调用方暴露内部堆栈
+            return _http_error(500, f"failed to build diagnostics report: {exc}")
+        from biscuitbot.config.paths import get_data_dir
+        from biscuitbot.utils.helpers import ensure_dir
+
+        diagnostics_dir = ensure_dir(get_data_dir() / "diagnostics")
+        path = diagnostics_dir / f"biscuitbot-diagnostics-{time.strftime('%Y%m%d-%H%M%S')}.txt"
+        path.write_text(report, encoding="utf-8")
+        return _http_json_response({"ok": True, "path": str(path)})
+
+    def _build_diagnostics_report(self) -> str:
+        """组装诊断报告文本（不含任何密钥/令牌）。"""
+        from biscuitbot import __version__
+        from biscuitbot.config.loader import load_config
+        from biscuitbot.config.paths import (
+            get_config_path,
+            get_data_dir,
+            get_logs_dir,
+            get_workspace_path,
+        )
+
+        config = load_config()
+        defaults = config.agents.defaults
+        lines: list[str] = [
+            "biscuitbot diagnostics",
+            "=" * 48,
+            "",
+            f"generated: {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"version: {__version__}",
+            f"python: {sys.version.split()[0]} ({sys.platform} / {platform.platform()})",
+            f"config_path: {get_config_path()}",
+            f"data_dir: {get_data_dir()}",
+            f"workspace: {get_workspace_path()}",
+            f"logs_dir: {get_logs_dir()}",
+            "",
+            "config summary (non-sensitive):",
+            f"  model_preset: {defaults.model_preset}",
+            f"  model: {defaults.model}",
+            f"  provider: {defaults.provider}",
+            f"  timezone: {defaults.timezone}",
+            f"  bot_name: {defaults.bot_name}",
+            f"  workspace: {defaults.workspace}",
+            "",
+            "recent logs:",
+        ]
+        try:
+            lines.extend(self._recent_log_tail(get_logs_dir()))
+        except Exception as exc:  # noqa: BLE001 - 日志读取失败不应让整份报告失败
+            lines.append(f"  (could not read logs: {exc})")
+        lines.append("")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _recent_log_tail(logs_dir: Path, max_lines: int = 80) -> list[str]:
+        """读取日志目录下最近修改的 .log 文件末尾若干行（异常安全）。"""
+        latest = max(
+            (p for p in logs_dir.glob("*.log") if p.is_file()),
+            key=lambda p: p.stat().st_mtime,
+            default=None,
+        )
+        if latest is None:
+            return ["  (no .log files found)"]
+        tail = latest.read_text(encoding="utf-8", errors="replace").splitlines()[-max_lines:]
+        return [f"  {latest.name}: {line}" for line in tail]
+
+    @staticmethod
+    def _open_directory(dir_path: Path) -> None:
+        """在系统文件管理器中打开一个目录（跨平台）。
+
+        Windows: ``explorer``；macOS: ``open``；其余: ``xdg-open``。
+        """
+        target = str(dir_path)
+        if sys.platform == "win32":
+            subprocess.run(["explorer", target], check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", target], check=True)
+        else:
+            subprocess.run(["xdg-open", target], check=True)
 
     def _handle_commands(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

@@ -93,12 +93,14 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   checkVersion,
   createModelConfiguration,
+  exportHostDiagnostics,
   fetchAutomations,
   fetchChannels,
+  fetchProviderModels,
   fetchSettings,
   fetchSettingsUsage,
-  fetchProviderModels,
   deleteProviderSettings,
+  openNativeLogs,
   runAutomationAction,
   selfUpdate,
   updateAutomation,
@@ -186,6 +188,7 @@ interface AgentSettingsDraft {
   botName: string;
   botIcon: string;
   toolHintMaxLength: number;
+  workspacePath: string;
 }
 
 interface ModelConfigurationDraft {
@@ -359,6 +362,7 @@ const DEFAULT_AGENT_SETTINGS_DRAFT: AgentSettingsDraft = {
   botName: "biscuitbot",
   botIcon: "",
   toolHintMaxLength: 40,
+  workspacePath: "",
 };
 
 const DEFAULT_WEB_SEARCH_FORM: WebSearchSettingsUpdate = {
@@ -468,6 +472,7 @@ function agentDraftFromPayload(payload: SettingsPayload): AgentSettingsDraft {
     botName: payload.agent.bot_name,
     botIcon: payload.agent.bot_icon,
     toolHintMaxLength: payload.agent.tool_hint_max_length,
+    workspacePath: payload.runtime.workspace_path,
   };
 }
 
@@ -845,7 +850,8 @@ export function SettingsView({
     return (
       form.timezone !== settings.agent.timezone ||
       form.botName !== settings.agent.bot_name ||
-      form.botIcon !== settings.agent.bot_icon
+      form.botIcon !== settings.agent.bot_icon ||
+      form.workspacePath !== settings.runtime.workspace_path
     );
   }, [form, settings]);
 
@@ -1098,6 +1104,7 @@ export function SettingsView({
         timezone: form.timezone,
         botName: form.botName,
         botIcon: form.botIcon,
+        workspace: form.workspacePath,
       });
       applyPayload(payload);
       if (payload.requires_restart) {
@@ -1490,6 +1497,7 @@ export function SettingsView({
           onRestart={restartViaSettingsSurface}
           isRestarting={isRestarting || hostEngineApplying}
           requiresRestartPending={pendingRestartSections.runtime}
+          token={token}
         />
       ) : null}
       {sub === "systemIo" ? (
@@ -5554,6 +5562,7 @@ function RuntimeSettings({
   onRestart,
   isRestarting,
   requiresRestartPending,
+  token,
 }: {
   form: AgentSettingsDraft;
   setForm: Dispatch<SetStateAction<AgentSettingsDraft>>;
@@ -5564,6 +5573,7 @@ function RuntimeSettings({
   onRestart?: () => void;
   isRestarting?: boolean;
   requiresRestartPending: boolean;
+  token: string;
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
@@ -5581,7 +5591,20 @@ function RuntimeSettings({
   } | null>(null);
   const [hostActionBusy, setHostActionBusy] =
     useState<"logs" | "diagnostics" | null>(null);
+  const [pickingWorkspace, setPickingWorkspace] = useState(false);
   const hostApi = getHostApi();
+  const pickWorkspaceFolder = async () => {
+    if (!hostApi?.pickFolder || pickingWorkspace) return;
+    setPickingWorkspace(true);
+    try {
+      const picked = await hostApi.pickFolder();
+      if (picked) setForm((prev) => ({ ...prev, workspacePath: picked }));
+    } catch {
+      // 目录选择器取消或失败：保持当前值。
+    } finally {
+      setPickingWorkspace(false);
+    }
+  };
   const engineState = isRestarting
     ? tx("settings.values.restartingEngine", "Restarting")
     : settings.apply_state?.status === "pending"
@@ -5593,7 +5616,7 @@ function RuntimeSettings({
     successMessage: (result: string | void) => string,
     failureMessage: string,
   ) => {
-    if (!hostApi) {
+    if (!isNativeHost) {
       setHostActionMessage({
         target,
         message: tx(
@@ -5680,8 +5703,15 @@ function RuntimeSettings({
                   onClick={() =>
                     void runHostAction(
                       "logs",
-                      () => hostApi!.openLogs(),
-                      () => tx("settings.status.logsOpened", "Opened logs folder."),
+                      async () => {
+                        const result = await openNativeLogs(token);
+                        return result.path;
+                      },
+                      (path) =>
+                        t("settings.status.logsOpened", {
+                          path: String(path ?? ""),
+                          defaultValue: "Opened logs folder at {{path}}.",
+                        }),
                       tx("settings.status.logsOpenFailed", "Could not open logs folder."),
                     )
                   }
@@ -5712,9 +5742,9 @@ function RuntimeSettings({
                     void runHostAction(
                       "diagnostics",
                       async () => {
-                        const path = await hostApi!.exportDiagnostics();
-                        setDiagnosticsPath(path);
-                        return path;
+                        const result = await exportHostDiagnostics(token);
+                        setDiagnosticsPath(result.path);
+                        return result.path;
                       },
                       (path) =>
                         t("settings.status.diagnosticsExported", {
@@ -5747,7 +5777,31 @@ function RuntimeSettings({
             />
           ) : null}
           <ReadOnlyRow title={t("settings.rows.configPath")} value={settings.runtime.config_path} />
-          <ReadOnlyRow title={tx("settings.rows.workspacePath", "Default workspace")} value={settings.runtime.workspace_path} />
+          <SettingsRow
+            title={tx("settings.rows.workspacePath", "Default workspace")}
+            description={tx("settings.help.workspacePath", "Folder used for file tools and generated assets.")}
+          >
+            <div className="flex min-w-0 items-center gap-2">
+              <Input
+                value={form.workspacePath}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, workspacePath: event.target.value }))
+                }
+                className="h-8 min-w-0 flex-1 rounded-full text-[13px]"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void pickWorkspaceFolder()}
+                disabled={pickingWorkspace || !hostApi?.pickFolder}
+                className="rounded-full"
+              >
+                {pickingWorkspace
+                  ? tx("settings.actions.picking", "Picking...")
+                  : tx("settings.actions.chooseFolder", "Choose")}
+              </Button>
+            </div>
+          </SettingsRow>
           {onRestart && !requiresRestartPending ? (
             <SettingsRow
               title={t("settings.rows.restart")}

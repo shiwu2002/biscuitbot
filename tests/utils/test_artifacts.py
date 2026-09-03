@@ -30,7 +30,7 @@ def test_decode_image_data_url_validates_image_payload() -> None:
 
 
 def test_store_generated_image_artifact_writes_image_and_sidecar(tmp_path: Path) -> None:
-    set_config_path(tmp_path / "config.json")
+    workspace = tmp_path / "workspace"
     created_at = datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc)
 
     artifact = store_generated_image_artifact(
@@ -39,12 +39,13 @@ def test_store_generated_image_artifact_writes_image_and_sidecar(tmp_path: Path)
         model="openai/gpt-5.4-image-2",
         source_images=["/tmp/ref.png"],
         save_dir="generated",
+        workspace=workspace,
         created_at=created_at,
     )
 
     image_path = Path(artifact["path"])
     assert image_path.is_file()
-    assert image_path.parent == tmp_path / "media" / "generated" / "2026-05-08"
+    assert image_path.parent == workspace / "generated" / "2026-05-08"
     assert artifact["id"].startswith("img_")
     assert artifact["mime"] == "image/png"
 

@@ -277,6 +277,8 @@ class ImageGenerationTool(Tool):
             )
 
         try:
+            access = current_tool_workspace(self.workspace, restrict_to_workspace=True)
+            ws = access.project_path or self.workspace
             refs = self._resolve_reference_images(reference_images)
             artifacts: list[dict[str, Any]] = []
             # 循环调用直到收集到所需数量的图片
@@ -297,6 +299,7 @@ class ImageGenerationTool(Tool):
                         source_images=refs,
                         save_dir=self.config.save_dir,
                         provider=self.config.provider,
+                        workspace=ws,
                     )
                     artifacts.append(artifact)
                     if len(artifacts) >= requested:
