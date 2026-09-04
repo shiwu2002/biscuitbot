@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 import { AttachmentTile } from "@/components/AttachmentTile";
 import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
@@ -163,8 +163,28 @@ describe("DocumentPreview renderers", () => {
 
     await waitFor(() => expect(container.querySelector("iframe")).toBeInTheDocument());
     const iframe = container.querySelector("iframe");
-    expect(iframe).toHaveAttribute("sandbox", "");
+    expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
     expect(iframe).toHaveAttribute("title", "page.html");
     expect(iframe?.getAttribute("srcdoc")).toContain("hello");
+  });
+
+  it("opens a fullscreen html viewer with allow-scripts", async () => {
+    stubFetch("<p>hello</p>");
+    render(
+      <DocumentPreview
+        attachment={{ kind: "file", url: "/m/h", name: "page.html" }}
+        kind="html"
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "全屏查看" })).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "全屏查看" }));
+
+    const dialog = await screen.findByRole("dialog");
+    const frame = within(dialog).queryByTitle("page.html");
+    expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+    expect(frame?.getAttribute("srcdoc")).toContain("hello");
   });
 });

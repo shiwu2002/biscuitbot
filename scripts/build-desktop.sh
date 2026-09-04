@@ -167,11 +167,18 @@ fi
 # 将最终产物（.app / .dmg）复制到输出目录；target 内仍保留构建缓存。
 # 先删旧的 .app 再复制：`cp -R` 对已存在目录是「合并」而非「替换」，
 # 会把旧包中本次已删除的文件（如 skills/seedance/）残留到新包。
+# .dmg 同理：target 的 dmg 目录会跨构建累积历史产物，用 `*.dmg` 通配会把已删除的
+# 老版本又复制回来。因此清掉输出目录里的历史 .dmg，且只拷贝含当前版本号的 dmg。
 mkdir -p "$OUTPUT_DIR"
 BUNDLE_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle"
 rm -rf "$OUTPUT_DIR/"*.app
 cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
-cp -f "$BUNDLE_DIR/dmg/"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true
+rm -f "$OUTPUT_DIR/"*.dmg
+if [ -n "$NEW_VERSION" ]; then
+  cp -f "$BUNDLE_DIR/dmg/"*"${NEW_VERSION}"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true
+else
+  cp -f "$BUNDLE_DIR/dmg/"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true
+fi
 
 echo
 echo "构建完成！产物："

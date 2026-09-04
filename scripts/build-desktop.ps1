@@ -146,9 +146,18 @@ bun run tauri build --bundles nsis
 if ($LASTEXITCODE -ne 0) { throw "tauri build 失败" }
 Set-Location $Root
 
-# 将最终安装包复制到输出目录（NSIS 安装包仍留在 src-tauri\target 作为构建缓存）
+# 只复制**当前版本**安装包到输出目录，而不是 `*.exe` 全量。
+# src-tauri\target 的 NSIS bundle 目录会跨构建累积历史安装包（Tauri 从不清理），
+# 用 `*.exe` 通配会把已被删除的老版本又复制回 output\windows\（"老版本复活"问题）。
+# 复制前先把输出目录里的历史 .exe 清掉，让 output\windows\ 始终只保留最新一版。
 $NsisDir = Join-Path $Root "src-tauri\target\release\bundle\nsis"
-Copy-Item -Path (Join-Path $NsisDir "*.exe") -Destination $OutputDir -Force
+$BuildVersion = [string]((Get-Content $TauriConfPath -Raw | ConvertFrom-Json).version)
+$CurrentInstaller = Join-Path $NsisDir "biscuitbot_${BuildVersion}_x64-setup.exe"
+if (-not (Test-Path $CurrentInstaller)) {
+    throw "找不到当前版本安装包：$CurrentInstaller"
+}
+Get-ChildItem $OutputDir -Filter *.exe -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+Copy-Item -Path $CurrentInstaller -Destination $OutputDir -Force
 
 Write-Host ""
 Write-Host "构建完成！产物："

@@ -1,28 +1,35 @@
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { cn } from "@/lib/utils";
+
 /**
- * HTML 预览。原始 HTML 通过 `srcDoc` 注入 `sandbox=""` iframe：
- * 无脚本、无同源访问、无顶部导航，绝不进入 React 树，脚本永远不执行。
+ * HTML 预览。解码后的原始 HTML 通过 `srcDoc` 注入 `sandbox="allow-scripts"` iframe：
  *
- * 已知 v1 限制：相对路径的图片/CSS 无法解析（sandbox 无同源），按原样展示
- * 文本与内联样式。
+ * - 允许页面运行自身脚本 —— 智能体生成的交互式界面（地图 / 仪表盘等 JS 渲染页）
+ *   据此可以真正显示，而不是空白。
+ * - **不**加 `allow-same-origin`：iframe 处于不透明来源，无法访问宿主 app 的
+ *   DOM / localStorage / 同源 fetch，脚本也永远脱离 React 树。
+ * - 已知限制：相对路径的资源（`<link>/<script src>/.png`）无法解析 —— 因为 iframe
+ *   没有 document baseURL 且来源不透明。页面须为自包含单文件（内联 CSS/JS）；
+ *   CDN 引用的脚本/样式仍可加载（沙箱不拦截网络，只隔离宿主同源）。
  */
-export function HtmlViewer({ buffer, name }: { buffer: ArrayBuffer; name?: string }) {
+export function HtmlViewer({
+  src,
+  name,
+  className,
+}: {
+  src: string;
+  name?: string;
+  className?: string;
+}) {
   const { t } = useTranslation();
-  const [src, setSrc] = useState<string>("");
-
-  useEffect(() => {
-    setSrc(new TextDecoder("utf-8", { fatal: false }).decode(buffer));
-  }, [buffer]);
-
   return (
     <iframe
       title={name ?? t("documentPreview.htmlTitle", { defaultValue: "HTML 预览" })}
-      sandbox=""
+      sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={src}
-      className="h-[32rem] w-full bg-background"
+      className={cn("block w-full bg-background", className ?? "h-[32rem]")}
     />
   );
 }
