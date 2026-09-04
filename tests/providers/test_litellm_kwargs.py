@@ -1239,6 +1239,92 @@ def test_non_deepseek_keeps_list_content() -> None:
     assert isinstance(kw["messages"][0]["content"], list)
 
 
+def test_deepseek_vision_model_keeps_image_content() -> None:
+    """DeepSeek 视觉模型（deepseek-v4-flash-vision-exp）须保留 image_url 块，不强转字符串。"""
+    spec = find_by_name("deepseek")
+    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(
+            api_key="k", default_model="deepseek-v4-flash-vision-exp", spec=spec
+        )
+
+    kw = p._build_kwargs(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "这个图里有什么？", "_meta": {"path": "x.png"}},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AAAA"}, "_meta": {"path": "x.png"}},
+            ],
+        }],
+        tools=None,
+        model="deepseek-v4-flash-vision-exp",
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    content = kw["messages"][0]["content"]
+    assert isinstance(content, list), "视觉模型不应强转为字符串"
+    blocks = {b.get("type") for b in content if isinstance(b, dict)}
+    assert "image_url" in blocks, "image_url 块应保留"
+    assert "_meta" not in content[0], "内部 _meta 字段不应泄露给 Provider"
+
+
+def test_deepseek_vision_model_prefix_stripped_keeps_image_content() -> None:
+    """带 provider 前缀的模型名（deepseek/deepseek-v4-flash-vision-exp）同样保留图像块。"""
+    spec = find_by_name("deepseek")
+    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(
+            api_key="k", default_model="deepseek/deepseek-v4-flash-vision-exp", spec=spec
+        )
+
+    kw = p._build_kwargs(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "描述这张图"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,BBBB"}},
+            ],
+        }],
+        tools=None,
+        model="deepseek/deepseek-v4-flash-vision-exp",
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    assert isinstance(kw["messages"][0]["content"], list)
+
+
+def test_deepseek_text_model_still_coerces_image_content() -> None:
+    """DeepSeek 文本模型（deepseek-chat）接受图片消息时仍强转字符串，丢弃图像块。"""
+    spec = find_by_name("deepseek")
+    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI"):
+        p = OpenAICompatProvider(api_key="k", default_model="deepseek-chat", spec=spec)
+
+    kw = p._build_kwargs(
+        messages=[{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "说明图片"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,CCCC"}},
+            ],
+        }],
+        tools=None,
+        model="deepseek-chat",
+        max_tokens=1024,
+        temperature=0.7,
+        reasoning_effort=None,
+        tool_choice=None,
+    )
+
+    content = kw["messages"][0]["content"]
+    assert isinstance(content, str), "文本模型应强转为字符串"
+    assert "说明图片" in content
+    assert "image_url" not in content
+
+
 def test_openai_no_thinking_extra_body() -> None:
     """Non-thinking providers should never get extra_body for thinking."""
     kw = _build_kwargs_for("openai", "gpt-4o", reasoning_effort="medium")

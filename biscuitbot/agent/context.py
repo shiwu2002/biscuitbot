@@ -642,9 +642,12 @@ class ContextBuilder:
             return text
 
         # 视觉模型可以读图片块本身；纯文本模型（如 Qwen 无视觉版、
-        # DeepSeek）只会忽略 image_url。这里把附件路径补进文本，保证
+        # DeepSeek 文本模型）会忽略或直接 400 拒绝 image_url（DeepSeek
+        # 文本模型对 list content 报 400）。这里把附件路径补进文本，保证
         # 所有模型都能拿到路径，直接作为 reference_images / 参考图使用，
-        # 不必在思考时再去 find/ls 查找图片位置。
+        # 不必在思考时再去 find/ls 查找图片位置。DeepSeek 视觉模型
+        # （deepseek-v4-flash-vision-exp，见 openai_compat_provider 的
+        # _deepseek_supports_vision），image_url 块会被保留并真正送检。
         path_note = "，".join(image_paths)
         if text:
             full_text = f"{text}\n[用户附加图片：{path_note}]"

@@ -89,6 +89,10 @@ _MIMO_THINKING_MODELS: frozenset[str] = frozenset({
     "mimo-v2-pro",
     "mimo-v2-omni",
 })
+# DeepSeek 视觉模型子串匹配：命中（如 deepseek-v4-flash-vision-exp）即保留
+# image_url 内容块；其余 DeepSeek 模型只接受字符串 content，强转时丢弃图像块。
+_DEEPSEEK_VISION_MODEL_MARKERS: tuple[str, ...] = ("vision",)
+
 # OpenAI 兼容请求默认超时（秒）
 _OPENAI_COMPAT_REQUEST_TIMEOUT_S = 120.0
 
@@ -591,20 +595,40 @@ class OpenAICompatProvider(LLMProvider):
             dumped = str(content)
         return dumped or "(empty)"
 
-    def _sanitize_messages(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _deepseek_supports_vision(self, model_name: str | None) -> bool:
+        """判断当前 DeepSeek 模型是否支持视觉输入。
+
+        DeepSeek 只有视觉模型（如 ``deepseek-v4-flash-vision-exp``）接受 ``image_url``
+        内容块；其余模型（``deepseek-chat``/``deepseek-reasoner`` 等）对 list content
+        直接返回 400，需强转为纯文本字符串。命中 ``vision`` 标记即视为支持视觉。
+        """
+        if not self._spec or self._spec.name != "deepseek" or not model_name:
+            return False
+        name = model_name.lower()
+        return any(marker in name for marker in _DEEPSEEK_VISION_MODEL_MARKERS)
+
+    def _sanitize_messages(
+        self,
+        messages: list[dict[str, Any]],
+        model_name: str | None = None,
+    ) -> list[dict[str, Any]]:
         """净化消息列表：剔除非标准字段、归一化工具调用 ID、强制字符串 content。
 
         主要工作：
         - 调用基类白名单过滤；
         - 对 Mistral 等需要归一化 ID 的 provider，做旧→新 ID 映射并应用到 tool_call_id；
-        - DeepSeek 强制 content 为字符串；
+        - DeepSeek 强制 content 为字符串（视觉模型除外，保留 image_url 块）；
         - 工具调用参数统一为可回放的 JSON 字符串；
         - 强制角色交替（assistant/tool/user 顺序合法）。
         """
         sanitized = LLMProvider._sanitize_request_messages(messages, _ALLOWED_MSG_KEYS)
         id_map: dict[str, str] = {}  # 原始 ID → 归一化 ID 的缓存
         pending_tool_ids: dict[str, deque[str]] = {}  # 原始 ID → 归一化 ID 队列（FIFO 映射）
-        force_string_content = bool(self._spec and self._spec.name == "deepseek")
+        force_string_content = bool(
+            self._spec
+            and self._spec.name == "deepseek"
+            and not self._deepseek_supports_vision(model_name)
+        )
         normalize_tool_ids = self._should_normalize_tool_call_ids()
 
         def map_id(value: Any) -> Any:
@@ -758,7 +782,9 @@ class OpenAICompatProvider(LLMProvider):
 
         kwargs: dict[str, Any] = {
             "model": model_name,
-            "messages": self._sanitize_messages(self._sanitize_empty_content(messages)),
+            "messages": self._sanitize_messages(
+                self._sanitize_empty_content(messages), model_name=model_name
+            ),
         }
 
         # GPT-5 与 o 系列在 reasoning_effort 激活时拒绝 temperature，仅在安全时下发
@@ -995,7 +1021,9 @@ class OpenAICompatProvider(LLMProvider):
         """
         model_name = model or self.default_model
         model_name = self._request_model_name(model_name)
-        sanitized_messages = self._sanitize_messages(self._sanitize_empty_content(messages))
+        sanitized_messages = self._sanitize_messages(
+            self._sanitize_empty_content(messages), model_name=model_name
+        )
         # 把消息拆成 instructions（系统提示）与 input_items（对话历史）
         instructions, input_items = convert_messages(sanitized_messages)
 
