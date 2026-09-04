@@ -48,7 +48,7 @@ export function ThreadHeader({
         {!hideSidebarToggleForHostChrome ? (
           <div className="flex h-7 w-7 shrink-0 select-none items-center justify-center rounded-lg bg-[hsl(var(--cyber-glow)/0.15)] shadow-[0_0_14px_hsl(var(--cyber-glow-soft)/0.35)]">
             <img
-              src="/brand/biscuitbot_icon.png"
+              src="/brand/biscuitbot_icon.png?v=20260903"
               alt=""
               className="h-6 w-6 select-none object-contain"
               draggable={false}

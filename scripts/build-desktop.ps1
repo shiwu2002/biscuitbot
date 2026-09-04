@@ -135,7 +135,7 @@ bun install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { bun install }
 if ($LASTEXITCODE -ne 0) { throw "bun install 失败" }
 if (-not (Test-Path "icons\icon.ico")) {
-    bun x tauri icon ..\images\biscuitbot_icon_transparent.png -o icons
+    bun x tauri icon ..\images\codex_icon.png -o icons
     if ($LASTEXITCODE -ne 0) { throw "图标生成失败" }
 }
 Set-Location $Root

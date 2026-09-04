@@ -374,7 +374,7 @@ function HostChrome({
           title="biscuitbot"
         >
           <img
-            src="/brand/biscuitbot_icon.png"
+            src="/brand/biscuitbot_icon.png?v=20260903"
             alt="biscuitbot"
             className="h-5 w-5 shrink-0 select-none object-contain"
             draggable={false}

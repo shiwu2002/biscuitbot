@@ -140,7 +140,7 @@ echo "==> 5/6 准备 Tauri 壳依赖与图标（幂等）"
 cd "$ROOT/src-tauri"
 bun install --frozen-lockfile || bun install
 if [ ! -f icons/icon.icns ]; then
-  bun x tauri icon ../images/biscuitbot_icon_transparent.png -o icons
+  bun x tauri icon ../images/codex_icon.png -o icons
 fi
 cd "$ROOT"
 
