@@ -16,7 +16,11 @@ from typing import Any, AsyncGenerator  # 动态类型与异步生成器标注
 import httpx  # HTTP 响应类型（SSE 流来源）
 from loguru import logger  # 结构化日志
 
-from biscuitbot.providers.base import LLMResponse, ToolCallRequest, parse_tool_arguments  # 统一响应结构与参数解析
+from biscuitbot.providers.base import (  # 统一响应结构与参数解析
+    LLMResponse,
+    ToolCallRequest,
+    parse_tool_arguments,
+)
 
 # Responses API 的 status → Chat Completions 风格 finish_reason 映射
 FINISH_REASON_MAP = {

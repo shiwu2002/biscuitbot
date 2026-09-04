@@ -66,7 +66,7 @@ _FALLBACK_ERROR_TOKENS = (
     "quota exhausted",
     "billing_hard_limit",
     "insufficient_balance",
-    "balance",
+    "insufficient balance",
     "out of credits",
 )
 

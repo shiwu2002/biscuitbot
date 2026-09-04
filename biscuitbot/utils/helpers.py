@@ -6,6 +6,7 @@ import re
 import shutil
 import time
 import uuid
+from collections import OrderedDict
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
@@ -171,6 +172,11 @@ def detect_image_mime(data: bytes) -> str | None:
     return None
 
 
+def data_url(mime: str, b64: str) -> str:
+    """构造 ``data:<mime>;base64,<b64>`` 形式的 data URL。"""
+    return f"data:{mime};base64,{b64}"
+
+
 def build_image_content_blocks(
     raw: bytes, mime: str, path: str, label: str
 ) -> list[dict[str, Any]]:
@@ -179,7 +185,7 @@ def build_image_content_blocks(
     return [
         {
             "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{b64}"},
+            "image_url": {"url": data_url(mime, b64)},
             "_meta": {"path": path},
         },
         {"type": "text", "text": label},
@@ -214,6 +220,9 @@ def current_time_str(timezone: str | None = None) -> str:
 
 
 _UNSAFE_CHARS = re.compile(r'[<>:"/\\|?*]')
+# 白名单式文件名净化：保留字母数字（含 CJK）、空白与常见安全标点，其余替换为 "_"。
+# 相比黑名单版额外剥离目录成分（含 Windows 反斜杠分隔），杜绝路径遍历。
+_SAFE_NAME_RE = re.compile(r"[^\w.\- ()（）\[\]【】]+", re.UNICODE)
 _TOOL_RESULT_PREVIEW_CHARS = 1200
 _TOOL_RESULTS_DIR = ".biscuitbot/tool-results"
 _TOOL_RESULT_RETENTION_SECS = 7 * 24 * 60 * 60
@@ -222,8 +231,59 @@ _TRUNCATED_SUFFIX = "\n... (truncated)"
 
 
 def safe_filename(name: str) -> str:
-    """Replace unsafe path characters with underscores."""
-    return _UNSAFE_CHARS.sub("_", name).strip()
+    """安全化文件名：剥离目录成分（防路径遍历）并将不安全字符替换为 "_"。
+
+    保留中文、字母数字、空格与常见安全标点；剥离首尾的 "._ " 避免
+    隐藏文件 / 相对路径残留。所有调用方传入的应是文件名而非路径。
+    """
+    name = (name or "").strip()
+    name = Path(name).name
+    return _SAFE_NAME_RE.sub("_", name).strip("._ ")
+
+
+class MessageIdDedup:
+    """有界的「已见消息 ID」去重器（LRU，check-and-mark 原子语义）。
+
+    供各 channel 复用，替代各自手写的 OrderedDict / deque 实现。
+    仅设计用于单线程事件循环内使用，不加锁。
+    """
+
+    def __init__(self, maxlen: int = 1000) -> None:
+        self._seen: OrderedDict[str, None] = OrderedDict()
+        self._maxlen = max(1, maxlen)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._seen
+
+    def mark(self, key: str) -> None:
+        """记录 key 为已见（若已存在则刷新位置）。"""
+        self._seen[key] = None
+        self._seen.move_to_end(key)
+        while len(self._seen) > self._maxlen:
+            self._seen.popitem(last=False)
+
+    def clear(self) -> None:
+        """清空全部已见记录（测试与重连场景使用）。"""
+        self._seen.clear()
+
+    def check_and_mark(self, key: str) -> bool:
+        """首次出现返回 True 并记录；重复出现返回 False（刷新位置防淘汰）。"""
+        if key in self._seen:
+            self._seen.move_to_end(key)
+            return False
+        self.mark(key)
+        return True
+
+
+def atomic_write_json(
+    path: Path,
+    data: Any,
+    *,
+    fsync: bool = True,
+    indent: int | None = 2,
+) -> None:
+    """原子写 JSON 文件（tmp + rename，可选 fsync 文件与目录）。"""
+    atomic_write_text(path, json.dumps(data, ensure_ascii=False, indent=indent), fsync=fsync)
 
 
 def image_placeholder_text(path: str | None, *, empty: str = "[image]") -> str:
@@ -286,6 +346,21 @@ def find_legal_message_start(messages: list[dict[str, Any]]) -> int:
                 start = i + 1
                 declared.clear()
     return start
+
+
+def anchor_to_first_user_turn(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """锚定切片的首个 user turn：向前包含紧邻的 ``_channel_delivery`` 投递消息。
+
+    会话回放（``SessionManager.get_history``）与重放越界边界（Consolidator）
+    共用的同源逻辑，避免多处副本漂移。切片中不存在 user turn 时原样返回。
+    """
+    for i, message in enumerate(messages):
+        if message.get("role") == "user":
+            start = i
+            if i > 0 and messages[i - 1].get("_channel_delivery"):
+                start = i - 1
+            return messages[start:]
+    return messages
 
 
 def stringify_text_blocks(content: list[dict[str, Any]]) -> str | None:

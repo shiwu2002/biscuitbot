@@ -1064,6 +1064,7 @@ async def test_stop_all_cancels_dispatcher_and_stops_channels():
 
     dispatch_task = asyncio.create_task(dummy_task())
     mgr._dispatch_task = dispatch_task
+    mgr._bg_tasks = set()  # 对齐 __init__：stop_all 会取消后台任务
 
     await mgr.stop_all()
 
@@ -1134,6 +1135,7 @@ async def test_stop_all_handles_channel_exception():
     mgr.bus = MessageBus()
     mgr.channels = {"stopfailing": _StopFailingChannel(fake_config, mgr.bus)}
     mgr._dispatch_task = None
+    mgr._bg_tasks = set()  # 对齐 __init__：stop_all 会取消后台任务
 
     # Should not raise even if channel.stop() raises
     await mgr.stop_all()
@@ -1213,6 +1215,7 @@ async def test_notify_restart_done_enqueues_outbound_message():
     mgr.bus = MessageBus()
     mgr.channels = {"feishu": _StartableChannel(fake_config, mgr.bus)}
     mgr._dispatch_task = None
+    mgr._bg_tasks = set()  # 对齐 __init__：重启通知任务会登记到这里
     mgr._send_with_retry = AsyncMock()
 
     notice = RestartNotice(channel="feishu", chat_id="oc_123", started_at_raw="100.0")

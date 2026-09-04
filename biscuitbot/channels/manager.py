@@ -31,9 +31,15 @@ from loguru import logger  # 日志记录
 from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
 from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
-from biscuitbot.channels.deps import channel_sdk_available, ensure_channel_deps  # 渠道 SDK 依赖检测/自动安装
+from biscuitbot.channels.deps import (  # 渠道 SDK 依赖检测/自动安装
+    channel_sdk_available,
+    ensure_channel_deps,
+)
 from biscuitbot.config.schema import Config  # 全局配置模型
-from biscuitbot.utils.restart import consume_restart_notice_from_env, format_restart_completed_message  # 重启通知处理
+from biscuitbot.utils.restart import (  # 重启通知处理
+    consume_restart_notice_from_env,
+    format_restart_completed_message,
+)
 
 if TYPE_CHECKING:
     from biscuitbot.session.manager import SessionManager  # 会话管理器（仅类型检查时导入）
@@ -51,6 +57,9 @@ def _default_webui_dist() -> Path | None:
 
 # 消息发送重试延迟（指数退避：1秒、2秒、4秒）
 _SEND_RETRY_DELAYS = (1, 2, 4)
+
+# 原始消息回复指纹缓存上限（超过时淘汰最旧条目，防内存无限增长）
+_MAX_ORIGIN_REPLY_FINGERPRINTS = 4096
 
 # 布尔配置项的驼峰命名别名映射（用于兼容 JSON/TOML 原始配置）
 _BOOL_CAMEL_ALIASES: dict[str, str] = {
@@ -92,7 +101,8 @@ class ChannelManager:
         self._webui_runtime_capabilities = dict(webui_runtime_capabilities or {})  # webui 运行时能力
         self.channels: dict[str, BaseChannel] = {}  # 已初始化的渠道实例映射
         self._dispatch_task: asyncio.Task | None = None  # 出站消息分发任务
-        self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}  # 原始消息回复指纹缓存（去重）
+        self._bg_tasks: set[asyncio.Task] = set()  # 后台任务引用（防 GC；stop 时取消）
+        self._origin_reply_fingerprints: dict[tuple[str, str, str], str] = {}  # 原始消息回复指纹缓存（去重，有上限）
 
         self._init_channels()
 
@@ -251,7 +261,8 @@ class ChannelManager:
         target = self.channels.get(notice.channel)
         if not target:
             return
-        asyncio.create_task(self._send_with_retry(
+        # 持有任务引用，防止协程未执行完就被 GC 回收
+        task = asyncio.create_task(self._send_with_retry(
             target,
             OutboundMessage(
                 channel=notice.channel,
@@ -260,10 +271,19 @@ class ChannelManager:
                 metadata=dict(notice.metadata or {}),
             ),
         ))
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._bg_tasks.discard)
 
     async def stop_all(self) -> None:
         """停止所有渠道及分发器。"""
         logger.info("Stopping all channels...")
+
+        # 取消后台任务（如重启通知发送），等待其结束
+        for task in list(self._bg_tasks):
+            task.cancel()
+        if self._bg_tasks:
+            await asyncio.gather(*self._bg_tasks, return_exceptions=True)
+        self._bg_tasks.clear()
 
         # Stop dispatcher
         if self._dispatch_task:
@@ -306,7 +326,14 @@ class ChannelManager:
             key = (msg.channel, msg.chat_id, message_id)
             self._origin_reply_fingerprints[key] = fingerprint
 
+        self._trim_origin_reply_fingerprints()
         return False
+
+    def _trim_origin_reply_fingerprints(self) -> None:
+        """限制指纹缓存大小，超过上限时按插入顺序淘汰最旧条目。"""
+        while len(self._origin_reply_fingerprints) > _MAX_ORIGIN_REPLY_FINGERPRINTS:
+            oldest = next(iter(self._origin_reply_fingerprints))
+            self._origin_reply_fingerprints.pop(oldest, None)
 
     async def _dispatch_outbound(self) -> None:
         """将出站消息分发到对应的渠道。"""

@@ -13,6 +13,7 @@ from biscuitbot.providers.openai_responses.converters import (
     convert_user_message,
     split_tool_call_id,
 )
+
 # SSE 流与 SDK 响应对象解析：把 Responses API 的输出统一成 LLMResponse
 from biscuitbot.providers.openai_responses.parsing import (
     FINISH_REASON_MAP,

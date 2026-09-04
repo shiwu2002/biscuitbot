@@ -21,8 +21,6 @@ import base64  # base64 编码（媒体分块上传）
 import hashlib  # MD5 哈希（文件完整性校验）
 import importlib.util  # 运行时检测 SDK 是否安装
 import os  # 文件路径处理
-import re  # 正则表达式（文件名安全化）
-from collections import OrderedDict  # 有序去重缓存（消息 ID 去重）
 from pathlib import Path  # 路径处理
 from typing import Any  # 类型注解支持
 
@@ -33,23 +31,12 @@ from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
 from biscuitbot.config.schema import Base  # 配置模型基类
+from biscuitbot.utils.helpers import MessageIdDedup, safe_filename  # 消息去重与文件名安全化共享工具
 
 WECOM_AVAILABLE = importlib.util.find_spec("wecom_aibot_sdk") is not None  # 检测 wecom_aibot_sdk 是否已安装
 
 # 上传安全限制（与 QQ 渠道默认值一致）
 WECOM_UPLOAD_MAX_BYTES = 1024 * 1024 * 200  # 200MB
-
-# 将不安全字符替换为 "_"，保留中文和常见安全标点
-_SAFE_NAME_RE = re.compile(r"[^\w.\-()\[\]（）【】\u4e00-\u9fff]+", re.UNICODE)
-
-
-def _sanitize_filename(name: str) -> str:
-    """安全化文件名，避免路径遍历和问题字符。"""
-    name = (name or "").strip()
-    name = Path(name).name
-    name = _SAFE_NAME_RE.sub("_", name).strip("._ ")
-    return name
-
 
 _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}  # 图片扩展名集合
 _VIDEO_EXTS = {".mp4", ".avi", ".mov"}  # 视频扩展名集合
@@ -112,7 +99,7 @@ class WecomChannel(BaseChannel):
         super().__init__(config, bus)
         self.config: WecomConfig = config
         self._client: Any = None  # wecom_aibot_sdk 客户端
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # 有序去重缓存（消息 ID）
+        self._processed_message_ids = MessageIdDedup(maxlen=1000)  # 有界去重缓存（消息 ID）
         self._loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
         self._generate_req_id = None  # 请求 ID 生成函数
         # 存储各会话的帧头信息，用于回复消息
@@ -266,14 +253,9 @@ class WecomChannel(BaseChannel):
             # 注意：不在此处拦截未授权用户——权限校验交由 _handle_message 统一处理
             # （未授权私聊会下发配对码，避免静默无响应）。
 
-            # Deduplication check
-            if msg_id in self._processed_message_ids:
+            # Deduplication check（check_and_mark 首次出现返回 True，重复返回 False）
+            if not self._processed_message_ids.check_and_mark(msg_id):
                 return
-            self._processed_message_ids[msg_id] = None
-
-            # Trim cache
-            while len(self._processed_message_ids) > 1000:
-                self._processed_message_ids.popitem(last=False)
 
             # For single chat, chatid is the sender's userid
             # For group chat, chatid is provided in body
@@ -409,7 +391,8 @@ class WecomChannel(BaseChannel):
             media_dir = get_media_dir("channels/wecom")
             if not filename:
                 filename = fname or f"{media_type}_{hash(file_url) % 100000}"
-            filename = _sanitize_filename(filename)
+            # safe_filename 对纯符号文件名会收敛为空串；空时回退稳定派生名，避免写目录报错
+            filename = safe_filename(filename) or f"{media_type}_{hash(file_url) % 100000}"
 
             file_path = media_dir / filename
             await asyncio.to_thread(file_path.write_bytes, data)
@@ -584,3 +567,6 @@ class WecomChannel(BaseChannel):
 
         except Exception:
             self.logger.exception("Error sending message to chat_id={}", msg.chat_id)
+            # 按 BaseChannel.send 契约上抛，交由 ChannelManager 统一重试
+            # （媒体上传失败已回退为文本提示拼接，走到此处说明文本发送本身也失败）
+            raise

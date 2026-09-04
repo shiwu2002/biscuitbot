@@ -20,10 +20,11 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
 
     返回 ``(system_prompt, input_items)``：
     - *system_prompt* 抽取自 ``system`` 角色消息，作为顶层 ``instructions``；
+      多条 system 消息以 ``"\n\n"`` 拼接，块形式 content 抽取 text 块；
     - *input_items* 是 Responses API 的 ``input`` 数组，按顺序包含
       user/assistant/tool 各角色的等价表达。
     """
-    system_prompt = ""
+    system_parts: list[str] = []
     input_items: list[dict[str, Any]] = []
     used_item_ids: set[str] = set()  # 记录已用 item id，保证全局唯一
 
@@ -32,8 +33,20 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
         content = msg.get("content")
 
         if role == "system":
-            # 系统消息抽取为顶层 instructions
-            system_prompt = content if isinstance(content, str) else ""
+            # 系统消息抽取为顶层 instructions；多条全部累积拼接，
+            # 避免只留最后一条丢内容。
+            if isinstance(content, str):
+                system_parts.append(content)
+            elif isinstance(content, list):
+                text = "".join(
+                    item.get("text", "")
+                    for item in content
+                    if isinstance(item, dict)
+                    and item.get("type") == "text"
+                    and isinstance(item.get("text"), str)
+                )
+                if text:
+                    system_parts.append(text)
             continue
 
         if role == "user":
@@ -69,7 +82,7 @@ def convert_messages(messages: list[dict[str, Any]]) -> tuple[str, list[dict[str
             output_text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
             input_items.append({"type": "function_call_output", "call_id": call_id, "output": output_text})
 
-    return system_prompt, input_items
+    return "\n\n".join(part for part in system_parts if part), input_items
 
 
 def convert_user_message(content: Any) -> dict[str, Any]:

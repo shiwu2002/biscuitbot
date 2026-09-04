@@ -149,10 +149,12 @@ def delete_workspace_skill(
     # Resolve to avoid symlink/traversal tricks.
     try:
         resolved = skill_dir.resolve(strict=True)
-        workspace_resolved = workspace_path.resolve(strict=True)
     except (OSError, RuntimeError):
-        raise SkillDeletionError(404, "skill not found")
-    if not str(resolved).startswith(str(workspace_resolved)):
+        raise SkillDeletionError(404, "skill not found") from None
+    # 用路径包含关系检查（而非字符串前缀），防止 /ws/foo-bar 被 /ws/foo 前缀误放行
+    from biscuitbot.security.workspace_policy import is_path_within
+
+    if not is_path_within(resolved, workspace_path):
         raise SkillDeletionError(403, "skill directory is outside workspace")
 
     shutil.rmtree(resolved)

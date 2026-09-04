@@ -10,6 +10,7 @@ import re
 import shutil
 import time
 import uuid
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Callable, Mapping, NamedTuple
 from urllib.parse import unquote, urlparse
@@ -30,6 +31,9 @@ _TRANSCRIPT_ACTIVE_CHUNK_ID = "active"
 _TRANSCRIPT_SEGMENT_RE = re.compile(r"^\d{6}\.jsonl$")
 _DEFAULT_TRANSCRIPT_PAGE_LIMIT = 160
 _MAX_TRANSCRIPT_PAGE_LIMIT = 1000
+# turn 序号表容量上限：异常中断的轮次不会走到 complete 被弹出，用「新一轮开始
+# 时清理同 chat 旧条目 + 全局上限」兜底，防止 _turn_sequences 无界增长。
+_MAX_TURN_SEQUENCE_ENTRIES = 256
 _WEBUI_TURN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _MARKDOWN_LOCAL_IMAGE_RE = re.compile(
     r"!\[([^\]]*)\]\((<[^>]+>|[^)\s]+)(\s+(?:\"[^\"]*\"|'[^']*'))?\)"
@@ -612,7 +616,8 @@ class WebUITranscriptRecorder:
 
     def __init__(self, log: Any = logger) -> None:
         self._log = log
-        self._turn_sequences: dict[tuple[str, str], int] = {}
+        # OrderedDict：保持插入序，便于超限时 pop 最旧条目
+        self._turn_sequences: OrderedDict[tuple[str, str], int] = OrderedDict()
 
     def client_turn_metadata(self, value: Any) -> dict[str, str]:
         return {WEBUI_TURN_METADATA_KEY: normalize_webui_turn_id(value)}
@@ -688,6 +693,18 @@ class WebUITranscriptRecorder:
         self._turn_sequences[key] = seq
         return seq
 
+    def _prune_turn_sequences(self, chat_id: str) -> None:
+        """新一轮开始时清理该 chat 遗留的 turn 序号条目并保持总条目数有界。
+
+        - 删除该 ``chat_id`` 下所有旧条目：已完成的轮次在 complete 时弹出，
+          这里兜底清理异常中断（不会走到 complete）留下的残留；
+        - 若全局条目数仍超过上限，按插入序 pop 最旧（跨 chat 泄漏兜底）。
+        """
+        for key in [k for k in self._turn_sequences if k[0] == chat_id]:
+            self._turn_sequences.pop(key, None)
+        while len(self._turn_sequences) > _MAX_TURN_SEQUENCE_ENTRIES:
+            self._turn_sequences.popitem(last=False)
+
     def _annotate_turn(
         self,
         chat_id: str,
@@ -700,6 +717,9 @@ class WebUITranscriptRecorder:
         turn_id = (metadata or {}).get(WEBUI_TURN_METADATA_KEY)
         if not isinstance(turn_id, str) or not turn_id:
             return
+        if phase == "user":
+            # "user" 是一轮的开始：先清理旧条目再记新序号，避免误删当前条目
+            self._prune_turn_sequences(chat_id)
         event["turn_id"] = turn_id
         event["turn_phase"] = phase
         event["turn_seq"] = self._next_turn_seq(chat_id, turn_id)

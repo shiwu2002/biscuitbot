@@ -36,6 +36,7 @@ from biscuitbot.bus.queue import MessageBus
 from biscuitbot.channels.base import BaseChannel
 from biscuitbot.config.schema import Base
 from biscuitbot.security.network import validate_resolved_url, validate_url_target  # SSRF 防护校验
+from biscuitbot.utils.helpers import safe_filename  # 文件名安全化工具（防路径遍历）
 
 DINGTALK_MAX_REMOTE_MEDIA_BYTES = 20 * 1024 * 1024  # 远程媒体下载体积上限（20MB）
 DINGTALK_MAX_REMOTE_MEDIA_REDIRECTS = 3  # 远程媒体下载最大重定向次数
@@ -342,7 +343,7 @@ class DingTalkChannel(BaseChannel):
         ext = Path(filename).suffix.lower()
         if ext in self._ZIP_BEFORE_UPLOAD_EXTS or content_type == "text/html":
             self.logger.info(
-                "does not accept raw HTML attachments, zipping {} before upload",
+                "DingTalk does not accept raw HTML attachments, zipping {} before upload",
                 filename,
             )
             return self._zip_bytes(filename, data)
@@ -738,6 +739,7 @@ class DingTalkChannel(BaseChannel):
                     "conversation_type": conversation_type,
                 },
                 session_key=session_key,
+                is_dm=not is_group,  # 私聊传 True，便于未授权用户收到配对码
             )
         except Exception:
             self.logger.exception("Error publishing message")
@@ -772,16 +774,35 @@ class DingTalkChannel(BaseChannel):
                 self.logger.error("download URL not found in response: {}", result)
                 return None
 
-            # 第二步：下载文件内容
+            # 第二步：下载文件内容。
+            # filename 来自发送者可控字段，必须先净化以杜绝路径遍历；
+            # 同时对齐 _fetch_remote_media_bytes 的 20MB 体积上限：
+            # 先查 content-length 预检，下载后校验实际长度。
             file_resp = await self._http.get(download_url, follow_redirects=True)
             if file_resp.status_code != 200:
                 self.logger.error("file download failed: status={}", file_resp.status_code)
                 return None
 
+            declared_length = (file_resp.headers.get("content-length") or "").strip()
+            if declared_length.isdigit() and int(declared_length) > DINGTALK_MAX_REMOTE_MEDIA_BYTES:
+                self.logger.warning(
+                    "file download too large: content-length={} limit={}",
+                    declared_length,
+                    DINGTALK_MAX_REMOTE_MEDIA_BYTES,
+                )
+                return None
+            if len(file_resp.content) > DINGTALK_MAX_REMOTE_MEDIA_BYTES:
+                self.logger.warning(
+                    "file download too large: bytes={} limit={}",
+                    len(file_resp.content),
+                    DINGTALK_MAX_REMOTE_MEDIA_BYTES,
+                )
+                return None
+
             # 保存到媒体目录（工作区可访问）
             download_dir = get_media_dir("channels/dingtalk") / sender_id
             download_dir.mkdir(parents=True, exist_ok=True)
-            file_path = download_dir / filename
+            file_path = download_dir / (safe_filename(filename) or "attachment")
             await asyncio.to_thread(file_path.write_bytes, file_resp.content)
             self.logger.info("file saved: {}", file_path)
             return str(file_path)

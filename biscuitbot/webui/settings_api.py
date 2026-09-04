@@ -34,7 +34,7 @@ from biscuitbot.audio.tts_registry import (
     tts_provider_names,
 )
 from biscuitbot.channels.deps import deps_status, ensure_channel_deps
-from biscuitbot.config.loader import get_config_path, load_config, save_config
+from biscuitbot.config.loader import get_config_path, load_config, update_config
 from biscuitbot.config.paths import get_workspace_path
 from biscuitbot.config.schema import ModelPresetConfig, ProviderConfig
 from biscuitbot.providers.image_generation import (
@@ -83,6 +83,10 @@ _BROWSER_RESTART_BEHAVIOR_BY_SECTION = {
     "browser": "engineRestart",
     "image": "engineRestart",
     "video": "engineRestart",
+    # vision（截图/视觉设置）与 image/video 同类，改动需重启引擎生效
+    "vision": "engineRestart",
+    # channels 渠道配置修改需重启网关后由 ChannelManager 重新初始化生效
+    "channels": "engineRestart",
     "apps": "engineRestart",
     "systemIo": "engineRestart",
     "advanced": "appRestart",
@@ -694,6 +698,12 @@ _CHANNEL_FIELD_LABELS: dict[str, dict[str, str]] = {
 }
 
 
+# 渠道敏感字段回显占位符：已配置的密钥不返回原值，前端展示/回传该占位符；
+# 写回时若收到占位符，说明用户未修改该字段，保留配置中的原值。
+# 选用不易与真实密钥混淆的常量。
+_CHANNEL_SECRET_PLACEHOLDER = "__KEEP_EXISTING__"
+
+
 def _is_secret_key(key: str) -> bool:
     """渠道配置字段是否为敏感凭据（前端用密码输入框渲染）。"""
     lowered = key.lower()
@@ -742,12 +752,17 @@ def _channel_field_schema(name: str, cls: type, section: Any) -> list[dict[str, 
             continue  # None / 非空默认值 / 数值 / 列表 / 字典 —— 不进表单
 
         current = data.get(key, default_value)
+        value = "" if current is None else current
+        if _is_secret_key(key) and isinstance(value, str) and value:
+            # 渠道密钥不明文回显给前端：已配置的敏感字段返回占位符，
+            # 写回时占位符会被还原处理（见 update_channel_settings）。
+            value = _CHANNEL_SECRET_PLACEHOLDER
         fields.append({
             "key": key,
             "label": labels.get(key, _humanize_field_key(key)),
             "type": field_type,
             "secret": _is_secret_key(key),
-            "value": "" if current is None else current,
+            "value": value,
         })
     return fields
 
@@ -851,71 +866,75 @@ def update_channel_settings(query: QueryParams) -> dict[str, Any]:
         raise WebUISettingsError("unknown channel")
     cls = all_channels[name]
 
-    config = load_config()
-    section = getattr(config.channels, name, None)
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与 to_thread 工作线程中的
+    # 其它写配置路径交错丢失更新。异常（如非法参数）时不保存，语义与原来一致。
+    with update_config() as config:
+        section = getattr(config.channels, name, None)
+        changed = False
 
-    def _current_value(key: str, default: Any) -> Any:
-        if isinstance(section, dict):
-            return section.get(key, default)
-        if section is not None:
-            return getattr(section, key, default)
-        return default
+        def _current_value(key: str, default: Any) -> Any:
+            if isinstance(section, dict):
+                return section.get(key, default)
+            if section is not None:
+                return getattr(section, key, default)
+            return default
 
-    # 1) enabled 标志
-    enabled = False
-    enabled_raw = _query_first(query, "enabled")
-    if enabled_raw is not None:
-        enabled = _parse_bool(enabled_raw, "enabled")
-        if isinstance(section, dict):
-            if section.get("enabled", False) != enabled:
-                section["enabled"] = enabled
+        # 1) enabled 标志
+        enabled = False
+        enabled_raw = _query_first(query, "enabled")
+        if enabled_raw is not None:
+            enabled = _parse_bool(enabled_raw, "enabled")
+            if isinstance(section, dict):
+                if section.get("enabled", False) != enabled:
+                    section["enabled"] = enabled
+                    changed = True
+            elif section is not None:
+                if getattr(section, "enabled", False) != enabled:
+                    section.enabled = enabled
+                    changed = True
+            else:
+                section = {"enabled": enabled}
+                setattr(config.channels, name, section)
                 changed = True
-        elif section is not None:
-            if getattr(section, "enabled", False) != enabled:
-                section.enabled = enabled
-                changed = True
-        else:
-            section = {"enabled": enabled}
-            setattr(config.channels, name, section)
-            changed = True
 
-    # 2) 凭据字段（default_config 中的空字符串 / consent_granted 字段）
-    default = cls.default_config() if hasattr(cls, "default_config") else {}
-    if isinstance(default, dict):
-        for key, default_value in default.items():
-            if key == "enabled":
-                continue
-            raw = _query_first(query, key)
-            if raw is None:
-                continue
-            coerced = _coerce_channel_value(raw, default_value, key)
-            if _current_value(key, default_value) != coerced:
+        # 2) 凭据字段（default_config 中的空字符串 / consent_granted 字段）
+        default = cls.default_config() if hasattr(cls, "default_config") else {}
+        if isinstance(default, dict):
+            for key, default_value in default.items():
+                if key == "enabled":
+                    continue
+                raw = _query_first(query, key)
+                if raw is None:
+                    continue
+                coerced = _coerce_channel_value(raw, default_value, key)
+                if _is_secret_key(key) and coerced == _CHANNEL_SECRET_PLACEHOLDER:
+                    # 前端回传密钥占位符 = 用户未修改该字段，保留配置中的原值，
+                    # 绝不能把占位符本身写进配置。
+                    continue
+                if _current_value(key, default_value) != coerced:
+                    if section is None:
+                        section = {}
+                        setattr(config.channels, name, section)
+                    if isinstance(section, dict):
+                        section[key] = coerced
+                    else:
+                        setattr(section, key, coerced)
+                    changed = True
+
+        # 3) allow_all 静默放行开关（仅显式传入时生效，不改动 allowFrom 白名单）。
+        allow_all_raw = _query_first(query, "allow_all")
+        if allow_all_raw is not None:
+            allow_all = _parse_bool(allow_all_raw, "allow_all")
+            if _current_value("allow_all", False) != allow_all:
                 if section is None:
                     section = {}
                     setattr(config.channels, name, section)
                 if isinstance(section, dict):
-                    section[key] = coerced
+                    section["allow_all"] = allow_all
                 else:
-                    setattr(section, key, coerced)
+                    setattr(section, "allow_all", allow_all)
                 changed = True
-
-    # 3) allow_all 静默放行开关（仅显式传入时生效，不改动 allowFrom 白名单）。
-    allow_all_raw = _query_first(query, "allow_all")
-    if allow_all_raw is not None:
-        allow_all = _parse_bool(allow_all_raw, "allow_all")
-        if _current_value("allow_all", False) != allow_all:
-            if section is None:
-                section = {}
-                setattr(config.channels, name, section)
-            if isinstance(section, dict):
-                section["allow_all"] = allow_all
-            else:
-                setattr(section, "allow_all", allow_all)
-            changed = True
-
-    if changed:
-        save_config(config)
+        # 退出 with 块时由 update_config 自动保存（幂等）
 
     # 3) 启用渠道且 SDK 缺失时，后台自动安装依赖（幂等；已就绪则无操作）。
     deps_installing = bool(enabled) and ensure_channel_deps(cls)
@@ -1202,7 +1221,9 @@ def settings_payload(
     search_provider = (
         search_config.provider
         if search_config.provider in _WEB_SEARCH_PROVIDER_BY_NAME
-        else "duckduckgo"
+        # 手动配置的下拉外 provider（brave/searxng 等）回显真实值，
+        # 前端下拉显示为空但其他字段（max_results 等）仍可正常编辑保存。
+        else (search_config.provider or "duckduckgo")
     )
     selected_image_provider = next(
         (provider for provider in providers if provider["name"] == image_config.provider),
@@ -1406,110 +1427,101 @@ def settings_usage_payload() -> dict[str, Any]:
 
 
 def update_agent_settings(query: QueryParams) -> dict[str, Any]:
-    config = load_config()
-    defaults = config.agents.defaults
-    changed = False
-    restart_required = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 校验失败抛 WebUISettingsError 时 with 异常退出、不保存（与原语义一致）；
+    # 无变化时写回相同内容，幂等无害。
+    with update_config() as config:
+        defaults = config.agents.defaults
+        restart_required = False
 
-    if "model_preset" in query or "modelPreset" in query:
-        preset = (_query_first_alias(query, "model_preset", "modelPreset") or "").strip()
-        preset_value = None if not preset or preset == "default" else preset
-        if preset_value is not None and preset_value not in config.model_presets:
-            raise WebUISettingsError("unknown model preset")
-        if defaults.model_preset != preset_value:
-            defaults.model_preset = preset_value
-            changed = True
+        if "model_preset" in query or "modelPreset" in query:
+            preset = (_query_first_alias(query, "model_preset", "modelPreset") or "").strip()
+            preset_value = None if not preset or preset == "default" else preset
+            if preset_value is not None and preset_value not in config.model_presets:
+                raise WebUISettingsError("unknown model preset")
+            if defaults.model_preset != preset_value:
+                defaults.model_preset = preset_value
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip()
-        if not model:
-            raise WebUISettingsError("model is required")
-        if defaults.model != model:
-            defaults.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip()
+            if not model:
+                raise WebUISettingsError("model is required")
+            if defaults.model != model:
+                defaults.model = model
 
-    provider = _query_first(query, "provider")
-    if provider is not None:
-        provider = provider.strip()
-        if not provider:
-            raise WebUISettingsError("provider is required")
-        _validate_configured_provider(config, provider)
-        if defaults.provider != provider:
-            defaults.provider = provider
-            changed = True
+        provider = _query_first(query, "provider")
+        if provider is not None:
+            provider = provider.strip()
+            if not provider:
+                raise WebUISettingsError("provider is required")
+            _validate_configured_provider(config, provider)
+            if defaults.provider != provider:
+                defaults.provider = provider
 
-    context_window_tokens = _parse_context_window_tokens(
-        _query_first_alias(query, "context_window_tokens", "contextWindowTokens")
-    )
-    if (
-        context_window_tokens is not None
-        and defaults.context_window_tokens != context_window_tokens
-    ):
-        defaults.context_window_tokens = context_window_tokens
-        changed = True
+        context_window_tokens = _parse_context_window_tokens(
+            _query_first_alias(query, "context_window_tokens", "contextWindowTokens")
+        )
+        if (
+            context_window_tokens is not None
+            and defaults.context_window_tokens != context_window_tokens
+        ):
+            defaults.context_window_tokens = context_window_tokens
 
-    timezone = _query_first(query, "timezone")
-    if timezone is not None:
-        timezone = timezone.strip()
-        if not timezone:
-            raise WebUISettingsError("timezone is required")
-        try:
-            ZoneInfo(timezone)
-        except Exception:
-            raise WebUISettingsError("invalid timezone") from None
-        if defaults.timezone != timezone:
-            defaults.timezone = timezone
-            changed = True
-            restart_required = True
+        timezone = _query_first(query, "timezone")
+        if timezone is not None:
+            timezone = timezone.strip()
+            if not timezone:
+                raise WebUISettingsError("timezone is required")
+            try:
+                ZoneInfo(timezone)
+            except Exception:
+                raise WebUISettingsError("invalid timezone") from None
+            if defaults.timezone != timezone:
+                defaults.timezone = timezone
+                restart_required = True
 
-    bot_name = _query_first_alias(query, "bot_name", "botName")
-    if bot_name is not None:
-        bot_name = bot_name.strip()
-        if not bot_name:
-            raise WebUISettingsError("bot_name is required")
-        if defaults.bot_name != bot_name:
-            defaults.bot_name = bot_name
-            changed = True
-            restart_required = True
+        bot_name = _query_first_alias(query, "bot_name", "botName")
+        if bot_name is not None:
+            bot_name = bot_name.strip()
+            if not bot_name:
+                raise WebUISettingsError("bot_name is required")
+            if defaults.bot_name != bot_name:
+                defaults.bot_name = bot_name
+                restart_required = True
 
-    bot_icon = _query_first_alias(query, "bot_icon", "botIcon")
-    if bot_icon is not None:
-        bot_icon = bot_icon.strip()
-        if defaults.bot_icon != bot_icon:
-            defaults.bot_icon = bot_icon
-            changed = True
-            restart_required = True
+        bot_icon = _query_first_alias(query, "bot_icon", "botIcon")
+        if bot_icon is not None:
+            bot_icon = bot_icon.strip()
+            if defaults.bot_icon != bot_icon:
+                defaults.bot_icon = bot_icon
+                restart_required = True
 
-    tool_hint_max_length = _query_first_alias(
-        query,
-        "tool_hint_max_length",
-        "toolHintMaxLength",
-    )
-    if tool_hint_max_length is not None:
-        try:
-            parsed = int(tool_hint_max_length)
-        except ValueError:
-            raise WebUISettingsError("tool_hint_max_length must be an integer") from None
-        if parsed < 20 or parsed > 500:
-            raise WebUISettingsError("tool_hint_max_length must be between 20 and 500")
-        if defaults.tool_hint_max_length != parsed:
-            defaults.tool_hint_max_length = parsed
-            changed = True
-            restart_required = True
+        tool_hint_max_length = _query_first_alias(
+            query,
+            "tool_hint_max_length",
+            "toolHintMaxLength",
+        )
+        if tool_hint_max_length is not None:
+            try:
+                parsed = int(tool_hint_max_length)
+            except ValueError:
+                raise WebUISettingsError("tool_hint_max_length must be an integer") from None
+            if parsed < 20 or parsed > 500:
+                raise WebUISettingsError("tool_hint_max_length must be between 20 and 500")
+            if defaults.tool_hint_max_length != parsed:
+                defaults.tool_hint_max_length = parsed
+                restart_required = True
 
-    workspace = _query_first_alias(query, "workspace", "workspacePath")
-    if workspace is not None:
-        workspace = workspace.strip()
-        if not workspace:
-            raise WebUISettingsError("workspace is required")
-        resolved = get_workspace_path(workspace)
-        if Path(defaults.workspace).expanduser() != resolved:
-            defaults.workspace = str(resolved)
-            changed = True
+        workspace = _query_first_alias(query, "workspace", "workspacePath")
+        if workspace is not None:
+            workspace = workspace.strip()
+            if not workspace:
+                raise WebUISettingsError("workspace is required")
+            resolved = get_workspace_path(workspace)
+            if Path(defaults.workspace).expanduser() != resolved:
+                defaults.workspace = str(resolved)
 
-    if changed:
-        save_config(config)
     return settings_payload(requires_restart=restart_required)
 
 
@@ -1527,23 +1539,25 @@ def create_model_configuration(query: QueryParams) -> dict[str, Any]:
         raise WebUISettingsError("provider is required")
 
     name = _model_configuration_slug(raw_name or label)
-    config = load_config()
-    if name in config.model_presets:
-        raise WebUISettingsError("configuration already exists", status=409)
-    _validate_configured_provider(config, provider)
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 重名 / 厂商校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        if name in config.model_presets:
+            raise WebUISettingsError("configuration already exists", status=409)
+        _validate_configured_provider(config, provider)
 
-    base = config.resolve_default_preset()
-    config.model_presets[name] = ModelPresetConfig(
-        label=label,
-        model=model,
-        provider=provider,
-        max_tokens=base.max_tokens,
-        context_window_tokens=base.context_window_tokens,
-        temperature=base.temperature,
-        reasoning_effort=base.reasoning_effort,
-    )
-    config.agents.defaults.model_preset = name
-    save_config(config)
+        base = config.resolve_default_preset()
+        config.model_presets[name] = ModelPresetConfig(
+            label=label,
+            model=model,
+            provider=provider,
+            max_tokens=base.max_tokens,
+            context_window_tokens=base.context_window_tokens,
+            temperature=base.temperature,
+            reasoning_effort=base.reasoning_effort,
+        )
+        config.agents.defaults.model_preset = name
+
     return settings_payload()
 
 
@@ -1552,56 +1566,50 @@ def update_model_configuration(query: QueryParams) -> dict[str, Any]:
     if not name or name == "default":
         raise WebUISettingsError("model configuration is required")
 
-    config = load_config()
-    preset = config.model_presets.get(name)
-    if preset is None:
-        raise WebUISettingsError("unknown model configuration")
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 配置不存在 / 校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        preset = config.model_presets.get(name)
+        if preset is None:
+            raise WebUISettingsError("unknown model configuration")
 
-    changed = False
-    label = _query_first_alias(query, "label", "displayName")
-    if label is not None:
-        label = label.strip()
-        if not label:
-            raise WebUISettingsError("label is required")
-        if preset.label != label:
-            preset.label = label
-            changed = True
+        label = _query_first_alias(query, "label", "displayName")
+        if label is not None:
+            label = label.strip()
+            if not label:
+                raise WebUISettingsError("label is required")
+            if preset.label != label:
+                preset.label = label
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip()
-        if not model:
-            raise WebUISettingsError("model is required")
-        if preset.model != model:
-            preset.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip()
+            if not model:
+                raise WebUISettingsError("model is required")
+            if preset.model != model:
+                preset.model = model
 
-    provider = _query_first(query, "provider")
-    if provider is not None:
-        provider = provider.strip()
-        if not provider:
-            raise WebUISettingsError("provider is required")
-        _validate_configured_provider(config, provider)
-        if preset.provider != provider:
-            preset.provider = provider
-            changed = True
+        provider = _query_first(query, "provider")
+        if provider is not None:
+            provider = provider.strip()
+            if not provider:
+                raise WebUISettingsError("provider is required")
+            _validate_configured_provider(config, provider)
+            if preset.provider != provider:
+                preset.provider = provider
 
-    context_window_tokens = _parse_context_window_tokens(
-        _query_first_alias(query, "context_window_tokens", "contextWindowTokens")
-    )
-    if (
-        context_window_tokens is not None
-        and preset.context_window_tokens != context_window_tokens
-    ):
-        preset.context_window_tokens = context_window_tokens
-        changed = True
+        context_window_tokens = _parse_context_window_tokens(
+            _query_first_alias(query, "context_window_tokens", "contextWindowTokens")
+        )
+        if (
+            context_window_tokens is not None
+            and preset.context_window_tokens != context_window_tokens
+        ):
+            preset.context_window_tokens = context_window_tokens
 
-    if config.agents.defaults.model_preset != name:
-        config.agents.defaults.model_preset = name
-        changed = True
+        if config.agents.defaults.model_preset != name:
+            config.agents.defaults.model_preset = name
 
-    if changed:
-        save_config(config)
     return settings_payload()
 
 
@@ -1610,66 +1618,66 @@ def update_provider_settings(query: QueryParams) -> dict[str, Any]:
     if not provider_name:
         raise WebUISettingsError("provider is required")
 
-    config = load_config()
-    resolved_provider = _resolve_settings_provider(config, provider_name)
-    if resolved_provider is None:
-        # 非 LLM 能力厂商（volcengine / groq / edge-tts 等）也允许在「模型厂商」页编辑
-        resolved_provider = _resolve_model_list_provider(config, provider_name)
-    if resolved_provider is None:
-        raise WebUISettingsError("unknown provider")
-    spec, provider_key, provider_config = resolved_provider
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 厂商未知 / 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        resolved_provider = _resolve_settings_provider(config, provider_name)
+        if resolved_provider is None:
+            # 非 LLM 能力厂商（volcengine / groq / edge-tts 等）也允许在「模型厂商」页编辑
+            resolved_provider = _resolve_model_list_provider(config, provider_name)
+        if resolved_provider is None:
+            raise WebUISettingsError("unknown provider")
+        spec, provider_key, provider_config = resolved_provider
 
-    # 动态 / 能力厂商首次配置时需挂到 model_extra，否则 save_config 不会持久化
-    if find_by_name(provider_key) is None and provider_key not in (
-        config.providers.model_extra or {}
-    ):
-        config.providers.model_extra[provider_key] = provider_config
+        # 动态 / 能力厂商首次配置时需挂到 model_extra，否则 save_config 不会持久化
+        if find_by_name(provider_key) is None and provider_key not in (
+            config.providers.model_extra or {}
+        ):
+            config.providers.model_extra[provider_key] = provider_config
 
-    changed = False
-    if "api_key" in query or "apiKey" in query:
-        api_key = _query_first_alias(query, "api_key", "apiKey")
-        api_key = (api_key or "").strip() or None
-        if provider_config.api_key != api_key:
-            provider_config.api_key = api_key
-            changed = True
-
-    if "api_base" in query or "apiBase" in query:
-        api_base = _query_first_alias(query, "api_base", "apiBase")
-        api_base = (api_base or "").strip() or None
-        if provider_config.api_base != api_base:
-            provider_config.api_base = api_base
-            changed = True
-
-    if "api_type" in query:
-        if spec.name == "openai":
-            api_type = (_query_first(query, "api_type") or "").strip()
-            try:
-                parsed_api_type = type(provider_config)(api_type=api_type).api_type
-            except Exception:
-                raise WebUISettingsError("api_type must be auto, chat_completions, or responses") from None
-            if provider_config.api_type != parsed_api_type:
-                provider_config.api_type = parsed_api_type
+        changed = False
+        if "api_key" in query or "apiKey" in query:
+            api_key = _query_first_alias(query, "api_key", "apiKey")
+            api_key = (api_key or "").strip() or None
+            if provider_config.api_key != api_key:
+                provider_config.api_key = api_key
                 changed = True
 
-    if "capabilities" in query:
-        raw = _query_first(query, "capabilities") or ""
-        requested = [c.strip().lower() for c in raw.split(",") if c.strip()]
-        invalid = [c for c in requested if c not in _CAPABILITY_KEYS]
-        if invalid:
-            raise WebUISettingsError(
-                "capabilities must be one of: " + ", ".join(_CAPABILITY_KEYS)
-            )
-        # 去重并保持稳定顺序
-        seen: list[str] = []
-        for c in requested:
-            if c not in seen:
-                seen.append(c)
-        if provider_config.capabilities != seen:
-            provider_config.capabilities = seen
-            changed = True
+        if "api_base" in query or "apiBase" in query:
+            api_base = _query_first_alias(query, "api_base", "apiBase")
+            api_base = (api_base or "").strip() or None
+            if provider_config.api_base != api_base:
+                provider_config.api_base = api_base
+                changed = True
 
-    if changed:
-        save_config(config)
+        if "api_type" in query:
+            if spec.name == "openai":
+                api_type = (_query_first(query, "api_type") or "").strip()
+                try:
+                    parsed_api_type = type(provider_config)(api_type=api_type).api_type
+                except Exception:
+                    raise WebUISettingsError("api_type must be auto, chat_completions, or responses") from None
+                if provider_config.api_type != parsed_api_type:
+                    provider_config.api_type = parsed_api_type
+                    changed = True
+
+        if "capabilities" in query:
+            raw = _query_first(query, "capabilities") or ""
+            requested = [c.strip().lower() for c in raw.split(",") if c.strip()]
+            invalid = [c for c in requested if c not in _CAPABILITY_KEYS]
+            if invalid:
+                raise WebUISettingsError(
+                    "capabilities must be one of: " + ", ".join(_CAPABILITY_KEYS)
+                )
+            # 去重并保持稳定顺序
+            seen: list[str] = []
+            for c in requested:
+                if c not in seen:
+                    seen.append(c)
+            if provider_config.capabilities != seen:
+                provider_config.capabilities = seen
+                changed = True
+
     image_config = config.tools.image_generation
     restart_required = (
         changed
@@ -1693,51 +1701,52 @@ def delete_provider_settings(query: QueryParams) -> dict[str, Any]:
     if not provider_name:
         raise WebUISettingsError("provider is required")
 
-    config = load_config()
-    if find_by_name(provider_name) is not None:
-        raise WebUISettingsError("provider cannot be deleted")
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 固定厂商不可删除的校验在 with 内抛出 → 异常退出不保存，与原语义一致。
+    with update_config() as config:
+        if find_by_name(provider_name) is not None:
+            raise WebUISettingsError("provider cannot be deleted")
 
-    normalized = provider_name.replace("-", "_")
+        normalized = provider_name.replace("-", "_")
 
-    # 1) 清除 model_extra 里的密钥配置（若存在）
-    model_extra = config.providers.model_extra or {}
-    key = next(
-        (
-            extra_name
-            for extra_name in model_extra
-            if extra_name == provider_name
-            or extra_name.replace("-", "_") == normalized
-        ),
-        None,
-    )
-    if key is not None:
-        del model_extra[key]
+        # 1) 清除 model_extra 里的密钥配置（若存在）
+        model_extra = config.providers.model_extra or {}
+        key = next(
+            (
+                extra_name
+                for extra_name in model_extra
+                if extra_name == provider_name
+                or extra_name.replace("-", "_") == normalized
+            ),
+            None,
+        )
+        if key is not None:
+            del model_extra[key]
 
-    # 2) 加入隐藏列表，避免注册表驱动厂商重新出现
-    hidden = config.hidden_providers or []
-    if normalized not in {str(name).replace("-", "_") for name in hidden}:
-        hidden.append(provider_name)
-        config.hidden_providers = hidden
+        # 2) 加入隐藏列表，避免注册表驱动厂商重新出现
+        hidden = config.hidden_providers or []
+        if normalized not in {str(name).replace("-", "_") for name in hidden}:
+            hidden.append(provider_name)
+            config.hidden_providers = hidden
 
-    # 3) 回退各处引用，避免删除后留下悬空 provider
-    defaults = config.agents.defaults
-    if defaults.provider.replace("-", "_") == normalized:
-        defaults.provider = "auto"
-    if defaults.vision_model and defaults.vision_model.replace("-", "_") == normalized:
-        defaults.vision_model = None
-    for preset in config.model_presets.values():
-        if preset.provider.replace("-", "_") == normalized:
-            preset.provider = "auto"
-    if config.tools.image_generation.provider.replace("-", "_") == normalized:
-        config.tools.image_generation.provider = "volcengine"
-    if config.tools.seedance_video.provider.replace("-", "_") == normalized:
-        config.tools.seedance_video.provider = "volcengine"
-    if config.transcription.provider and config.transcription.provider.replace("-", "_") == normalized:
-        config.transcription.provider = None
-    if config.tts.provider and config.tts.provider.replace("-", "_") == normalized:
-        config.tts.provider = None
+        # 3) 回退各处引用，避免删除后留下悬空 provider
+        defaults = config.agents.defaults
+        if defaults.provider.replace("-", "_") == normalized:
+            defaults.provider = "auto"
+        if defaults.vision_model and defaults.vision_model.replace("-", "_") == normalized:
+            defaults.vision_model = None
+        for preset in config.model_presets.values():
+            if preset.provider.replace("-", "_") == normalized:
+                preset.provider = "auto"
+        if config.tools.image_generation.provider.replace("-", "_") == normalized:
+            config.tools.image_generation.provider = "volcengine"
+        if config.tools.seedance_video.provider.replace("-", "_") == normalized:
+            config.tools.seedance_video.provider = "volcengine"
+        if config.transcription.provider and config.transcription.provider.replace("-", "_") == normalized:
+            config.transcription.provider = None
+        if config.tts.provider and config.tts.provider.replace("-", "_") == normalized:
+            config.tts.provider = None
 
-    save_config(config)
     return settings_payload()
 
 
@@ -1762,51 +1771,57 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
             "cold_storage_days, or duplicate_similarity_threshold is required"
         )
 
-    config = load_config()
-    changed = False
-    if raw_allow is not None:
-        webui_allow_local_service_access = _parse_bool(raw_allow, "webui_allow_local_service_access")
-        if config.tools.webui_allow_local_service_access != webui_allow_local_service_access:
-            config.tools.webui_allow_local_service_access = webui_allow_local_service_access
-            changed = True
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 校验失败时 with 异常退出、不保存，与原语义一致；webui_default_access_mode
+    # 写独立文件，保持在锁外（与原「config.json 先落盘再写 access mode」顺序一致）。
+    with update_config() as config:
+        changed = False
+        default_access_mode: str | None = None
+        if raw_default_access_mode is not None:
+            # 先校验 access_mode 合法性，避免前面网络参数已保存后才发现非法值，
+            # 造成「部分提交」。
+            default_access_mode = raw_default_access_mode.strip().lower()
+            if default_access_mode == "restricted":
+                default_access_mode = "default"
+            if default_access_mode not in {"default", "full"}:
+                raise WebUISettingsError("webui_default_access_mode must be default or full")
 
-    if raw_guard_level is not None:
-        from biscuitbot.security.guard_level import normalize_guard_level
-        guard_level = normalize_guard_level(raw_guard_level)
-        if config.tools.guard_level != guard_level:
-            config.tools.guard_level = guard_level
-            changed = True
+        if raw_allow is not None:
+            webui_allow_local_service_access = _parse_bool(raw_allow, "webui_allow_local_service_access")
+            if config.tools.webui_allow_local_service_access != webui_allow_local_service_access:
+                config.tools.webui_allow_local_service_access = webui_allow_local_service_access
+                changed = True
 
-    if raw_cold_storage_days is not None:
-        try:
-            cold_storage_days = int(raw_cold_storage_days)
-        except (TypeError, ValueError):
-            raise WebUISettingsError("cold_storage_days must be an integer")
-        if not (0 <= cold_storage_days <= 365):
-            raise WebUISettingsError("cold_storage_days must be between 0 and 365")
-        if config.tools.cold_storage_days != cold_storage_days:
-            config.tools.cold_storage_days = cold_storage_days
-            changed = True
+        if raw_guard_level is not None:
+            from biscuitbot.security.guard_level import normalize_guard_level
+            guard_level = normalize_guard_level(raw_guard_level)
+            if config.tools.guard_level != guard_level:
+                config.tools.guard_level = guard_level
+                changed = True
 
-    if raw_dup_threshold is not None:
-        try:
-            dup_threshold = float(raw_dup_threshold)
-        except (TypeError, ValueError):
-            raise WebUISettingsError("duplicate_similarity_threshold must be a number")
-        if not (0.0 <= dup_threshold <= 1.0):
-            raise WebUISettingsError("duplicate_similarity_threshold must be between 0.0 and 1.0")
-        if config.tools.duplicate_similarity_threshold != dup_threshold:
-            config.tools.duplicate_similarity_threshold = dup_threshold
-            changed = True
+        if raw_cold_storage_days is not None:
+            try:
+                cold_storage_days = int(raw_cold_storage_days)
+            except (TypeError, ValueError):
+                raise WebUISettingsError("cold_storage_days must be an integer")
+            if not (0 <= cold_storage_days <= 365):
+                raise WebUISettingsError("cold_storage_days must be between 0 and 365")
+            if config.tools.cold_storage_days != cold_storage_days:
+                config.tools.cold_storage_days = cold_storage_days
+                changed = True
 
-    if changed:
-        save_config(config)
-    if raw_default_access_mode is not None:
-        default_access_mode = raw_default_access_mode.strip().lower()
-        if default_access_mode == "restricted":
-            default_access_mode = "default"
-        if default_access_mode not in {"default", "full"}:
-            raise WebUISettingsError("webui_default_access_mode must be default or full")
+        if raw_dup_threshold is not None:
+            try:
+                dup_threshold = float(raw_dup_threshold)
+            except (TypeError, ValueError):
+                raise WebUISettingsError("duplicate_similarity_threshold must be a number")
+            if not (0.0 <= dup_threshold <= 1.0):
+                raise WebUISettingsError("duplicate_similarity_threshold must be between 0.0 and 1.0")
+            if config.tools.duplicate_similarity_threshold != dup_threshold:
+                config.tools.duplicate_similarity_threshold = dup_threshold
+                changed = True
+
+    if default_access_mode is not None:
         try:
             write_webui_default_access_mode(default_access_mode)
         except ValueError as exc:
@@ -1817,536 +1832,530 @@ def update_network_safety_settings(query: QueryParams) -> dict[str, Any]:
 def update_web_search_settings(query: QueryParams) -> dict[str, Any]:
     provider_name = (_query_first(query, "provider") or "").strip().lower()
     provider_option = _WEB_SEARCH_PROVIDER_BY_NAME.get(provider_name)
-    if provider_option is None:
+    if provider_option is None and provider_name not in ("", "keep"):
+        # 下拉外的 provider（手动配置 brave/searxng 等）不允许切换为它，
+        # 但允许「保持不变」——否则这类用户无法单独更新 max_results 等字段。
         raise WebUISettingsError("unknown web search provider")
 
-    config = load_config()
-    search_config = config.tools.web.search
-    web_config = config.tools.web
-    previous_provider = search_config.provider
-    changed = False
-    restart_required = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 凭据 / 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        search_config = config.tools.web.search
+        web_config = config.tools.web
+        previous_provider = search_config.provider
+        changed = False
+        restart_required = False
 
-    def set_search_value(attr: str, value: object) -> None:
-        nonlocal changed
-        if getattr(search_config, attr) != value:
-            setattr(search_config, attr, value)
+        def set_search_value(attr: str, value: object) -> None:
+            nonlocal changed
+            if getattr(search_config, attr) != value:
+                setattr(search_config, attr, value)
+                changed = True
+
+        def set_fetch_value(attr: str, value: object) -> None:
+            nonlocal changed
+            if getattr(web_config.fetch, attr) != value:
+                setattr(web_config.fetch, attr, value)
+                changed = True
+
+        if provider_option is None:
+            # 「保持不变」路径（手动配置的下拉外 provider）：不改 provider，
+            # 也不触碰其凭据字段，仅应用下方 max_results / timeout 等参数。
+            pass
+        elif search_config.provider != provider_name:
+            search_config.provider = provider_name
             changed = True
 
-    def set_fetch_value(attr: str, value: object) -> None:
-        nonlocal changed
-        if getattr(web_config.fetch, attr) != value:
-            setattr(web_config.fetch, attr, value)
-            changed = True
+        if provider_option is not None:
+            credential = provider_option["credential"]
+            if credential == "none":
+                set_search_value("api_key", "")
+                set_search_value("base_url", "")
+            elif credential == "base_url":
+                base_url = _query_first_alias(query, "base_url", "baseUrl")
+                base_url = base_url.strip() if base_url is not None else None
+                if not base_url and previous_provider == provider_name and search_config.base_url:
+                    base_url = search_config.base_url
+                if not base_url:
+                    raise WebUISettingsError("base_url is required")
+                set_search_value("base_url", base_url)
+                set_search_value("api_key", "")
+            else:
+                api_key = _query_first_alias(query, "api_key", "apiKey")
+                api_key = api_key.strip() if api_key is not None else None
+                if not api_key and previous_provider == provider_name and search_config.api_key:
+                    api_key = search_config.api_key
+                if not api_key:
+                    raise WebUISettingsError("api_key is required")
+                set_search_value("api_key", api_key)
+                set_search_value("base_url", "")
 
-    if search_config.provider != provider_name:
-        search_config.provider = provider_name
-        changed = True
+        max_results = _query_first_alias(query, "max_results", "maxResults")
+        if max_results is not None:
+            try:
+                parsed = int(max_results)
+            except ValueError:
+                raise WebUISettingsError("max_results must be an integer") from None
+            if parsed < 1 or parsed > 10:
+                raise WebUISettingsError("max_results must be between 1 and 10")
+            set_search_value("max_results", parsed)
 
-    credential = provider_option["credential"]
-    if credential == "none":
-        set_search_value("api_key", "")
-        set_search_value("base_url", "")
-    elif credential == "base_url":
-        base_url = _query_first_alias(query, "base_url", "baseUrl")
-        base_url = base_url.strip() if base_url is not None else None
-        if not base_url and previous_provider == provider_name and search_config.base_url:
-            base_url = search_config.base_url
-        if not base_url:
-            raise WebUISettingsError("base_url is required")
-        set_search_value("base_url", base_url)
-        set_search_value("api_key", "")
-    else:
-        api_key = _query_first_alias(query, "api_key", "apiKey")
-        api_key = api_key.strip() if api_key is not None else None
-        if not api_key and previous_provider == provider_name and search_config.api_key:
-            api_key = search_config.api_key
-        if not api_key:
-            raise WebUISettingsError("api_key is required")
-        set_search_value("api_key", api_key)
-        set_search_value("base_url", "")
+        timeout = _query_first(query, "timeout")
+        if timeout is not None:
+            try:
+                parsed_timeout = int(timeout)
+            except ValueError:
+                raise WebUISettingsError("timeout must be an integer") from None
+            if parsed_timeout < 1 or parsed_timeout > 120:
+                raise WebUISettingsError("timeout must be between 1 and 120")
+            set_search_value("timeout", parsed_timeout)
 
-    max_results = _query_first_alias(query, "max_results", "maxResults")
-    if max_results is not None:
-        try:
-            parsed = int(max_results)
-        except ValueError:
-            raise WebUISettingsError("max_results must be an integer") from None
-        if parsed < 1 or parsed > 10:
-            raise WebUISettingsError("max_results must be between 1 and 10")
-        set_search_value("max_results", parsed)
+        use_jina_reader = _query_first_alias(query, "use_jina_reader", "useJinaReader")
+        if use_jina_reader is not None:
+            normalized = use_jina_reader.strip().lower()
+            if normalized not in {"1", "0", "true", "false", "yes", "no"}:
+                raise WebUISettingsError("use_jina_reader must be boolean")
+            previous_jina_reader = web_config.fetch.use_jina_reader
+            set_fetch_value("use_jina_reader", normalized in {"1", "true", "yes"})
+            if web_config.fetch.use_jina_reader != previous_jina_reader:
+                restart_required = True
 
-    timeout = _query_first(query, "timeout")
-    if timeout is not None:
-        try:
-            parsed_timeout = int(timeout)
-        except ValueError:
-            raise WebUISettingsError("timeout must be an integer") from None
-        if parsed_timeout < 1 or parsed_timeout > 120:
-            raise WebUISettingsError("timeout must be between 1 and 120")
-        set_search_value("timeout", parsed_timeout)
-
-    use_jina_reader = _query_first_alias(query, "use_jina_reader", "useJinaReader")
-    if use_jina_reader is not None:
-        normalized = use_jina_reader.strip().lower()
-        if normalized not in {"1", "0", "true", "false", "yes", "no"}:
-            raise WebUISettingsError("use_jina_reader must be boolean")
-        previous_jina_reader = web_config.fetch.use_jina_reader
-        set_fetch_value("use_jina_reader", normalized in {"1", "true", "yes"})
-        if web_config.fetch.use_jina_reader != previous_jina_reader:
-            restart_required = True
-
-    if changed:
-        save_config(config)
     return settings_payload(requires_restart=restart_required)
 
 
 def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
-    config = load_config()
-    image_config = config.tools.image_generation
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        image_config = config.tools.image_generation
+        changed = False
 
-    provider_name = _query_first(query, "provider")
-    if provider_name is not None:
-        provider_name = provider_name.strip().lower()
-        if not provider_name:
-            raise WebUISettingsError("image generation provider is required")
-        if get_image_gen_provider(provider_name) is None:
-            raise WebUISettingsError("unknown image generation provider")
-        if image_config.provider != provider_name:
-            image_config.provider = provider_name
-            changed = True
+        provider_name = _query_first(query, "provider")
+        if provider_name is not None:
+            provider_name = provider_name.strip().lower()
+            if not provider_name:
+                raise WebUISettingsError("image generation provider is required")
+            if get_image_gen_provider(provider_name) is None:
+                raise WebUISettingsError("unknown image generation provider")
+            if image_config.provider != provider_name:
+                image_config.provider = provider_name
+                changed = True
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if image_config.enabled != parsed_enabled:
-            image_config.enabled = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if image_config.enabled != parsed_enabled:
+                image_config.enabled = parsed_enabled
+                changed = True
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip()
-        if not model:
-            raise WebUISettingsError("image generation model is required")
-        if len(model) > 200:
-            raise WebUISettingsError("image generation model is too long")
-        if image_config.model != model:
-            image_config.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip()
+            if not model:
+                raise WebUISettingsError("image generation model is required")
+            if len(model) > 200:
+                raise WebUISettingsError("image generation model is too long")
+            if image_config.model != model:
+                image_config.model = model
+                changed = True
 
-    default_aspect_ratio = _query_first_alias(
-        query,
-        "default_aspect_ratio",
-        "defaultAspectRatio",
-    )
-    if default_aspect_ratio is not None:
-        default_aspect_ratio = default_aspect_ratio.strip()
-        if default_aspect_ratio not in _IMAGE_GENERATION_ASPECT_RATIOS:
-            raise WebUISettingsError("unsupported image generation aspect ratio")
-        if image_config.default_aspect_ratio != default_aspect_ratio:
-            image_config.default_aspect_ratio = default_aspect_ratio
-            changed = True
-
-    default_image_size = _query_first_alias(
-        query,
-        "default_image_size",
-        "defaultImageSize",
-    )
-    if default_image_size is not None:
-        default_image_size = default_image_size.strip()
-        if not default_image_size:
-            raise WebUISettingsError("default image size is required")
-        if len(default_image_size) > 32 or not all(
-            char.isascii() and (char.isalnum() or char in {"x", "X", ":", "-", "_"})
-            for char in default_image_size
-        ):
-            raise WebUISettingsError("unsupported image generation size")
-        if image_config.default_image_size != default_image_size:
-            image_config.default_image_size = default_image_size
-            changed = True
-
-    max_images_per_turn = _query_first_alias(
-        query,
-        "max_images_per_turn",
-        "maxImagesPerTurn",
-    )
-    if max_images_per_turn is not None:
-        try:
-            parsed_max = int(max_images_per_turn)
-        except ValueError:
-            raise WebUISettingsError("max_images_per_turn must be an integer") from None
-        if parsed_max < 1 or parsed_max > 8:
-            raise WebUISettingsError("max_images_per_turn must be between 1 and 8")
-        if image_config.max_images_per_turn != parsed_max:
-            image_config.max_images_per_turn = parsed_max
-            changed = True
-
-    if image_config.enabled:
-        selected_provider = next(
-            (
-                provider
-                for provider in _unified_provider_rows(config)
-                if provider["name"] == image_config.provider
-            ),
-            None,
+        default_aspect_ratio = _query_first_alias(
+            query,
+            "default_aspect_ratio",
+            "defaultAspectRatio",
         )
-        if not selected_provider or not selected_provider["configured"]:
-            raise WebUISettingsError("image generation provider is not configured")
+        if default_aspect_ratio is not None:
+            default_aspect_ratio = default_aspect_ratio.strip()
+            if default_aspect_ratio not in _IMAGE_GENERATION_ASPECT_RATIOS:
+                raise WebUISettingsError("unsupported image generation aspect ratio")
+            if image_config.default_aspect_ratio != default_aspect_ratio:
+                image_config.default_aspect_ratio = default_aspect_ratio
+                changed = True
 
-    if changed:
-        save_config(config)
+        default_image_size = _query_first_alias(
+            query,
+            "default_image_size",
+            "defaultImageSize",
+        )
+        if default_image_size is not None:
+            default_image_size = default_image_size.strip()
+            if not default_image_size:
+                raise WebUISettingsError("default image size is required")
+            if len(default_image_size) > 32 or not all(
+                char.isascii() and (char.isalnum() or char in {"x", "X", ":", "-", "_"})
+                for char in default_image_size
+            ):
+                raise WebUISettingsError("unsupported image generation size")
+            if image_config.default_image_size != default_image_size:
+                image_config.default_image_size = default_image_size
+                changed = True
+
+        max_images_per_turn = _query_first_alias(
+            query,
+            "max_images_per_turn",
+            "maxImagesPerTurn",
+        )
+        if max_images_per_turn is not None:
+            try:
+                parsed_max = int(max_images_per_turn)
+            except ValueError:
+                raise WebUISettingsError("max_images_per_turn must be an integer") from None
+            if parsed_max < 1 or parsed_max > 8:
+                raise WebUISettingsError("max_images_per_turn must be between 1 and 8")
+            if image_config.max_images_per_turn != parsed_max:
+                image_config.max_images_per_turn = parsed_max
+                changed = True
+
+        if image_config.enabled:
+            selected_provider = next(
+                (
+                    provider
+                    for provider in _unified_provider_rows(config)
+                    if provider["name"] == image_config.provider
+                ),
+                None,
+            )
+            if not selected_provider or not selected_provider["configured"]:
+                raise WebUISettingsError("image generation provider is not configured")
+
     return settings_payload(requires_restart=changed)
 
 
 def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
-    config = load_config()
-    video_config = config.tools.seedance_video
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验 / 密钥校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        video_config = config.tools.seedance_video
+        changed = False
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if video_config.enabled != parsed_enabled:
-            video_config.enabled = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if video_config.enabled != parsed_enabled:
+                video_config.enabled = parsed_enabled
+                changed = True
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip()
-        if not model:
-            raise WebUISettingsError("video generation model is required")
-        if len(model) > 200:
-            raise WebUISettingsError("video generation model is too long")
-        if video_config.model != model:
-            video_config.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip()
+            if not model:
+                raise WebUISettingsError("video generation model is required")
+            if len(model) > 200:
+                raise WebUISettingsError("video generation model is too long")
+            if video_config.model != model:
+                video_config.model = model
+                changed = True
 
-    provider = _query_first(query, "provider")
-    if provider is not None:
-        provider = provider.strip().lower()
-        if not provider:
-            raise WebUISettingsError("video generation provider is required")
-        if len(provider) > 64:
-            raise WebUISettingsError("video generation provider is too long")
-        if video_config.provider != provider:
-            video_config.provider = provider
-            changed = True
+        provider = _query_first(query, "provider")
+        if provider is not None:
+            provider = provider.strip().lower()
+            if not provider:
+                raise WebUISettingsError("video generation provider is required")
+            if len(provider) > 64:
+                raise WebUISettingsError("video generation provider is too long")
+            if video_config.provider != provider:
+                video_config.provider = provider
+                changed = True
 
-    default_ratio = _query_first_alias(query, "default_ratio", "defaultRatio")
-    if default_ratio is not None:
-        default_ratio = default_ratio.strip()
-        if default_ratio not in _VIDEO_RATIO_OPTIONS:
-            raise WebUISettingsError("unsupported video generation aspect ratio")
-        if video_config.default_ratio != default_ratio:
-            video_config.default_ratio = default_ratio
-            changed = True
+        default_ratio = _query_first_alias(query, "default_ratio", "defaultRatio")
+        if default_ratio is not None:
+            default_ratio = default_ratio.strip()
+            if default_ratio not in _VIDEO_RATIO_OPTIONS:
+                raise WebUISettingsError("unsupported video generation aspect ratio")
+            if video_config.default_ratio != default_ratio:
+                video_config.default_ratio = default_ratio
+                changed = True
 
-    default_duration = _query_first_alias(query, "default_duration", "defaultDuration")
-    if default_duration is not None:
-        try:
-            parsed_duration = int(default_duration)
-        except ValueError:
-            raise WebUISettingsError("default_duration must be an integer") from None
-        if parsed_duration < _VIDEO_DURATION_MIN or parsed_duration > _VIDEO_DURATION_MAX:
-            raise WebUISettingsError("default_duration must be between 4 and 30")
-        if video_config.default_duration != parsed_duration:
-            video_config.default_duration = parsed_duration
-            changed = True
+        default_duration = _query_first_alias(query, "default_duration", "defaultDuration")
+        if default_duration is not None:
+            try:
+                parsed_duration = int(default_duration)
+            except ValueError:
+                raise WebUISettingsError("default_duration must be an integer") from None
+            if parsed_duration < _VIDEO_DURATION_MIN or parsed_duration > _VIDEO_DURATION_MAX:
+                raise WebUISettingsError("default_duration must be between 4 and 30")
+            if video_config.default_duration != parsed_duration:
+                video_config.default_duration = parsed_duration
+                changed = True
 
-    default_resolution = _query_first_alias(query, "default_resolution", "defaultResolution")
-    if default_resolution is not None:
-        default_resolution = default_resolution.strip()
-        if default_resolution:
-            if default_resolution not in _VIDEO_RESOLUTION_OPTIONS:
-                raise WebUISettingsError("unsupported video generation resolution")
-            parsed_resolution = default_resolution
-        else:
-            # 空值 = 模型自动决定（对应 default_resolution=None）。
-            parsed_resolution = None
-        if video_config.default_resolution != parsed_resolution:
-            video_config.default_resolution = parsed_resolution
-            changed = True
+        default_resolution = _query_first_alias(query, "default_resolution", "defaultResolution")
+        if default_resolution is not None:
+            default_resolution = default_resolution.strip()
+            if default_resolution:
+                if default_resolution not in _VIDEO_RESOLUTION_OPTIONS:
+                    raise WebUISettingsError("unsupported video generation resolution")
+                parsed_resolution = default_resolution
+            else:
+                # 空值 = 模型自动决定（对应 default_resolution=None）。
+                parsed_resolution = None
+            if video_config.default_resolution != parsed_resolution:
+                video_config.default_resolution = parsed_resolution
+                changed = True
 
-    generate_audio = _query_first_alias(query, "generate_audio", "generateAudio")
-    if generate_audio is not None:
-        parsed_audio = _parse_bool(generate_audio, "generate_audio")
-        if video_config.generate_audio != parsed_audio:
-            video_config.generate_audio = parsed_audio
-            changed = True
+        generate_audio = _query_first_alias(query, "generate_audio", "generateAudio")
+        if generate_audio is not None:
+            parsed_audio = _parse_bool(generate_audio, "generate_audio")
+            if video_config.generate_audio != parsed_audio:
+                video_config.generate_audio = parsed_audio
+                changed = True
 
-    watermark = _query_first_alias(query, "watermark", "watermark")
-    if watermark is not None:
-        parsed_watermark = _parse_bool(watermark, "watermark")
-        if video_config.watermark != parsed_watermark:
-            video_config.watermark = parsed_watermark
-            changed = True
+        watermark = _query_first_alias(query, "watermark", "watermark")
+        if watermark is not None:
+            parsed_watermark = _parse_bool(watermark, "watermark")
+            if video_config.watermark != parsed_watermark:
+                video_config.watermark = parsed_watermark
+                changed = True
 
-    save_dir = _query_first_alias(query, "save_dir", "saveDir")
-    if save_dir is not None:
-        save_dir = save_dir.strip()
-        if not save_dir:
-            raise WebUISettingsError("video generation save dir is required")
-        if len(save_dir) > 200:
-            raise WebUISettingsError("video generation save dir is too long")
-        if video_config.save_dir != save_dir:
-            video_config.save_dir = save_dir
-            changed = True
+        save_dir = _query_first_alias(query, "save_dir", "saveDir")
+        if save_dir is not None:
+            save_dir = save_dir.strip()
+            if not save_dir:
+                raise WebUISettingsError("video generation save dir is required")
+            if len(save_dir) > 200:
+                raise WebUISettingsError("video generation save dir is too long")
+            if video_config.save_dir != save_dir:
+                video_config.save_dir = save_dir
+                changed = True
 
-    if video_config.enabled and not _video_api_key_configured(config):
-        provider = video_config.provider
-        if provider == "volcengine":
-            raise WebUISettingsError("seedance api key is required to enable video generation")
-        raise WebUISettingsError(
-            f"video generation provider ({provider}) api key is required to enable video generation"
-        )
+        if video_config.enabled and not _video_api_key_configured(config):
+            provider = video_config.provider
+            if provider == "volcengine":
+                raise WebUISettingsError("seedance api key is required to enable video generation")
+            raise WebUISettingsError(
+                f"video generation provider ({provider}) api key is required to enable video generation"
+            )
 
-    if changed:
-        save_config(config)
     return settings_payload(requires_restart=changed)
 
 
 def update_screenshot_settings(query: QueryParams) -> dict[str, Any]:
     """Update screenshot tool configuration."""
-    config = load_config()
-    screenshot_config = config.tools.screenshot
-    defaults = config.agents.defaults
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        screenshot_config = config.tools.screenshot
+        defaults = config.agents.defaults
+        changed = False
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if screenshot_config.enable != parsed_enabled:
-            screenshot_config.enable = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if screenshot_config.enable != parsed_enabled:
+                screenshot_config.enable = parsed_enabled
+                changed = True
 
-    vision_model = _query_first_alias(query, "vision_model", "visionModel")
-    if vision_model is not None:
-        vision_model = vision_model.strip()
-        if vision_model:
-            is_preset = vision_model in config.model_presets
-            is_provider = getattr(config.providers, vision_model, None) is not None
+        vision_model = _query_first_alias(query, "vision_model", "visionModel")
+        if vision_model is not None:
+            vision_model = vision_model.strip()
+            if vision_model:
+                is_preset = vision_model in config.model_presets
+                is_provider = getattr(config.providers, vision_model, None) is not None
+                if not is_preset and not is_provider:
+                    raise WebUISettingsError(
+                        f"vision model '{vision_model}' is not a known preset or provider"
+                    )
+            if defaults.vision_model != (vision_model or None):
+                defaults.vision_model = vision_model or None
+                changed = True
+
+        vision_model_override = _query_first_alias(
+            query, "vision_model_override", "visionModelOverride"
+        )
+        if vision_model_override is not None:
+            override = vision_model_override.strip()
+            if defaults.vision_model_override != (override or None):
+                defaults.vision_model_override = override or None
+                changed = True
+
+        max_width = _query_first_alias(query, "max_width", "maxWidth")
+        if max_width is not None:
+            try:
+                parsed_width = int(max_width)
+            except ValueError:
+                raise WebUISettingsError("max_width must be an integer") from None
+            if parsed_width < 320 or parsed_width > 7680:
+                raise WebUISettingsError("max_width must be between 320 and 7680")
+            if screenshot_config.max_width != parsed_width:
+                screenshot_config.max_width = parsed_width
+                changed = True
+
+        max_height = _query_first_alias(query, "max_height", "maxHeight")
+        if max_height is not None:
+            try:
+                parsed_height = int(max_height)
+            except ValueError:
+                raise WebUISettingsError("max_height must be an integer") from None
+            if parsed_height < 240 or parsed_height > 4320:
+                raise WebUISettingsError("max_height must be between 240 and 4320")
+            if screenshot_config.max_height != parsed_height:
+                screenshot_config.max_height = parsed_height
+                changed = True
+
+        quality = _query_first(query, "quality")
+        if quality is not None:
+            try:
+                parsed_quality = int(quality)
+            except ValueError:
+                raise WebUISettingsError("quality must be an integer") from None
+            if parsed_quality < 10 or parsed_quality > 100:
+                raise WebUISettingsError("quality must be between 10 and 100")
+            if screenshot_config.quality != parsed_quality:
+                screenshot_config.quality = parsed_quality
+                changed = True
+
+        if screenshot_config.enable:
+            if not defaults.vision_model:
+                raise WebUISettingsError(
+                    "vision model must be configured to enable screenshot"
+                )
+            is_preset = defaults.vision_model in config.model_presets
+            is_provider = getattr(config.providers, defaults.vision_model, None) is not None
             if not is_preset and not is_provider:
                 raise WebUISettingsError(
-                    f"vision model '{vision_model}' is not a known preset or provider"
+                    f"vision model '{defaults.vision_model}' is not a known preset or provider"
                 )
-        if defaults.vision_model != (vision_model or None):
-            defaults.vision_model = vision_model or None
-            changed = True
 
-    vision_model_override = _query_first_alias(
-        query, "vision_model_override", "visionModelOverride"
-    )
-    if vision_model_override is not None:
-        override = vision_model_override.strip()
-        if defaults.vision_model_override != (override or None):
-            defaults.vision_model_override = override or None
-            changed = True
-
-    max_width = _query_first_alias(query, "max_width", "maxWidth")
-    if max_width is not None:
-        try:
-            parsed_width = int(max_width)
-        except ValueError:
-            raise WebUISettingsError("max_width must be an integer") from None
-        if parsed_width < 320 or parsed_width > 7680:
-            raise WebUISettingsError("max_width must be between 320 and 7680")
-        if screenshot_config.max_width != parsed_width:
-            screenshot_config.max_width = parsed_width
-            changed = True
-
-    max_height = _query_first_alias(query, "max_height", "maxHeight")
-    if max_height is not None:
-        try:
-            parsed_height = int(max_height)
-        except ValueError:
-            raise WebUISettingsError("max_height must be an integer") from None
-        if parsed_height < 240 or parsed_height > 4320:
-            raise WebUISettingsError("max_height must be between 240 and 4320")
-        if screenshot_config.max_height != parsed_height:
-            screenshot_config.max_height = parsed_height
-            changed = True
-
-    quality = _query_first(query, "quality")
-    if quality is not None:
-        try:
-            parsed_quality = int(quality)
-        except ValueError:
-            raise WebUISettingsError("quality must be an integer") from None
-        if parsed_quality < 10 or parsed_quality > 100:
-            raise WebUISettingsError("quality must be between 10 and 100")
-        if screenshot_config.quality != parsed_quality:
-            screenshot_config.quality = parsed_quality
-            changed = True
-
-    if screenshot_config.enable:
-        if not defaults.vision_model:
-            raise WebUISettingsError(
-                "vision model must be configured to enable screenshot"
-            )
-        is_preset = defaults.vision_model in config.model_presets
-        is_provider = getattr(config.providers, defaults.vision_model, None) is not None
-        if not is_preset and not is_provider:
-            raise WebUISettingsError(
-                f"vision model '{defaults.vision_model}' is not a known preset or provider"
-            )
-
-    if changed:
-        save_config(config)
     return settings_payload(requires_restart=changed)
 
 
 def update_transcription_settings(query: QueryParams) -> dict[str, Any]:
-    config = load_config()
-    transcription = config.transcription
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        transcription = config.transcription
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if transcription.enabled != parsed_enabled:
-            transcription.enabled = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if transcription.enabled != parsed_enabled:
+                transcription.enabled = parsed_enabled
 
-    provider = _query_first(query, "provider")
-    if provider is not None:
-        provider = provider.strip().lower()
-        provider_spec = resolve_transcription_provider(provider)
-        if provider_spec is None:
-            raise WebUISettingsError("unknown transcription provider")
-        provider = provider_spec.name
-        if transcription.provider != provider:
-            transcription.provider = provider
-            changed = True
+        provider = _query_first(query, "provider")
+        if provider is not None:
+            provider = provider.strip().lower()
+            provider_spec = resolve_transcription_provider(provider)
+            if provider_spec is None:
+                raise WebUISettingsError("unknown transcription provider")
+            provider = provider_spec.name
+            if transcription.provider != provider:
+                transcription.provider = provider
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip() or None
-        if model is not None and len(model) > 200:
-            raise WebUISettingsError("transcription model is too long")
-        if transcription.model != model:
-            transcription.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip() or None
+            if model is not None and len(model) > 200:
+                raise WebUISettingsError("transcription model is too long")
+            if transcription.model != model:
+                transcription.model = model
 
-    language = _query_first(query, "language")
-    if language is not None:
-        language = language.strip().lower() or None
-        if language is not None and not re.fullmatch(r"[a-z]{2,3}", language):
-            raise WebUISettingsError("transcription language must be 2-3 lowercase letters")
-        if transcription.language != language:
-            transcription.language = language
-            changed = True
+        language = _query_first(query, "language")
+        if language is not None:
+            language = language.strip().lower() or None
+            if language is not None and not re.fullmatch(r"[a-z]{2,3}", language):
+                raise WebUISettingsError("transcription language must be 2-3 lowercase letters")
+            if transcription.language != language:
+                transcription.language = language
 
-    max_duration_sec = _query_first_alias(query, "max_duration_sec", "maxDurationSec")
-    if max_duration_sec is not None:
-        try:
-            parsed_duration = int(max_duration_sec)
-        except ValueError:
-            raise WebUISettingsError("max_duration_sec must be an integer") from None
-        if parsed_duration < 1 or parsed_duration > 600:
-            raise WebUISettingsError("max_duration_sec must be between 1 and 600")
-        if transcription.max_duration_sec != parsed_duration:
-            transcription.max_duration_sec = parsed_duration
-            changed = True
+        max_duration_sec = _query_first_alias(query, "max_duration_sec", "maxDurationSec")
+        if max_duration_sec is not None:
+            try:
+                parsed_duration = int(max_duration_sec)
+            except ValueError:
+                raise WebUISettingsError("max_duration_sec must be an integer") from None
+            if parsed_duration < 1 or parsed_duration > 600:
+                raise WebUISettingsError("max_duration_sec must be between 1 and 600")
+            if transcription.max_duration_sec != parsed_duration:
+                transcription.max_duration_sec = parsed_duration
 
-    max_upload_mb = _query_first_alias(query, "max_upload_mb", "maxUploadMb")
-    if max_upload_mb is not None:
-        try:
-            parsed_upload = int(max_upload_mb)
-        except ValueError:
-            raise WebUISettingsError("max_upload_mb must be an integer") from None
-        if parsed_upload < 1 or parsed_upload > 100:
-            raise WebUISettingsError("max_upload_mb must be between 1 and 100")
-        if transcription.max_upload_mb != parsed_upload:
-            transcription.max_upload_mb = parsed_upload
-            changed = True
+        max_upload_mb = _query_first_alias(query, "max_upload_mb", "maxUploadMb")
+        if max_upload_mb is not None:
+            try:
+                parsed_upload = int(max_upload_mb)
+            except ValueError:
+                raise WebUISettingsError("max_upload_mb must be an integer") from None
+            if parsed_upload < 1 or parsed_upload > 100:
+                raise WebUISettingsError("max_upload_mb must be between 1 and 100")
+            if transcription.max_upload_mb != parsed_upload:
+                transcription.max_upload_mb = parsed_upload
 
-    if changed:
-        save_config(config)
     return settings_payload()
 
 
 def update_tts_settings(query: QueryParams) -> dict[str, Any]:
-    config = load_config()
-    tts = config.tts
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        tts = config.tts
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if tts.enabled != parsed_enabled:
-            tts.enabled = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if tts.enabled != parsed_enabled:
+                tts.enabled = parsed_enabled
 
-    provider = _query_first(query, "provider")
-    if provider is not None:
-        provider = provider.strip().lower()
-        try:
-            provider_spec = resolve_tts_provider(provider)
-        except ValueError as exc:
-            raise WebUISettingsError(str(exc)) from exc
-        provider = provider_spec.name
-        if tts.provider != provider:
-            tts.provider = provider
-            changed = True
+        provider = _query_first(query, "provider")
+        if provider is not None:
+            provider = provider.strip().lower()
+            try:
+                provider_spec = resolve_tts_provider(provider)
+            except ValueError as exc:
+                raise WebUISettingsError(str(exc)) from exc
+            provider = provider_spec.name
+            if tts.provider != provider:
+                tts.provider = provider
 
-    model = _query_first(query, "model")
-    if model is not None:
-        model = model.strip() or None
-        if model is not None and len(model) > 200:
-            raise WebUISettingsError("tts model is too long")
-        if tts.model != model:
-            tts.model = model
-            changed = True
+        model = _query_first(query, "model")
+        if model is not None:
+            model = model.strip() or None
+            if model is not None and len(model) > 200:
+                raise WebUISettingsError("tts model is too long")
+            if tts.model != model:
+                tts.model = model
 
-    voice = _query_first(query, "voice")
-    if voice is not None:
-        voice = voice.strip() or None
-        if voice is not None and len(voice) > 200:
-            raise WebUISettingsError("tts voice is too long")
-        if tts.voice != voice:
-            tts.voice = voice
-            changed = True
+        voice = _query_first(query, "voice")
+        if voice is not None:
+            voice = voice.strip() or None
+            if voice is not None and len(voice) > 200:
+                raise WebUISettingsError("tts voice is too long")
+            if tts.voice != voice:
+                tts.voice = voice
 
-    rate = _query_first(query, "rate")
-    if rate is not None:
-        rate = rate.strip() or None
-        if rate is not None and len(rate) > 32:
-            raise WebUISettingsError("tts rate is too long")
-        if tts.rate != rate:
-            tts.rate = rate
-            changed = True
+        rate = _query_first(query, "rate")
+        if rate is not None:
+            rate = rate.strip() or None
+            if rate is not None and len(rate) > 32:
+                raise WebUISettingsError("tts rate is too long")
+            if tts.rate != rate:
+                tts.rate = rate
 
-    if changed:
-        save_config(config)
     return settings_payload()
 
 
 def update_system_io_settings(query: QueryParams) -> dict[str, Any]:
     """Update system-level IO tool configuration (enable + action allowlist)."""
-    config = load_config()
-    system_io_config = config.tools.system_io
-    changed = False
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 动作白名单校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        system_io_config = config.tools.system_io
+        changed = False
 
-    enabled = _query_first(query, "enabled")
-    if enabled is not None:
-        parsed_enabled = _parse_bool(enabled, "enabled")
-        if system_io_config.enable != parsed_enabled:
-            system_io_config.enable = parsed_enabled
-            changed = True
+        enabled = _query_first(query, "enabled")
+        if enabled is not None:
+            parsed_enabled = _parse_bool(enabled, "enabled")
+            if system_io_config.enable != parsed_enabled:
+                system_io_config.enable = parsed_enabled
+                changed = True
 
-    allow_actions_raw = _query_first_alias(query, "allow_actions", "allowActions")
-    if allow_actions_raw is not None:
-        actions = [a.strip() for a in allow_actions_raw.split(",") if a.strip()]
-        for action in actions:
-            if action not in _SYSTEM_IO_VALID_ACTIONS:
-                raise WebUISettingsError(f"unknown system_io action '{action}'")
-        if sorted(system_io_config.allow_actions) != sorted(actions):
-            system_io_config.allow_actions = actions
-            changed = True
+        allow_actions_raw = _query_first_alias(query, "allow_actions", "allowActions")
+        if allow_actions_raw is not None:
+            actions = [a.strip() for a in allow_actions_raw.split(",") if a.strip()]
+            for action in actions:
+                if action not in _SYSTEM_IO_VALID_ACTIONS:
+                    raise WebUISettingsError(f"unknown system_io action '{action}'")
+            if sorted(system_io_config.allow_actions) != sorted(actions):
+                system_io_config.allow_actions = actions
+                changed = True
 
-    if changed:
-        save_config(config)
     return settings_payload(requires_restart=changed)
 
 

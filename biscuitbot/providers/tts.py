@@ -13,6 +13,8 @@ from typing import Any  # 动态类型标注
 import httpx  # 异步 HTTP 客户端
 from loguru import logger  # 结构化日志
 
+from biscuitbot.providers.base import resolve_api_endpoint_url  # 共享的端点 URL 解析
+
 # 语音合成接口的 URL 路径后缀
 _SPEECH_PATH = "audio/speech"
 
@@ -22,19 +24,8 @@ class TtsError(RuntimeError):
 
 
 def _resolve_speech_url(api_base: str | None, default_url: str) -> str:
-    """解析完整的语音合成端点 URL。
-
-    接受两种形式：
-    1. 对话风格的 base（如 ``https://api.openai.com/v1``）——
-       会自动拼接 ``/audio/speech`` 路径；
-    2. 已以 ``/audio/speech`` 结尾的完整 URL——原样返回。
-    """
-    if not api_base:
-        return default_url
-    base = api_base.rstrip("/")
-    if base.endswith(_SPEECH_PATH):
-        return base
-    return f"{base}/{_SPEECH_PATH}"
+    """解析完整的语音合成端点 URL（规则见 :func:`resolve_api_endpoint_url`）。"""
+    return resolve_api_endpoint_url(api_base, default_url, _SPEECH_PATH)
 
 
 def _rate_to_speed(rate: str | None) -> float:

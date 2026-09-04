@@ -532,7 +532,8 @@ class ToolRegistry:
                 return result + hint
             return result
         except Exception as e:
-            return f"Error executing {name}: {str(e)}" + hint
+            # 保留异常类名：空消息异常（如无参 TimeoutError）否则会输出成空串
+            return f"Error executing {name}: {type(e).__name__}: {e}" + hint
 
     @property
     def tool_names(self) -> list[str]:

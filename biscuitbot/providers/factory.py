@@ -24,6 +24,7 @@ from loguru import logger
 from biscuitbot.config.schema import Config, InlineFallbackConfig, ModelPresetConfig
 from biscuitbot.providers.base import LLMProvider  # Provider 抽象基类
 from biscuitbot.providers.fallback_provider import FallbackProvider  # 失败转移包装器
+
 # Provider 注册表：按名查找 spec / 创建动态 spec
 from biscuitbot.providers.registry import create_dynamic_spec, find_by_name
 
@@ -80,7 +81,7 @@ def _make_provider_core(
         raise ValueError(f"Provider '{provider_name}' only supports transcription.")
     backend = spec.backend if spec else "openai_compat"
 
-    if backend == "openai_compat" and not model.startswith("bedrock/"):
+    if backend == "openai_compat":
         # OpenAI 兼容后端校验 API Key（OAuth/本地/直连 Provider 可豁免）
         needs_key = not (p and p.api_key)
         exempt = spec and (spec.is_oauth or spec.is_local or spec.is_direct)

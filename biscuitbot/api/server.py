@@ -11,6 +11,7 @@ import contextlib
 import json as _json
 import time
 import uuid
+import weakref
 from typing import Any
 
 from aiohttp import web
@@ -240,7 +241,8 @@ async def handle_chat_completions(request: web.Request) -> web.StreamResponse:
         return _error_json(400, f"Only configured model '{model_name}' is available")
 
     session_key = f"api:{session_id}" if session_id else API_SESSION_KEY
-    session_locks: dict[str, asyncio.Lock] = request.app["session_locks"]
+    # 弱值字典：session 结束后无强引用的锁会被自动回收，避免长期运行时无界增长
+    session_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = request.app["session_locks"]
     session_lock = session_locks.setdefault(session_key, asyncio.Lock())
 
     logger.info(
@@ -466,9 +468,13 @@ def create_app(
     app["agent_loop"] = agent_loop
     app["model_name"] = model_name
     app["request_timeout"] = request_timeout
-    app["session_locks"] = {}  # per-user locks, keyed by session_key
+    # 弱值字典：session 结束后无强引用的锁会被自动回收，避免长期运行时无界增长
+    app["session_locks"] = weakref.WeakValueDictionary()  # per-user locks, keyed by session_key
     app["models"] = _collect_models(config, model_name) if config is not None else None
 
+    # 安全说明：本服务不提供鉴权（ApiConfig 无 token 字段，避免新增配置面），
+    # 安全性依赖默认仅绑定 127.0.0.1（见 config/schema.py ApiConfig.host）；
+    # 若将 host 改为 0.0.0.0 等对外地址，则任何能访问该端口的人都可以直接调用。
     app.router.add_post("/v1/chat/completions", handle_chat_completions)
     app.router.add_get("/v1/models", handle_models)
     app.router.add_get("/health", handle_health)

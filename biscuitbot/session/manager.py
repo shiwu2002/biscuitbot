@@ -24,6 +24,7 @@ from loguru import logger  # 日志输出
 
 from biscuitbot.config.paths import get_legacy_sessions_dir  # 遗留会话目录
 from biscuitbot.utils.helpers import (  # 通用辅助函数
+    anchor_to_first_user_turn,
     ensure_dir,
     estimate_message_tokens,
     find_legal_message_start,
@@ -31,7 +32,9 @@ from biscuitbot.utils.helpers import (  # 通用辅助函数
     safe_filename,
     strip_think,
 )
-from biscuitbot.utils.subagent_channel_display import scrub_subagent_announce_body  # 子智能体公告文本清洗
+from biscuitbot.utils.subagent_channel_display import (
+    scrub_subagent_announce_body,  # 子智能体公告文本清洗
+)
 
 FILE_MAX_MESSAGES = 2000  # 单个会话文件的最大消息数
 _MESSAGE_TIME_PREFIX_RE = re.compile(r"^\[Message Time: [^\]]+\]\n?")  # 消息时间戳前缀
@@ -178,13 +181,7 @@ class Session:
         sliced = unconsolidated[-max_messages:]
 
         # 尽量避免从 turn 中间开始，除非是用户可能正在回复的主动助手投递。
-        for i, message in enumerate(sliced):
-            if message.get("role") == "user":
-                start = i
-                if i > 0 and sliced[i - 1].get("_channel_delivery"):
-                    start = i - 1
-                sliced = sliced[start:]
-                break
+        sliced = anchor_to_first_user_turn(sliced)
 
         # 丢弃开头的孤立 tool 结果。
         start = find_legal_message_start(sliced)
@@ -424,8 +421,12 @@ class SessionManager:
 
     @staticmethod
     def safe_key(key: str) -> str:
-        """公共辅助：将任意 key 映射为稳定的文件名 stem，供 HTTP 处理器使用。"""
-        return safe_filename(key.replace(":", "_"))
+        """公共辅助：将任意 key 映射为稳定的文件名 stem，供 HTTP 处理器使用。
+
+        safe_filename 对纯符号 key 会收敛为空串，返回空 stem 会让会话文件退化成
+        隐藏的 ``.jsonl`` 且此类 key 互相碰撞；回退为 ``"session"`` 保持可见。
+        """
+        return safe_filename(key.replace(":", "_")) or "session"
 
     def _get_session_path(self, key: str) -> Path:
         """获取会话对应的文件路径。"""

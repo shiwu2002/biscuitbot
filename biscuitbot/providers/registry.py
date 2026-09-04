@@ -75,11 +75,6 @@ class ProviderSpec:
     # "reasoning_split" — {"reasoning_split": true/false}  （MiniMax）
     thinking_style: str = ""
 
-    # --- 网关原生的推理控制，与模型级 thinking_style 配合使用 ---
-    # "reasoning_effort" — {"reasoning": {"effort": <none|minimal|...>}}
-    #                      （OpenRouter）
-    gateway_reasoning_style: str = ""
-
     # --- 为真时，当 "content" 为空，把响应中的 "reasoning" 字段当作正文 ---
     # 仅对部分 Provider（如 StepFun）设置：其 API 把真正答案放在 "reasoning" 而非 "content"。
     reasoning_as_content: bool = False

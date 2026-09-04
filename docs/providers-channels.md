@@ -75,7 +75,7 @@ Provider 子系统负责将统一的 chat/chat_stream 调用适配到不同 LLM 
 - `ProviderSpec` 为 `frozen=True` dataclass，核心字段：`name`（配置字段名）、`keywords`（模型名匹配关键字）、`env_key`（API Key 环境变量）、`display_name`、`backend`。
 - 网关/本地检测：`is_gateway`（路由任意模型）、`is_local`（本地部署）、`detect_by_key_prefix`、`detect_by_base_keyword`、`default_api_base`。
 - 网关行为：`strip_model_prefix` / `strip_model_prefixes`（发送前剥离 `provider/` 前缀）、`supports_max_completion_tokens`。
-- 推理控制：`thinking_style`（`thinking_type` / `enable_thinking` / `reasoning_split`）、`gateway_reasoning_style`（`reasoning_effort`）、`reasoning_as_content`。
+- 推理控制：`thinking_style`（`thinking_type` / `enable_thinking` / `reasoning_split`）、`reasoning_as_content`。
 - 查询函数：`find_by_name` 按名查找；`create_dynamic_spec` 构造动态 spec。
 
 ## 5. 故障转移

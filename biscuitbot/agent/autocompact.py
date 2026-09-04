@@ -84,7 +84,8 @@ class AutoCompact:
         return key.startswith(cls._INTERNAL_SESSION_PREFIXES)
 
     def check_expired(self, schedule_background: Callable[[Coroutine], None],
-                      active_session_keys: Collection[str] = ()) -> None:
+                      active_session_keys: Collection[str] = (),
+    ) -> None:
         """扫描所有会话，为已过期且空闲的会话调度后台归档任务。
 
         参数:
@@ -92,6 +93,10 @@ class AutoCompact:
             active_session_keys: 当前正在处理任务的会话 key 集合，这些会话将被跳过，
                 避免与进行中的 Agent 任务冲突。
         """
+        if self._ttl <= 0:
+            # TTL 未启用：直接返回，避免空闲时每秒全量扫描会话文件
+            # （list_sessions 会同步读盘，阻塞事件循环）。
+            return
         now = datetime.now()
         for info in self.sessions.list_sessions():
             key = info.get("key", "")

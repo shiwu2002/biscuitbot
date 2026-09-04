@@ -33,6 +33,19 @@ PNG_DATA_URL = (
 JPEG_BYTES = b"\xff\xd8\xff\xe0" + b"0" * 12
 
 
+@pytest.fixture
+def allow_test_image_urls(monkeypatch: pytest.MonkeyPatch) -> None:
+    """放行单测用的假图片 URL（cdn.example 不存在于真实 DNS）。
+
+    生产路径仍走真实的 ``validate_url_target`` SSRF 校验，
+    由 test_download_image_data_url_blocks_private_target 单独覆盖。
+    """
+    monkeypatch.setattr(
+        "biscuitbot.providers.image_generation.validate_url_target",
+        lambda url, **kwargs: (True, ""),
+    )
+
+
 class FakeResponse:
     def __init__(
         self,
@@ -459,7 +472,7 @@ async def test_openai_b64_json_response_uses_detected_mime() -> None:
 
 
 @pytest.mark.asyncio
-async def test_openai_url_download_fallback() -> None:
+async def test_openai_url_download_fallback(allow_test_image_urls: None) -> None:
     fake = FakeClient(FakeResponse({"data": [{"url": "https://cdn.example/image.png"}]}))
     fake.get_response = FakeResponse({}, content=PNG_BYTES)
     client = OpenAIImageGenerationClient(
@@ -471,6 +484,17 @@ async def test_openai_url_download_fallback() -> None:
 
     assert response.images[0].startswith("data:image/png;base64,")
     assert fake.get_calls[0]["url"] == "https://cdn.example/image.png"
+
+
+@pytest.mark.asyncio
+async def test_download_image_data_url_blocks_private_target() -> None:
+    """SSRF 防护：内网/回环地址的图片 URL 必须在校验阶段被拦截。"""
+    from biscuitbot.providers.image_generation import _download_image_data_url
+
+    fake = FakeClient(FakeResponse({}, content=PNG_BYTES))
+    with pytest.raises(ImageGenerationError, match="blocked"):
+        await _download_image_data_url(fake, "http://127.0.0.1:9/x.png")
+    assert fake.get_calls == []  # 未发起任何真实请求
 
 
 @pytest.mark.asyncio
@@ -656,7 +680,7 @@ async def test_openai_ignores_reference_images() -> None:
 
 
 @pytest.mark.asyncio
-async def test_zhipu_image_generation_payload_and_response() -> None:
+async def test_zhipu_image_generation_payload_and_response(allow_test_image_urls: None) -> None:
     fake = FakeClient(FakeResponse({"data": [{"url": "https://cdn.example/image.png"}]}))
     fake.get_response = FakeResponse({}, content=PNG_BYTES)
     client = ZhipuImageGenerationClient(
@@ -687,7 +711,7 @@ async def test_zhipu_image_generation_payload_and_response() -> None:
 
 
 @pytest.mark.asyncio
-async def test_zhipu_image_generation_with_explicit_size() -> None:
+async def test_zhipu_image_generation_with_explicit_size(allow_test_image_urls: None) -> None:
     fake = FakeClient(FakeResponse({"data": [{"url": "https://cdn.example/image.png"}]}))
     fake.get_response = FakeResponse({}, content=PNG_BYTES)
     client = ZhipuImageGenerationClient(
@@ -706,7 +730,7 @@ async def test_zhipu_image_generation_with_explicit_size() -> None:
 
 
 @pytest.mark.asyncio
-async def test_zhipu_image_generation_downloads_url_response() -> None:
+async def test_zhipu_image_generation_downloads_url_response(allow_test_image_urls: None) -> None:
     fake = FakeClient(FakeResponse({"data": [{"url": "https://cdn.example/image.png"}]}))
     fake.get_response = FakeResponse({}, content=PNG_BYTES)
     client = ZhipuImageGenerationClient(

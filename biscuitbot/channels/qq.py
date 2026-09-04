@@ -23,9 +23,7 @@ import asyncio  # 异步事件循环与并发原语
 import base64  # base64 编码（媒体上传）
 import mimetypes  # MIME 类型猜测（媒体分类）
 import os  # 文件路径处理
-import re  # 正则表达式（文件名安全化）
 import time  # 时间戳生成（文件名）
-from collections import deque  # 固定长度去重队列（消息 ID）
 from contextlib import suppress  # 上下文管理器，抑制指定异常
 from pathlib import Path  # 路径处理
 from typing import TYPE_CHECKING, Any, Literal  # 类型注解支持
@@ -40,6 +38,7 @@ from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.schema import Base  # 配置模型基类
 from biscuitbot.security.network import validate_url_target  # URL 安全校验
+from biscuitbot.utils.helpers import MessageIdDedup, safe_filename  # 消息去重与文件名安全化共享工具
 from biscuitbot.utils.logging_bridge import redirect_lib_logging  # 第三方库日志桥接
 
 try:
@@ -58,7 +57,11 @@ except ImportError:  # pragma: no cover
     Route = None
 
 if TYPE_CHECKING:
-    from botpy.message import BaseMessage, C2CMessage, GroupMessage  # botpy 消息类型（仅类型检查时导入）
+    from botpy.message import (  # botpy 消息类型（仅类型检查时导入）
+        BaseMessage,
+        C2CMessage,
+        GroupMessage,
+    )
     from botpy.types.message import Media  # botpy 媒体类型
 
 
@@ -79,17 +82,6 @@ _IMAGE_EXTS = {  # 图片扩展名集合
     ".ico",
     ".svg",
 }
-
-# 将不安全字符替换为 "_"，保留中文和常见安全标点
-_SAFE_NAME_RE = re.compile(r"[^\w.\-()\[\]（）【】\u4e00-\u9fff]+", re.UNICODE)
-
-
-def _sanitize_filename(name: str) -> str:
-    """安全化文件名，避免路径遍历和问题字符。"""
-    name = (name or "").strip()
-    name = Path(name).name
-    name = _SAFE_NAME_RE.sub("_", name).strip("._ ")
-    return name
 
 
 def _is_image_name(name: str) -> bool:
@@ -171,7 +163,7 @@ class QQChannel(BaseChannel):
         self._client: botpy.Client | None = None  # botpy 客户端实例
         self._http: aiohttp.ClientSession | None = None  # HTTP 会话（附件下载）
 
-        self._processed_ids: deque[str] = deque(maxlen=1000)  # 已处理消息 ID 去重队列
+        self._processed_ids = MessageIdDedup(maxlen=1000)  # 已处理消息 ID 去重（LRU）
         self._msg_seq: int = 1  # 消息序列号（避免 QQ API 去重）
         self._chat_type_cache: dict[str, str] = {}  # 会话类型缓存（chat_id → "c2c"/"group"）
 
@@ -290,6 +282,8 @@ class QQChannel(BaseChannel):
             raise
         except Exception:
             self.logger.exception("Error sending message to chat_id={}", msg.chat_id)
+            # 按 BaseChannel.send 契约上抛，交由 ChannelManager 统一重试
+            raise
 
     async def _send_text_only(
         self,
@@ -496,9 +490,8 @@ class QQChannel(BaseChannel):
 
             content = (data.content or "").strip()
 
-            if data.id in self._processed_ids:
+            if not self._processed_ids.check_and_mark(str(data.id)):
                 return
-            self._processed_ids.append(data.id)
             self._chat_type_cache[chat_id] = chat_type
 
             # Early permission check — avoid attachment downloads and ack side effects
@@ -616,7 +609,7 @@ class QQChannel(BaseChannel):
         if not self._http:
             self._http = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=120))
 
-        safe = _sanitize_filename(filename_hint)
+        safe = safe_filename(filename_hint)
         ts = int(time.time() * 1000)
         tmp_path: Path | None = None
 

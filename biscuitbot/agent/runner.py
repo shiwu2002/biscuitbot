@@ -579,6 +579,32 @@ class AgentRunner:
         hook: AgentHook,
         messages: list[dict[str, Any]],
     ) -> AgentRunResult:
+        """执行核心迭代循环，并兜底终结流式会话。
+
+        正常完成路径由迭代循环内部调用 ``on_stream_end(resuming=False)`` 终结
+        流式卡片；但致命工具错误、达到最大迭代、以及任何异常逃逸路径都不会
+        经过该调用——若不兜底，流式渠道（飞书卡片 / WebSocket）会永远停留在
+        「生成中」且流缓冲泄漏。本包装层通过 ``stream_state`` 标记追踪流的
+        开合状态，在 ``finally`` 中保证恰好一次终结。
+        """
+        stream_state: dict[str, Any] = {"open": False, "context": None}
+        try:
+            return await self._run_core_impl(spec, hook, messages, stream_state)
+        finally:
+            if stream_state["open"]:
+                stream_state["open"] = False
+                context = stream_state["context"]
+                if context is not None:
+                    with suppress(Exception):
+                        await hook.on_stream_end(context, resuming=False)
+
+    async def _run_core_impl(
+        self,
+        spec: AgentRunSpec,
+        hook: AgentHook,
+        messages: list[dict[str, Any]],
+        stream_state: dict[str, Any],
+    ) -> AgentRunResult:
         """执行核心迭代循环：调用 LLM → 解析工具调用 → 执行工具 → 回填结果。
 
         每轮迭代的处理顺序：
@@ -652,7 +678,9 @@ class AgentRunner:
             await hook.before_iteration(context)
             llm_t0 = time.perf_counter()
             self._publish_llm_trace(spec, "started", detail={"iteration": iteration})
-            response = await self._request_model(spec, messages_for_model, hook, context)
+            response = await self._request_model(
+                spec, messages_for_model, hook, context, stream_state=stream_state,
+            )
             llm_duration_ms = (time.perf_counter() - llm_t0) * 1000
             context.response = response
             context.tool_calls = list(response.tool_calls)
@@ -685,6 +713,8 @@ class AgentRunner:
                 context.tool_calls = list(response.tool_calls)
                 if hook.wants_streaming():
                     await hook.on_stream_end(context, resuming=True)
+                    stream_state["open"] = True
+                    stream_state["context"] = context
 
                 assistant_message = build_assistant_message(
                     response.content or "",
@@ -821,6 +851,7 @@ class AgentRunner:
                     )
                     if hook.wants_streaming():
                         await hook.on_stream_end(context, resuming=False)
+                        stream_state["open"] = False
                     await hook.after_iteration(context)
                     continue
                 # 重试次数用尽：尝试终结化重试
@@ -832,6 +863,7 @@ class AgentRunner:
                 )
                 if hook.wants_streaming():
                     await hook.on_stream_end(context, resuming=False)
+                    stream_state["open"] = False
                 retry_messages = self._finalization_retry_messages(messages_for_model)
                 response = await self._request_finalization_retry(spec, messages_for_model)
                 retry_usage = self._usage_or_estimate(spec, retry_messages, response)
@@ -854,6 +886,8 @@ class AgentRunner:
                     )
                     if hook.wants_streaming():
                         await hook.on_stream_end(context, resuming=True)
+                        stream_state["open"] = True
+                        stream_state["context"] = context
                     messages.append(build_assistant_message(
                         clean,
                         reasoning_content=response.reasoning_content,
@@ -887,6 +921,8 @@ class AgentRunner:
 
             if hook.wants_streaming():
                 await hook.on_stream_end(context, resuming=should_continue)
+                stream_state["open"] = bool(should_continue)
+                stream_state["context"] = context
 
             if should_continue:  # 有注入：继续下一轮迭代
                 await hook.after_iteration(context)
@@ -978,6 +1014,18 @@ class AgentRunner:
             if final_content is None:  # 收尾失败：使用回退文案
                 final_content = self._max_iterations_fallback(spec)
             self._append_final_message(messages, final_content)
+            # 流式渠道兜底：max_iterations 退出前把最终内容推入流并保持打开，
+            # 由 _run_core 包装层统一 resuming=False 终结（替代 loop 侧补偿）。
+            # 仅在允许最终化时推送：内部续接场景最终响应由下一个续接切片负责，
+            # 此处推送回退文案会造成用户可见的干扰内容。
+            if (
+                stream_state["open"]
+                and spec.finalize_on_max_iterations
+                and final_content
+                and hook.wants_streaming()
+            ):
+                with suppress(Exception):
+                    await hook.on_stream(context, final_content)
 
         return AgentRunResult(
             final_content=final_content,
@@ -1028,6 +1076,7 @@ class AgentRunner:
         messages: list[dict[str, Any]],
         hook: AgentHook,
         context: AgentHookContext,
+        stream_state: dict[str, Any] | None = None,
     ):
         """请求 LLM 并返回响应，支持流式、进度流式与非流式三种模式。
 
@@ -1041,7 +1090,10 @@ class AgentRunner:
             spec: 执行规格；
             messages: 送入模型的消息列表；
             hook: 生命周期钩子；
-            context: 迭代上下文。
+            context: 迭代上下文；
+            stream_state: ``_run_core`` 的流状态标记；流式请求发起时置
+                ``open=True``，保证此后任何异常逃逸路径都会在 ``_run_core``
+                的 finally 中兜底终结流式卡片。
 
         返回:
             LLM 响应 ``LLMResponse``；超时返回 error_kind=timeout 的响应。
@@ -1115,6 +1167,11 @@ class AgentRunner:
                 on_tool_call_delta=_tool_call_delta if live_file_edits is not None else None,
                 on_stream_recover=_stream_recover,
             )
+            # 流式请求已发起：立即标记流为打开，使后续任何异常逃逸（含 hook
+            # 回调异常）都能被 _run_core 的 finally 兜底终结，卡片不再滞留。
+            if stream_state is not None:
+                stream_state["open"] = True
+                stream_state["context"] = context
         elif wants_progress_streaming:
             assert progress_cb is not None  # wants_progress_streaming requires progress_callback
             stream_buf = ""

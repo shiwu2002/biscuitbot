@@ -9,7 +9,6 @@ import hmac
 import mimetypes
 import re
 import shutil
-import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -121,6 +120,24 @@ def sign_media_path(
     return f"/api/media/{b64url_encode(mac)}/{payload}"
 
 
+def stable_staged_path(path: Path, target_dir: Path, *, prefix: str) -> Path:
+    """把 media 根外的文件稳定 staging 到 ``target_dir``（幂等）。
+
+    副本名由「源路径 + 源 mtime」sha256 前缀 + 原文件名组成：同一源文件始终
+    指向同一副本，已存在时跳过复制，避免每次调用都生成新的 uuid 副本导致
+    staging 区无限膨胀；源文件内容更新（mtime 变化）时会重新 staging 一份。
+    """
+    try:
+        mtime = path.stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    digest = hashlib.sha256(f"{path.resolve()}::{mtime}".encode("utf-8")).hexdigest()[:12]
+    staged = target_dir / f"{prefix}-{digest}-{safe_filename(path.name) or 'attachment'}"
+    if not staged.is_file():
+        shutil.copyfile(path, staged)
+    return staged
+
+
 def sign_or_stage_media_path(
     path: Path,
     *,
@@ -135,10 +152,8 @@ def sign_or_stage_media_path(
     try:
         if not path.is_file():
             return None
-        target_dir = media_dir("websocket")
-        safe_name = safe_filename(path.name) or "attachment"
-        staged = target_dir / f"{uuid.uuid4().hex[:12]}-{safe_name}"
-        shutil.copyfile(path, staged)
+        # 稳定命名 staging：同一源文件重复发送不会每次复制新的 uuid 副本
+        staged = stable_staged_path(path, media_dir("websocket"), prefix="media")
     except OSError as exc:
         if logger is not None:
             logger.warning("failed to stage outbound media {}: {}", path, exc)

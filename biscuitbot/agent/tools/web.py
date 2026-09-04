@@ -535,6 +535,12 @@ class WebSearchTool(Tool):
             logger.warning("SEARXNG_BASE_URL not set, falling back to DuckDuckGo")
             return await self._search_duckduckgo(query, n)
         endpoint = f"{base_url.rstrip('/')}/search"
+        # 注意：此处有意使用弱校验 _validate_url（仅限 http/https + netloc），
+        # 而非带 SSRF 防护的 _validate_url_safe。SearXNG 是运维者自部署的
+        # 元搜索引擎，常见部署位置恰恰是本机（localhost）或内网（RFC1918），
+        # _validate_url_safe 会拦截这些正常用法。该 URL 完全来自运维者配置
+        # （config 或环境变量），模型只能控制 query 参数值，不构成模型可控
+        # 的 SSRF 攻击面。
         is_valid, error_msg = _validate_url(endpoint)
         if not is_valid:
             return f"Error: SearXNG URL 无效：{error_msg}。请检查 tools.web.search 的 SearXNG baseUrl 配置"

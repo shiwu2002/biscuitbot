@@ -130,6 +130,8 @@ class RuntimeEventBus:
 
     def __init__(self) -> None:
         self._handlers: list[_HandlerEntry] = []  # 已注册的处理器列表
+        # publish_nowait 创建的任务强引用集合（完成即自动移除），防止 GC 提前回收。
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def subscribe(
         self,
@@ -178,7 +180,11 @@ class RuntimeEventBus:
         except RuntimeError:
             logger.debug("dropping runtime event without a running loop: {}", type(event).__name__)
             return
-        loop.create_task(self.publish(event))
+        task = loop.create_task(self.publish(event))
+        # asyncio 只持有 task 弱引用：不保存强引用时，事件密集（每次工具调用/
+        # 状态转移各发一条）场景下任务可能在完成前被 GC 回收，追踪事件随机丢失。
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
 
 
 class RuntimeEventPublisher:

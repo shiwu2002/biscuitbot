@@ -178,7 +178,7 @@ class AnthropicProvider(LLMProvider):
         - 其余消息按 user/assistant/tool 角色归并，最后调用
           :meth:`_merge_consecutive` 处理 Anthropic 的角色交替约束。
         """
-        system: str | list[dict[str, Any]] = ""
+        system_parts: list[str | list[dict[str, Any]]] = []
         raw: list[dict[str, Any]] = []
 
         for msg in messages:
@@ -186,8 +186,11 @@ class AnthropicProvider(LLMProvider):
             content = msg.get("content")
 
             if role == "system":
-                # 系统消息：Anthropic 单独接收，不在 messages 数组中
-                system = content if isinstance(content, (str, list)) else str(content or "")
+                # 系统消息：Anthropic 单独接收，不在 messages 数组中。
+                # 多条 system 全部累积，避免只留最后一条丢内容。
+                system_parts.append(
+                    content if isinstance(content, (str, list)) else str(content or "")
+                )
                 continue
 
             if role == "tool":
@@ -217,7 +220,35 @@ class AnthropicProvider(LLMProvider):
                 })
                 continue
 
-        return system, self._merge_consecutive(raw)
+        return self._merge_system_parts(system_parts), self._merge_consecutive(raw)
+
+    @staticmethod
+    def _merge_system_parts(
+        parts: list[str | list[dict[str, Any]]],
+    ) -> str | list[dict[str, Any]]:
+        """把多条 system 消息合并为单个 ``system`` 字段。
+
+        - 全部为字符串：用 ``"\n\n"`` 拼接；
+        - 含列表块：统一转为块列表，字符串部分转为 text 块，
+          保持与单条 list 形式 system 一致的传递方式。
+        """
+        if not parts:
+            return ""
+        if len(parts) == 1:
+            return parts[0]
+        if all(isinstance(part, str) for part in parts):
+            str_parts = [part for part in parts if isinstance(part, str) and part]
+            return "\n\n".join(str_parts)
+        blocks: list[dict[str, Any]] = []
+        for part in parts:
+            if isinstance(part, str):
+                if part:
+                    blocks.append({"type": "text", "text": part})
+            elif isinstance(part, list):
+                blocks.extend(block for block in part if isinstance(block, dict))
+            else:
+                blocks.append({"type": "text", "text": str(part)})
+        return blocks
 
     @staticmethod
     def _tool_result_block(msg: dict[str, Any]) -> dict[str, Any]:
@@ -561,7 +592,7 @@ class AnthropicProvider(LLMProvider):
         elif thinking_enabled:
             # 固定预算思考：按 low/medium/high 映射到 token 预算
             budget_map = {"low": 1024, "medium": 4096, "high": max(8192, max_tokens)}
-            budget = budget_map.get(reasoning_effort.lower(), 4096)
+            budget = budget_map.get((reasoning_effort or "").lower(), 4096)
             kwargs["thinking"] = {"type": "enabled", "budget_tokens": budget}
             # max_tokens 需要容纳思考预算，额外预留 4096 给正文输出
             kwargs["max_tokens"] = max(max_tokens, budget + 4096)

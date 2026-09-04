@@ -93,7 +93,7 @@ class WebUISettingsRouter:
 
     async def dispatch(self, request: WsRequest, path: str) -> Response | None:
         if path == "/api/settings":
-            return self._handle_settings(request)
+            return await self._handle_settings(request)
         if path == "/api/settings/usage":
             return self._handle_settings_usage(request)
         if path == "/api/settings/update":
@@ -125,17 +125,17 @@ class WebUISettingsRouter:
         if path == "/api/settings/network-safety/update":
             return self._handle_settings_network_safety_update(request)
         if path == "/api/settings/channels":
-            return self._handle_settings_channels(request)
+            return await self._handle_settings_channels(request)
         if path == "/api/settings/channels/update":
             return self._handle_settings_channels_update(request)
         if path == "/api/settings/knowledge":
-            return self._handle_settings_knowledge(request)
+            return await self._handle_settings_knowledge(request)
         if path == "/api/settings/knowledge/delete":
             return self._handle_settings_knowledge_delete(request)
         if path == "/api/settings/assets":
-            return self._handle_settings_assets(request)
+            return await self._handle_settings_assets(request)
         if path == "/api/settings/assets/preview":
-            return self._handle_settings_assets_preview(request)
+            return await self._handle_settings_assets_preview(request)
         if path == "/api/settings/assets/delete":
             return self._handle_settings_assets_delete(request)
         if path == "/api/settings/cli-apps":
@@ -215,17 +215,16 @@ class WebUISettingsRouter:
                 merged[key] = [text]
         return merged
 
-    def _handle_settings(self, request: WsRequest) -> Response:
+    async def _handle_settings(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
-        return self._json_response(
-            self._with_restart_state(
-                settings_payload(
-                    surface=self._runtime_surface,
-                    runtime_capability_overrides=self._runtime_capabilities,
-                )
-            )
+        # settings_payload 会做全量配置读取/聚合（同步重 IO），放到线程池避免阻塞事件循环
+        payload = await asyncio.to_thread(
+            settings_payload,
+            surface=self._runtime_surface,
+            runtime_capability_overrides=self._runtime_capabilities,
         )
+        return self._json_response(self._with_restart_state(payload))
 
     def _handle_settings_usage(self, request: WsRequest) -> Response:
         if not self._authorized(request):
@@ -361,10 +360,12 @@ class WebUISettingsRouter:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="runtime"))
 
-    def _handle_settings_channels(self, request: WsRequest) -> Response:
+    async def _handle_settings_channels(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
-        return self._json_response(channels_payload())
+        # channels_payload 枚举全部渠道并读取配置（同步重 IO），放到线程池执行
+        payload = await asyncio.to_thread(channels_payload)
+        return self._json_response(payload)
 
     def _handle_settings_channels_update(self, request: WsRequest) -> Response:
         if not self._authorized(request):
@@ -375,10 +376,12 @@ class WebUISettingsRouter:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="channels"))
 
-    def _handle_settings_knowledge(self, request: WsRequest) -> Response:
+    async def _handle_settings_knowledge(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
-        return self._json_response(knowledge_documents_payload())
+        # 知识库文档列表读取磁盘并做 FTS 状态聚合（同步重 IO），放到线程池执行
+        payload = await asyncio.to_thread(knowledge_documents_payload)
+        return self._json_response(payload)
 
     def _handle_settings_knowledge_delete(self, request: WsRequest) -> Response:
         if not self._authorized(request):
@@ -389,18 +392,21 @@ class WebUISettingsRouter:
             return self._error_response(e.status, e.message)
         return self._json_response(payload)
 
-    def _handle_settings_assets(self, request: WsRequest) -> Response:
+    async def _handle_settings_assets(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
         if self._sign_media is None:
             return self._error_response(500, "media signing unavailable")
-        return self._json_response(assets_payload(self._sign_media))
+        # assets_payload 扫描 media 目录树（同步重 IO），放到线程池执行
+        payload = await asyncio.to_thread(assets_payload, self._sign_media)
+        return self._json_response(payload)
 
-    def _handle_settings_assets_preview(self, request: WsRequest) -> Response:
+    async def _handle_settings_assets_preview(self, request: WsRequest) -> Response:
         if not self._authorized(request):
             return self._unauthorized()
         try:
-            payload = document_preview(self._query(request))
+            # document_preview 内含文档文本抽取（extract_text，同步重 IO），放到线程池执行
+            payload = await asyncio.to_thread(document_preview, self._query(request))
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(payload)

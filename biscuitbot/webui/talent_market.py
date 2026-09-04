@@ -34,6 +34,7 @@ from loguru import logger
 
 from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError, _slugify
 from biscuitbot.config.paths import get_runtime_subdir
+from biscuitbot.security.network import validate_url_target
 
 # 注册表目录缓存 TTL（秒）：与前端「每 30 分钟自动刷新」对齐，
 # 保证页面 30 分钟一次的刷新拿到的是新鲜目录数据。
@@ -165,6 +166,10 @@ def read_talent_market_registry_url(config_path: Path | None = None) -> str:
 
 def _http_get_json(url: str) -> dict[str, Any]:
     """带大小上限的 httpx 拉取并解析 JSON。失败抛 ``TalentMarketError``(502)。"""
+    # SSRF 防护：拒绝解析到内网/环回等私有地址的注册表 URL
+    ok, error = validate_url_target(url)
+    if not ok:
+        raise TalentMarketError(f"注册表 URL 未通过安全校验：{error}", status=400)
     try:
         with httpx.Client(timeout=_FETCH_TIMEOUT_SECONDS, follow_redirects=True) as client:
             with client.stream("GET", url) as response:
@@ -489,6 +494,11 @@ def _install_market_avatar(employee_id: str, avatar: str) -> str:
     parsed = urlparse(name)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return avatar  # emoji / 本地文件名 / 其它文本
+    # SSRF 防护：拒绝解析到内网/环回等私有地址的头像 URL（跳过头像，不阻断安装）
+    ok, error = validate_url_target(name)
+    if not ok:
+        logger.warning("talent-market 头像 URL 未通过安全校验，跳过：{}：{}", name, error)
+        return avatar
     try:
         ctype = ""
         chunks: list[bytes] = []

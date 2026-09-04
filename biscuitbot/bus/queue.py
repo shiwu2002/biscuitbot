@@ -9,7 +9,13 @@
 
 import asyncio  # 提供异步队列与事件循环支持
 
+from loguru import logger  # 队列积压告警日志
+
 from biscuitbot.bus.events import InboundMessage, OutboundMessage  # 消息数据类
+
+# 队列积压告警阈值：超过该数量记一次 warning（每方向节流，避免日志风暴）。
+# 队列保持无界（消息不允许静默丢弃），但消费端卡死时需要有可观测信号。
+_BACKLOG_WARN_THRESHOLD = 500
 
 
 class MessageBus:
@@ -22,22 +28,45 @@ class MessageBus:
     def __init__(self):
         self.inbound: asyncio.Queue[InboundMessage] = asyncio.Queue()  # 入站消息队列
         self.outbound: asyncio.Queue[OutboundMessage] = asyncio.Queue()  # 出站消息队列
+        self._backlog_warned: set[str] = set()  # 已告警的方向（"inbound"/"outbound"），回落后重置
 
     async def publish_inbound(self, msg: InboundMessage) -> None:
         """将来自渠道的消息发布给智能体（放入入站队列）。"""
+        self._warn_if_backlogged("inbound", self.inbound.qsize())
         await self.inbound.put(msg)
 
     async def consume_inbound(self) -> InboundMessage:
         """消费下一条入站消息（在消息可用前会阻塞等待）。"""
-        return await self.inbound.get()
+        msg = await self.inbound.get()
+        if self.inbound.qsize() < _BACKLOG_WARN_THRESHOLD:
+            self._backlog_warned.discard("inbound")
+        return msg
 
     async def publish_outbound(self, msg: OutboundMessage) -> None:
         """将智能体的响应发布给渠道（放入出站队列）。"""
+        self._warn_if_backlogged("outbound", self.outbound.qsize())
         await self.outbound.put(msg)
 
     async def consume_outbound(self) -> OutboundMessage:
         """消费下一条出站消息（在消息可用前会阻塞等待）。"""
-        return await self.outbound.get()
+        msg = await self.outbound.get()
+        if self.outbound.qsize() < _BACKLOG_WARN_THRESHOLD:
+            self._backlog_warned.discard("outbound")
+        return msg
+
+    def _warn_if_backlogged(self, direction: str, size: int) -> None:
+        """队列积压超过阈值时按方向节流告警一次，回落后再重新武装。"""
+        if size < _BACKLOG_WARN_THRESHOLD:
+            return
+        if direction in self._backlog_warned:
+            return
+        self._backlog_warned.add(direction)
+        logger.warning(
+            "MessageBus {} queue backlog reached {} messages — "
+            "consumer may be stuck or slower than producers",
+            direction,
+            size,
+        )
 
     @property
     def inbound_size(self) -> int:

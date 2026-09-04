@@ -20,21 +20,22 @@
 from __future__ import annotations
 
 import asyncio  # 异步事件循环与并发原语
+import hashlib  # SHA-256 哈希（空 ID 消息的内容指纹去重）
 import json  # JSON 序列化/反序列化
-from collections import deque  # 固定长度去重队列（消息 ID）
 from contextlib import suppress  # 上下文管理器，抑制指定异常
 from dataclasses import dataclass, field  # 数据类装饰器与字段
 from datetime import datetime  # 时间戳解析与生成
 from typing import Any  # 类型注解支持
 
 import httpx  # 异步 HTTP 客户端
+from pydantic import Field  # Pydantic 模型字段定义
 
 from biscuitbot.bus.events import OutboundMessage  # 出站消息事件
 from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_runtime_subdir  # 运行时子目录
 from biscuitbot.config.schema import Base  # 配置模型基类
-from pydantic import Field  # Pydantic 模型字段定义
+from biscuitbot.utils.helpers import MessageIdDedup  # 有界消息 ID 去重器（共享工具）
 
 try:
     import socketio  # python-socketio 客户端
@@ -320,8 +321,7 @@ class MochatChannel(BaseChannel):
         self._cold_sessions: set[str] = set()  # 冷启动 session（首次订阅跳过历史消息）
         self._session_by_converse: dict[str, str] = {}  # converseId → session_id 映射
 
-        self._seen_set: dict[str, set[str]] = {}  # 每个目标的已见消息 ID 集合
-        self._seen_queue: dict[str, deque[str]] = {}  # 每个目标的已见消息 ID 队列（LRU）
+        self._seen_dedups: dict[str, MessageIdDedup] = {}  # 每个目标的已见消息 ID 去重器（LRU）
         self._delay_states: dict[str, DelayState] = {}  # 每个目标的延迟聚合状态
 
         self._fallback_mode = False  # 是否处于轮询降级模式
@@ -789,11 +789,21 @@ class MochatChannel(BaseChannel):
 
         message_id = _str_field(payload, "messageId")
         seen_key = f"{target_kind}:{target_id}"
-        # 消息 ID 去重
-        if message_id and self._remember_message_id(seen_key, message_id):
-            return
-
         raw_body = normalize_mochat_content(payload.get("content")) or "[empty message]"
+        # 消息 ID 去重；部分轮询结果不带 messageId，空 ID 时改用内容指纹去重，
+        # 否则轮询每周期都会把同一条消息重新派发（重复回复）。
+        # 指纹中的时间戳取分钟粒度，避免同内容的两条独立消息被误杀。
+        if message_id:
+            if self._remember_message_id(seen_key, message_id):
+                return
+        else:
+            ts_minute = (parse_timestamp(event.get("timestamp")) or 0) // 60000
+            fingerprint = hashlib.sha256(
+                f"{author}|{raw_body}|{ts_minute}".encode("utf-8")
+            ).hexdigest()
+            if self._remember_message_id(seen_key, f"fingerprint:{fingerprint}"):
+                return
+
         ai = _safe_dict(payload.get("authorInfo"))
         sender_name = _str_field(ai, "nickname", "email")
         sender_username = _str_field(ai, "agentId")
@@ -829,16 +839,8 @@ class MochatChannel(BaseChannel):
 
     def _remember_message_id(self, key: str, message_id: str) -> bool:
         """记录已见消息 ID，返回 True 表示已见过（应跳过）。"""
-        seen_set = self._seen_set.setdefault(key, set())
-        seen_queue = self._seen_queue.setdefault(key, deque())
-        if message_id in seen_set:
-            return True
-        seen_set.add(message_id)
-        seen_queue.append(message_id)
-        # 超过上限时移除最旧的 ID（LRU 淘汰）
-        while len(seen_queue) > MAX_SEEN_MESSAGE_IDS:
-            seen_set.discard(seen_queue.popleft())
-        return False
+        dedup = self._seen_dedups.setdefault(key, MessageIdDedup(maxlen=MAX_SEEN_MESSAGE_IDS))
+        return not dedup.check_and_mark(message_id)
 
     async def _enqueue_delayed_entry(self, key: str, target_id: str, target_kind: str, entry: MochatBufferedEntry) -> None:
         """将条目加入延迟队列，并（重）启动延迟 flush 定时器。"""

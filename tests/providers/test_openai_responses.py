@@ -115,14 +115,28 @@ class TestConvertMessages:
         assert len(items) == 1
         assert items[0]["role"] == "user"
 
-    def test_multiple_system_messages_last_wins(self):
+    def test_multiple_system_messages_concatenated(self):
+        """Multiple system messages are joined with a blank line instead of
+        silently keeping only the last one."""
         msgs = [
             {"role": "system", "content": "first"},
             {"role": "system", "content": "second"},
             {"role": "user", "content": "x"},
         ]
         instructions, _ = convert_messages(msgs)
-        assert instructions == "second"
+        assert instructions == "first\n\nsecond"
+
+    def test_system_block_content_text_extracted(self):
+        """List-form system content contributes its text blocks to instructions."""
+        msgs = [
+            {"role": "system", "content": [
+                {"type": "text", "text": "part one"},
+                {"type": "text", "text": "part two"},
+            ]},
+            {"role": "user", "content": "x"},
+        ]
+        instructions, _ = convert_messages(msgs)
+        assert instructions == "part onepart two"
 
     def test_user_message_converted(self):
         _, items = convert_messages([{"role": "user", "content": "hello"}])

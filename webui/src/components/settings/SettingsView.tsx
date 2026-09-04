@@ -1244,20 +1244,26 @@ export function SettingsView({
 
   const saveWebSearch = async () => {
     if (!settings || webSearchSaving) return;
-    const provider = settings.web_search.providers.find((item) => item.name === webSearchForm.provider);
-    if (!provider) return;
+    // 手动配置的下拉外 provider（brave/searxng 等）在选项列表里没有对应项，
+    // 无法下拉切换、也未知其凭据要求：此时以「保持不变」语义保存（provider 发
+    // "keep"），后端仅应用 max_results / timeout / use_jina_reader 等参数，
+    // 不触碰 provider 与其凭据。避免 providers.find 落空后直接 return 的静默 no-op。
+    const provider = settings.web_search.providers.find(
+      (item) => item.name === webSearchForm.provider,
+    );
     const apiKey = webSearchForm.apiKey?.trim() ?? "";
     const baseUrl = webSearchForm.baseUrl?.trim() ?? "";
     const hasExistingSecret =
+      !!provider &&
       provider.credential === "api_key" &&
       webSearchForm.provider === settings.web_search.provider &&
       !!settings.web_search.api_key_hint;
 
-    if (provider.credential === "api_key" && !apiKey && !hasExistingSecret) {
+    if (provider && provider.credential === "api_key" && !apiKey && !hasExistingSecret) {
       setError(t("settings.byok.webSearch.apiKeyRequired"));
       return;
     }
-    if (provider.credential === "base_url" && !baseUrl) {
+    if (provider && provider.credential === "base_url" && !baseUrl) {
       setError(t("settings.byok.webSearch.baseUrlRequired"));
       return;
     }
@@ -1268,13 +1274,14 @@ export function SettingsView({
         (webSearchForm.useJinaReader ?? settings.web.fetch.use_jina_reader) !==
         settings.web.fetch.use_jina_reader;
       const update: WebSearchSettingsUpdate = {
-        provider: webSearchForm.provider,
+        // 下拉内 provider → 正常切换；下拉外（手动配置）→ "keep" 保持不变
+        provider: provider ? webSearchForm.provider : "keep",
         maxResults: webSearchForm.maxResults,
         timeout: webSearchForm.timeout,
         useJinaReader: webSearchForm.useJinaReader,
       };
-      if (provider.credential === "api_key" && apiKey) update.apiKey = apiKey;
-      if (provider.credential === "base_url") update.baseUrl = baseUrl;
+      if (provider && provider.credential === "api_key" && apiKey) update.apiKey = apiKey;
+      if (provider && provider.credential === "base_url") update.baseUrl = baseUrl;
       const payload = await updateWebSearchSettings(token, update);
       applyPayload(payload);
       if (payload.requires_restart || webFetchRestartRequired) {

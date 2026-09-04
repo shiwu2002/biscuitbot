@@ -28,14 +28,25 @@ _MAX_KNOWLEDGE_BYTES = 20 * 1024 * 1024  # 20 MB
 _DATA_URL_RE = re.compile(r"^data:([^;,]+)(?:;[^,]*)*;base64,(.+)$", re.DOTALL)
 
 
+class _DataUrlTooLargeError(Exception):
+    """base64 载荷估算解码后大小超过 ``_MAX_KNOWLEDGE_BYTES``。"""
+
+
 def _decode_data_url(data_url: str) -> tuple[bytes | None, str | None]:
-    """解析 ``data:<mime>;base64,<payload>``，返回 ``(raw, mime)``。"""
+    """解析 ``data:<mime>;base64,<payload>``，返回 ``(raw, mime)``。
+
+    解码前先按 base64 长度估算解码后大小（每 4 字符约 3 字节），超限抛
+    ``_DataUrlTooLargeError``，避免先解码超大 payload 再检查长度造成内存放大。
+    """
     match = _DATA_URL_RE.match(data_url)
     if not match:
         return None, None
     mime = match.group(1).strip().lower()
+    b64 = match.group(2)
+    if len(b64) * 3 // 4 + 1 > _MAX_KNOWLEDGE_BYTES:
+        raise _DataUrlTooLargeError
     try:
-        raw = base64.b64decode(match.group(2))
+        raw = base64.b64decode(b64)
     except Exception:
         return None, None
     return raw, mime
@@ -82,7 +93,10 @@ async def webui_knowledge_upload_event(
     if not isinstance(data_url, str) or not data_url:
         return error("missing_data")
 
-    raw, mime = _decode_data_url(data_url)
+    try:
+        raw, mime = _decode_data_url(data_url)
+    except _DataUrlTooLargeError:
+        return error("size")
     if raw is None:
         return error("invalid_data_url")
     if len(raw) > _MAX_KNOWLEDGE_BYTES:

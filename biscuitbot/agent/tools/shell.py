@@ -55,7 +55,10 @@ from biscuitbot.agent.tools.schema import (  # JSON Schema 类型
 from biscuitbot.config.paths import get_media_dir  # 媒体目录路径
 from biscuitbot.config_base import Base  # 配置基类
 from biscuitbot.security.guard_level import GuardPolicy  # 守卫策略
-from biscuitbot.security.workspace_access import current_scope_allows_loopback, current_tool_workspace  # 工作区访问控制
+from biscuitbot.security.workspace_access import (  # 工作区访问控制
+    current_scope_allows_loopback,
+    current_tool_workspace,
+)
 from biscuitbot.security.workspace_policy import is_path_within  # 路径在工作区内判断
 
 _IS_WINDOWS = sys.platform == "win32"  # 是否为 Windows 平台
@@ -828,9 +831,12 @@ class ExecTool(Tool):
 
             cwd_path = Path(cwd).resolve()
 
-            for raw in self._extract_absolute_paths(cmd):
+            # 先对整条命令展开环境变量再提取路径：若先提取后展开，
+            # `cat $HOME/.ssh/id_rsa` 这类以变量开头的绝对路径无法被正则命中，
+            # 会完全绕过工作区边界检查（`~` 有专门分支，`$VAR` 此前没有）。
+            for raw in self._extract_absolute_paths(os.path.expandvars(cmd)):
                 try:
-                    expanded = os.path.expandvars(raw.strip())
+                    expanded = raw.strip()
                     # Match against the un-resolved path first.  On Linux,
                     # /dev/stderr is a symlink to /proc/self/fd/2 and
                     # ``Path.resolve()`` would mask the device-file intent.

@@ -32,6 +32,7 @@ from loguru import logger  # 日志记录
 from biscuitbot.session.manager import Session  # 会话对象类型
 from biscuitbot.utils.gitstore import GitStore  # Git 存储，用于记忆文件的版本管理
 from biscuitbot.utils.helpers import (  # 通用辅助函数
+    anchor_to_first_user_turn,  # 锚定切片首个 user turn（与 get_history 同源）
     atomic_write_text,  # 原子写文本
     ensure_dir,  # 确保目录存在
     estimate_message_tokens,  # 估算单条消息 token 数
@@ -808,13 +809,10 @@ class Consolidator:
             return None
 
         sliced = tail[-replay_max_messages:]
-        for i, (_idx, message) in enumerate(sliced):
-            if message.get("role") == "user":
-                start = i
-                if i > 0 and sliced[i - 1][1].get("_channel_delivery"):
-                    start = i - 1
-                sliced = sliced[start:]
-                break
+        # （idx, message）元组列表先解包锚定，再按原索引回读。
+        anchored = anchor_to_first_user_turn([message for _idx, message in sliced])
+        if len(anchored) < len(sliced):
+            sliced = sliced[len(sliced) - len(anchored):]
 
         legal_start = find_legal_message_start([message for _idx, message in sliced])
         if legal_start:

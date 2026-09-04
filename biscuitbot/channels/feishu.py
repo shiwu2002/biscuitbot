@@ -31,9 +31,8 @@ import re  # 正则表达式（@占位符替换、Markdown 解析）
 import threading  # WebSocket 客户端运行于独立线程
 import time  # 重连退避与节流控制
 import uuid  # 生成媒体文件唯一标识
-from collections import OrderedDict  # 有序去重缓存（消息 ID 去重）
 from contextlib import suppress  # 上下文管理器，抑制指定异常
-from dataclasses import dataclass  # 数据类装饰器（流式缓冲区等）
+from dataclasses import dataclass, field  # 数据类装饰器与字段（流式缓冲区等）
 from typing import TYPE_CHECKING, Any, Literal  # 类型注解支持
 
 from pydantic import Field  # Pydantic 模型字段定义
@@ -43,11 +42,14 @@ from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
 from biscuitbot.config.schema import Base  # 配置模型基类
-from biscuitbot.utils.helpers import safe_filename  # 文件名安全化工具
+from biscuitbot.utils.helpers import MessageIdDedup, safe_filename  # 消息去重与文件名安全化共享工具
 from biscuitbot.utils.logging_bridge import redirect_lib_logging  # 第三方库日志桥接
 
 if TYPE_CHECKING:
-    from lark_oapi.api.im.v1.model import MentionEvent, P2ImMessageReceiveV1  # 飞书事件类型（仅类型检查时导入）
+    from lark_oapi.api.im.v1.model import (  # 飞书事件类型（仅类型检查时导入）
+        MentionEvent,
+        P2ImMessageReceiveV1,
+    )
 
 FEISHU_AVAILABLE = importlib.util.find_spec("lark_oapi") is not None  # 检测 lark_oapi SDK 是否已安装
 
@@ -329,6 +331,7 @@ class _FeishuStreamBuf:
     card_id: str | None = None  # 流式卡片的 ID
     sequence: int = 0  # 更新序列号
     last_edit: float = 0.0  # 上次编辑时间戳（用于节流）
+    created: float = field(default_factory=time.time)  # 创建时间戳（用于清理异常中断遗留的陈旧缓冲，防泄漏）
 
 
 class FeishuChannel(BaseChannel):
@@ -348,6 +351,7 @@ class FeishuChannel(BaseChannel):
     pip_requires = ["lark-oapi>=1.5.0"]
 
     _STREAM_EDIT_INTERVAL = 0.5  # CardKit 流式更新之间的节流间隔（秒）
+    _STREAM_BUF_TTL_S = 24 * 60 * 60  # 流式缓冲区最长保留时间（流异常中断时防止 _stream_bufs 泄漏）
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
@@ -362,7 +366,7 @@ class FeishuChannel(BaseChannel):
         self._client: Any = None  # lark-oapi 客户端（用于发送消息）
         self._ws_client: Any = None  # WebSocket 客户端（用于接收事件）
         self._ws_thread: threading.Thread | None = None  # WebSocket 运行线程
-        self._processed_message_ids: OrderedDict[str, None] = OrderedDict()  # 有序去重缓存（消息 ID）
+        self._processed_message_ids = MessageIdDedup(maxlen=1000)  # 有界去重缓存（消息 ID）
         self._loop: asyncio.AbstractEventLoop | None = None  # 主事件循环引用
         self._stream_bufs: dict[str, _FeishuStreamBuf] = {}  # 各会话的流式缓冲区
         self._bot_open_id: str | None = None  # 机器人自身的 open_id（用于 @匹配）
@@ -732,6 +736,16 @@ class FeishuChannel(BaseChannel):
         """将流式缓冲区作用域限定到入站消息（优先使用 message_id）。"""
         meta = metadata or {}
         return meta.get("message_id") or chat_id
+
+    def _prune_stale_stream_bufs(self) -> None:
+        """清理超过 TTL 的陈旧流式缓冲区。
+
+        _stream_bufs 条目通常仅在 _stream_end 时移除；流异常中断时该信号
+        不会到达，导致条目永久滞留。因此在创建新缓冲区时顺带清理。
+        """
+        cutoff = time.time() - self._STREAM_BUF_TTL_S
+        for key in [k for k, buf in self._stream_bufs.items() if buf.created < cutoff]:
+            self._stream_bufs.pop(key, None)
 
     # 匹配 Markdown 表格的正则（表头 + 分隔行 + 数据行）
     _TABLE_RE = re.compile(
@@ -1563,6 +1577,7 @@ class FeishuChannel(BaseChannel):
         # --- accumulate delta ---
         buf = self._stream_bufs.get(stream_key)
         if buf is None:
+            self._prune_stale_stream_bufs()
             buf = _FeishuStreamBuf()
             self._stream_bufs[stream_key] = buf
         buf.text += delta
@@ -1619,9 +1634,12 @@ class FeishuChannel(BaseChannel):
                 if buf and buf.card_id:
                     # Delegate to send_delta so tool hints get the same
                     # throttling (and card creation) as regular text deltas.
+                    # metadata 必须透传：stream_key 依赖 message_id，
+                    # 缺失时会退化成 chat_id 维度，产生第二张孤立卡片。
                     await self.send_delta(
                         msg.chat_id,
                         "\n\n" + self._format_tool_hint_delta(hint) + "\n\n",
+                        msg.metadata,
                     )
                     return
                 # No active streaming card — send as a regular interactive card
@@ -1787,14 +1805,9 @@ class FeishuChannel(BaseChannel):
                 self.logger.debug("skipping group message (not mentioned)")
                 return
 
-            # Deduplication check
-            if message_id in self._processed_message_ids:
+            # Deduplication check（check_and_mark 首次出现返回 True，重复返回 False）
+            if not self._processed_message_ids.check_and_mark(message_id):
                 return
-            self._processed_message_ids[message_id] = None
-
-            # Trim cache
-            while len(self._processed_message_ids) > 1000:
-                self._processed_message_ids.popitem(last=False)
 
             # Early permission check — avoid side effects for unauthorized users.
             # Group chats are silently ignored; DMs get a pairing code.

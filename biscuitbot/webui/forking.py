@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from collections.abc import Mapping
@@ -128,7 +129,10 @@ async def handle_webui_fork_chat(channel: Any, connection: Any, envelope: Mappin
         return
 
     try:
-        forked = create_webui_chat_fork(
+        # create_webui_chat_fork 是纯同步函数，涉及会话文件复制与转录文件读写，
+        # 放到线程池执行避免阻塞事件循环
+        forked = await asyncio.to_thread(
+            create_webui_chat_fork,
             session_manager,
             source_chat_id=source_chat_id,
             before_user_index=raw_index,

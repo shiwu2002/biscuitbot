@@ -64,6 +64,7 @@ src-tauri/binaries/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/node_modules/
+test_onboard_data/
 
 # Test & coverage
 .coverage

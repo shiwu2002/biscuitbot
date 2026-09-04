@@ -26,7 +26,8 @@ import httpx  # 异步 HTTP 客户端
 from loguru import logger  # 结构化日志
 
 from biscuitbot.providers.registry import find_by_name  # 按 name 查找 Provider 元数据
-from biscuitbot.utils.helpers import detect_image_mime  # 通过魔术字节识别图片 MIME 类型
+from biscuitbot.security.network import validate_url_target  # SSRF 防护校验
+from biscuitbot.utils.helpers import data_url, detect_image_mime  # data URL 构造 / MIME 识别
 
 
 def extract_domain(url: str) -> str:
@@ -106,7 +107,7 @@ def _read_image_b64(path: str | Path) -> tuple[str, str]:
 def image_path_to_data_url(path: str | Path) -> str:
     """把本地图片路径转换为 ``data:<mime>;base64,...`` 形式的 data URL。"""
     mime, encoded = _read_image_b64(path)
-    return f"data:{mime};base64,{encoded}"
+    return data_url(mime, encoded)
 
 
 def image_path_to_inline_data(path: str | Path) -> dict[str, str]:
@@ -129,7 +130,7 @@ def _b64_image_data_url(value: str) -> str:
     mime = detect_image_mime(raw)
     if mime is None:
         raise ImageGenerationError("generated image payload was not a supported image")
-    return f"data:{mime};base64,{encoded}"
+    return data_url(mime, encoded)
 
 
 
@@ -141,7 +142,13 @@ async def _download_image_data_url(
 
     部分 Provider（如智谱、阿里万相）只返回临时图片 URL，
     这里统一下载并转成 base64 data URL，避免外链失效。
+
+    SSRF 防护：URL 来自 Provider 的响应体，下载前必须校验目标地址，
+    防止被篡改/恶意的响应把请求引向内网或云元数据端点。
     """
+    ok, error = validate_url_target(url)
+    if not ok:
+        raise ImageGenerationError(f"blocked generated image URL: {url} ({error})")
     response = await client.get(url)
     try:
         response.raise_for_status()
@@ -153,7 +160,7 @@ async def _download_image_data_url(
     if mime is None:
         raise ImageGenerationError("generated image URL did not return a supported image")
     encoded = base64.b64encode(raw).decode("ascii")
-    return f"data:{mime};base64,{encoded}"
+    return data_url(mime, encoded)
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +616,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
             b64 = prediction.get("bytesBase64Encoded")
             mime = prediction.get("mimeType", "image/png")
             if isinstance(b64, str) and b64:
-                images.append(f"data:{mime};base64,{b64}")
+                images.append(data_url(mime, b64))
 
         self._require_images(images, data)
 
@@ -670,7 +677,7 @@ class GeminiImageGenerationClient(ImageGenerationProvider):
                     mime = inline.get("mimeType", "image/png")
                     b64 = inline.get("data", "")
                     if b64:
-                        images.append(f"data:{mime};base64,{b64}")
+                        images.append(data_url(mime, b64))
 
         self._require_images(images, data)
 

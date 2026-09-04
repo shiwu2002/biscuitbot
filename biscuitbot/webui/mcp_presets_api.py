@@ -18,9 +18,10 @@ from typing import Any, Literal, Mapping
 
 from biscuitbot.agent.tools.registry import ToolRegistry
 from biscuitbot.apps.protocol import capability_manifest, compact_dict
-from biscuitbot.config.loader import load_config, resolve_config_env_vars, save_config
+from biscuitbot.config.loader import load_config, resolve_config_env_vars, update_config
 from biscuitbot.config.paths import get_runtime_subdir
 from biscuitbot.config.schema import MCPServerConfig
+from biscuitbot.security.network import validate_url_target
 from biscuitbot.utils.helpers import ensure_dir
 
 QueryParams = dict[str, list[str]]
@@ -971,35 +972,42 @@ async def mcp_presets_test_action(query: QueryParams) -> dict[str, Any]:
 
     registry = ToolRegistry()
     stacks: dict[str, Any] = {}
+    last_action: dict[str, Any] = {}
     try:
-        stacks = await asyncio.wait_for(
-            connect_mcp_servers({name: cfg}, registry),
-            timeout=_test_timeout(cfg),
-        )
-        tool_prefix = f"mcp_{name}_"
-        tool_names = sorted(name for name in registry.tool_names if name.startswith(tool_prefix))
-        ok = name in stacks
-        if ok:
-            last_action = {
-                "ok": True,
-                "message": (
-                    f"{display_name} connected with {len(tool_names)} tools."
-                    if tool_names
-                    else f"{display_name} connected, but reported no tools."
-                ),
-                "tool_count": len(tool_names),
-                "tool_names": tool_names[:_MAX_TEST_TOOLS],
-                "checked_at": _checked_at(),
-            }
-        else:
-            last_action = {
-                "ok": False,
-                "message": f"{display_name} did not complete an MCP handshake.",
-                "error": "MCP handshake failed",
-                "tool_count": 0,
-                "tool_names": [],
-                "checked_at": _checked_at(),
-            }
+        # 不能用 asyncio.wait_for 包 connect_mcp_servers：wait_for 会在内部 task
+        # 进入 anyio cancel scope，之后 finally 在外层请求 task 里 aclose 栈会触发
+        # 跨 task RuntimeError 并泄漏连接。这里用 asyncio.timeout 在当前 task 内
+        # 包住「连接 + 使用 + 关闭」全过程，超时取消发生在同一 task，anyio cancel
+        # scope 可以安全退出。
+        async with asyncio.timeout(_test_timeout(cfg)):
+            try:
+                stacks = await connect_mcp_servers({name: cfg}, registry)
+                tool_prefix = f"mcp_{name}_"
+                tool_names = sorted(n for n in registry.tool_names if n.startswith(tool_prefix))
+                ok = name in stacks
+                if ok:
+                    last_action = {
+                        "ok": True,
+                        "message": (
+                            f"{display_name} connected with {len(tool_names)} tools."
+                            if tool_names
+                            else f"{display_name} connected, but reported no tools."
+                        ),
+                        "tool_count": len(tool_names),
+                        "tool_names": tool_names[:_MAX_TEST_TOOLS],
+                        "checked_at": _checked_at(),
+                    }
+                else:
+                    last_action = {
+                        "ok": False,
+                        "message": f"{display_name} did not complete an MCP handshake.",
+                        "error": "MCP handshake failed",
+                        "tool_count": 0,
+                        "tool_names": [],
+                        "checked_at": _checked_at(),
+                    }
+            finally:
+                await _close_mcp_stacks(stacks)
     except asyncio.TimeoutError:
         last_action = {
             "ok": False,
@@ -1096,6 +1104,13 @@ def _validated_server_name(name: str) -> str:
     return name.strip().lower()
 
 
+def _validate_remote_mcp_url(url: str) -> None:
+    """校验远程 MCP URL，拒绝解析到内网/环回等私有地址的 SSRF 目标。"""
+    ok, error = validate_url_target(url)
+    if not ok:
+        raise McpPresetError(f"MCP server URL rejected: {error}")
+
+
 def _custom_server_from_query(query: QueryParams) -> tuple[str, MCPServerConfig]:
     name = _validated_server_name((_query_first(query, "name") or "").strip())
     command = (_query_first(query, "command") or "").strip()
@@ -1105,6 +1120,9 @@ def _custom_server_from_query(query: QueryParams) -> tuple[str, MCPServerConfig]
         raise McpPresetError("stdio MCP servers require a command")
     if transport in {"sse", "streamableHttp"} and not url:
         raise McpPresetError("remote MCP servers require a URL")
+    if url:
+        # 仅校验 http(s) 型远程服务器；stdio 型不涉及 URL
+        _validate_remote_mcp_url(url)
     raw_timeout = (_query_first(query, "tool_timeout") or "").strip()
     tool_timeout = _DEFAULT_CUSTOM_TIMEOUT
     if raw_timeout:
@@ -1188,19 +1206,19 @@ def _import_mcp_servers(raw_json: str | None) -> dict[str, MCPServerConfig]:
 
 
 def custom_mcp_action(action: str, query: QueryParams) -> dict[str, Any]:
-    config = load_config()
     if action == "custom":
         name, cfg = _custom_server_from_query(query)
-        config.tools.mcp_servers[name] = cfg
-        save_config(config)
+        # 在锁内完成读改写，避免与其它 to_thread 工作线程交错丢失更新
+        with update_config() as config:
+            config.tools.mcp_servers[name] = cfg
         payload = mcp_presets_payload(last_action=_server_action_message(action, name))
         payload["requires_restart"] = True
         return payload
 
     if action in {"import", "import-cursor"}:
         servers = _import_mcp_servers(_query_first(query, "config"))
-        config.tools.mcp_servers.update(servers)
-        save_config(config)
+        with update_config() as config:
+            config.tools.mcp_servers.update(servers)
         payload = mcp_presets_payload(last_action={
             "ok": True,
             "message": f"Imported {len(servers)} MCP server(s).",
@@ -1210,12 +1228,12 @@ def custom_mcp_action(action: str, query: QueryParams) -> dict[str, Any]:
 
     if action == "tools":
         name = _validated_server_name((_query_first(query, "name") or "").strip())
-        cfg = config.tools.mcp_servers.get(name)
-        if cfg is None:
-            raise McpPresetError("unknown MCP server", status=404)
-        cfg.enabled_tools = _parse_enabled_tools(_query_first(query, "enabled_tools"))
-        config.tools.mcp_servers[name] = cfg
-        save_config(config)
+        with update_config() as config:
+            cfg = config.tools.mcp_servers.get(name)
+            if cfg is None:
+                raise McpPresetError("unknown MCP server", status=404)
+            cfg.enabled_tools = _parse_enabled_tools(_query_first(query, "enabled_tools"))
+            config.tools.mcp_servers[name] = cfg
         payload = mcp_presets_payload(last_action=_server_action_message(action, name))
         payload["requires_restart"] = True
         return payload
@@ -1229,31 +1247,29 @@ def mcp_presets_action(action: str, query: QueryParams) -> dict[str, Any]:
         raise McpPresetError("missing MCP preset name")
     preset = _preset_by_name_optional(name)
 
-    config = load_config()
-    existing = config.tools.mcp_servers.get(name)
-
     if action == "enable":
         if preset is None:
             raise McpPresetError("unknown MCP preset", status=404)
-        config.tools.mcp_servers[preset.name] = _materialize_server(preset, query, existing)
-        save_config(config)
+        with update_config() as config:
+            existing = config.tools.mcp_servers.get(name)
+            config.tools.mcp_servers[preset.name] = _materialize_server(preset, query, existing)
         payload = mcp_presets_payload(last_action=_action_message(action, preset))
         payload["requires_restart"] = True
         return payload
 
     if action == "remove":
-        if preset is None and name not in config.tools.mcp_servers:
-            raise McpPresetError("unknown MCP server", status=404)
         removed_runtime_files = False
         cleanup_error = ""
-        if name in config.tools.mcp_servers:
-            existing_cfg = config.tools.mcp_servers[name]
-            try:
-                removed_runtime_files = _remove_managed_stdio_cwd(name, existing_cfg)
-            except OSError as exc:
-                cleanup_error = str(exc)
-            del config.tools.mcp_servers[name]
-            save_config(config)
+        with update_config() as config:
+            if preset is None and name not in config.tools.mcp_servers:
+                raise McpPresetError("unknown MCP server", status=404)
+            if name in config.tools.mcp_servers:
+                existing_cfg = config.tools.mcp_servers[name]
+                try:
+                    removed_runtime_files = _remove_managed_stdio_cwd(name, existing_cfg)
+                except OSError as exc:
+                    cleanup_error = str(exc)
+                del config.tools.mcp_servers[name]
         last_action = (
             _action_message(action, preset)
             if preset is not None

@@ -311,7 +311,12 @@ async def test_execute_returns_timeout_message() -> None:
 
     result = await wrapper.execute()
 
-    assert result == "(MCP 工具 'mcp_test_demo' 调用超时（0.01s）：请检查 MCP 服务器是否响应正常)"
+    # 超时不自动重试（避免服务端已执行的副作用二次执行），仅提示人工确认
+    assert result == (
+        "(MCP 工具 'mcp_test_demo' 调用超时（timed out after 0.01s）："
+        "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+        "请检查 MCP 服务器是否响应正常)"
+    )
 
 
 @pytest.mark.asyncio
@@ -777,7 +782,12 @@ async def test_resource_wrapper_execute_handles_timeout() -> None:
 
     wrapper = _make_resource_wrapper(SimpleNamespace(read_resource=read_resource), timeout=0.01)
     result = await wrapper.execute()
-    assert result == "(MCP 资源 'mcp_srv_resource_myres' 读取超时（0.01s）：请检查 MCP 服务器是否响应正常)"
+    # 超时不自动重试（避免服务端已执行的副作用二次执行），仅提示人工确认
+    assert result == (
+        "(MCP 资源 'mcp_srv_resource_myres' 读取超时（timed out after 0.01s）："
+        "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+        "请检查 MCP 服务器是否响应正常)"
+    )
 
 
 @pytest.mark.asyncio
@@ -863,7 +873,12 @@ async def test_prompt_wrapper_execute_handles_timeout() -> None:
 
     wrapper = _make_prompt_wrapper(SimpleNamespace(get_prompt=get_prompt), timeout=0.01)
     result = await wrapper.execute()
-    assert result == "(MCP 提示 'mcp_srv_prompt_myprompt' 调用超时（0.01s）：请检查 MCP 服务器是否响应正常)"
+    # 超时不自动重试（避免服务端已执行的副作用二次执行），仅提示人工确认
+    assert result == (
+        "(MCP 提示 'mcp_srv_prompt_myprompt' 调用超时（timed out after 0.01s）："
+        "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+        "请检查 MCP 服务器是否响应正常)"
+    )
 
 
 @pytest.mark.asyncio

@@ -18,10 +18,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
-import shutil
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -29,7 +27,6 @@ from typing import Any
 
 from biscuitbot.config.loader import load_config
 from biscuitbot.config.paths import get_media_dir
-from biscuitbot.utils.helpers import safe_filename
 from biscuitbot.webui.http_utils import query_first
 from biscuitbot.webui.settings_api import WebUISettingsError
 
@@ -126,15 +123,12 @@ def _asset_item(
 def _stable_stage_tts(path: Path) -> Path:
     """把 media 根外的 TTS 文件复制到 ``media/websocket`` 供签名（幂等）。
 
-    副本名由源路径 sha256 前缀 + 原文件名组成，同一源文件始终指向同一副本，
-    列表重复调用不会产生额外复制。
+    复用 media_api 的稳定 staging：副本名由「源路径 + mtime」sha256 前缀 +
+    原文件名组成，同一源文件始终指向同一副本，列表重复调用不会产生额外复制。
     """
-    target_dir = get_media_dir("websocket")
-    digest = hashlib.sha256(str(path.resolve()).encode("utf-8")).hexdigest()[:12]
-    staged = target_dir / f"tts-{digest}-{safe_filename(path.name) or 'audio'}"
-    if not staged.is_file():
-        shutil.copyfile(path, staged)
-    return staged
+    from biscuitbot.webui.media_api import stable_staged_path
+
+    return stable_staged_path(path, get_media_dir("websocket"), prefix="tts")
 
 
 def _scan_media_assets(

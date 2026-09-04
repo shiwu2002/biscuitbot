@@ -1,6 +1,7 @@
 """File system tools: read, write, edit, list."""
 
 import difflib
+import hashlib
 import mimetypes
 import os
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.file_state import FileStates, _hash_file, current_file_states
+from biscuitbot.agent.tools.file_state import FileStates, current_file_states
 from biscuitbot.agent.tools.path_utils import resolve_workspace_path
 from biscuitbot.agent.tools.schema import (
     BooleanSchema,
@@ -248,6 +249,8 @@ class ReadFileTool(_FsTool):
             if fp.suffix.lower() in {".docx", ".xlsx", ".pptx"}:
                 return self._read_office_doc(fp)
 
+            # 只读盘一次：raw 同时用于空文件检查、图片探测、去重哈希与文本解码，
+            # 避免旧实现的全文件重复读取。
             raw = fp.read_bytes()
             if not raw:
                 return f"(Empty file: {path})"
@@ -256,8 +259,13 @@ class ReadFileTool(_FsTool):
             if mime and mime.startswith("image/"):
                 return build_image_content_blocks(raw, mime, str(fp), f"(Image file: {path})")
 
-            # Read dedup: same path + offset + limit + unchanged mtime → stub
-            # Always check for external modifications before dedup
+            # 基于内存中的 raw 计算一次内容哈希，供去重比对与状态记录复用，
+            # 避免旧实现的重复全文件 SHA256。
+            raw_hash = hashlib.sha256(raw).hexdigest()
+
+            # 读取去重：同路径 + offset/limit + mtime 未变 + 内容哈希一致 → 存根。
+            # record_read 会整体替换状态条目，无需修改旧 entry 对象（旧实现的
+            # entry.can_dedup = False 作用在已被替换的旧对象上，是死代码）。
             entry = self._file_states.get(fp)
             try:
                 current_mtime = os.path.getmtime(fp)
@@ -269,31 +277,14 @@ class ReadFileTool(_FsTool):
                 and entry.can_dedup
                 and entry.offset == offset
                 and entry.limit == limit
+                and current_mtime == entry.mtime
             ):
-                if current_mtime != entry.mtime:
-                    # File was modified externally - force full read and mark as not dedupable
-                    entry.can_dedup = False
-                    self._file_states.record_read(fp, offset=offset, limit=limit)  # Update state with new mtime
-                    # Continue to read full content (don't return dedup message)
-                else:
-                    # File unchanged - return dedup message
-                    # But only if content is actually unchanged (not just mtime)
-                    current_hash = _hash_file(str(fp))
-                    if current_hash == entry.content_hash:
-                        return f"[File unchanged since last read: {path}]"
-                    else:
-                        # Content changed despite same mtime - force full read
-                        entry.can_dedup = False
-                        self._file_states.record_read(fp, offset=offset, limit=limit)
-            else:
-                # No previous state or marked as not dedupable - read full content
-                self._file_states.record_read(fp, offset=offset, limit=limit)
-                # Force full read by setting can_dedup to False for this read
-                if entry:
-                    entry.can_dedup = False
+                # mtime 未变仍比对内容哈希，防止粗粒度 mtime 文件系统上的
+                # 快速写入漏检（内容变了但 mtime 没动）。
+                if raw_hash == entry.content_hash:
+                    return f"[File unchanged since last read: {path}]"
+            # mtime 变化或哈希不一致 → 走下面的完整读取路径（raw 已读入）
 
-            # Read the file content after dedup check
-            raw = fp.read_bytes()
             try:
                 text_content = raw.decode("utf-8")
             except UnicodeDecodeError:
@@ -336,7 +327,9 @@ class ReadFileTool(_FsTool):
                 result += f"\n\n(Showing lines {offset}-{end} of {total}. Use offset={end + 1} to continue.)"
             else:
                 result += f"\n\n(End of file — {total} lines total)"
-            self._file_states.record_read(fp, offset=offset, limit=limit)
+            # 成功读取后统一记录一次状态（复用已计算的哈希，避免再次读盘）；
+            # 失败路径（二进制/越界 offset）不记录，防止后续去重存根掩盖错误。
+            self._file_states.record_read(fp, offset=offset, limit=limit, content_hash=raw_hash)
             return result
         except WorkspaceBoundaryError as e:
             return f"Error: 路径越界（{e}）。工作区边界是硬性安全策略，请改用工作区内的路径"

@@ -1005,6 +1005,7 @@ class _DummyDownloadResponse:
     def __init__(self, content: bytes, status_code: int = 200) -> None:
         self.content = content
         self.status_code = status_code
+        self.headers: dict[str, str] = {}  # 对齐 httpx.Response 的响应头接口
 
     def raise_for_status(self) -> None:
         return None
@@ -1026,9 +1027,11 @@ class _DummyErrorDownloadResponse(_DummyDownloadResponse):
 
 
 @pytest.mark.asyncio
-async def test_download_media_item_uses_full_url_when_present(tmp_path) -> None:
+async def test_download_media_item_uses_full_url_when_present(tmp_path, monkeypatch) -> None:
     channel, _bus = _make_channel()
     weixin_mod.get_media_dir = lambda _name: tmp_path
+    # 测试域名无法通过 DNS 解析，跳过 SSRF 校验（校验逻辑单独覆盖）
+    monkeypatch.setattr(weixin_mod, "validate_url_target", lambda _url: (True, ""))
 
     full_url = "https://cdn.example.test/download/full"
     channel._client = SimpleNamespace(
@@ -1049,9 +1052,10 @@ async def test_download_media_item_uses_full_url_when_present(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_download_media_item_falls_back_when_full_url_returns_retryable_error(tmp_path) -> None:
+async def test_download_media_item_falls_back_when_full_url_returns_retryable_error(tmp_path, monkeypatch) -> None:
     channel, _bus = _make_channel()
     weixin_mod.get_media_dir = lambda _name: tmp_path
+    monkeypatch.setattr(weixin_mod, "validate_url_target", lambda _url: (True, ""))
 
     full_url = "https://cdn.example.test/download/full?taskid=123"
     channel._client = SimpleNamespace(
@@ -1080,9 +1084,10 @@ async def test_download_media_item_falls_back_when_full_url_returns_retryable_er
 
 
 @pytest.mark.asyncio
-async def test_download_media_item_falls_back_to_encrypt_query_param(tmp_path) -> None:
+async def test_download_media_item_falls_back_to_encrypt_query_param(tmp_path, monkeypatch) -> None:
     channel, _bus = _make_channel()
     weixin_mod.get_media_dir = lambda _name: tmp_path
+    monkeypatch.setattr(weixin_mod, "validate_url_target", lambda _url: (True, ""))
 
     channel._client = SimpleNamespace(
         get=AsyncMock(return_value=_DummyDownloadResponse(content=b"fallback-bytes"))
@@ -1098,9 +1103,10 @@ async def test_download_media_item_falls_back_to_encrypt_query_param(tmp_path) -
 
 
 @pytest.mark.asyncio
-async def test_download_media_item_does_not_retry_when_full_url_fails_without_fallback(tmp_path) -> None:
+async def test_download_media_item_does_not_retry_when_full_url_fails_without_fallback(tmp_path, monkeypatch) -> None:
     channel, _bus = _make_channel()
     weixin_mod.get_media_dir = lambda _name: tmp_path
+    monkeypatch.setattr(weixin_mod, "validate_url_target", lambda _url: (True, ""))
 
     full_url = "https://cdn.example.test/download/full"
     channel._client = SimpleNamespace(

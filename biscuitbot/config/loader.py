@@ -12,17 +12,24 @@
 import json  # JSON 配置文件读写
 import os  # 读取环境变量用于配置引用解析
 import re  # 匹配 ${VAR} 环境变量引用
+import threading  # 配置文件读写进程内互斥锁
+from contextlib import contextmanager  # update_config 读改写上下文管理器
 from pathlib import Path  # 跨平台路径处理
-from typing import Any  # 任意类型标注
+from typing import Any, Iterator  # 任意类型标注与生成器标注
 
 import pydantic  # 配置校验与异常类型
+from pydantic import BaseModel  # 递归恢复 exclude 字段时检查子模型
 
 from biscuitbot.config.schema import Config, _resolve_tool_config_refs  # 配置数据模型与前置引用解析
+from biscuitbot.utils.helpers import atomic_write_text  # 配置文件原子写（tmp+rename+fsync）
 
 # 全局变量：当前配置文件路径（用于多实例支持）
 _current_config_path: Path | None = None
 # 标记 schema 的工具配置前置引用是否已解析（避免重复 rebuild）
 _schema_refs_ready = False
+# 配置文件读写互斥锁：save_config 与 update_config 共用，
+# 防止 loop 线程与 asyncio.to_thread 工作线程同时写文件导致交错损坏。
+_config_io_lock = threading.RLock()
 
 
 def set_config_path(path: Path) -> None:
@@ -91,8 +98,8 @@ def _migrate_yaml_to_json() -> None:
                 with open(yaml_path, encoding="utf-8") as f:
                     data = _yaml.safe_load(f)
                 if isinstance(data, dict):
-                    with open(json_path, "w", encoding="utf-8") as f:
-                        json.dump(data, f, indent=2, ensure_ascii=False)
+                    # 原子写，避免迁移中途崩溃留下截断的 config.json
+                    atomic_write_text(json_path, json.dumps(data, indent=2, ensure_ascii=False))
                     from loguru import logger
                     logger.info("Auto-migrated {} -> {}", yaml_path, json_path)
             except Exception:
@@ -141,6 +148,25 @@ def _apply_ssrf_whitelist(config: Config) -> None:
     configure_ssrf_whitelist(config.tools.ssrf_whitelist)
 
 
+def _restore_excluded_fields(model: BaseModel, old: dict[str, Any], new: dict[str, Any]) -> None:
+    """从旧配置字典中恢复 ``exclude=True`` 字段，避免 save 往返静默删除用户配置。
+
+    仅恢复 schema 显式声明 excluded 的字段（如遗留 ``dream.cron``），不碰未知键——
+    未知键可能是被 WebUI 有意删除的内容（如渠道配置），回填会破坏删除语义。
+    """
+    for name, field in type(model).model_fields.items():
+        if field.exclude is True:
+            alias = field.serialization_alias or field.alias or name
+            if alias in old and alias not in new:
+                new[alias] = old[alias]
+            continue
+        sub = getattr(model, name, None)
+        if isinstance(sub, BaseModel):
+            old_section = old.get(alias := (field.serialization_alias or field.alias or name))
+            if isinstance(old_section, dict) and isinstance(new.get(alias), dict):
+                _restore_excluded_fields(sub, old_section, new[alias])
+
+
 def save_config(config: Config, config_path: Path | None = None) -> None:
     """将配置保存到文件（JSON 格式）。
 
@@ -148,21 +174,52 @@ def save_config(config: Config, config_path: Path | None = None) -> None:
         config: Configuration to save.
         config_path: Optional path to save to. Uses default if not provided.
     """
-    path = config_path or get_config_path()
-    path.parent.mkdir(parents=True, exist_ok=True)
+    with _config_io_lock:
+        path = config_path or get_config_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 以 JSON 模式导出，保留别名以兼容既有配置文件键名
-    data = config.model_dump(mode="json", by_alias=True)
+        # 以 JSON 模式导出，保留别名以兼容既有配置文件键名
+        data = config.model_dump(mode="json", by_alias=True)
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+        # 恢复 exclude=True 字段（如 dream.cron）：它们不参与 model_dump 序列化，
+        # 若不从旧文件回填，任何一次保存都会静默删除这些用户配置。
+        if path.exists():
+            try:
+                old = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                old = None
+            if isinstance(old, dict):
+                _restore_excluded_fields(config, old, data)
 
-    # 限制配置文件权限：文件内含提供商 API Key 与渠道密钥。
-    # 尽力设置为 0o600（Windows 上为空操作）。
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
+        # 原子写：tmp + rename + fsync，避免中途崩溃产生半截 JSON
+        # 被并发 load_config 读到（会导致所有 WebUI API 报 500）。
+        atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False))
+
+        # 限制配置文件权限：文件内含提供商 API Key 与渠道密钥。
+        # 尽力设置为 0o600（Windows 上为空操作）。
+        try:
+            path.chmod(0o600)
+        except OSError:
+            pass
+
+
+@contextmanager
+def update_config(config_path: Path | None = None) -> Iterator[Config]:
+    """在互斥锁内完成「load → 修改 → save」的读改写流程。
+
+    用法::
+
+        with update_config() as config:
+            config.dream.interval_h = 4
+        # with 块正常退出时自动 save_config；抛异常则不保存
+
+    所有对 config.json 的读改写都应走本入口，避免多线程交错时
+    先写者的改动被后写者用旧快照覆盖（丢失更新）。
+    """
+    with _config_io_lock:
+        config = load_config(config_path)
+        yield config
+        save_config(config, config_path)
 
 
 # 匹配 ${VAR} 形式的环境变量引用

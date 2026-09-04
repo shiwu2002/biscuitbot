@@ -52,13 +52,21 @@ class FileStates:
         """初始化空的状态字典。"""
         self._state: dict[str, ReadState] = {}
 
-    def record_read(self, path: str | Path, offset: int = 1, limit: int | None = None) -> None:
+    def record_read(
+        self,
+        path: str | Path,
+        offset: int = 1,
+        limit: int | None = None,
+        content_hash: str | None = None,
+    ) -> None:
         """记录文件已读取（在成功读取后调用）。
 
         参数:
             path: 文件路径。
             offset: 读取的起始行偏移。
             limit: 读取的行数限制。
+            content_hash: 调用方已计算好的内容哈希；缺省时内部重新读盘计算，
+                传入可避免一次重复的全文件读取与哈希。
         """
         p = str(Path(path).resolve())
         try:
@@ -69,7 +77,7 @@ class FileStates:
             mtime=mtime,
             offset=offset,
             limit=limit,
-            content_hash=_hash_file(p),
+            content_hash=content_hash if content_hash is not None else _hash_file(p),
             can_dedup=True,
         )
 

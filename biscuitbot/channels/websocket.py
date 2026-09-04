@@ -33,11 +33,18 @@ from pathlib import Path  # 路径处理（Unix 套接字、媒体文件）
 from typing import Any, Self, TypeGuard  # 类型注解支持
 
 from pydantic import Field, field_validator, model_validator  # Pydantic 模型字段与校验器
-from websockets.asyncio.server import ServerConnection, serve, unix_serve  # WebSocket 服务端（异步）
+from websockets.asyncio.server import (  # WebSocket 服务端（异步）
+    ServerConnection,
+    serve,
+    unix_serve,
+)
 from websockets.exceptions import ConnectionClosed  # 连接关闭异常
 from websockets.http11 import Request as WsRequest  # HTTP/1.1 请求（WS 升级检测）
 
-from biscuitbot.bus.events import OUTBOUND_META_AGENT_UI, OutboundMessage  # 出站消息事件及 Agent UI 元数据键
+from biscuitbot.bus.events import (  # 出站消息事件及 Agent UI 元数据键
+    OUTBOUND_META_AGENT_UI,
+    OutboundMessage,
+)
 from biscuitbot.bus.queue import MessageBus  # 消息总线
 from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir  # 媒体目录获取
@@ -1081,7 +1088,18 @@ class WebSocketChannel(BaseChannel):
         if not conns:
             return
         for connection in conns:
-            await self._safe_send_to(connection, raw, label=" ")
+            try:
+                await self._safe_send_to(connection, raw, label=" ")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                # 单个坏连接不得中断扇出：记日志后继续投递剩余订阅者。
+                # 不向上抛出——manager 的重试会重复投递已成功的连接。
+                self.logger.warning(
+                    "fanout send to a subscriber failed ({}): {}",
+                    type(exc).__name__,
+                    exc,
+                )
 
     async def send_reasoning_delta(
         self,

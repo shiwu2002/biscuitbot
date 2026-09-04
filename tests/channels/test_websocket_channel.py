@@ -1695,7 +1695,8 @@ async def test_send_session_updated_includes_scope_when_present() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_non_connection_closed_exception_is_raised() -> None:
+async def test_send_non_connection_closed_exception_does_not_break_fanout() -> None:
+    """单个坏连接的异常不得中断扇出，也不得向上抛出（manager 重试会导致重复投递）。"""
     bus = MagicMock()
     channel = WebSocketChannel({"enabled": True, "allowFrom": ["*"]}, bus, gateway=_basic_handler(bus))
     mock_ws = AsyncMock()
@@ -1703,8 +1704,8 @@ async def test_send_non_connection_closed_exception_is_raised() -> None:
     channel._attach(mock_ws, "chat-1")
 
     msg = OutboundMessage(channel="websocket", chat_id="chat-1", content="hello")
-    with pytest.raises(RuntimeError, match="unexpected"):
-        await channel.send(msg)
+    await channel.send(msg)  # 不应抛出异常
+    mock_ws.send.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -112,6 +112,10 @@ if TYPE_CHECKING:
     )
     from biscuitbot.cron.service import CronService
 
+# 停机时排空后台任务的超时秒数：防止单个卡住的协程（如等待 LLM 长超时）
+# 无限期拖住关闭流程。
+_BACKGROUND_DRAIN_TIMEOUT_S = 15.0
+
 
 class TurnState(Enum):
     """一次轮次的状态机枚举。
@@ -383,6 +387,7 @@ class AgentLoop:
         # _process_mcp_reconnects() 排空队列并自行执行 _refresh_terminated_server，
         # 使新栈的取消作用域在 owner 任务中进入（与关闭处匹配）。
         self._mcp_reconnect_requests: list[tuple[str, str, Any, asyncio.Future]] = []  # 延迟重连请求列表
+        self._mcp_connect_requests: list[asyncio.Future] = []  # 非 owner 任务委派的连接请求（Future 列表）
         self._mcp_connected = False  # MCP 是否已连接
         self._mcp_connecting = False  # MCP 是否正在连接中
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> 活跃任务列表
@@ -901,8 +906,16 @@ class AgentLoop:
         tasks = self._active_tasks.pop(key, [])
         cancelled = sum(1 for t in tasks if not t.done() and t.cancel())
         for t in tasks:
-            with suppress(asyncio.CancelledError, Exception):
+            try:
                 await t
+            except asyncio.CancelledError:
+                # 若是当前任务自身被取消，必须向外传播，不能吞掉——否则
+                # 停机/停止流程会被破坏。
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+            except Exception:
+                logger.debug("Active task raised during cancel for {}", key)
         sub_cancelled = await self.subagents.cancel_by_session(key)
         return cancelled + sub_cancelled
 
@@ -1103,17 +1116,8 @@ class AgentLoop:
         self._last_usage = result.usage
         if result.stop_reason == "max_iterations":
             logger.warning("Max iterations ({}) reached", self.max_iterations)
-            should_stream = turn_continuation.should_stream_budget_response(
-                stop_reason=result.stop_reason,
-                pending_queue_available=pending_queue is not None and session is not None,
-                session_metadata=session_metadata,
-                message_metadata=metadata,
-            )
-            # Push final content through stream so streaming channels (e.g. Feishu)
-            # update the card instead of leaving it empty.
-            if on_stream and on_stream_end and should_stream:
-                await on_stream(result.final_content or "")
-                await on_stream_end(resuming=False)
+            # 流式卡片终结与最终内容推送由 runner._run_core 兜底处理
+            # （stream_state + on_stream_end(resuming=False)），此处不再重复补偿。
         elif result.stop_reason == "error":
             logger.error("LLM returned error: {}", (result.final_content or "")[:200])
         return result.final_content, result.tools_used, result.messages, result.stop_reason, result.had_injections
@@ -1245,155 +1249,150 @@ class AgentLoop:
         gate = self._concurrency_gate or nullcontext()
 
         pending: asyncio.Queue | None = None
-        try:
-            async with lock, gate:
-                # Only the task that owns the session lock may publish the
-                # active mid-turn injection queue for this session.
-                pending = asyncio.Queue(maxsize=20)
-                self._pending_queues[session_key] = pending
-                try:
-                    on_stream: Callable[[str], Awaitable[None]] | None = None
-                    on_stream_end: Callable[..., Awaitable[None]] | None = None
-                    if msg.metadata.get("_wants_stream"):
-                        # Split one answer into distinct stream segments.
-                        stream_base_id = f"{msg.session_key}:{time.time_ns()}"
-                        stream_segment = 0
+        async with lock, gate:
+            # Only the task that owns the session lock may publish the
+            # active mid-turn injection queue for this session.
+            pending = asyncio.Queue(maxsize=20)
+            self._pending_queues[session_key] = pending
+            try:
+                on_stream: Callable[[str], Awaitable[None]] | None = None
+                on_stream_end: Callable[..., Awaitable[None]] | None = None
+                if msg.metadata.get("_wants_stream"):
+                    # Split one answer into distinct stream segments.
+                    stream_base_id = f"{msg.session_key}:{time.time_ns()}"
+                    stream_segment = 0
 
-                        def _current_stream_id() -> str:
-                            return f"{stream_base_id}:{stream_segment}"
+                    def _current_stream_id() -> str:
+                        return f"{stream_base_id}:{stream_segment}"
 
-                        async def _on_stream(delta: str) -> None:
-                            meta = dict(msg.metadata or {})
-                            meta["_stream_delta"] = True
-                            meta["_stream_id"] = _current_stream_id()
-                            await self.bus.publish_outbound(OutboundMessage(
-                                channel=msg.channel, chat_id=msg.chat_id,
-                                content=delta,
-                                metadata=meta,
-                            ))
-
-                        async def _on_stream_end(*, resuming: bool = False) -> None:
-                            nonlocal stream_segment
-                            meta = dict(msg.metadata or {})
-                            meta["_stream_end"] = True
-                            meta["_resuming"] = resuming
-                            meta["_stream_id"] = _current_stream_id()
-                            await self.bus.publish_outbound(OutboundMessage(
-                                channel=msg.channel, chat_id=msg.chat_id,
-                                content="",
-                                metadata=meta,
-                            ))
-                            stream_segment += 1
-
-                        on_stream = _on_stream
-                        on_stream_end = _on_stream_end
-
-                    response = await self._process_message(
-                        msg, on_stream=on_stream, on_stream_end=on_stream_end,
-                        pending_queue=pending,
-                    )
-                    completed_channel = msg.channel
-                    completed_chat_id = msg.chat_id
-                    if response is not None:
-                        await self.bus.publish_outbound(response)
-                        completed_channel = response.channel
-                        completed_chat_id = response.chat_id
-                    elif msg.channel == "cli":
+                    async def _on_stream(delta: str) -> None:
+                        meta = dict(msg.metadata or {})
+                        meta["_stream_delta"] = True
+                        meta["_stream_id"] = _current_stream_id()
                         await self.bus.publish_outbound(OutboundMessage(
                             channel=msg.channel, chat_id=msg.chat_id,
-                            content="", metadata=msg.metadata or {},
+                            content=delta,
+                            metadata=meta,
                         ))
-                    continuing = turn_continuation.internal_continuation_pending(msg.metadata)
-                    if not continuing:
-                        await self._runtime_events().turn_completed(
-                            channel=completed_channel,
-                            chat_id=completed_chat_id,
-                            session_key=session_key,
-                            metadata=msg.metadata,
-                        )
-                    self._cron_turns.complete(msg, response=response)
-                except asyncio.CancelledError:
-                    self._cron_turns.complete(
-                        msg,
-                        error=asyncio.CancelledError(),
-                    )
-                    logger.info("Task cancelled for session {}", session_key)
-                    # Preserve partial context from the interrupted turn so
-                    # the user does not lose tool results and assistant
-                    # messages accumulated before /stop.  The checkpoint was
-                    # already persisted to session metadata by
-                    # _emit_checkpoint during tool execution; materializing
-                    # it into session history now makes it visible in the
-                    # next conversation turn.
-                    try:
-                        key = self._effective_session_key(msg)
-                        session = self.sessions.get_or_create(key)
-                        if self._restore_runtime_checkpoint(session):
-                            self._clear_pending_user_turn(session)
-                            self.sessions.save(session)
-                            logger.info(
-                                "Restored partial context for cancelled session {}",
-                                key,
-                            )
-                    except Exception:
-                        logger.debug(
-                            "Could not restore checkpoint for cancelled session {}",
-                            session_key,
-                            exc_info=True,
-                        )
-                    raise
-                except Exception as exc:
-                    logger.exception("Error processing message for session {}", session_key)
+
+                    async def _on_stream_end(*, resuming: bool = False) -> None:
+                        nonlocal stream_segment
+                        meta = dict(msg.metadata or {})
+                        meta["_stream_end"] = True
+                        meta["_resuming"] = resuming
+                        meta["_stream_id"] = _current_stream_id()
+                        await self.bus.publish_outbound(OutboundMessage(
+                            channel=msg.channel, chat_id=msg.chat_id,
+                            content="",
+                            metadata=meta,
+                        ))
+                        stream_segment += 1
+
+                    on_stream = _on_stream
+                    on_stream_end = _on_stream_end
+
+                response = await self._process_message(
+                    msg, on_stream=on_stream, on_stream_end=on_stream_end,
+                    pending_queue=pending,
+                )
+                completed_channel = msg.channel
+                completed_chat_id = msg.chat_id
+                if response is not None:
+                    await self.bus.publish_outbound(response)
+                    completed_channel = response.channel
+                    completed_chat_id = response.chat_id
+                elif msg.channel == "cli":
                     await self.bus.publish_outbound(OutboundMessage(
                         channel=msg.channel, chat_id=msg.chat_id,
-                        content="Sorry, I encountered an error.",
+                        content="", metadata=msg.metadata or {},
                     ))
-                    if not turn_continuation.internal_continuation_pending(msg.metadata):
-                        await self._runtime_events().turn_completed(
-                            channel=msg.channel,
-                            chat_id=msg.chat_id,
-                            session_key=session_key,
-                            metadata=msg.metadata,
-                        )
-                    self._cron_turns.complete(msg, error=exc)
-                finally:
-                    # Drain any messages still in the pending queue and re-publish
-                    # them to the bus so they are processed as fresh inbound messages
-                    # rather than silently lost.  Only remove our own queue; a
-                    # later task waiting on the lock must not be able to steal
-                    # cleanup ownership.
-                    queue = None
-                    if self._pending_queues.get(session_key) is pending:
-                        queue = self._pending_queues.pop(session_key, None)
-                    else:
-                        queue = pending
-                    if queue is not None:
-                        leftover = 0
-                        while True:
-                            try:
-                                item = queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                break
-                            await self.bus.publish_inbound(item)
-                            leftover += 1
-                        if leftover:
-                            logger.info(
-                                "Re-published {} leftover message(s) to bus for session {}",
-                                leftover, session_key,
-                            )
-                    if not turn_continuation.internal_continuation_pending(msg.metadata):
-                        await self._runtime_events().run_status_changed(
-                            msg, session_key, "idle"
-                        )
-                        self._runtime_events().clear_turn(session_key)
-                    await self._cron_turns.publish_next_deferred(session_key)
-        finally:
-            if pending is None:
-                await self._runtime_events().run_status_changed(
-                    msg, session_key, "idle"
+                continuing = turn_continuation.internal_continuation_pending(msg.metadata)
+                if not continuing:
+                    await self._runtime_events().turn_completed(
+                        channel=completed_channel,
+                        chat_id=completed_chat_id,
+                        session_key=session_key,
+                        metadata=msg.metadata,
+                    )
+                self._cron_turns.complete(msg, response=response)
+            except asyncio.CancelledError:
+                self._cron_turns.complete(
+                    msg,
+                    error=asyncio.CancelledError(),
                 )
-                self._runtime_events().clear_turn(session_key)
+                logger.info("Task cancelled for session {}", session_key)
+                # Preserve partial context from the interrupted turn so
+                # the user does not lose tool results and assistant
+                # messages accumulated before /stop.  The checkpoint was
+                # already persisted to session metadata by
+                # _emit_checkpoint during tool execution; materializing
+                # it into session history now makes it visible in the
+                # next conversation turn.
+                try:
+                    key = self._effective_session_key(msg)
+                    session = self.sessions.get_or_create(key)
+                    if self._restore_runtime_checkpoint(session):
+                        self._clear_pending_user_turn(session)
+                        self.sessions.save(session)
+                        logger.info(
+                            "Restored partial context for cancelled session {}",
+                            key,
+                        )
+                except Exception:
+                    logger.debug(
+                        "Could not restore checkpoint for cancelled session {}",
+                        session_key,
+                        exc_info=True,
+                    )
+                raise
+            except Exception as exc:
+                logger.exception("Error processing message for session {}", session_key)
+                await self.bus.publish_outbound(OutboundMessage(
+                    channel=msg.channel, chat_id=msg.chat_id,
+                    content="Sorry, I encountered an error.",
+                ))
+                if not turn_continuation.internal_continuation_pending(msg.metadata):
+                    await self._runtime_events().turn_completed(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        session_key=session_key,
+                        metadata=msg.metadata,
+                    )
+                self._cron_turns.complete(msg, error=exc)
+            finally:
+                # Drain any messages still in the pending queue and re-publish
+                # them to the bus so they are processed as fresh inbound messages
+                # rather than silently lost.  Only remove our own queue; a
+                # later task waiting on the lock must not be able to steal
+                # cleanup ownership.
+                queue = None
+                if self._pending_queues.get(session_key) is pending:
+                    queue = self._pending_queues.pop(session_key, None)
+                else:
+                    queue = pending
+                if queue is not None:
+                    leftover = 0
+                    while True:
+                        try:
+                            item = queue.get_nowait()
+                        except asyncio.QueueEmpty:
+                            break
+                        await self.bus.publish_inbound(item)
+                        leftover += 1
+                    if leftover:
+                        logger.info(
+                            "Re-published {} leftover message(s) to bus for session {}",
+                            leftover, session_key,
+                        )
+                if not turn_continuation.internal_continuation_pending(msg.metadata):
+                    await self._runtime_events().run_status_changed(
+                        msg, session_key, "idle"
+                    )
+                    self._runtime_events().clear_turn(session_key)
                 await self._cron_turns.publish_next_deferred(session_key)
+    # 注意：任务在等待会话锁期间被取消时（pending 仍为 None），这里不做任何
+    # 清理——此时同会话可能存在另一个正在运行的 dispatch 任务，发布 idle /
+    # clear_turn 会打断活跃 turn 的状态与计时器；状态收尾由锁持有者负责。
 
     async def _close_deferred_mcp_stacks(self) -> None:
         """Close MCP stacks deferred from other tasks (e.g. _dispatch sub-tasks).
@@ -1424,7 +1423,18 @@ class AgentLoop:
     async def close_mcp(self) -> None:
         """Drain pending background archives, then close MCP connections."""
         if self._background_tasks:
-            await asyncio.gather(*self._background_tasks, return_exceptions=True)
+            # 带超时排空：单个卡住的后台协程（如等待 LLM 长超时的压缩任务）
+            # 不应无限期拖住停机流程。
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*self._background_tasks, return_exceptions=True),
+                    timeout=_BACKGROUND_DRAIN_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Timed out draining {} background task(s) during shutdown",
+                    len(self._background_tasks),
+                )
             self._background_tasks.clear()
         # Cancel any pending reconnect futures so sub-tasks blocked on them
         # don't hang during shutdown. They'll raise CancelledError and unwind.
@@ -1432,6 +1442,10 @@ class AgentLoop:
             if not future.done():
                 future.cancel()
         self._mcp_reconnect_requests.clear()
+        for future in self._mcp_connect_requests:
+            if not future.done():
+                future.cancel()
+        self._mcp_connect_requests.clear()
         await self._close_deferred_mcp_stacks()
         for name, stack in self._mcp_stacks.items():
             try:

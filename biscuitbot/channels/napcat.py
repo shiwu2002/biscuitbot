@@ -42,7 +42,7 @@ from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir  # 媒体文件目录
 from biscuitbot.config.schema import Base  # 配置模型基类
 from biscuitbot.security.network import validate_url_target  # URL 安全校验
-from biscuitbot.utils.helpers import safe_filename  # 文件名安全化工具
+from biscuitbot.utils.helpers import MessageIdDedup, safe_filename  # 消息去重与文件名安全化共享工具
 
 _DOWNLOAD_TIMEOUT = aiohttp.ClientTimeout(total=60)  # 图片下载超时时间（60秒）
 _ACTION_TIMEOUT = 20.0  # OneBot action 请求超时时间（20秒）
@@ -92,7 +92,7 @@ class NapcatChannel(BaseChannel):
         self._media_root: Path = get_media_dir("channels/napcat")  # 媒体文件根目录
         self._self_id: int | None = None  # 机器人自身的 QQ 号
         self._pending: dict[str, asyncio.Future[dict[str, Any]]] = {}  # 待处理的 action 响应（echo → Future）
-        self._processed_ids: deque[int] = deque(maxlen=2000)  # 已处理消息 ID 去重队列
+        self._processed_ids = MessageIdDedup(maxlen=2000)  # 已处理消息 ID 去重（LRU）
         self._bot_outbound_ids: deque[int] = deque(maxlen=2000)  # 机器人发送的消息 ID 队列（用于回复检测）
         self._background_tasks: set[asyncio.Task[None]] = set()  # 后台任务集合
 
@@ -256,9 +256,8 @@ class NapcatChannel(BaseChannel):
         """处理入站消息事件。"""
         msg_id = ev.get("message_id")
         if isinstance(msg_id, int):
-            if msg_id in self._processed_ids:
+            if not self._processed_ids.check_and_mark(str(msg_id)):
                 return
-            self._processed_ids.append(msg_id)
 
         message_type = ev.get("message_type")
         user_id = ev.get("user_id")
@@ -315,6 +314,7 @@ class NapcatChannel(BaseChannel):
                 "nickname": nickname,
                 "reply_to": reply_to_id,
             },
+            is_dm=message_type == "private",  # 私聊传 True，便于未授权用户收到配对码
         )
 
     @staticmethod
@@ -599,10 +599,8 @@ class NapcatChannel(BaseChannel):
             return None
 
         filename_hint = info.get("file")
-        if filename_hint:
-            name = safe_filename(filename_hint)
-        else:
-            name = f"{int(time.time() * 1000)}.jpg"
+        # safe_filename 对纯符号文件名会收敛为空串；空时回退时间戳名，避免写到目录上
+        name = safe_filename(filename_hint or "") or f"{int(time.time() * 1000)}.jpg"
         path = self._media_root / name
         try:
             await asyncio.to_thread(path.write_bytes, data)

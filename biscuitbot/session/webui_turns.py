@@ -450,21 +450,23 @@ class WebuiTurnCoordinator:
             content="",
             metadata=turn_metadata,
         ))
-        self._schedule_title_update(msg, session_key=session_key)
+        self._schedule_title_update_from_message(msg, session_key)
 
-    def _schedule_title_update(self, msg: InboundMessage, *, session_key: str) -> None:
-        """调度后台标题生成任务（基于入站消息上下文）。"""
-        title_context = self._title_contexts.pop(session_key, None)
-        if msg.metadata.get("webui") is not True or title_context is None:
-            return
+    def _schedule_title_generation(
+        self,
+        *,
+        channel: str,
+        chat_id: str,
+        metadata: dict,
+        session_key: str,
+        title_llm: LLMRuntime,
+    ) -> None:
+        """调度后台标题生成任务：生成成功后通知前端会话元数据已更新。"""
 
-        async def _generate_title_and_notify(
-            title_llm: LLMRuntime = title_context,
-        ) -> None:
-            """生成标题并通知前端会话元数据已更新。"""
+        async def _generate_title_and_notify() -> None:
             generated = await maybe_generate_webui_title_after_turn(
-                channel=msg.channel,
-                metadata=msg.metadata,
+                channel=channel,
+                metadata=metadata,
                 sessions=self.sessions,
                 session_key=session_key,
                 provider=title_llm.provider,
@@ -472,17 +474,30 @@ class WebuiTurnCoordinator:
             )
             if generated:
                 await self.bus.publish_outbound(OutboundMessage(
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
+                    channel=channel,
+                    chat_id=chat_id,
                     content="",
                     metadata={
-                        **msg.metadata,
+                        **metadata,
                         "_session_updated": True,
                         "_session_update_scope": "metadata",
                     },
                 ))
 
         self.schedule_background(_generate_title_and_notify())
+
+    def _schedule_title_update_from_message(self, msg: InboundMessage, session_key: str) -> None:
+        """调度后台标题生成任务（基于入站消息上下文）。"""
+        title_context = self._title_contexts.pop(session_key, None)
+        if msg.metadata.get("webui") is not True or title_context is None:
+            return
+        self._schedule_title_generation(
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            metadata=msg.metadata,
+            session_key=session_key,
+            title_llm=title_context,
+        )
 
     def _schedule_title_update_from_event(self, event: TurnCompleted) -> None:
         """调度后台标题生成任务（基于 turn 完成事件）。"""
@@ -493,29 +508,10 @@ class WebuiTurnCoordinator:
             or not isinstance(title_context, LLMRuntime)
         ):
             return
-
-        async def _generate_title_and_notify(
-            title_llm: LLMRuntime = title_context,
-        ) -> None:
-            """生成标题并通知前端会话元数据已更新。"""
-            generated = await maybe_generate_webui_title_after_turn(
-                channel=event.context.channel,
-                metadata=event.context.metadata,
-                sessions=self.sessions,
-                session_key=event.context.session_key,
-                provider=title_llm.provider,
-                model=title_llm.model,
-            )
-            if generated:
-                await self.bus.publish_outbound(OutboundMessage(
-                    channel=event.context.channel,
-                    chat_id=event.context.chat_id,
-                    content="",
-                    metadata={
-                        **event.context.metadata,
-                        "_session_updated": True,
-                        "_session_update_scope": "metadata",
-                    },
-                ))
-
-        self.schedule_background(_generate_title_and_notify())
+        self._schedule_title_generation(
+            channel=event.context.channel,
+            chat_id=event.context.chat_id,
+            metadata=event.context.metadata,
+            session_key=event.context.session_key,
+            title_llm=title_context,
+        )

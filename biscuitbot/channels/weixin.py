@@ -13,7 +13,7 @@
 - 媒体处理：支持图片、语音、视频、文件的下载（AES-128-ECB 解密）与上传（AES-128-ECB 加密）。
 - 打字指示器：支持打字状态推送与保活循环，提升用户体验。
 - 会话管理：支持 context_token 缓存与过期刷新，防止长时间无活动后消息丢失。
-- 消息去重：基于 message_id 的 OrderedDict 去重，防止重复处理。
+- 消息去重：基于 message_id 的 MessageIdDedup（LRU）去重，防止重复处理。
 - 速率限制：工具提示合并发送，避免触及微信 iLink 速率限制（约 7 条/5 分钟）。
 """
 
@@ -28,7 +28,6 @@ import random  # 随机数（打字票据 TTL 抖动）
 import re  # 正则表达式（AES 密钥格式校验）
 import time  # 时间相关（令牌过期、打字保活）
 import uuid  # UUID 生成（客户端 ID、消息标识）
-from collections import OrderedDict  # 有序字典（消息去重 LRU 缓存）
 from contextlib import suppress  # 上下文管理器：忽略指定异常
 from pathlib import Path  # 路径处理（媒体文件、状态文件）
 from typing import Any  # 类型注解支持
@@ -44,7 +43,8 @@ from biscuitbot.channels.base import BaseChannel  # 渠道抽象基类
 from biscuitbot.config.paths import get_media_dir, get_runtime_subdir  # 媒体目录与运行时子目录获取
 from biscuitbot.config.schema import Base  # 配置模型基类
 from biscuitbot.pairing import clear_channel  # 重新扫码登录后清空配对授权
-from biscuitbot.utils.helpers import split_message  # 消息分块工具
+from biscuitbot.security.network import validate_url_target  # SSRF 防护校验（CDN 媒体下载）
+from biscuitbot.utils.helpers import MessageIdDedup, atomic_write_json, split_message  # 共享工具
 
 # ---------------------------------------------------------------------------
 # 协议常量（来自 openclaw-weixin types.ts）
@@ -65,6 +65,7 @@ MESSAGE_STATE_FINISH = 2  # 完成
 
 WEIXIN_MAX_MESSAGE_LEN = 4000  # 微信单条消息最大长度（留安全余量）
 WEIXIN_CHANNEL_VERSION = "2.1.1"  # 渠道协议版本
+WEIXIN_MAX_MEDIA_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 入站媒体下载体积上限（20MB）
 ILINK_APP_ID = "bot"  # iLink 应用 ID
 
 
@@ -177,13 +178,13 @@ class WeixinChannel(BaseChannel):
         self._client: httpx.AsyncClient | None = None  # 异步 HTTP 客户端
         self._get_updates_buf: str = ""  # 长轮询游标（增量拉取位置）
         self._context_tokens: dict[str, str] = {}  # from_user_id -> context_token（回复必需）
-        self._processed_ids: OrderedDict[str, None] = OrderedDict()  # 已处理消息 ID 去重（LRU）
+        self._processed_ids = MessageIdDedup(maxlen=1000)  # 已处理消息 ID 去重（LRU）
         self._state_dir: Path | None = None  # 状态目录路径
         self._token: str = ""  # 微信 bot token
-        self._poll_task: asyncio.Task | None = None  # 轮询任务
         self._next_poll_timeout_s: int = DEFAULT_LONG_POLL_TIMEOUT_S  # 下次轮询超时（可被服务端覆盖）
         self._session_pause_until: float = 0.0  # 会话暂停截止时间（过期后暂停轮询）
         self._failed_token: str = ""  # 最近一次因 errcode -14 失效的 token，用于识别磁盘上是否有新 token
+        self._config_token_failed: bool = False  # config.token 已失效：停用注入，改信 account.json 的新 token
         self._typing_tasks: dict[str, asyncio.Task] = {}  # chat_id -> 打字保活任务
         self._typing_tickets: dict[str, dict[str, Any]] = {}  # chat_id -> 打字票据缓存
         self._context_token_at: dict[str, float] = {}  # chat_id -> context_token 缓存时间戳
@@ -256,7 +257,9 @@ class WeixinChannel(BaseChannel):
                 "typing_tickets": self._typing_tickets,
                 "base_url": self.config.base_url,
             }
-            state_file.write_text(json.dumps(data, ensure_ascii=False))
+            # 原子写（tmp+rename）：该文件保存微信 token，半截 JSON 会导致
+            # 下次 _load_state 解析失败、token 丢失需重新扫码。
+            atomic_write_json(state_file, data)
             # 限制文件权限：该文件保存了微信访问 token
             try:
                 state_file.chmod(0o600)
@@ -621,7 +624,10 @@ class WeixinChannel(BaseChannel):
 
         # 外层循环：token 失效后回到这里，等待重新扫码再续接长轮询。
         while self._running:
-            if self.config.token:
+            # config.token 仅在未失效时注入；已失效则回退 account.json，
+            # 否则失效 token 会被每轮重新注入 → -14 → 无限循环，且
+            # 重新扫码写入的新 token 永远无法生效。
+            if self.config.token and not self._config_token_failed:
                 self._token = self.config.token
             elif not self._token:
                 self._load_state()
@@ -644,7 +650,7 @@ class WeixinChannel(BaseChannel):
                 )
                 while self._running and not self._token:
                     await asyncio.sleep(2)
-                    if self.config.token:
+                    if self.config.token and not self._config_token_failed:
                         self._token = self.config.token
                     else:
                         self._load_state()
@@ -689,11 +695,9 @@ class WeixinChannel(BaseChannel):
                         await asyncio.sleep(RETRY_DELAY_S)
 
     async def stop(self) -> None:
-        """停止渠道：取消轮询任务、停止打字指示器、关闭客户端、保存状态。"""
+        """停止渠道：停止打字指示器、关闭客户端、保存状态。"""
         self._running = False
         self._pending_tool_hints.clear()
-        if self._poll_task and not self._poll_task.done():
-            self._poll_task.cancel()
         for chat_id in list(self._typing_tasks):
             await self._stop_typing(chat_id, clear_remote=False)
         if self._client:
@@ -779,6 +783,10 @@ class WeixinChannel(BaseChannel):
                     errcode,
                 )
                 self._failed_token = self._token
+                if self.config.token and self._token == self.config.token:
+                    # 失效的正是 config.token：标记后不再反复注入，改为
+                    # 信任 account.json（重新扫码写入的新 token）。
+                    self._config_token_failed = True
                 self._clear_session_state()
                 raise _TokenInvalidated()
             raise RuntimeError(
@@ -822,12 +830,9 @@ class WeixinChannel(BaseChannel):
         if not from_user_id:
             return
 
-        # 基于 message_id 去重
-        if msg_id in self._processed_ids:
+        # 基于 message_id 去重（check_and_mark 首次出现返回 False）
+        if not self._processed_ids.check_and_mark(msg_id):
             return
-        self._processed_ids[msg_id] = None
-        while len(self._processed_ids) > 1000:
-            self._processed_ids.popitem(last=False)
 
         ctx_token = msg.get("context_token", "")
         if not self.is_allowed(from_user_id):
@@ -1107,9 +1112,40 @@ class WeixinChannel(BaseChannel):
 
             data = b""
             for idx, (download_source, cdn_url) in enumerate(download_candidates):
+                # SSRF 校验：cdn_url 来自微信平台返回，仍须过防护策略后再请求；
+                # 校验失败跳过该候选（记日志），继续尝试下一个
+                ok, err = validate_url_target(cdn_url)
+                if not ok:
+                    self.logger.warning(
+                        "media download blocked by SSRF policy: source={} url={} err={}",
+                        download_source,
+                        cdn_url,
+                        err,
+                    )
+                    continue
                 try:
                     resp = await self._client.get(cdn_url)
                     resp.raise_for_status()
+                    # 20MB 体积上限：先按 content-length 预检，再校验实际长度
+                    declared = (resp.headers.get("content-length") or "").strip()
+                    if declared.isdigit() and int(declared) > WEIXIN_MAX_MEDIA_DOWNLOAD_BYTES:
+                        self.logger.warning(
+                            "media too large (content-length={} > limit={}) type={}",
+                            declared,
+                            WEIXIN_MAX_MEDIA_DOWNLOAD_BYTES,
+                            media_type,
+                        )
+                        data = b""
+                        break
+                    if len(resp.content) > WEIXIN_MAX_MEDIA_DOWNLOAD_BYTES:
+                        self.logger.warning(
+                            "media too large (bytes={} > limit={}) type={}",
+                            len(resp.content),
+                            WEIXIN_MAX_MEDIA_DOWNLOAD_BYTES,
+                            media_type,
+                        )
+                        data = b""
+                        break
                     data = resp.content
                     break
                 except Exception as e:
@@ -1491,21 +1527,9 @@ class WeixinChannel(BaseChannel):
             self.logger.debug("typing indicator start failed for {}: {}", chat_id, e)
             return
 
-        # 创建打字保活循环任务
+        # 创建打字保活循环任务（复用 _typing_keepalive_loop，与 send() 内保活逻辑一致）
         stop_event = asyncio.Event()
-
-        async def keepalive() -> None:
-            try:
-                while not stop_event.is_set():
-                    await asyncio.sleep(TYPING_KEEPALIVE_INTERVAL_S)
-                    if stop_event.is_set():
-                        break
-                    with suppress(Exception):
-                        await self._send_typing(chat_id, ticket, TYPING_STATUS_TYPING)
-            finally:
-                pass
-
-        task = asyncio.create_task(keepalive())
+        task = asyncio.create_task(self._typing_keepalive_loop(chat_id, ticket, stop_event))
         task._typing_stop_event = stop_event  # type: ignore[attr-defined]
         self._typing_tasks[chat_id] = task
 

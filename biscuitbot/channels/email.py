@@ -577,10 +577,11 @@ class EmailChannel(BaseChannel):
 
     def _open_imap_client(self, mailbox: str, *, missing_mailbox_ok: bool = False) -> Any | None:
         """打开并登录 IMAP 客户端，选择指定邮箱。"""
+        # 连接超时与 SMTP 侧一致（30s），避免服务器无响应时无限阻塞轮询线程
         if self.config.imap_use_ssl:
-            client: Any = imaplib.IMAP4_SSL(self.config.imap_host, self.config.imap_port)
+            client: Any = imaplib.IMAP4_SSL(self.config.imap_host, self.config.imap_port, timeout=30)
         else:
-            client = imaplib.IMAP4(self.config.imap_host, self.config.imap_port)
+            client = imaplib.IMAP4(self.config.imap_host, self.config.imap_port, timeout=30)
 
         try:
             client.login(self.config.imap_username, self.config.imap_password)
@@ -911,6 +912,14 @@ class EmailChannel(BaseChannel):
             raw_name = part.get_filename() or "attachment"
             sanitized = safe_filename(raw_name) or "attachment"
             dest = media_dir / f"{uid}_{sanitized}"
+            # 同一封邮件存在多个同名附件时追加序号，避免后者覆盖前者
+            if dest.exists():
+                stem = dest.stem
+                suffix = dest.suffix
+                n = 1
+                while dest.exists():
+                    dest = media_dir / f"{uid}_{stem}_{n}{suffix}"
+                    n += 1
 
             try:
                 dest.write_bytes(payload)

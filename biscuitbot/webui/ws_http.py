@@ -36,6 +36,10 @@ from biscuitbot.command.builtin import builtin_command_palette
 from biscuitbot.cron.session_turns import is_bound_cron_job
 from biscuitbot.cron.types import CronJob, CronSchedule
 from biscuitbot.utils.subagent_channel_display import scrub_subagent_messages_for_channel
+from biscuitbot.webui.capabilities_api import (
+    capabilities_payload,
+    capability_detail_payload,
+)
 from biscuitbot.webui.file_preview import WebUIFilePreviewError, file_preview_payload
 from biscuitbot.webui.gateway_tokens import GatewayTokenStore, token_response_payload
 from biscuitbot.webui.http_utils import (
@@ -91,10 +95,6 @@ from biscuitbot.webui.skills_api import (
     delete_workspace_skill,
     webui_skill_detail_payload,
     webui_skills_payload,
-)
-from biscuitbot.webui.capabilities_api import (
-    capabilities_payload,
-    capability_detail_payload,
 )
 from biscuitbot.webui.talent_market import (
     TalentMarketError,
@@ -422,11 +422,13 @@ class GatewayHTTPHandler:
     async def _dispatch_session_routes(self, request: WsRequest, got: str) -> Response | None:
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
-            return self._handle_session_messages(request, m.group(1))
+            # 会话消息读取含同步文件 IO，放到线程池避免阻塞事件循环
+            return await asyncio.to_thread(self._handle_session_messages, request, m.group(1))
 
         m = re.match(r"^/api/sessions/([^/]+)/webui-thread$", got)
         if m:
-            return self._handle_webui_thread_get(request, m.group(1))
+            # 线程响应构建涉及转录文件读取与消息聚合（同步重 IO），放到线程池执行
+            return await asyncio.to_thread(self._handle_webui_thread_get, request, m.group(1))
 
         m = re.match(r"^/api/sessions/([^/]+)/file-preview$", got)
         if m:
@@ -751,7 +753,8 @@ class GatewayHTTPHandler:
             return self._handle_webui_capability_detail(request, m.group(1))
         m = re.match(r"^/api/avatars/([^/]+)$", got)
         if m:
-            return self._handle_avatar(m.group(1))
+            # 头像文件读取（同步 IO），放到线程池避免阻塞事件循环
+            return await asyncio.to_thread(self._handle_avatar, m.group(1))
         if got == "/api/webui/employees":
             return self._handle_webui_employees(request)
         if got == "/api/webui/employees/create":
@@ -778,7 +781,8 @@ class GatewayHTTPHandler:
         if got == "/api/desktop/restart":
             return self._handle_desktop_restart(request)
         if got == "/api/desktop/open-logs":
-            return self._handle_desktop_open_logs(request)
+            # subprocess.run("open"/"explorer") 是阻塞系统调用，放到线程池执行
+            return await asyncio.to_thread(self._handle_desktop_open_logs, request)
         if got == "/api/desktop/export-diagnostics":
             return self._handle_desktop_export_diagnostics(request)
         return None
@@ -1149,7 +1153,7 @@ class GatewayHTTPHandler:
         """
         if not self.check_api_token(request):
             return _http_error(401, "Unauthorized")
-        from biscuitbot.config.loader import load_config, save_config
+        from biscuitbot.config.loader import update_config
         from biscuitbot.webui.settings_api import (
             WebUISettingsError,
             update_provider_settings,
@@ -1166,9 +1170,9 @@ class GatewayHTTPHandler:
             update_provider_settings(query)
             model = (_query_first(query, "model") or "").strip()
             if model:
-                config = load_config()
-                config.agents.defaults.model = model
-                save_config(config)
+                # 在锁内完成读改写，避免与其它并发写配置的请求丢失更新
+                with update_config() as config:
+                    config.agents.defaults.model = model
         except WebUISettingsError as e:
             return _http_error(400, str(e))
         except Exception:
@@ -1213,18 +1217,18 @@ class GatewayHTTPHandler:
             return _http_error(502, "failed to poll weixin login status")
 
         if result.get("confirmed"):
-            from biscuitbot.config.loader import load_config, save_config
+            from biscuitbot.config.loader import update_config
 
             try:
-                config = load_config()
-                wx = getattr(config.channels, "weixin", None)
-                if wx is None:
-                    setattr(config.channels, "weixin", {"enabled": True})
-                elif isinstance(wx, dict):
-                    wx["enabled"] = True
-                else:
-                    wx.enabled = True
-                save_config(config)
+                # 在锁内完成读改写，避免与其它并发写配置的请求丢失更新
+                with update_config() as config:
+                    wx = getattr(config.channels, "weixin", None)
+                    if wx is None:
+                        setattr(config.channels, "weixin", {"enabled": True})
+                    elif isinstance(wx, dict):
+                        wx["enabled"] = True
+                    else:
+                        wx.enabled = True
             except Exception:
                 logger.exception("failed to enable weixin channel")
                 result["enabled"] = False

@@ -10,12 +10,18 @@
 
 from __future__ import annotations
 
-from contextvars import ContextVar  # 上下文变量，用于在异步链中传递会话信息
+from contextlib import suppress  # 用于抑制跨任务重置 ContextVar 的 ValueError
+from contextvars import ContextVar, Token  # 上下文变量与令牌，用于在异步链中传递会话信息
 from datetime import datetime
 from typing import Any
 
+from loguru import logger  # 日志库
+
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
-from biscuitbot.agent.tools.context import ContextAware, RequestContext  # 上下文感知协议与请求上下文
+from biscuitbot.agent.tools.context import (  # 上下文感知协议与请求上下文
+    ContextAware,
+    RequestContext,
+)
 from biscuitbot.agent.tools.schema import (  # Schema 构造器
     IntegerSchema,
     StringSchema,
@@ -24,6 +30,11 @@ from biscuitbot.agent.tools.schema import (  # Schema 构造器
 from biscuitbot.cron.service import CronService  # 定时任务服务
 from biscuitbot.cron.types import CronJob, CronJobState, CronSchedule  # 定时任务类型定义
 from biscuitbot.session.keys import UNIFIED_SESSION_KEY  # 统一会话键常量
+
+# 周期任务的最小间隔（秒）：过短的间隔会产生大量无效调度并放大触发成本
+_MIN_JOB_INTERVAL_S = 5
+# 单实例允许创建的最大任务数，防止无限制创建耗尽内存与调度资源
+_MAX_JOBS = 200
 
 # cron 工具参数 schema：顶层不使用 oneOf/anyOf，以兼容各模型供应商
 _CRON_PARAMETERS = tool_parameters_schema(
@@ -93,6 +104,9 @@ class CronTool(Tool, ContextAware):
         )
         # 标记是否处于 cron 回调执行上下文中（禁止在回调中新建任务）
         self._in_cron_context: ContextVar[bool] = ContextVar("cron_in_context", default=False)
+        # set_context 产生的 ContextVar 令牌列表，execute 结束后逆序重置，
+        # 避免工具实例复用时上个请求的会话信息成为默认值
+        self._pending_context_tokens: list[tuple[ContextVar[Any], Token]] = []
 
     @classmethod
     def enabled(cls, ctx: Any) -> bool:
@@ -107,17 +121,36 @@ class CronTool(Tool, ContextAware):
     def set_context(self, ctx: RequestContext) -> None:
         """设置当前会话上下文，用于定时任务的所有权归属。
 
+        收集令牌，待 execute 结束后在 finally 中重置，避免上个请求的值
+        残留为下个请求的默认值。
+
         参数:
             ctx: 请求上下文，包含渠道、会话 ID 等信息。
         """
         raw_key = f"{ctx.channel}:{ctx.chat_id}" if ctx.channel and ctx.chat_id else ""
         # 统一会话键时使用 channel:chat_id 作为实际键
-        self._session_key.set(
-            raw_key if ctx.session_key == UNIFIED_SESSION_KEY else (ctx.session_key or "")
-        )
-        self._origin_channel.set(ctx.channel or "")
-        self._origin_chat_id.set(ctx.chat_id or "")
-        self._origin_metadata.set(dict(ctx.metadata or {}))
+        self._pending_context_tokens.extend((
+            (
+                self._session_key,
+                self._session_key.set(
+                    raw_key if ctx.session_key == UNIFIED_SESSION_KEY else (ctx.session_key or "")
+                ),
+            ),
+            (self._origin_channel, self._origin_channel.set(ctx.channel or "")),
+            (self._origin_chat_id, self._origin_chat_id.set(ctx.chat_id or "")),
+            (self._origin_metadata, self._origin_metadata.set(dict(ctx.metadata or {}))),
+        ))
+
+    def _reset_request_context(self) -> None:
+        """逆序重置 set_context 设置的所有 ContextVar，恢复外部默认值。
+
+        跨任务交错调用时（共享工具实例），其他任务创建的令牌在本任务上下文
+        中重置会抛 ValueError，静默跳过即可——该任务的上下文会随任务结束回收。
+        """
+        while self._pending_context_tokens:
+            var, token = self._pending_context_tokens.pop()
+            with suppress(ValueError):
+                var.reset(token)
 
     def set_cron_context(self, active: bool):
         """标记当前是否在 cron 回调中执行。
@@ -238,16 +271,21 @@ class CronTool(Tool, ContextAware):
         返回:
             操作结果字符串。
         """
-        if action == "add":
-            # 禁止在 cron 回调中新建任务，避免无限递归
-            if self._in_cron_context.get():
-                return "Error: cannot schedule new jobs from within a cron job execution"
-            return self._add_job(name, message, every_seconds, cron_expr, tz, at)
-        elif action == "list":
-            return self._list_jobs()
-        elif action == "remove":
-            return self._remove_job(job_id)
-        return f"未知操作 '{action}'，合法操作：add（添加）、list（列出）、remove（移除）"
+        try:
+            if action == "add":
+                # 禁止在 cron 回调中新建任务，避免无限递归
+                if self._in_cron_context.get():
+                    return "Error: cannot schedule new jobs from within a cron job execution"
+                return self._add_job(name, message, every_seconds, cron_expr, tz, at)
+            elif action == "list":
+                return self._list_jobs()
+            elif action == "remove":
+                return self._remove_job(job_id)
+            return f"未知操作 '{action}'，合法操作：add（添加）、list（列出）、remove（移除）"
+        finally:
+            # 请求结束后重置 set_context 设置的值，恢复外部默认，
+            # 避免工具实例复用时上个请求的会话信息成为默认值
+            self._reset_request_context()
 
     def _add_job(
         self,
@@ -293,6 +331,14 @@ class CronTool(Tool, ContextAware):
         # 构建调度计划：根据传入参数选择三种调度方式之一
         delete_after = False  # 一次性任务执行后是否自动删除
         if every_seconds:
+            # 频率下限：间隔过短会产生大量无效调度，抬高到最小间隔并记录日志
+            if every_seconds < _MIN_JOB_INTERVAL_S:
+                logger.warning(
+                    "cron: every_seconds={} below minimum, raised to {}s",
+                    every_seconds,
+                    _MIN_JOB_INTERVAL_S,
+                )
+                every_seconds = _MIN_JOB_INTERVAL_S
             # 周期任务：按秒间隔
             schedule = CronSchedule(kind="every", every_ms=every_seconds * 1000)
         elif cron_expr:
@@ -319,6 +365,13 @@ class CronTool(Tool, ContextAware):
             delete_after = True
         else:
             return "Error: either every_seconds, cron_expr, or at is required"
+
+        # 任务数量上限：防止无限制创建任务耗尽内存与调度资源
+        if len(self._cron.list_jobs()) >= _MAX_JOBS:
+            return (
+                f"Error: scheduled job limit reached ({_MAX_JOBS}). "
+                "Remove unneeded jobs (action='remove') before adding new ones."
+            )
 
         job = self._cron.add_job(
             name=name or message[:30],

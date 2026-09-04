@@ -14,6 +14,8 @@ from typing import Any  # 动态类型标注
 import httpx  # 异步 HTTP 客户端
 from loguru import logger  # 结构化日志
 
+from biscuitbot.providers.base import resolve_api_endpoint_url  # 共享的端点 URL 解析
+
 # 转写接口的 URL 路径后缀
 _TRANSCRIPTIONS_PATH = "audio/transcriptions"
 # 扩展名 → MIME 覆盖表：修正 mimetypes 模块对部分音频格式的误判
@@ -28,22 +30,8 @@ _AUDIO_MIME_OVERRIDES = {
 }
 
 def _resolve_transcription_url(api_base: str | None, default_url: str) -> str:
-    """解析完整的转写端点 URL。
-
-    接受两种形式：
-    1. 对话风格的 base（如 ``https://api.groq.com/openai/v1``）——
-       会自动拼接 ``/audio/transcriptions`` 路径；
-    2. 已以 ``/audio/transcriptions`` 结尾的完整 URL——原样返回。
-
-    对话风格的 base 是用户从 LLM Provider 配置里直接复制过来的常见形式，
-    若不拼接路径直接 POST 会 404（#3637）。
-    """
-    if not api_base:
-        return default_url
-    base = api_base.rstrip("/")
-    if base.endswith(_TRANSCRIPTIONS_PATH):
-        return base
-    return f"{base}/{_TRANSCRIPTIONS_PATH}"
+    """解析完整的转写端点 URL（规则见 :func:`resolve_api_endpoint_url`）。"""
+    return resolve_api_endpoint_url(api_base, default_url, _TRANSCRIPTIONS_PATH)
 
 
 def _resolve_api_path(api_base: str | None, default_base: str, path: str) -> str:
@@ -74,91 +62,6 @@ _RETRYABLE_EXCEPTIONS = (  # 可重试的网络异常类型
     httpx.WriteError,
     httpx.RemoteProtocolError,
 )
-
-
-async def _request_json_with_retry(
-    client: httpx.AsyncClient,
-    method: str,
-    url: str,
-    *,
-    provider_label: str,
-    **kwargs: object,
-) -> dict[str, Any] | None:
-    """带重试的通用 JSON 请求（早期实现，保留以兼容旧调用方）。"""
-    for attempt in range(_MAX_RETRIES + 1):
-        try:
-            request = getattr(client, method.lower(), None)
-            if request is None:
-                response = await client.request(method, url, **kwargs)
-            else:
-                response = await request(url, **kwargs)
-        except _RETRYABLE_EXCEPTIONS as e:
-            if attempt < _MAX_RETRIES:
-                logger.warning(
-                    "{} transcription transient error (attempt {}/{}): {}",
-                    provider_label,
-                    attempt + 1,
-                    _MAX_RETRIES + 1,
-                    e,
-                )
-                await asyncio.sleep(_BACKOFF_S[attempt])
-                continue
-            logger.exception(
-                "{} transcription error after {} attempts: {}",
-                provider_label,
-                _MAX_RETRIES + 1,
-                e,
-            )
-            return None
-        except Exception as e:
-            logger.exception("{} transcription error: {}", provider_label, e)
-            return None
-
-        if response.status_code in _RETRYABLE_STATUS and attempt < _MAX_RETRIES:
-            logger.warning(
-                "{} transcription transient HTTP {} (attempt {}/{})",
-                provider_label,
-                response.status_code,
-                attempt + 1,
-                _MAX_RETRIES + 1,
-            )
-            await asyncio.sleep(_BACKOFF_S[attempt])
-            continue
-
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError:
-            body = response.text.strip().replace("\n", " ")[:500]
-            logger.error(
-                "{} transcription HTTP {}{}{}",
-                provider_label,
-                response.status_code,
-                f" {response.reason_phrase}" if response.reason_phrase else "",
-                f": {body}" if body else "",
-            )
-            return None
-        except Exception as e:
-            logger.exception("{} transcription error: {}", provider_label, e)
-            return None
-
-        try:
-            payload = response.json()
-        except Exception as e:
-            logger.exception(
-                "{} transcription error: malformed response body: {}",
-                provider_label,
-                e,
-            )
-            return None
-        if not isinstance(payload, dict):
-            logger.error(
-                "{} transcription error: unexpected response shape: {!r}",
-                provider_label,
-                type(payload).__name__,
-            )
-            return None
-        return payload
-    return None
 
 
 async def _post_transcription_with_retry(

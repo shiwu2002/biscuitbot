@@ -49,6 +49,10 @@ _TRANSIENT_EXC_NAMES: frozenset[str] = frozenset((
     "ConnectionError",
 ))
 
+# MCP 握手与能力枚举（initialize / list_tools / list_resources / list_prompts）
+# 的超时秒数，防止无响应的服务器把连接流程永久卡死。
+_MCP_HANDSHAKE_TIMEOUT_S = 30.0
+
 # Windows 上需要通过 cmd 包装才能可靠启动的 shell 启动器
 _WINDOWS_SHELL_LAUNCHERS: frozenset[str] = frozenset(("npx", "npm", "pnpm", "yarn", "bunx"))
 
@@ -387,8 +391,8 @@ class MCPToolWrapper(_MCPWrapperBase):
     async def execute(self, **kwargs: Any) -> str:
         """调用 MCP 工具并返回文本结果。
 
-        处理超时（重连后重试一次）、取消（仅在外部取消时上抛）、会话终止
-        （重连后重试）、瞬时错误（退避 1 秒后重试一次）。
+        处理超时（不自动重试，仅重连会话保持连接健康）、取消（仅在外部取消
+        时上抛）、会话终止（重连后重试）、瞬时错误（退避 1 秒后重试一次）。
         """
         from mcp import types
 
@@ -401,14 +405,21 @@ class MCPToolWrapper(_MCPWrapperBase):
                     timeout=self._tool_timeout,
                 )
             except asyncio.TimeoutError:
-                # 超时且未刷新过会话 → 重连后重试
-                if not refreshed_session and await self._reconnect_after_timeout("tool"):
-                    refreshed_session = True
-                    continue
+                # 超时不自动重试：服务端可能已执行本次调用（如浏览器挂起后
+                # 响应丢失），盲目重试会造成写库/发消息等副作用二次执行。
+                # 仅重连会话以保持连接健康，然后提示调用方人工确认后再重试。
+                if not refreshed_session:
+                    await self._reconnect_after_timeout("tool")
                 logger.warning(
-                    "MCP tool '{}' timed out after {}s", self._name, self._tool_timeout
+                    "MCP tool '{}' timed out after {}s; not retrying to avoid double execution",
+                    self._name,
+                    self._tool_timeout,
                 )
-                return f"(MCP 工具 '{self._name}' 调用超时（{self._tool_timeout}s）：请检查 MCP 服务器是否响应正常)"
+                return (
+                    f"(MCP 工具 '{self._name}' 调用超时（timed out after {self._tool_timeout}s）："
+                    "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+                    "请检查 MCP 服务器是否响应正常)"
+                )
             except asyncio.CancelledError:
                 # MCP SDK 的 anyio cancel scope 可能在超时/失败时泄漏 CancelledError。
                 # 仅当任务被外部取消（如 /stop）时才上抛。
@@ -509,8 +520,8 @@ class MCPResourceWrapper(_MCPWrapperBase):
     async def execute(self, **kwargs: Any) -> str:
         """读取 MCP 资源并返回文本/二进制摘要。
 
-        处理超时（重连后重试一次）、取消（仅在外部取消时上抛）、会话终止
-        （重连后重试）、瞬时错误（退避 1 秒后重试一次）。
+        处理超时（不自动重试，仅重连会话保持连接健康）、取消（仅在外部取消
+        时上抛）、会话终止（重连后重试）、瞬时错误（退避 1 秒后重试一次）。
         """
         from mcp import types
 
@@ -523,13 +534,20 @@ class MCPResourceWrapper(_MCPWrapperBase):
                     timeout=self._resource_timeout,
                 )
             except asyncio.TimeoutError:
-                if not refreshed_session and await self._reconnect_after_timeout("resource"):
-                    refreshed_session = True
-                    continue
+                # 超时不自动重试：仅重连会话保持连接健康，提示调用方人工确认
+                # 后再重试（与其他 wrapper 保持一致，避免副作用不可控）。
+                if not refreshed_session:
+                    await self._reconnect_after_timeout("resource")
                 logger.warning(
-                    "MCP resource '{}' timed out after {}s", self._name, self._resource_timeout
+                    "MCP resource '{}' timed out after {}s; not retrying",
+                    self._name,
+                    self._resource_timeout,
                 )
-                return f"(MCP 资源 '{self._name}' 读取超时（{self._resource_timeout}s）：请检查 MCP 服务器是否响应正常)"
+                return (
+                    f"(MCP 资源 '{self._name}' 读取超时（timed out after {self._resource_timeout}s）："
+                    "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+                    "请检查 MCP 服务器是否响应正常)"
+                )
             except asyncio.CancelledError:
                 task = asyncio.current_task()
                 if task is not None and task.cancelling() > 0:
@@ -642,9 +660,9 @@ class MCPPromptWrapper(_MCPWrapperBase):
     async def execute(self, **kwargs: Any) -> str:
         """获取填充后的 MCP prompt 模板并返回文本。
 
-        处理超时（重连后重试一次）、取消（仅在外部取消时上抛）、McpError
-        （重连后重试或返回错误码/消息）、会话终止（重连后重试）、瞬时错误
-        （退避 1 秒后重试一次）。
+        处理超时（不自动重试，仅重连会话保持连接健康）、取消（仅在外部取消
+        时上抛）、McpError（重连后重试或返回错误码/消息）、会话终止（重连后
+        重试）、瞬时错误（退避 1 秒后重试一次）。
         """
         from mcp import types
         from mcp.shared.exceptions import McpError
@@ -658,13 +676,20 @@ class MCPPromptWrapper(_MCPWrapperBase):
                     timeout=self._prompt_timeout,
                 )
             except asyncio.TimeoutError:
-                if not refreshed_session and await self._reconnect_after_timeout("prompt"):
-                    refreshed_session = True
-                    continue
+                # 超时不自动重试：仅重连会话保持连接健康，提示调用方人工确认
+                # 后再重试（与其他 wrapper 保持一致，避免副作用不可控）。
+                if not refreshed_session:
+                    await self._reconnect_after_timeout("prompt")
                 logger.warning(
-                    "MCP prompt '{}' timed out after {}s", self._name, self._prompt_timeout
+                    "MCP prompt '{}' timed out after {}s; not retrying",
+                    self._name,
+                    self._prompt_timeout,
                 )
-                return f"(MCP 提示 '{self._name}' 调用超时（{self._prompt_timeout}s）：请检查 MCP 服务器是否响应正常)"
+                return (
+                    f"(MCP 提示 '{self._name}' 调用超时（timed out after {self._prompt_timeout}s）："
+                    "调用可能已在服务端执行，请人工确认结果后再决定是否重试；"
+                    "请检查 MCP 服务器是否响应正常)"
+                )
             except asyncio.CancelledError:
                 task = asyncio.current_task()
                 if task is not None and task.cancelling() > 0:
@@ -852,12 +877,16 @@ async def connect_mcp_servers(
                     await server_stack.aclose()
                     return name, None
 
+                # httpx 客户端是整个会话生命周期共用的 transport：read 不能设短超时，
+                # 否则长工具调用（浏览器操作/长任务）会被 httpx 在 30s 静默截断，
+                # cfg.tool_timeout 再大也没用。仅保留 10s 连接超时防连接卡死；
+                # 握手/初始化防卡死由上方 asyncio.wait_for(_MCP_HANDSHAKE_TIMEOUT_S) 承担。
                 http_client = await server_stack.enter_async_context(
                     httpx.AsyncClient(
                         headers=cfg.headers or None,
                         event_hooks={"request": [_validate_mcp_request_url]},
                         follow_redirects=True,
-                        timeout=None,
+                        timeout=httpx.Timeout(None, connect=10.0),
                     )
                 )
                 read, write, _ = await server_stack.enter_async_context(
@@ -869,13 +898,17 @@ async def connect_mcp_servers(
                 return name, None
 
             session = await server_stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
+            # 握手与能力枚举都加超时：wait_for 取消的是内部 await（同一 task），
+            # 不会触发跨 task 退出 anyio cancel scope 的问题。
+            await asyncio.wait_for(session.initialize(), timeout=_MCP_HANDSHAKE_TIMEOUT_S)
 
             # 排空服务器通知 / stdout 解析异常，避免 SDK 的 receive_loop
             # 因无人消费容量为 0 的通道而阻塞（会卡死后续所有工具调用直到超时）。
             _start_incoming_drainer(server_stack, session, name)
 
-            tools = await session.list_tools()
+            tools = await asyncio.wait_for(
+                session.list_tools(), timeout=_MCP_HANDSHAKE_TIMEOUT_S
+            )
             enabled_tools = set(cfg.enabled_tools)
             allow_all_tools = "*" in enabled_tools
             registered_count = 0
@@ -921,7 +954,9 @@ async def connect_mcp_servers(
 
             # 注册资源（服务器不支持时静默跳过）
             try:
-                resources_result = await session.list_resources()
+                resources_result = await asyncio.wait_for(
+                    session.list_resources(), timeout=_MCP_HANDSHAKE_TIMEOUT_S
+                )
                 for resource in resources_result.resources:
                     wrapper = MCPResourceWrapper(
                         session, name, resource, resource_timeout=cfg.tool_timeout
@@ -936,7 +971,9 @@ async def connect_mcp_servers(
 
             # 注册 prompt（服务器不支持时静默跳过）
             try:
-                prompts_result = await session.list_prompts()
+                prompts_result = await asyncio.wait_for(
+                    session.list_prompts(), timeout=_MCP_HANDSHAKE_TIMEOUT_S
+                )
                 for prompt in prompts_result.prompts:
                     wrapper = MCPPromptWrapper(
                         session, name, prompt, prompt_timeout=cfg.tool_timeout
@@ -1067,6 +1104,28 @@ async def connect_missing_servers(state: Any, registry: ToolRegistry) -> None:
     }
     # 正在连接中或无缺失服务器时直接返回
     if state._mcp_connecting or not missing_servers:
+        return
+    # anyio cancel scope 是 task-local 的：连接（进入 cancel scope）必须发生在
+    # owner 任务（run()）中。非 owner 任务（如 process_direct 的调用方任务）
+    # 请求连接时，通过 Future 委派给 owner 任务执行，避免跨任务退出 cancel
+    # scope 导致 RuntimeError 与 stdio 子进程泄漏。
+    owner = getattr(state, "_mcp_owner_task", None)
+    current = asyncio.current_task()
+    connect_requests = getattr(state, "_mcp_connect_requests", None)
+    if (
+        owner is not None
+        and current is not None
+        and current is not owner
+        and not owner.done()
+        and connect_requests is not None
+    ):
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        connect_requests.append(future)
+        logger.debug(
+            "MCP connect deferred to owner task (requested from task {})",
+            current.get_name(),
+        )
+        await future
         return
     state._mcp_connecting = True
     try:
@@ -1367,6 +1426,8 @@ async def process_pending_reconnects(state: Any, registry: ToolRegistry) -> None
     """
     requests = getattr(state, "_mcp_reconnect_requests", None)
     if not requests:
+        # 无重连请求时仍需检查待处理的连接委派请求（见 connect_missing_servers）。
+        await _drain_pending_connects(state, registry)
         return
     # 排空快照；处理期间到达的请求等待下一次空闲 tick（最多约 1s 后，
     # 因为主循环以 1s 超时轮询）。
@@ -1394,6 +1455,30 @@ async def process_pending_reconnects(state: Any, registry: ToolRegistry) -> None
                     server_name,
                     exc,
                 )
+    # 重连处理完后同样排空连接委派请求。
+    await _drain_pending_connects(state, registry)
+
+
+async def _drain_pending_connects(state: Any, registry: ToolRegistry) -> None:
+    """在 owner 任务中执行被非 owner 任务委派的 MCP 连接请求。
+
+    非 owner 任务（如 ``process_direct`` 调用方）调用
+    ``connect_missing_servers`` 时会通过 ``state._mcp_connect_requests``
+    中的 Future 委派连接；本函数由 owner 任务的空闲分支调用，在 owner
+    上下文中真正建立连接后解析所有等待的 Future。
+    """
+    connect_requests = getattr(state, "_mcp_connect_requests", None)
+    if not connect_requests:
+        return
+    futures = list(connect_requests)
+    connect_requests.clear()
+    try:
+        await connect_missing_servers(state, registry)  # owner 调用：真正连接
+    except Exception as exc:
+        logger.warning("Deferred MCP connect failed: {}", exc)
+    for future in futures:
+        if not future.done():
+            future.set_result(None)
 
 
 def _server_signature(cfg: Any) -> Any:

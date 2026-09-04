@@ -19,12 +19,8 @@ if not WECOM_AVAILABLE:
 
 from biscuitbot.bus.events import OutboundMessage
 from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.wecom import (
-    WecomChannel,
-    WecomConfig,
-    _guess_wecom_media_type,
-    _sanitize_filename,
-)
+from biscuitbot.channels.wecom import WecomChannel, WecomConfig, _guess_wecom_media_type
+from biscuitbot.utils.helpers import safe_filename as _sanitize_filename
 
 # Try to import the real response class; fall back to a stub if unavailable.
 try:
@@ -465,8 +461,8 @@ async def test_send_media_file_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_exception_caught_not_raised() -> None:
-    """Exceptions inside send() must not propagate."""
+async def test_send_exception_propagates_for_retry() -> None:
+    """投递失败必须上抛，交由 ChannelManager 重试（见 BaseChannel.send 契约）。"""
     channel = WecomChannel(WecomConfig(bot_id="b", secret="s", allow_from=["*"]), MessageBus())
     client = _FakeWeComClient()
     channel._client = client
@@ -476,9 +472,10 @@ async def test_send_exception_caught_not_raised() -> None:
     # Make reply_stream raise
     client.reply_stream.side_effect = RuntimeError("boom")
 
-    await channel.send(
-        OutboundMessage(channel="wecom", chat_id="chat1", content="fail test")
-    )
+    with pytest.raises(RuntimeError, match="boom"):
+        await channel.send(
+            OutboundMessage(channel="wecom", chat_id="chat1", content="fail test")
+        )
     client.reply_stream.assert_called_once()
 
 

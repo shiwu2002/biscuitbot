@@ -76,7 +76,7 @@ def test_fetch_new_messages_parses_unseen_and_marks_seen(monkeypatch) -> None:
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(), MessageBus())
     items, skipped_uids = channel._fetch_new_messages()
@@ -116,7 +116,7 @@ def test_fetch_new_messages_returns_accepted_and_skipped_uids(monkeypatch) -> No
         def logout(self):
             return "BYE", [b""]
 
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: FakeIMAP())
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: FakeIMAP())
 
     channel = EmailChannel(_make_config(post_action="delete"), MessageBus())
     items, skipped_uids = channel._fetch_new_messages()
@@ -148,7 +148,7 @@ def test_fetch_new_messages_rejected_returns_skipped_uid(monkeypatch) -> None:
         def logout(self):
             return "BYE", [b""]
 
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: FakeIMAP())
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: FakeIMAP())
 
     channel_skip = EmailChannel(
         _make_config(from_address="bot@example.com", post_action="delete", post_action_ignore_skipped=True),
@@ -213,7 +213,7 @@ def test_apply_post_actions_batch_delete_uses_one_connection(monkeypatch) -> Non
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(post_action="delete"), MessageBus())
     channel._apply_post_actions_batch(["123", "124"])
@@ -270,7 +270,7 @@ def test_apply_post_actions_batch_move_copies_then_deletes(monkeypatch) -> None:
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(
         _make_config(post_action="move", post_action_move_mailbox="Processed"),
@@ -311,7 +311,7 @@ def test_apply_post_actions_batch_move_prefers_uid_move_when_supported(monkeypat
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(
         _make_config(post_action="move", post_action_move_mailbox="Processed"),
@@ -365,7 +365,7 @@ def test_apply_post_actions_batch_fallback_caches_uid_store_failure(monkeypatch)
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(post_action="delete"), MessageBus())
     channel._apply_post_actions_batch(["123", "124"])
@@ -419,7 +419,7 @@ def test_apply_post_actions_batch_delete_with_post_action_expunge_true_no_uidplu
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(post_action="delete", post_action_expunge=True), MessageBus())
     channel._apply_post_actions_batch(["123", "124"])
@@ -568,7 +568,7 @@ def test_fetch_new_messages_skips_self_sent_email_and_marks_seen(monkeypatch) ->
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(from_address="bot@example.com"), MessageBus())
     items, skipped_uids = channel._fetch_new_messages()
@@ -637,7 +637,7 @@ def test_fetch_new_messages_skips_self_sent_across_identity_sources(
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(**config_override), MessageBus())
     items, _ = channel._fetch_new_messages()
@@ -680,7 +680,7 @@ def test_fetch_new_messages_retries_once_when_imap_connection_goes_stale(monkeyp
 
     fake_instances: list[FlakyIMAP] = []
 
-    def _factory(_host: str, _port: int):
+    def _factory(_host: str, _port: int, timeout=None):
         instance = FlakyIMAP()
         fake_instances.append(instance)
         return instance
@@ -731,7 +731,7 @@ def test_fetch_new_messages_keeps_messages_collected_before_stale_retry(monkeypa
         def logout(self):
             return "BYE", [b""]
 
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: FlakyIMAP())
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: FlakyIMAP())
 
     channel = EmailChannel(_make_config(), MessageBus())
     items, _ = channel._fetch_new_messages()
@@ -752,7 +752,7 @@ def test_fetch_new_messages_skips_missing_mailbox(monkeypatch) -> None:
 
     monkeypatch.setattr(
         "biscuitbot.channels.email.imaplib.IMAP4_SSL",
-        lambda _h, _p: MissingMailboxIMAP(),
+        lambda _h, _p, timeout=None: MissingMailboxIMAP(),
     )
 
     channel = EmailChannel(_make_config(), MessageBus())
@@ -1061,7 +1061,7 @@ def test_fetch_messages_between_dates_uses_imap_since_before_without_mark_seen(m
             return "BYE", [b""]
 
     fake = FakeIMAP()
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     channel = EmailChannel(_make_config(), MessageBus())
     items = channel.fetch_messages_between_dates(
@@ -1114,7 +1114,7 @@ def test_spoofed_email_rejected_when_verify_enabled(monkeypatch) -> None:
     """An email without Authentication-Results should be rejected when verify_dkim=True."""
     raw = _make_raw_email(subject="Spoofed", body="Malicious payload")
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=True, verify_spf=True)
     channel = EmailChannel(cfg, MessageBus())
@@ -1131,7 +1131,7 @@ def test_email_with_valid_auth_results_accepted(monkeypatch) -> None:
         auth_results="mx.example.com; spf=pass smtp.mailfrom=alice@example.com; dkim=pass header.d=example.com",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=True, verify_spf=True)
     channel = EmailChannel(cfg, MessageBus())
@@ -1150,7 +1150,7 @@ def test_email_with_partial_auth_rejected(monkeypatch) -> None:
         auth_results="mx.example.com; spf=pass smtp.mailfrom=alice@example.com; dkim=fail",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=True, verify_spf=True)
     channel = EmailChannel(cfg, MessageBus())
@@ -1163,7 +1163,7 @@ def test_backward_compat_verify_disabled(monkeypatch) -> None:
     """When verify_dkim=False and verify_spf=False, emails without auth headers are accepted."""
     raw = _make_raw_email(subject="NoAuth", body="No auth headers present")
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=False, verify_spf=False)
     channel = EmailChannel(cfg, MessageBus())
@@ -1176,7 +1176,7 @@ def test_email_content_tagged_with_email_context(monkeypatch) -> None:
     """Email content should be prefixed with [EMAIL-CONTEXT] for LLM isolation."""
     raw = _make_raw_email(subject="Tagged", body="Check the tag")
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=False, verify_spf=False)
     channel = EmailChannel(cfg, MessageBus())
@@ -1274,7 +1274,7 @@ def _make_raw_email_with_attachment(
 def test_fetch_new_messages_ignores_unauthorized_sender_before_attachments(monkeypatch) -> None:
     raw = _make_raw_email_with_attachment(from_addr="blocked@example.com")
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     called = {"attachments": False}
 
@@ -1303,7 +1303,7 @@ def test_extract_attachments_saves_pdf(tmp_path, monkeypatch) -> None:
 
     raw = _make_raw_email_with_attachment()
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(allowed_attachment_types=["application/pdf"], verify_dkim=False, verify_spf=False)
     channel = EmailChannel(cfg, MessageBus())
@@ -1322,7 +1322,7 @@ def test_extract_attachments_disabled_by_default(monkeypatch) -> None:
     """With no allowed_attachment_types (default), no attachments are extracted."""
     raw = _make_raw_email_with_attachment()
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(verify_dkim=False, verify_spf=False)
     assert cfg.allowed_attachment_types == []
@@ -1344,7 +1344,7 @@ def test_extract_attachments_mime_type_filter(tmp_path, monkeypatch) -> None:
         attachment_mime="image/png",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(
         allowed_attachment_types=["application/pdf"],
@@ -1368,7 +1368,7 @@ def test_extract_attachments_empty_allowed_types_rejects_all(tmp_path, monkeypat
         attachment_mime="image/png",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(
         allowed_attachment_types=[],
@@ -1392,7 +1392,7 @@ def test_extract_attachments_wildcard_pattern(tmp_path, monkeypatch) -> None:
         attachment_mime="image/jpeg",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(
         allowed_attachment_types=["image/*"],
@@ -1414,7 +1414,7 @@ def test_extract_attachments_size_limit(tmp_path, monkeypatch) -> None:
         attachment_content=b"x" * 1000,
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(
         allowed_attachment_types=["*"],
@@ -1450,7 +1450,7 @@ def test_extract_attachments_max_count(tmp_path, monkeypatch) -> None:
     raw = msg.as_bytes()
 
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(
         allowed_attachment_types=["*"],
@@ -1473,7 +1473,7 @@ def test_extract_attachments_sanitizes_filename(tmp_path, monkeypatch) -> None:
         attachment_name="../../../etc/passwd",
     )
     fake = _make_fake_imap(raw)
-    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p: fake)
+    monkeypatch.setattr("biscuitbot.channels.email.imaplib.IMAP4_SSL", lambda _h, _p, timeout=None: fake)
 
     cfg = _make_config(allowed_attachment_types=["*"], verify_dkim=False, verify_spf=False)
     channel = EmailChannel(cfg, MessageBus())

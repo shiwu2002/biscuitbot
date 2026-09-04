@@ -48,7 +48,7 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`
 
 - **AgentLoop / AgentRunner**（`agent/loop.py`、`runner.py`）：核心路径，改动要最小化。`AgentRunner` 每次迭代跑一条上下文治理链（孤儿 tool 结果清理 → microcompact → tool 结果预算 → 历史截断），支持 mid-turn 注入与 runtime checkpoint。
 - **LLM Providers**（`providers/`）：统一基类 `base.py`；`factory.py`/`registry.py` 负责实例化与自动发现。
-- **Channels**（`channels/`）：Telegram、Discord、Slack、飞书、钉钉、QQ、微信、企业微信、Email、WebSocket 等；`manager.py` 发现并协调。每个 channel 文件应自包含、可独立阅读（不抽共享基类）。
+- **Channels**（`channels/`）：飞书、钉钉、QQ、napcat（QQ 协议端）、微信、企业微信、Email、WebSocket、mochat 等；`manager.py` 发现并协调。每个 channel 文件应自包含、可独立阅读（不抽共享基类）；通用工具（文件名净化、消息去重 LRU、原子 JSON 写）复用 `utils/helpers.py`。
 - **Tools**（`agent/tools/`）：`registry.py` 为工具注册表；文件系统、Shell（含沙箱）、网页搜索、MCP、cron、子代理、数字员工（`employee.py`/`employee_discover.py`）等。渐进式发现 + 冷门仓库（`cold_storage.py`）。
 - **Memory / Session**（`agent/memory.py`、`session/`）：JSONL 持久化，原子写（tmp + fsync + rename）。Dream 两阶段记忆整合 + AutoCompact。
 - **Config**（`config/schema.py`、`loader.py`）：Pydantic 模型，从 `~/.biscuitbot/config.json` 加载（注意是 JSON，非 yaml）。

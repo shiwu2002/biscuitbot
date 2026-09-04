@@ -68,6 +68,23 @@ def resolve_stream_idle_timeout_s(
     return value
 
 
+def resolve_api_endpoint_url(api_base: str | None, default_url: str, path: str) -> str:
+    """解析 Provider 能力端点（语音转写/合成等）的完整请求 URL。
+
+    接受两种形式的 ``api_base``：
+    1. 对话风格的 base（如 ``https://api.groq.com/openai/v1``）——
+       自动拼接 *path*（对话风格的 base 是用户从 LLM Provider 配置里
+       直接复制过来的常见形式，不拼路径直接 POST 会 404，见 #3637）；
+    2. 已以 *path* 结尾的完整 URL——原样返回。
+    """
+    if not api_base:
+        return default_url
+    base = api_base.rstrip("/")
+    if base.endswith(path):
+        return base
+    return f"{base}/{path}"
+
+
 @dataclass
 class ToolCallRequest:
     """LLM 发起的一次工具调用请求。
@@ -216,6 +233,60 @@ class GenerationSettings:
 _SYNTHETIC_USER_CONTENT = "(conversation continued)"
 
 
+def _content_as_blocks(content: Any) -> list[Any]:
+    """把消息 content 归一化为内容块列表（用于合并非字符串 content）。
+
+    字符串转为 ``{"type": "text", "text": ...}`` 块（与
+    ``utils.helpers.build_image_content_blocks`` 的 text 块格式一致），
+    空字符串与 ``None`` 归一化为空列表。
+    """
+    if content is None:
+        return []
+    if isinstance(content, str):
+        return [{"type": "text", "text": content}] if content else []
+    if isinstance(content, list):
+        return list(content)
+    return [content]
+
+
+def _merge_message_contents(prev_content: Any, curr_content: Any) -> Any:
+    """合并两条同角色消息的 content（角色交替修复用）。
+
+    - 任一侧为空（``None`` / ``""`` / ``[]``）：直接返回另一侧原值，不丢内容；
+    - 两侧均为非空字符串：用 ``"\n\n"`` 拼接（沿用既有拼接惯例）；
+    - 涉及列表块：统一转为块列表后拼接，字符串侧转为 text 块，
+      避免丢弃前者的图片等内容块。
+    """
+    if not prev_content:
+        return curr_content
+    if not curr_content:
+        return prev_content
+    if isinstance(prev_content, str) and isinstance(curr_content, str):
+        return (prev_content + "\n\n" + curr_content).strip()
+    return [
+        *_content_as_blocks(prev_content),
+        *_content_as_blocks(curr_content),
+    ]
+
+
+def _dedupe_tool_calls(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """按 ``id`` 对 tool_calls 去重（保留先出现者），供相邻 assistant 合并使用。
+
+    不同 assistant 消息可能携带相同原始调用 id（重复消息类历史损伤），合并后
+    会产生重复 id 被严格网关拒绝；缺失 id 的条目不参与去重。
+    """
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for call in calls:
+        call_id = call.get("id") if isinstance(call, dict) else None
+        if isinstance(call_id, str):
+            if call_id in seen:
+                continue
+            seen.add(call_id)
+        out.append(call)
+    return out
+
+
 class LLMProvider(ABC):
     """所有 LLM Provider 后端的抽象基类。
 
@@ -229,23 +300,29 @@ class LLMProvider(ABC):
     _PERSISTENT_MAX_DELAY = 60  # 持久重试模式下的单次最大延迟（秒）
     _PERSISTENT_IDENTICAL_ERROR_LIMIT = 10  # 持久重试遇到相同错误的最大次数
     _RETRY_HEARTBEAT_CHUNK = 30  # 重试休眠中心跳回调的分片时长（秒）
-    # 用于文本匹配的瞬时错误标记（任意命中即视为可重试）
+    # 用于文本匹配的瞬时错误标记（任意命中即视为可重试）。
+    # 注意：数字类状态码不用子串匹配（"15000 tokens" 会误命中 "500"），
+    # 改用 _TRANSIENT_STATUS_RE 的词边界正则；"connection" 也收窄为具体词组，
+    # 避免错误文本里偶然出现 connection 一词就触发重试。
     _TRANSIENT_ERROR_MARKERS = (
-        "429",
         "rate limit",
-        "500",
-        "502",
-        "503",
-        "504",
         "overloaded",
         "timeout",
         "timed out",
-        "connection",
+        "connection error",
+        "connection reset",
+        "connection refused",
+        "connection timed out",
+        "connection aborted",
         "server error",
         "temporarily unavailable",
         "速率限制",
         "访问量过大",
     )
+    # 瞬时 HTTP 状态码的词边界匹配（\b 保证 "15000" 中的 "500" 片段不会命中）
+    _TRANSIENT_STATUS_RE = re.compile(r"\b(?:408|409|429|500|502|503|504)\b")
+    # 5xx 中语义上不应重试的状态码：501 Not Implemented、505 HTTP Version Not Supported
+    _NON_RETRYABLE_5XX_CODES = frozenset({501, 505})
     _RETRYABLE_STATUS_CODES = frozenset({408, 409, 429})  # 默认可重试的 HTTP 状态码
     _TRANSIENT_ERROR_KINDS = frozenset({"timeout", "connection"})  # 可重试的错误大类
     # 不可重试的 429 错误 token：通常是配额/计费类，重试也无法恢复
@@ -449,6 +526,9 @@ class LLMProvider(ABC):
     def _is_transient_error(cls, content: str | None) -> bool:
         """通过文本标记判断是否为瞬时错误（兼容旧 Provider 文本兜底）。"""
         err = (content or "").lower()
+        # 数字类状态码用词边界匹配，避免 "15000 tokens" 之类的文本误命中 "500"
+        if cls._TRANSIENT_STATUS_RE.search(err):
+            return True
         return any(marker in err for marker in cls._TRANSIENT_ERROR_MARKERS)
 
     @classmethod
@@ -466,7 +546,9 @@ class LLMProvider(ABC):
             if status == 429:
                 # 429 需进一步区分限流（可重试）与配额（不可重试）
                 return cls._is_retryable_429_response(response)
-            if status in cls._RETRYABLE_STATUS_CODES or status >= 500:
+            if status in cls._RETRYABLE_STATUS_CODES or (
+                status >= 500 and status not in cls._NON_RETRYABLE_5XX_CODES
+            ):
                 return True
 
         kind = (response.error_kind or "").strip().lower()
@@ -577,8 +659,20 @@ class LLMProvider(ABC):
         if not messages:
             return messages
 
+        # 预计算每条消息「之后」出现的 tool 结果 id 集合：合并相邻 assistant 时
+        # 据此判断前序 assistant 的 tool_calls 是否仍被后续结果引用（见下方注释）。
+        resolved_tool_ids_after: list[set[str]] = [set()] * len(messages)
+        _seen_tool_ids: set[str] = set()
+        for _j in range(len(messages) - 1, -1, -1):
+            resolved_tool_ids_after[_j] = set(_seen_tool_ids)
+            _m = messages[_j]
+            if _m.get("role") == "tool":
+                _tid = _m.get("tool_call_id")
+                if isinstance(_tid, str) and _tid:
+                    _seen_tool_ids.add(_tid)
+
         merged: list[dict[str, Any]] = []
-        for msg in messages:
+        for i, msg in enumerate(messages):
             role = msg.get("role")
             # 仅对 user/assistant 的连续同角色做合并
             if (
@@ -592,20 +686,52 @@ class LLMProvider(ABC):
                 if role == "assistant":
                     prev_has_tools = bool(prev.get("tool_calls"))
                     curr_has_tools = bool(msg.get("tool_calls"))
-                    # 当前后者带 tool_calls：用后者替换前者
                     if curr_has_tools:
-                        merged[-1] = dict(msg)
+                        # 当前后者带 tool_calls：以后者为主体，尝试把前者的
+                        # tool_calls 并入（避免前者的调用丢失产生孤儿 tool 结果）。
+                        # 注意用 dict 拷贝，不修改调用方的原始消息。
+                        prev_calls = prev.get("tool_calls") or []
+                        curr_calls = msg.get("tool_calls") or []
+                        # 两条相邻 assistant 之间不可能夹着 tool 结果（否则不会相邻），
+                        # 因此 prev 调用的合法结果只可能出现在 curr 之后。仅并入「其后
+                        # 仍存在匹配 tool 结果」的 prev 调用：乱序修复场景需要它们；而
+                        # 结果已彻底丢失的历史修复/转换副产物若不过滤，会并入无结果回应
+                        # 的孤儿 tool_call_id，被严格网关 400 拒绝。
+                        prev_resolved = [
+                            c for c in prev_calls
+                            if isinstance(c, dict)
+                            and isinstance(c.get("id"), str)
+                            and c.get("id") in resolved_tool_ids_after[i]
+                        ]
+                        if prev_calls and not prev_resolved:
+                            # prev 的调用结果已全部丢失：整体退回「保留 curr」的旧行为，
+                            # 不并入 prev 的任何调用/正文。
+                            merged[-1] = dict(msg)
+                            continue
+                        new_msg = dict(msg)
+                        # 合并后再按 id 去重：不同消息可能携带相同 raw id（重复消息类损伤）。
+                        new_msg["tool_calls"] = _dedupe_tool_calls(
+                            [*prev_resolved, *curr_calls]
+                        )
+                        prev_content = prev.get("content")
+                        curr_content = msg.get("content")
+                        if (
+                            isinstance(prev_content, str) and prev_content
+                            and isinstance(curr_content, str) and curr_content
+                        ):
+                            # 两者正文都非空时拼接，否则保留后者的正文
+                            new_msg["content"] = f"{prev_content}\n\n{curr_content}"
+                        merged[-1] = new_msg
                         continue
                     # 前者带 tool_calls：保留前者，丢弃后者
                     if prev_has_tools:
                         continue
-                # 拼接纯文本 content
-                prev_content = prev.get("content") or ""
-                curr_content = msg.get("content") or ""
-                if isinstance(prev_content, str) and isinstance(curr_content, str):
-                    prev["content"] = (prev_content + "\n\n" + curr_content).strip()
-                else:
-                    merged[-1] = dict(msg)
+                # 拼接 content：涉及列表块时合并块列表（保留前者的图片块），
+                # 不再整体替换而丢掉前者的内容
+                merged[-1] = {
+                    **prev,
+                    "content": _merge_message_contents(prev.get("content"), msg.get("content")),
+                }
             else:
                 merged.append(dict(msg))
 

@@ -100,10 +100,6 @@ _THINKING_STYLE_MAP: dict[str, Any] = {
     "enable_thinking": lambda on: {"enable_thinking": on},
     "reasoning_split": lambda on: {"reasoning_split": on},
 }
-# 网关原生推理控制映射表（如 OpenRouter 的 reasoning_effort）
-_GATEWAY_REASONING_STYLE_MAP: dict[str, Any] = {
-    "reasoning_effort": lambda effort: {"reasoning": {"effort": effort}},
-}
 # 模型名 → 思考风格映射（Kimi 与 MiMo 系列均用 thinking_type）
 _MODEL_THINKING_STYLES: dict[str, str] = {
     **dict.fromkeys(_KIMI_THINKING_MODELS, "thinking_type"),
@@ -159,17 +155,6 @@ def _thinking_extra_body(style: str, thinking_enabled: bool) -> dict[str, Any] |
     """
     builder = _THINKING_STYLE_MAP.get(style)
     return builder(thinking_enabled) if builder else None
-
-
-def _gateway_reasoning_extra_body(style: str, effort: str | None) -> dict[str, Any] | None:
-    """按网关原生推理风格（如 ``reasoning_effort``）构造 ``extra_body`` 片段。
-
-    ``effort`` 为空则返回 ``None``；用于把内部语义化的推理强度映射到网关线格式。
-    """
-    if not effort:
-        return None
-    builder = _GATEWAY_REASONING_STYLE_MAP.get(style)
-    return builder(effort) if builder else None
 
 
 def _openai_compat_timeout_s() -> float:
@@ -826,16 +811,6 @@ class OpenAICompatProvider(LLMProvider):
                 extra = _thinking_extra_body(thinking_style, thinking_enabled)
                 if extra:
                     kwargs.setdefault("extra_body", {}).update(extra)
-            # 网关原生推理控制（如 OpenRouter 的 reasoning_effort）
-            gateway_style = getattr(spec, "gateway_reasoning_style", "") if spec else ""
-            if (
-                gateway_style
-                and _model_thinking_style(model_name)
-                and (thinking_enabled or slug not in _KIMI_ALWAYS_THINKING_MODELS)
-            ):
-                extra = _gateway_reasoning_extra_body(gateway_style, semantic_effort)
-                if extra:
-                    kwargs.setdefault("extra_body", {}).update(extra)
 
             # Moonshot 拒绝同时携带 'reasoning_effort' 和原生 'thinking' 参数。
             # 用户的意图已经通过 provider 原生形式表达，这里删掉冗余的线级 kwarg。
@@ -982,6 +957,26 @@ class OpenAICompatProvider(LLMProvider):
             "unrecognized request argument",
         )
         return any(marker in body_text for marker in compatibility_markers)
+
+    @staticmethod
+    def _is_stream_options_rejection(e: Exception) -> bool:
+        """判断异常是否为网关拒绝 ``stream_options`` 参数的 400 错误。
+
+        部分旧网关不认识 ``stream_options={"include_usage": True}``，
+        直接返回 400；剥掉该参数重试一次即可恢复。
+        """
+        response = getattr(e, "response", None)
+        status_code = getattr(e, "status_code", None)
+        if status_code is None and response is not None:
+            status_code = getattr(response, "status_code", None)
+        if status_code != 400:
+            return False
+        body = (
+            getattr(e, "body", None)
+            or getattr(e, "doc", None)
+            or getattr(response, "text", None)
+        )
+        return "stream_options" in str(body).lower()
 
     def _build_responses_body(
         self,
@@ -1133,6 +1128,20 @@ class OpenAICompatProvider(LLMProvider):
                 break
 
         return result
+
+    @staticmethod
+    def _merge_usage(
+        current: dict[str, int],
+        candidate: dict[str, int] | None,
+    ) -> dict[str, int]:
+        """仅当候选 usage 携带非零数值时才覆盖当前累计 usage。
+
+        部分网关在流式中间 chunk（甚至带 choices 的 chunk）上返回全零 usage；
+        ``dict or dict`` 恒取前者，全零 dict 为真值会覆盖之前累计的真实用量。
+        """
+        if candidate and any(candidate.values()):
+            return candidate
+        return current
 
     @staticmethod
     def _get_nested_int(obj: Any, path: tuple[str, ...]) -> int:
@@ -1356,7 +1365,7 @@ class OpenAICompatProvider(LLMProvider):
                 choices = chunk_map.get("choices") or []
                 if not choices:
                     # 无 choices 的 chunk 通常只携带 usage
-                    usage = cls._extract_usage(chunk_map) or usage
+                    usage = cls._merge_usage(usage, cls._extract_usage(chunk_map))
                     text = cls._extract_text_content(
                         chunk_map.get("content") or chunk_map.get("output_text")
                     )
@@ -1379,12 +1388,12 @@ class OpenAICompatProvider(LLMProvider):
                 for idx, tc in enumerate(delta.get("tool_calls") or []):
                     _accum_tc(tc, idx)
                 _accum_legacy_function_call(delta.get("function_call"))
-                usage = cls._extract_usage(chunk_map) or usage
+                usage = cls._merge_usage(usage, cls._extract_usage(chunk_map))
                 continue
 
             # SDK 对象形态 chunk
             if not chunk.choices:
-                usage = cls._extract_usage(chunk) or usage
+                usage = cls._merge_usage(usage, cls._extract_usage(chunk))
                 continue
             choice = chunk.choices[0]
             if choice.finish_reason:
@@ -1663,7 +1672,18 @@ class OpenAICompatProvider(LLMProvider):
                 kwargs.setdefault("extra_body", {})["tool_stream"] = True
             kwargs["stream"] = True
             kwargs["stream_options"] = {"include_usage": True}
-            stream = await self._client.chat.completions.create(**kwargs)
+            if self._client is None:
+                raise RuntimeError("OpenAI-compatible client is not initialized")
+            try:
+                stream = await self._client.chat.completions.create(**kwargs)
+            except Exception as e:
+                if not self._is_stream_options_rejection(e):
+                    raise
+                # 部分旧网关不认识 stream_options 参数（400 提及该字段）：
+                # 剥掉后重试一次，仅损失 usage 统计，不影响流式内容。
+                logger.warning("Gateway rejected stream_options; retrying without it")
+                kwargs.pop("stream_options", None)
+                stream = await self._client.chat.completions.create(**kwargs)
             chunks: list[Any] = []
             stream_iter = stream.__aiter__()
             while True:

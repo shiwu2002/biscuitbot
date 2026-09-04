@@ -12,12 +12,20 @@
 
 from __future__ import annotations
 
-from contextvars import ContextVar  # 上下文变量，用于跨异步任务传递请求来源
+from contextlib import suppress  # 用于抑制跨任务重置 ContextVar 的 ValueError
+from contextvars import ContextVar, Token  # 上下文变量与令牌，用于跨异步任务传递请求来源
 from typing import TYPE_CHECKING, Any  # 类型注解
 
 from biscuitbot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
-from biscuitbot.agent.tools.context import ContextAware, RequestContext  # 上下文感知 mixin 与请求上下文
-from biscuitbot.agent.tools.schema import NumberSchema, StringSchema, tool_parameters_schema  # JSON Schema 类型
+from biscuitbot.agent.tools.context import (  # 上下文感知 mixin 与请求上下文
+    ContextAware,
+    RequestContext,
+)
+from biscuitbot.agent.tools.schema import (  # JSON Schema 类型
+    NumberSchema,
+    StringSchema,
+    tool_parameters_schema,
+)
 from biscuitbot.security.workspace_access import current_workspace_scope  # 当前工作区作用域
 
 if TYPE_CHECKING:  # 仅类型检查时导入，避免循环依赖
@@ -58,17 +66,40 @@ class SpawnTool(Tool, ContextAware):
             "spawn_origin_message_id",
             default=None,
         )
+        # set_context 产生的 ContextVar 令牌列表，execute 结束后逆序重置，
+        # 避免工具实例复用时上个请求的来源信息成为默认值
+        self._pending_context_tokens: list[tuple[ContextVar[Any], Token]] = []
 
     @classmethod
     def create(cls, ctx: Any) -> Tool:
         return cls(manager=ctx.subagent_manager)
 
     def set_context(self, ctx: RequestContext) -> None:
-        """设置原始请求上下文，用于子 agent 完成后的汇报路由。"""
-        self._origin_channel.set(ctx.channel)
-        self._origin_chat_id.set(ctx.chat_id)
-        self._session_key.set(ctx.session_key or f"{ctx.channel}:{ctx.chat_id}")
-        self._origin_message_id.set(ctx.message_id)
+        """设置原始请求上下文，用于子 agent 完成后的汇报路由。
+
+        收集令牌，待 execute 结束后在 finally 中重置，避免上个请求的值
+        残留为下个请求的默认值。
+        """
+        self._pending_context_tokens.extend((
+            (self._origin_channel, self._origin_channel.set(ctx.channel)),
+            (self._origin_chat_id, self._origin_chat_id.set(ctx.chat_id)),
+            (
+                self._session_key,
+                self._session_key.set(ctx.session_key or f"{ctx.channel}:{ctx.chat_id}"),
+            ),
+            (self._origin_message_id, self._origin_message_id.set(ctx.message_id)),
+        ))
+
+    def _reset_request_context(self) -> None:
+        """逆序重置 set_context 设置的所有 ContextVar，恢复外部默认值。
+
+        跨任务交错调用时（共享工具实例），其他任务创建的令牌在本任务上下文
+        中重置会抛 ValueError，静默跳过即可——该任务的上下文会随任务结束回收。
+        """
+        while self._pending_context_tokens:
+            var, token = self._pending_context_tokens.pop()
+            with suppress(ValueError):
+                var.reset(token)
 
     @property
     def name(self) -> str:
@@ -103,19 +134,24 @@ class SpawnTool(Tool, ContextAware):
         """
         running = self._manager.get_running_count()
         limit = self._manager.max_concurrent_subagents
-        if running >= limit:
-            return (
-                f"Cannot spawn subagent: concurrency limit reached "
-                f"({running}/{limit} running). Wait for a running subagent "
-                f"to complete before spawning a new one."
+        try:
+            if running >= limit:
+                return (
+                    f"Cannot spawn subagent: concurrency limit reached "
+                    f"({running}/{limit} running). Wait for a running subagent "
+                    f"to complete before spawning a new one."
+                )
+            return await self._manager.spawn(
+                task=task,
+                label=label,
+                origin_channel=self._origin_channel.get(),
+                origin_chat_id=self._origin_chat_id.get(),
+                session_key=self._session_key.get(),
+                origin_message_id=self._origin_message_id.get(),
+                temperature=temperature,
+                workspace_scope=current_workspace_scope(),
             )
-        return await self._manager.spawn(
-            task=task,
-            label=label,
-            origin_channel=self._origin_channel.get(),
-            origin_chat_id=self._origin_chat_id.get(),
-            session_key=self._session_key.get(),
-            origin_message_id=self._origin_message_id.get(),
-            temperature=temperature,
-            workspace_scope=current_workspace_scope(),
-        )
+        finally:
+            # 请求结束后重置 set_context 设置的值，恢复外部默认，
+            # 避免工具实例复用时上个请求的来源信息成为默认值
+            self._reset_request_context()
