@@ -1075,8 +1075,6 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
         }
 
     api_base = _resolve_env_placeholders(provider_config.api_base) or spec.default_api_base
-    if spec.name == "openai" and not api_base:
-        api_base = "https://api.openai.com/v1"
     if not api_base:
         return {
             **base_payload,

@@ -467,6 +467,7 @@
       "noMatches": "沒有符合的供應商。",
       "keyStatus": "金鑰狀態",
       "apiBase": "API 位址",
+      "autoApiBase": "API 位址（自動管理）",
       "apiKey": "API Key",
       "apiType": "API 形態",
       "save": "儲存",

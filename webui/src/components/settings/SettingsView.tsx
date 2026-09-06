@@ -2789,17 +2789,29 @@ function ProvidersSettings({
 
         {expanded && !isOauthProvider ? (
           <div className="space-y-3 rounded-[18px] border border-border/45 bg-background/75 px-4 py-3 sm:px-5">
-            <div>
-              <p className="text-[12px] font-medium text-muted-foreground">
-                {tx("settings.providers.apiBase", "API 地址")}
-              </p>
-              <Input
-                value={baseValue}
-                onChange={(event) => updateDraft(provider)({ apiBase: event.target.value })}
-                placeholder={provider.default_api_base || "https://api.example.com/v1"}
-                className="mt-1 h-9 rounded-full text-[13px]"
-              />
-            </div>
+            {provider.default_api_base ? (
+              // 地址自动管理：内置厂商由运行时按 default_api_base 回退，仅展示不可编辑
+              <div>
+                <p className="text-[12px] font-medium text-muted-foreground">
+                  {tx("settings.providers.autoApiBase", "API 地址（自动管理）")}
+                </p>
+                <p className="mt-1 truncate text-[13px] text-muted-foreground/85">
+                  {baseValue}
+                </p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-[12px] font-medium text-muted-foreground">
+                  {tx("settings.providers.apiBase", "API 地址")}
+                </p>
+                <Input
+                  value={baseValue}
+                  onChange={(event) => updateDraft(provider)({ apiBase: event.target.value })}
+                  placeholder="https://api.example.com/v1"
+                  className="mt-1 h-9 rounded-full text-[13px]"
+                />
+              </div>
+            )}
             <div>
               <p className="text-[12px] font-medium text-muted-foreground">
                 {tx("settings.providers.apiKey", "API Key")}

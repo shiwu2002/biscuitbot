@@ -297,7 +297,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(screen.getByRole("button", { name: /重启/ })).toBeInTheDocument();
   });
 
-  it("模型厂商子区可编辑：展开展示 API 地址/密钥表单与保存入口", async () => {
+  it("模型厂商子区可编辑：内置厂商地址自动管理，密钥可改且有保存入口", async () => {
     const payload: SettingsPayload = {
       ...settingsPayload(),
       providers: [
@@ -331,9 +331,11 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(providerCaption).toBeInTheDocument();
 
     fireEvent.click(providerCaption);
-    expect(await screen.findByText("API 地址")).toBeInTheDocument();
+    // 内置厂商地址自动管理：只展示不可编辑，不再提供 API 地址输入框
+    expect(await screen.findByText("API 地址（自动管理）")).toBeInTheDocument();
     expect(screen.getByText("API Key")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("https://api.openai.com/v1")).toBeInTheDocument();
+    expect(screen.getAllByText("https://api.openai.com/v1").length).toBeGreaterThan(0);
+    expect(screen.queryByPlaceholderText("https://api.example.com/v1")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
   });
 

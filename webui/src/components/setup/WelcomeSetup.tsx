@@ -191,15 +191,22 @@ export function WelcomeSetup({
   const handleSelect = (provider: ProviderRow) => {
     setSelected(provider.name);
     setSubmitError(null);
-    setApiBase(provider.default_api_base ?? "");
+    // 地址自动管理：内置厂商的 API 地址由运行时按 default_api_base 回退，
+    // 无需用户填写；仅无默认地址的自定义/网关厂商才需要手动输入。
+    setApiBase("");
     const recommended = DEFAULT_MODELS[provider.name] ?? "";
     setModel(recommended);
     if (provider.name !== selected) setApiKey("");
   };
 
+  const selectedProvider =
+    providers.find((provider) => provider.name === selected) ?? null;
+  const needsApiBase = !!selectedProvider && !selectedProvider.default_api_base;
+
   const canSubmit =
     !!selected &&
     apiKey.trim().length > 0 &&
+    (!needsApiBase || apiBase.trim().length > 0) &&
     !submitting &&
     !loading;
 
@@ -355,10 +362,10 @@ export function WelcomeSetup({
                   </div>
                 </label>
 
-                {apiBase ? (
+                {needsApiBase ? (
                   <label className="block space-y-1.5">
                     <span className="text-[12px] font-medium text-muted-foreground">
-                      {tx("setup.welcome.apiBase", "API 地址（可选）")}
+                      {tx("setup.welcome.apiBase", "API 地址")}
                     </span>
                     <Input
                       type="text"

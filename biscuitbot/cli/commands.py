@@ -543,12 +543,19 @@ def _run_quick_setup(config, config_path: Path) -> None:
         console.print("[yellow]安装已取消。[/yellow]")
         return
 
-    # Apply API key and base URL to config
+    # 应用 API key；地址自动管理（运行时回退注册表 default_api_base）
     provider_cfg = getattr(config.providers, provider_name, None)
     if provider_cfg is not None:
         provider_cfg.api_key = api_key
-        if spec.default_api_base and not provider_cfg.api_base:
-            provider_cfg.api_base = spec.default_api_base
+        if not spec.default_api_base:
+            # 网关 / 自定义端点没有官方默认地址，必须由用户提供
+            api_base = questionary.text("该服务商需要 API 地址（如 https://your-gateway.com/v1）：").ask()
+            if not api_base or not api_base.strip():
+                console.print("[yellow]安装已取消。[/yellow]")
+                return
+            provider_cfg.api_base = api_base.strip()
+        else:
+            console.print(f"  [dim]API 地址自动使用 {spec.default_api_base}（无需手动填写）[/dim]")
 
     # --- Step 3: Select Model (with sensible defaults per provider) ---
     # 随各服务商最新模型轮换更新（2026-08）：deepseek-chat 退役 → v4-flash；

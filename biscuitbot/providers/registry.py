@@ -102,22 +102,25 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
 
     # === 三大核心提供商 ==================================================
     # Anthropic: 原生 Anthropic SDK（Claude 系列）
+    # default_api_base 与 SDK 官方默认一致，仅用于各端 UI 判定「地址自动管理」
     ProviderSpec(
         name="anthropic",
         keywords=("anthropic", "claude"),
         env_key="ANTHROPIC_API_KEY",
         display_name="Anthropic",
         backend="anthropic",
+        default_api_base="https://api.anthropic.com",
         supports_prompt_caching=True,
     ),
     # OpenAI: OpenAI 官方 API 或兼容端点（GPT、o 系列等）
-    # 通过 apiBase 可指向代理地址，兼容所有 OpenAI 格式的模型服务
+    # default_api_base 与 SDK 官方默认一致；通过 apiBase 可指向代理地址
     ProviderSpec(
         name="openai",
         keywords=("openai", "gpt"),
         env_key="OPENAI_API_KEY",
         display_name="OpenAI",
         backend="openai_compat",
+        default_api_base="https://api.openai.com/v1",
         supports_max_completion_tokens=True,
         strip_model_prefixes=("openai",),
     ),

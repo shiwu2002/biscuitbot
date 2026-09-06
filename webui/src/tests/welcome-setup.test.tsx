@@ -131,11 +131,62 @@ describe("WelcomeSetup", () => {
       expect(completeSetup).toHaveBeenCalledWith("tok", {
         provider: "openai",
         apiKey: "sk-test",
-        apiBase: "https://api.openai.com/v1",
         model: "openai/gpt-5.6-terra",
       });
     });
     await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+  });
+
+  it("内置厂商不展示 API 地址输入框（地址自动管理）", async () => {
+    vi.mocked(fetchSettings).mockResolvedValue(settingsPayload());
+    render(<WelcomeSetup token="tok" onDone={vi.fn()} />);
+
+    fireEvent.click(await screen.findByText("DeepSeek"));
+    expect(screen.getByPlaceholderText("粘贴你的 API 密钥")).toBeInTheDocument();
+    expect(screen.queryByText("API 地址")).not.toBeInTheDocument();
+  });
+
+  it("无默认地址的网关厂商要求填写 API 地址", async () => {
+    const payload = settingsPayload({
+      providers: [
+        {
+          name: "newapi",
+          label: "New API 中转",
+          configured: false,
+          api_key_required: true,
+          api_key_hint: null,
+          api_base: null,
+          default_api_base: null,
+          model_selectable: true,
+        },
+      ],
+    } as Partial<SettingsPayload>);
+    vi.mocked(fetchSettings).mockResolvedValue(payload);
+    render(<WelcomeSetup token="tok" onDone={vi.fn()} />);
+
+    fireEvent.click(await screen.findByText("New API 中转"));
+    expect(screen.getByText("API 地址")).toBeInTheDocument();
+
+    const submit = screen.getByRole("button", { name: "开始使用" }) as HTMLButtonElement;
+    fireEvent.change(screen.getByPlaceholderText("粘贴你的 API 密钥"), {
+      target: { value: "sk-test" },
+    });
+    expect(submit.disabled).toBe(true);
+
+    fireEvent.change(screen.getByPlaceholderText("https://…"), {
+      target: { value: "https://gw.example.com/v1" },
+    });
+    expect(submit.disabled).toBe(false);
+
+    vi.mocked(completeSetup).mockResolvedValue({ ok: true, needs_setup: false });
+    fireEvent.click(submit);
+    await waitFor(() => {
+      expect(completeSetup).toHaveBeenCalledWith("tok", {
+        provider: "newapi",
+        apiKey: "sk-test",
+        apiBase: "https://gw.example.com/v1",
+      });
+    });
   });
 
   it("retries with a fresh token when submit gets a 401", async () => {
@@ -162,7 +213,6 @@ describe("WelcomeSetup", () => {
       expect(completeSetup).toHaveBeenCalledWith("fresh-tok", {
         provider: "openai",
         apiKey: "sk-test",
-        apiBase: "https://api.openai.com/v1",
         model: "openai/gpt-5.6-terra",
       });
     });

@@ -1640,16 +1640,17 @@ describe("App layout", () => {
       expect(providerLabel).toBeTruthy();
       fireEvent.click(providerLabel!);
     };
-    // 厂商子区可编辑：展开展示 API 地址/密钥表单与保存入口。
+    // 厂商子区可编辑：内置厂商地址自动管理（只读展示），密钥可改 + 保存入口。
     clickProviderRow("OpenAI");
     expect(screen.getByText("API 地址")).toBeInTheDocument();
     expect(screen.getByText("API Key")).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/open••••-key/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     clickProviderRow("Ant Ling");
-    expect(screen.getByDisplayValue("https://api.ant-ling.com/v1")).toBeInTheDocument();
+    expect(screen.getByText("API 地址（自动管理）")).toBeInTheDocument();
+    expect(screen.getAllByText("https://api.ant-ling.com/v1").length).toBeGreaterThan(0);
     clickProviderRow("Atomic Chat");
-    expect(screen.getByDisplayValue("http://localhost:1337/v1")).toBeInTheDocument();
+    expect(screen.getAllByText("http://localhost:1337/v1").length).toBeGreaterThan(0);
 
     // 图片生成是「模型」tab 的二级子区（文生图），经子区切换条进入
     fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }));

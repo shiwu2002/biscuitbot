@@ -582,6 +582,7 @@
       "noMatches": "没有匹配的提供商。",
       "keyStatus": "密钥状态",
       "apiBase": "API 地址",
+      "autoApiBase": "API 地址（自动管理）",
       "apiKey": "API Key",
       "apiType": "API 形态",
       "save": "保存",

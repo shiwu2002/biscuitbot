@@ -998,7 +998,12 @@ def _get_provider_names() -> dict[str, str]:
 
 
 def _configure_provider(config: Config, provider_name: str) -> None:
-    """配置单个 LLM provider。"""
+    """配置单个 LLM provider。
+
+    地址自动管理：内置厂商的 API 地址由运行时按注册表 default_api_base 回退，
+    无需用户填写，字段编辑器里直接跳过；仅当用户已自定义过 api_base（如代理）
+    或厂商本身没有默认地址（custom / newapi / 自定义厂商）时才展示该字段。
+    """
     provider_config = getattr(config.providers, provider_name, None)
     if provider_config is None:
         console.print(f"[red]未知 provider: {provider_name}[/red]")
@@ -1008,12 +1013,13 @@ def _configure_provider(config: Config, provider_name: str) -> None:
     info = _get_provider_info()
     default_api_base = info.get(provider_name, (None, None, None, None))[3]
 
-    if default_api_base and not provider_config.api_base:
-        provider_config.api_base = default_api_base
+    # 自动管理地址的厂商跳过 api_base 字段，避免误导用户手动填写
+    skip_fields = {"api_base"} if default_api_base and not provider_config.api_base else set()
 
     updated_provider = _configure_pydantic_model(
         provider_config,
         display_name,
+        skip_fields=skip_fields,
     )
     if updated_provider is not None:
         setattr(config.providers, provider_name, updated_provider)
