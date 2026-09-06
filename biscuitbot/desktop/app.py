@@ -91,6 +91,38 @@ def _set_websocket_port(config: Any, port: int) -> None:
         ws.port = port
 
 
+# 桌面网关文件日志 sink 的全局 ID；仅安装一次（loguru add 是全局副作用）。
+_FILE_LOG_SINK_ID: int | None = None
+
+
+def _install_gateway_file_logging() -> None:
+    """把 loguru 日志同时写入数据目录 logs/gateway.log。
+
+    桌面 sidecar 是 ``--windowed`` 无控制台进程，loguru 默认的 stderr sink 会被
+    系统丢弃，导致「系统 IO」面板的打开日志/导出诊断拿不到任何日志。这里补一个
+    文件 sink（旋转 + 保留），供排障与诊断报告使用。CLI 网关因有控制台不受影响。
+    """
+    global _FILE_LOG_SINK_ID
+    if _FILE_LOG_SINK_ID is not None:
+        return
+    from biscuitbot.config.paths import get_logs_dir
+    from loguru import logger
+
+    logs_dir = get_logs_dir()
+    _FILE_LOG_SINK_ID = logger.add(
+        str(logs_dir / "gateway.log"),
+        format=(
+            "{time:YYYY-MM-DD HH:mm:ss} | {level: <5} | "
+            "{extra[channel]} | {message}"
+        ),
+        rotation="10 MB",
+        retention="10 days",
+        level="INFO",
+        enqueue=True,  # 后台线程写盘，避免阻塞网关主循环
+        filter=lambda record: record["extra"].setdefault("channel", "-") or True,
+    )
+
+
 @dataclass
 class GatewayHandle:
     """已启动的网关后台进程句柄，供调用方轮询就绪状态。"""
@@ -113,6 +145,9 @@ def start_gateway(config: Any, *, port: int | None = None) -> GatewayHandle:
     ``wait_until_ready()`` 并最终退出进程以终止 daemon 线程。
     """
     from biscuitbot.cli.commands import _run_gateway
+
+    # 桌面无控制台：先把日志落盘，供「系统 IO」面板的打开日志 / 导出诊断使用。
+    _install_gateway_file_logging()
 
     host, ws_port = resolve_websocket_endpoint(config)
     gateway_port = port if port is not None else config.gateway.port

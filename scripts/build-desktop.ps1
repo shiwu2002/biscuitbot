@@ -93,7 +93,9 @@ $Excludes = @(
 # websocket-client 依赖一并收进。
 $HiddenImports = @(
     "--hidden-import", "biscuitbot.providers.tts",
-    "--collect-all", "dashscope"
+    "--collect-all", "dashscope",
+    "--collect-all", "pynput",
+    "--collect-all", "serial"
 )
 # 工具模块由 ToolLoader 动态导入（pkgutil.iter_modules + import_module），
 # PyInstaller 静态分析捕捉不到，须显式收集，否则桌面端缺 cinematic_director /

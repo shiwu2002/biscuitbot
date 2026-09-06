@@ -620,7 +620,12 @@ class SystemIoTool(Tool):
         backend = self._mouse_backend()
         if backend == "pynput":
             from pynput import mouse  # type: ignore[import-not-found]
-            await asyncio.to_thread(lambda: mouse.Controller().position(x, y))
+
+            # pynput 的 Controller.position 是属性（get/set），不是可调用方法。
+            def _move() -> None:
+                mouse.Controller().position = (x, y)
+
+            await asyncio.to_thread(_move)
             return f"Mouse moved to ({x}, {y})."
         if _IS_LINUX and backend == "xdotool":
             rc, out, err = await self._run(
@@ -653,7 +658,8 @@ class SystemIoTool(Tool):
             def _click() -> None:
                 m = mouse.Controller()
                 if x is not None and y is not None:
-                    m.position(x, y)
+                    # pynput 的 position 是属性（get/set），需赋值而非调用。
+                    m.position = (x, y)
                 m.click(btn)
 
             await asyncio.to_thread(_click)

@@ -284,7 +284,24 @@ class TestSystemIoToolHappyPaths:
         monkeypatch.setitem(sys.modules, "pynput.mouse", fake_mouse)
         result = await tool.execute(action="mouse_move", x=100, y=200)
         assert "Mouse moved to (100, 200)" in result
-        controller.position.assert_called_once_with(100, 200)
+        # pynput 的 Controller.position 是属性（get/set），须赋值而非调用。
+        assert controller.position == (100, 200)
+
+    async def test_mouse_click_via_mocked_pynput_sets_position(self, monkeypatch):
+        import sys
+        tool = SystemIoTool()
+        monkeypatch.setattr(tool, "_mouse_backend", lambda: "pynput")
+        fake_mouse = MagicMock()
+        controller = MagicMock()
+        fake_mouse.Controller.return_value = controller
+        fake_pynput = MagicMock()
+        fake_pynput.mouse = fake_mouse
+        monkeypatch.setitem(sys.modules, "pynput", fake_pynput)
+        monkeypatch.setitem(sys.modules, "pynput.mouse", fake_mouse)
+        result = await tool.execute(action="mouse_click", x=5, y=5, button="left")
+        assert "Clicked left mouse button at (5, 5)" in result
+        assert controller.position == (5, 5)
+        controller.click.assert_called_once()
 
     async def test_serial_list_no_ports_returns_message(self, monkeypatch):
         tool = SystemIoTool()

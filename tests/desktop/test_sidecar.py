@@ -177,6 +177,34 @@ def test_main_prints_error_line_on_startup_failure(tmp_path, monkeypatch) -> Non
     assert "BISCUITBOT_GATEWAY_ERROR" in buf.getvalue()
 
 
+def test_install_gateway_file_logging_writes_gateway_log(tmp_path, monkeypatch) -> None:
+    """桌面网关应把日志写入数据目录 logs/gateway.log（sidecar 无控制台）。
+
+    否则「系统 IO」面板的打开日志 / 导出诊断拿不到任何日志。验证文件确实落盘，
+    并在测试结束后移除 sink、重置全局状态，避免污染后续用例的 loguru logger。
+    """
+    from loguru import logger as loguru_logger
+
+    config_path = tmp_path / "config.json"
+    save_config(Config(), config_path)
+    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+
+    desktop_app._FILE_LOG_SINK_ID = None
+    desktop_app._install_gateway_file_logging()
+    assert desktop_app._FILE_LOG_SINK_ID is not None
+
+    loguru_logger.info("desktop-io-test-marker")
+    loguru_logger.complete()  # 等待 enqueue 队列落盘
+
+    log_file = tmp_path / "logs" / "gateway.log"
+    assert log_file.exists()
+    assert "desktop-io-test-marker" in log_file.read_text(encoding="utf-8")
+
+    # 清理：移除 sink 并复位全局状态。
+    loguru_logger.remove(desktop_app._FILE_LOG_SINK_ID)
+    desktop_app._FILE_LOG_SINK_ID = None
+
+
 class TestPythonInterpreterMode:
     """桌面 exec 解释器模式：-c / -m / 脚本路径 / -V，异常归一为退出码。"""
 
