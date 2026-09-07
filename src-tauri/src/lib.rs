@@ -58,6 +58,15 @@ fn is_exiting(app: &AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+/// 显示并聚焦主窗口（托盘菜单「打开」与 macOS Dock 重开事件共用）。
+fn reveal_main_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
 /// 启动 sidecar 并在就绪后把主窗口导航到 WebUI；退出后按需重新拉起。
 fn spawn_sidecar(app: &AppHandle) {
     // 开发模式旁路：设置 BISCUITBOT_DEV_GATEWAY_URL 时直接导航，不启动 sidecar。
@@ -219,13 +228,7 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            TRAY_SHOW => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
-            }
+            TRAY_SHOW => reveal_main_window(app),
             TRAY_QUIT => app.exit(0),
             _ => {}
         })
@@ -259,8 +262,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building biscuitbot tauri application");
 
-    app.run(|app_handle, event| {
-        if let RunEvent::ExitRequested { .. } | RunEvent::Exit = event {
+    app.run(|app_handle, event| match event {
+        #[cfg(target_os = "macos")]
+        // 点击 Dock 图标重开应用：窗口被关闭〔X〕隐藏到托盘后已无可见窗口，
+        // macOS 会经 applicationShouldHandleReopen 触发 Reopen，但默认不会自动
+        // 重新显示程序化 hide() 的窗口——此前只能靠托盘菜单「打开 biscuitbot」，
+        // 现于此处显式 show/focus 主窗口。
+        RunEvent::Reopen { .. } => reveal_main_window(app_handle),
+        RunEvent::ExitRequested { .. } | RunEvent::Exit => {
             if let Some(state) = app_handle.try_state::<SidecarState>() {
                 state.exiting.store(true, Ordering::SeqCst);
                 if let Some(child) = state.child.lock().unwrap().take() {
@@ -268,5 +277,6 @@ pub fn run() {
                 }
             }
         }
+        _ => {}
     });
 }
