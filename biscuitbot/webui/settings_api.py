@@ -41,6 +41,10 @@ from biscuitbot.providers.image_generation import (
     get_image_gen_provider,
     image_gen_provider_names,
 )
+from biscuitbot.providers.openai_compat_provider import (
+    AGENTROUTER_USER_AGENT,
+    is_agentrouter_endpoint,
+)
 from biscuitbot.providers.registry import PROVIDERS, create_dynamic_spec, find_by_name
 from biscuitbot.security.workspace_access import workspace_sandbox_status
 from biscuitbot.utils.knowledge_index import delete_document, list_documents
@@ -161,6 +165,25 @@ _ENV_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _MODEL_LIST_UNSUPPORTED_BACKENDS = {
     "anthropic",
 }
+
+
+def _provider_error_detail(response: httpx.Response) -> str:
+    """从 provider 错误响应中提取人类可读的原因（用于 401/403 诊断）。
+
+    兼容 OpenAI 风格 ``{"error": {"message": ...}}`` 与 ``{"message": ...}``
+    两种结构；解析失败时退回 HTTP 状态码描述。
+    """
+    try:
+        payload = response.json()
+    except ValueError:
+        return f"HTTP {response.status_code}"
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+        if payload.get("message"):
+            return str(payload["message"])
+    return f"HTTP {response.status_code}"
 
 _MODEL_LIST_CATALOG_PROVIDERS = {
     "aihubmix",
@@ -1101,6 +1124,11 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
     if spec.name == "minimax_anthropic" and not api_base.rstrip("/").endswith("/v1"):
         models_url = f"{api_base.rstrip('/')}/v1/models"
 
+    # AgentRouter 的 WAF 只放行 Claude Code 形态的 User-Agent；UA 常量与端点
+    # 判定统一来自 providers 层，与聊天路径共用，避免两处字符串匹配漂移。
+    if is_agentrouter_endpoint(spec, api_base):
+        headers["User-Agent"] = AGENTROUTER_USER_AGENT
+
     try:
         response = httpx.get(
             models_url,
@@ -1109,6 +1137,18 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
             follow_redirects=False,
         )
         response.raise_for_status()
+        content_type = response.headers.get("content-type", "")
+        if "text/html" in content_type.lower():
+            # 部分 SPA 官网对未知路径兜底返回 HTTP 200 + HTML 首页
+            # （如 agentrouter.org 无 /v1 前缀时），比 404 更具迷惑性。
+            return {
+                **base_payload,
+                "status": "error",
+                "message": (
+                    "The endpoint returned HTML instead of JSON. OpenAI-compatible "
+                    "base URLs usually end with /v1 (e.g. https://example.com/v1)."
+                ),
+            }
         rows = _extract_model_rows(response.json())
     except httpx.HTTPStatusError as exc:
         status = exc.response.status_code
@@ -1116,7 +1156,10 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
             return {
                 **base_payload,
                 "status": "not_configured",
-                "message": "The provider rejected the configured credential.",
+                "message": (
+                    "The provider rejected the request: "
+                    f"{_provider_error_detail(exc.response)}"
+                ),
             }
         return {
             **base_payload,

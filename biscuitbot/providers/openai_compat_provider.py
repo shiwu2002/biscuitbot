@@ -267,6 +267,25 @@ def _uses_openrouter_attribution(spec: "ProviderSpec | None", api_base: str | No
     return bool(api_base and "openrouter" in api_base.lower())
 
 
+# AgentRouter（agentrouter.org）的 WAF 只放行 Claude Code 形态的流量：
+# User-Agent 必须匹配 ``claude-cli/<version> (external, cli)``（版本号任意，
+# 关键是 ``(external, cli)`` 后缀），其余客户端一律 401 unauthorized client
+# detected —— 与密钥是否有效无关。实测 httpx/浏览器 UA 均被拒， anthropic-beta
+# 头则非必需。对 agentrouter 端点改写 UA 以通过其客户端指纹检测。
+#
+# UA 常量与端点判定在 providers 层统一定义：聊天路径（本模块）与 WebUI 模型
+# 列表拉取（webui/settings_api.py）共用同一份，保证两处客户端指纹判定一致，
+# 避免各自写字符串匹配而漂移。
+AGENTROUTER_USER_AGENT = "claude-cli/2.1.6 (external, cli)"
+
+
+def is_agentrouter_endpoint(spec: "ProviderSpec | None", api_base: str | None) -> bool:
+    """判断端点是否指向 AgentRouter 网关（需 Claude Code 形态的 User-Agent）。"""
+    if spec and spec.name == "agentrouter":
+        return True
+    return bool(api_base and "agentrouter.org" in api_base.lower())
+
+
 # Responses API 熔断阈值：连续失败次数达到该值即打开熔断器
 _RESPONSES_FAILURE_THRESHOLD = 3
 # 熔断打开后的探测间隔（秒）：超过该时长后放行一次半开探测请求
@@ -434,6 +453,10 @@ class OpenAICompatProvider(LLMProvider):
         self._default_headers = {"x-session-affinity": uuid.uuid4().hex}
         if _uses_openrouter_attribution(spec, effective_base):
             self._default_headers.update(_DEFAULT_OPENROUTER_HEADERS)
+        if is_agentrouter_endpoint(spec, effective_base):
+            # default_headers 中的 User-Agent 会覆盖 OpenAI SDK 自带的
+            # ``AsyncOpenAI/Python`` UA，从而通过 AgentRouter 的客户端检测。
+            self._default_headers["User-Agent"] = AGENTROUTER_USER_AGENT
         if extra_headers:
             self._default_headers.update(extra_headers)
         # 无 key 时用占位串，避免 SDK 报错（本地模型常见）
