@@ -147,6 +147,24 @@ fi
 cd "$ROOT"
 
 echo "==> 6/6 Tauri 构建（release，${TARGET_TRIPLE}）"
+# 预清理：上次 DMG 构建失败会遗留 hdiutil 挂载点（/Volumes/dmg.XXX）和
+# 临时可写 DMG 文件（rw.*.dmg）。下次重新构建时，create-dmg 的
+# `hdiutil attach -mountrandom /Volumes` 会因挂载点已存在而失败；
+# 而 rw.*.dmg 带 com.apple.FinderInfo=devrddsk xattr，在 APFS noowners
+# 卷上 `rm` 会触发 EXDEV（Cross-device link），必须用 `find -depth -delete`
+# 才能可靠删除。本脚本因 `set -e` 在 DMG 阶段失败时立即退出，无法执行
+# 末尾的清理逻辑，故在此预清理，保证下次构建能从头开始。
+MACOS_BUNDLE_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle/macos"
+if [ -d "$MACOS_BUNDLE_DIR" ]; then
+  # 1) detach 残留挂载点（create-dmg 用 -mountrandom /Volumes → /Volumes/dmg.XXX）
+  for m in /Volumes/dmg.*; do
+    [ -d "$m" ] || continue
+    hdiutil detach "$m" -force 2>/dev/null || true
+  done
+  # 2) 删除临时 rw DMG（find -depth -delete 规避 devrddsk xattr 的 EXDEV）
+  find "$MACOS_BUNDLE_DIR" -maxdepth 1 -name 'rw.*.dmg' -depth -delete 2>/dev/null || true
+fi
+
 cd "$ROOT/src-tauri"
 # bash 3.2 下 `set -u` 会把空数组的 "${arr[@]}" 判为 unbound，须先判长度
 if [[ ${#TAURI_BUILD_ARGS[@]} -gt 0 ]]; then
@@ -161,20 +179,34 @@ cd "$ROOT"
 # bundle/dmg/icon.icns 用作 `--volicon` 源（DMG 内会正确转为隐藏的 .VolumeIcon.icns），
 # 但打包结束后不删除，导致 icon.icns 泄漏到产物目录；bundle_dmg.sh 同样是 create-dmg
 # 的中间脚本。这里统一清理，让 bundle/dmg/ 只保留 *.dmg。
+# 用 `find -depth -delete` 替代 `rm -f`：APFS noowners 卷上对这些中间文件 rm
+# 会触发 EXDEV（Cross-device link），find -delete 走 unlink 系统调用逐项处理。
 DMG_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle/dmg"
 if [ -d "$DMG_DIR" ]; then
-  rm -f "$DMG_DIR/icon.icns" "$DMG_DIR/bundle_dmg.sh"
+  find "$DMG_DIR" -maxdepth 1 \( -name 'icon.icns' -o -name 'bundle_dmg.sh' \) -depth -delete 2>/dev/null || true
 fi
 
 # 将最终产物（.app / .dmg）复制到输出目录；target 内仍保留构建缓存。
-# 先删旧的 .app 再复制：`cp -R` 对已存在目录是「合并」而非「替换」，
+# 先替换旧 .app 再复制新的：`cp -R` 对已存在目录是「合并」而非「替换」，
 # 会把旧包中本次已删除的文件（如 skills/seedance/）残留到新包。
 # .dmg 同理：target 的 dmg 目录会跨构建累积历史产物，用 `*.dmg` 通配会把已删除的
 # 老版本又复制回来。因此清掉输出目录里的历史 .dmg，且只拷贝含当前版本号的 dmg。
+# APFS noowners 卷上 `rm -rf` 对 .app bundle 会触发 EXDEV（Cross-device link，
+# 因 rm 走 rename 优化路径），改用 mv 重命名 + find -depth -delete 才能可靠删除。
 mkdir -p "$OUTPUT_DIR"
 BUNDLE_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle"
-rm -rf "$OUTPUT_DIR/"*.app
-cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
+if [ -d "$OUTPUT_DIR/biscuitbot.app" ]; then
+  mv "$OUTPUT_DIR/biscuitbot.app" "$OUTPUT_DIR/biscuitbot.app.old.$$" 2>/dev/null || true
+fi
+# 用 ditto 复制 .app bundle：保留 metadata/ACL/扩展属性，比 cp -R 更可靠
+# （ditto 是 macOS 专用，Linux 上回退到 cp -R）
+if command -v ditto >/dev/null 2>&1; then
+  ditto "$BUNDLE_DIR/macos/biscuitbot.app" "$OUTPUT_DIR/biscuitbot.app" 2>/dev/null || cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
+else
+  cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
+fi
+# 清理被替换的旧 .app（find -depth -delete 规避 EXDEV）
+find "$OUTPUT_DIR" -maxdepth 1 -name 'biscuitbot.app.old.*' -depth -delete 2>/dev/null || true
 rm -f "$OUTPUT_DIR/"*.dmg
 if [ -n "$NEW_VERSION" ]; then
   cp -f "$BUNDLE_DIR/dmg/"*"${NEW_VERSION}"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true

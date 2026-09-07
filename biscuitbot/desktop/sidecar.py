@@ -294,12 +294,23 @@ def _block_until_killed() -> None:
     每 5 秒检查宿主 PID：壳进程**存活**（包括关闭窗口后最小化到托盘、仍在后台
     跑自动化任务）时保持运行；仅当壳被强杀/真正退出（无法走优雅退出清理）时，
     本进程也随之退出，保证不留后台进程。
+
+    启动后 15 秒为宽限期：sidecar 刚打印 READY 时，Tauri 壳可能还在初始化
+    WebView / 托盘 / 窗口等组件，PID 探测（尤其 Windows 上 ``OpenProcess``
+    或 macOS 上 ``os.kill(pid,0)``）在极少数竞态下可能瞬时误判壳已死。
+    如果此时立即 return，sidecar 退出 → 壳收到 Terminated → ready=true →
+    触发 Respawn → 新 sidecar 又 15s 内误判 → 无限循环（CPU 飙升）。
+    宽限期内跳过父进程检测，确保壳初始化完成后再开始看门狗轮询。
     """
     _keep_alive = threading.Event()
     original_parent_pid = os.getppid()
     watch_pid = _watch_pid()
+    startup_deadline = time.monotonic() + 15.0
     try:
         while not _keep_alive.wait(5.0):
+            # 启动宽限期内不检测父进程存活，避免壳初始化阶段的瞬时竞态
+            if time.monotonic() < startup_deadline:
+                continue
             if _parent_vanished(original_parent_pid, watch_pid):
                 return
     except KeyboardInterrupt:

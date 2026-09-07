@@ -77,12 +77,28 @@ fn spawn_sidecar(app: &AppHandle) {
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        let mut respawn_count: u32 = 0;
         loop {
             if is_exiting(&app) {
                 return;
             }
             match run_sidecar_once(&app).await {
-                SidecarOutcome::Respawn => continue,
+                SidecarOutcome::Respawn => {
+                    respawn_count = respawn_count.saturating_add(1);
+                    // 指数退避：1s → 2s → 4s → 8s → 16s → 30s（上限）。
+                    // 没有 backoff 时，sidecar 启动后立即崩溃会形成紧密的
+                    // 无限重启循环：每轮都 spawn 新进程、绑定端口、再退出，
+                    // CPU 占用持续飙升且每轮残留孤儿进程占用端口（"死线程"）。
+                    let delay_secs = 1u64
+                        .saturating_mul(1u64 << respawn_count.min(5))
+                        .min(30);
+                    eprintln!(
+                        "[biscuitbot] sidecar exited after ready; respawning #{} in {}s",
+                        respawn_count, delay_secs
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
+                    continue;
+                }
                 SidecarOutcome::StartupFailed | SidecarOutcome::Stopped => return,
             }
         }
@@ -160,14 +176,25 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
             _ => {}
         }
     }
-    // stdout 通道关闭（recv 返回 None）而未收到 Terminated：按退出标记兜底。
+    // stdout 通道关闭（recv 返回 None）而未收到 Terminated：进程可能还活着
+    // （tauri-plugin-shell 的 pipe 管理在某些竞态下会提前关闭通道）。此时必须
+    // kill 进程，否则 sidecar 变成孤儿：主进程仍在跑（看门狗探测到壳活着不会
+    // 退出），gateway 线程持有着端口但无人服务 → 下次 respawn 的新 sidecar
+    // 遇端口被占又避让 → 端口不断漂移、CPU 占用攀升（"死线程占用端口"）。
     if let Some(state) = app.try_state::<SidecarState>() {
-        state.child.lock().unwrap().take();
+        if let Some(child) = state.child.lock().unwrap().take() {
+            let _ = child.kill();  // 已退出时 kill 返回错误但无害
+        }
     }
     if is_exiting(app) {
         SidecarOutcome::Stopped
-    } else {
+    } else if ready {
+        // 曾就绪过：可能是引擎重启请求或 stdout pipe 竞态，允许 respawn。
         SidecarOutcome::Respawn
+    } else {
+        // 从未就绪且 stdout 通道就关闭：视为启动失败，避免无限 respawn 空转。
+        navigate_to(app, ERROR_PAGE);
+        SidecarOutcome::StartupFailed
     }
 }
 

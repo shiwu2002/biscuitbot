@@ -96,7 +96,7 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "biscuitbot"
-version = "0.3.24"
+version = "0.3.27"
 dependencies = [
  "serde",
  "serde_json",
@@ -105,6 +105,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-process",
  "tauri-plugin-shell",
+ "tokio",
 ]
 
 [[package]]

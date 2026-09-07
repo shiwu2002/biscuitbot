@@ -367,7 +367,10 @@ function HostChrome({
   const { t } = useTranslation();
 
   return (
-    <header className="host-drag-region pointer-events-none absolute inset-x-0 top-0 z-40 h-11 bg-transparent text-foreground/90">
+    <header
+      data-tauri-drag-region="deep"
+      className="host-drag-region absolute inset-x-0 top-0 z-40 h-11 bg-transparent text-foreground/90"
+    >
       <div className="host-no-drag pointer-events-auto absolute left-3 top-2 flex items-center gap-1">
         <div
           className="flex h-6 w-6 shrink-0 select-none items-center justify-center rounded-lg bg-[hsl(var(--cyber-glow)/0.15)] shadow-[0_0_12px_hsl(var(--cyber-glow-soft)/0.35)]"
