@@ -239,6 +239,14 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let app = tauri::Builder::default()
+        // 单实例插件必须是**第一个**注册——第二实例启动时会先经它检测到主实例，
+        // 触发回调后立即退出，不会再走到 .setup()，因此不会拉起第二个 sidecar，
+        // 杜绝「重复点击 → 多个壳 + 多个后台网关」的残留。app 隐藏到托盘（关闭
+        // 〔X〕不退出，仅托盘「退出」才杀 sidecar），故回调里把主窗口显示并聚焦到
+        // 前台，而非什么都不做。
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            reveal_main_window(app);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
