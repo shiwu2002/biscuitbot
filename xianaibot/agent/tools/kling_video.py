@@ -42,7 +42,7 @@ import hashlib  # JWT HMAC-SHA256 签名
 import hmac  # JWT HMAC 签名
 import json  # JWT 序列化 / 任务响应
 import time  # JWT exp/nbf 时间戳
-from typing import Any  # 任意类型
+from typing import Any, Protocol  # 任意类型 / 视频厂商客户端协议
 
 import httpx  # 异步 HTTP 客户端
 from loguru import logger  # 结构化日志
@@ -327,18 +327,39 @@ class KlingVideoClient:
 # Registry —— 视频生成 Provider 注册表（仿 image_generation.py 的模块副作用填充）
 # ---------------------------------------------------------------------------
 
-_VIDEO_GEN_PROVIDERS: dict[str, type[KlingVideoClient]] = {}
+
+class VideoGenProvider(Protocol):
+    """视频生成厂商客户端协议（注册表仅依赖这两个成员）。
+
+    各厂商客户端刻意**不共享基类**——按 ``.agent/design.md``「重复优于过早抽象」，
+    每个厂商文件自包含、可独立阅读，只在此处满足同一结构：
+    ``provider_name`` 供按名解析，``_default_base_url`` 供「模型厂商」页
+    apiBase 留空时的默认地址展示（``settings_api._image_default_base_url``
+    以 ``cls._default_base_url(cls)`` 调用，故它必须是普通实例方法）。
+    """
+
+    provider_name: str
+
+    def _default_base_url(self) -> str: ...
 
 
-def register_video_gen_provider(cls: type[KlingVideoClient]) -> None:
-    """仅在导入期注册一个视频生成 Provider。"""
+_VIDEO_GEN_PROVIDERS: dict[str, type[VideoGenProvider]] = {}
+
+
+def register_video_gen_provider(cls: type[VideoGenProvider]) -> None:
+    """仅在导入期注册一个视频生成 Provider。
+
+    本注册表是**全局唯一**的：其他厂商模块（如 ``minimax_video.py``）应 import
+    本函数并调用，而**不要**再建一个同名注册表，否则
+    :func:`video_gen_provider_names` 看不到它们。
+    """
     name = cls.provider_name
     if not name:
         raise ValueError(f"{cls.__name__} must set provider_name")
     _VIDEO_GEN_PROVIDERS[name] = cls
 
 
-def get_video_gen_provider(name: str) -> type[KlingVideoClient] | None:
+def get_video_gen_provider(name: str) -> type[VideoGenProvider] | None:
     """按 name 取得已注册的视频生成 Provider 类，未注册返回 None。"""
     return _VIDEO_GEN_PROVIDERS.get(name)
 

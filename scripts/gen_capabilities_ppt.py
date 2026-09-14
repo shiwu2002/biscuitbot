@@ -1,10 +1,10 @@
-"""生成 biscuitbot「能力地图」PPTX 演示文稿。
+"""生成 XiaNaiBot（夏奈儿）「能力地图」PPTX 演示文稿。
 
 布局对标 output/index.html（灯塔AI 技能地图）的视觉风格：
   深色金色调英雄页 + 类别概览 + 分布条形图 + 能力目录分页。
 
 用法：python scripts/gen_capabilities_ppt.py
-输出：output/biscuitbot-capabilities-map.pptx
+输出：output/xianaibot-capabilities-map.pptx
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.util import Emu, Inches, Pt, Pt as Pt_
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output" / "biscuitbot-capabilities-map.pptx"
+OUT = ROOT / "output" / "xianaibot-capabilities-map.pptx"
 
 # 配色（对标 HTML 的 ivory / gold / dark 风格）
 INK = RGBColor(0x17, 0x17, 0x14)          # 主文字
@@ -177,12 +177,12 @@ def build_hero_slide(prs, caps, categories, runtimes):
     circle.shadow.inherit = False
 
     # kicker
-    _add_text(slide, "BISCUITBOT · CAPABILITY MAP",
+    _add_text(slide, "XIANAIBOT · CAPABILITY MAP",
         Inches(0.7), Inches(0.55), Inches(8), Inches(0.3),
         font_size=12, color=GOLD2, bold=True)
 
     # 主标题
-    _add_text(slide, f"biscuitbot {len(caps)}+ 能力地图",
+    _add_text(slide, f"夏奈儿 {len(caps)}+ 能力地图",
         Inches(0.7), Inches(1.0), Inches(11), Inches(1.2),
         font_size=48, color=WHITE, bold=True)
 
@@ -242,7 +242,7 @@ def build_hero_slide(prs, caps, categories, runtimes):
     # 底部信息
     _add_text(slide,
         f"生成时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M')}  ·  "
-        f"biscuitbot 能力地图  ·  可运行 python scripts/gen_capabilities_map.py 重新生成",
+        f"夏奈儿 能力地图  ·  可运行 python scripts/gen_capabilities_map.py 重新生成",
         Inches(0.7), Inches(6.85), Inches(12), Inches(0.3),
         font_size=10, color=RGBColor(0x9A, 0x95, 0x89))
 
@@ -553,8 +553,8 @@ def build_category_detail_slide(prs, caps, cat_id, cat_meta, page_idx, total_pag
 
 
 def main() -> None:
-    from biscuitbot.capabilities.registry import CapabilityRegistry
-    from biscuitbot.config.loader import load_config
+    from xianaibot.capabilities.registry import CapabilityRegistry
+    from xianaibot.config.loader import load_config
 
     cfg = load_config()
     caps = CapabilityRegistry(cfg.workspace_path).list()

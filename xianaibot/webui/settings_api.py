@@ -217,6 +217,11 @@ _MODEL_LIST_OFFICIAL_PROVIDERS = {
     "zhipu",
 }
 
+# 同时具备 LLM 能力的能力型厂商：这些厂商既提供 LLM（通过 model_extra 存为自定义
+# 厂商），也注册了某项生成能力。若把它们按「能力专用厂商」处理，已配置的 LLM 厂商会
+# 丢掉 llm/vision 标签而从模型下拉框里消失。这里让它们的能力标签走「叠加」而非「替换」。
+_MULTI_CAPABILITY_VENDORS = frozenset({"minimax"})
+
 # 没有 OpenAI 风格 /models 端点的厂商，直接返回这份已知模型列表（避免请求 404）。
 # 可灵官方不提供模型枚举接口，模型名内嵌在 URL 路径（如 /image-to-video/kling-3.0）。
 _KNOWN_MODEL_LISTS: dict[str, list[dict[str, Any]]] = {
@@ -520,8 +525,10 @@ def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
     caps: list[str] = []
     spec = find_by_name(name)
     is_dynamic = any(key == name for key, _ in _dynamic_provider_items(config))
-    # 能力专用厂商（图像/TTS/转写/视频）即使存入 model_extra 也不具备 LLM 能力
-    is_capability_only = spec is None and (
+    # 能力专用厂商（图像/TTS/转写/视频）即使存入 model_extra 也不具备 LLM 能力。
+    # 例外见 _MULTI_CAPABILITY_VENDORS：这些厂商既是 LLM 厂商又注册了生成能力，
+    # 走「叠加」而不是「替换」，否则会让已有的 LLM 配置丢掉 llm/vision 标签。
+    is_capability_only = spec is None and name not in _MULTI_CAPABILITY_VENDORS and (
         get_image_gen_provider(name) is not None
         or name == "volcengine"
         or get_video_gen_provider(name) is not None
@@ -566,6 +573,8 @@ def _capability_provider_label(name: str, spec: Any) -> str:
         return "火山方舟"
     if name == "kling":
         return "可灵"
+    if name == "minimax":
+        return "MiniMax"
     if name == "edge-tts":
         return "Edge TTS"
     return name
@@ -1121,7 +1130,11 @@ def provider_models_payload(query: QueryParams) -> dict[str, Any]:
             headers["Authorization"] = f"Bearer {api_key}"
 
     models_url = f"{api_base.rstrip('/')}/models"
-    if spec.name == "minimax_anthropic" and not api_base.rstrip("/").endswith("/v1"):
+    # minimax / minimax_anthropic 的模型枚举在 /v1 下；且 minimax 作为视频厂商时
+    # 「模型厂商」页的默认 apiBase 是裸域（https://api.minimaxi.com），不补 /v1 会 404。
+    if spec.name in ("minimax_anthropic", "minimax") and not api_base.rstrip(
+        "/"
+    ).endswith("/v1"):
         models_url = f"{api_base.rstrip('/')}/v1/models"
 
     # AgentRouter 的 WAF 只放行 Claude Code 形态的 User-Agent；UA 常量与端点

@@ -1289,3 +1289,127 @@ def test_update_video_generation_settings_kling_requires_key(
     assert saved.tools.seedance_video.enabled is True
     assert saved.tools.seedance_video.provider == "kling"
     assert saved.providers.model_extra["kling"].api_key == "AK123:SK456"
+
+
+# ---- MiniMax H3 视频厂商 --------------------------------------------------
+
+
+def test_unified_provider_rows_includes_minimax_video_provider() -> None:
+    """MiniMax 出现在单一厂商来源：label=MiniMax、裸域默认地址、configured 随 key。"""
+    config = Config.model_validate({"providers": {"minimax": {"apiKey": "mm-1"}}})
+    rows = {row["name"]: row for row in _unified_provider_rows(config)}
+
+    row = rows.get("minimax")
+    assert row is not None
+    assert row["label"] == "MiniMax"
+    assert row["default_api_base"] == "https://api.minimaxi.com"
+    assert row["configured"] is True
+
+    empty = {r["name"]: r for r in _unified_provider_rows(Config())}
+    assert empty["minimax"]["configured"] is False
+    assert empty["minimax"]["capabilities"] == ["video"]
+    assert empty["minimax"]["default_api_base"] == "https://api.minimaxi.com"
+
+
+def test_provider_capabilities_minimax_video_only_without_llm_config() -> None:
+    """未配 minimax 时它是纯视频厂商。"""
+    assert _provider_capabilities("minimax", Config()) == ["video"]
+
+
+def test_provider_capabilities_minimax_keeps_llm_when_configured() -> None:
+    """回归守卫（陷阱 1）：已当 LLM 厂商配置的 minimax 不能因注册视频能力而丢 llm/vision。
+
+    否则它会从 LLM 模型下拉框里消失，而前端救不回来——capabilities 只在复选框被
+    实际改动时才提交，没动过的行走的正是这里的自动推断。
+    """
+    config = Config.model_validate(
+        {"providers": {"minimax": {"apiKey": "mm-1", "apiBase": "https://api.minimaxi.com/v1"}}}
+    )
+    caps = _provider_capabilities("minimax", config)
+    assert "llm" in caps
+    assert "vision" in caps
+    assert "video" in caps
+
+
+def test_resolve_model_list_provider_minimax_video_capability() -> None:
+    """minimax 解析为能力厂商：default_api_base 为裸域，且需要密钥。"""
+    resolved = _resolve_model_list_provider(Config(), "minimax")
+    assert resolved is not None
+    spec, name, _ = resolved
+    assert name == "minimax"
+    assert spec.default_api_base == "https://api.minimaxi.com"
+    assert spec.is_direct is False
+
+
+def test_provider_models_payload_minimax_requests_v1_models(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """裸域默认值下模型枚举必须打到 /v1/models（否则 404）。"""
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config.model_validate(
+            {
+                "providers": {
+                    "minimax": {
+                        "apiKey": "mm-1",
+                        "apiBase": "https://api.minimaxi.com",
+                    }
+                }
+            }
+        ),
+        config_path,
+    )
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    seen: dict = {}
+
+    def fake_get(url: str, **kwargs):
+        seen["url"] = url
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "MiniMax-Text-01"}]},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr("xianaibot.webui.settings_api.httpx.get", fake_get)
+
+    payload = provider_models_payload({"provider": ["minimax"]})
+    assert seen["url"] == "https://api.minimaxi.com/v1/models"
+    assert payload["provider"] == "minimax"
+    assert payload["models"][0]["id"] == "MiniMax-Text-01"
+
+
+def test_update_video_generation_settings_minimax_requires_key(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """provider=minimax 时启用校验：无 key 抛错，配 key 后成功。"""
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+
+    with pytest.raises(WebUISettingsError, match="api key is required"):
+        update_video_generation_settings(
+            {
+                "provider": ["minimax"],
+                "model": ["MiniMax-H3"],
+                "enabled": ["true"],
+            }
+        )
+
+    update_provider_settings({"provider": ["minimax"], "apiKey": ["mm-secret"]})
+    payload = update_video_generation_settings(
+        {
+            "provider": ["minimax"],
+            "model": ["MiniMax-H3"],
+            "enabled": ["true"],
+        }
+    )
+    assert payload["video_generation"]["enabled"] is True
+    assert payload["video_generation"]["provider"] == "minimax"
+    assert payload["video_generation"]["model"] == "MiniMax-H3"
+    assert payload["video_generation"]["api_key_configured"] is True
+
+    saved = load_config(config_path)
+    assert saved.tools.seedance_video.provider == "minimax"
+    assert saved.providers.model_extra["minimax"].api_key == "mm-secret"

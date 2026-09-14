@@ -99,6 +99,7 @@ const PROVIDER_BRANDS: Record<string, ProviderBrand> = {
   dashscope: brand("dashscope.aliyun.com", "#FF6A00", "DS"),
   deepseek: brand("deepseek.com", "#4D6BFE", "D"),
   kling: brand("klingai.com", "#4B6BFE", "K"),
+  minimax: brand("minimaxi.com", "#E7352C", "MM"),
   moonshot: brand("moonshot.cn", "#6B57D9", "K"),
   ollama: brand("ollama.com", "#111827", "O"),
   openai: brand("openai.com", "#111827", "AI"),
@@ -137,6 +138,7 @@ export function inferProviderFromModelName(modelName: string | null | undefined)
   if (/stepfun|step-|^\s*step\s/.test(normalized)) return "stepfun";
   if (/ollama|llama/.test(normalized)) return "ollama";
   if (/kling/.test(normalized)) return "kling";
+  if (/minimax|hailuo|abab|minimaxi/.test(normalized)) return "minimax";
   if (/doubao|seedream|volcengine|ark/.test(normalized)) return "volcengine";
   return null;
 }

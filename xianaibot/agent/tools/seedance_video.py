@@ -43,6 +43,14 @@ from xianaibot.agent.tools.kling_video import (
     KlingVideoClient,
     KlingVideoError,
 )
+
+# MiniMax H3 厂商客户端（provider=minimax 时走此路径）。导入本模块也会顺带触发它的
+# 模块级注册副作用，把「minimax」写进全局视频厂商注册表（WebUI 视频厂商下拉依赖它）。
+from xianaibot.agent.tools.minimax_video import (
+    _MINIMAX_DEFAULT_MODEL,
+    MiniMaxVideoClient,
+    MiniMaxVideoError,
+)
 from xianaibot.agent.tools.schema import (  # schema 构造器
     ArraySchema,
     BooleanSchema,
@@ -92,7 +100,7 @@ class SeedanceVideoToolConfig(Base):
     """
 
     enabled: bool = False  # 是否启用视频生成工具
-    provider: str = "volcengine"  # 视频厂商（默认火山方舟；预留多厂商扩展）
+    provider: str = "volcengine"  # 视频厂商：volcengine（默认）/ kling / minimax
     api_key: str | None = None  # 显式 API Key；缺省回退到环境变量 ARK_API_KEY
     base_url: str = _DEFAULT_BASE_URL  # 方舟 base URL
     model: str = _MODEL_2_0  # 默认模型（2.0），可配成 2.5 或 Endpoint ID
@@ -161,47 +169,83 @@ def _audio_mime_from_suffix(path: Path) -> str:
                 "可公开访问的 HTTP(S) URL，或 base64 data URL。"
             ),
             description=(
-                "可选参考图（首帧 / 参考画面）。本地路径会自动转 base64 上传；"
+                "可选参考图（首帧 / 尾帧 / 参考画面）。本地路径会自动转 base64 上传；"
                 "微信/其他渠道收到的参考图本地路径可直接传入，无需先上传到公网图床。"
+                "MiniMax H3（provider=\"minimax\"）下语义为「首帧/尾帧」：传 1 张作首帧、"
+                "2 张依次作首帧与尾帧，且与 reference_images 互斥。"
+            ),
+        ),
+        reference_images=ArraySchema(
+            StringSchema(
+                "参考图片：本地文件路径、可公开访问的 HTTP(S) URL，或 base64 data URL。"
+            ),
+            description=(
+                "可选「参考图」（主体的外观/风格参考，不是首尾帧）。仅 MiniMax H3"
+                "（provider=\"minimax\"）使用；火山方舟与可灵会忽略此参数并把日志写明。"
+                "最多 9 张；与 image_urls（首帧/尾帧）互斥；此时 video_urls 最多 3 段、"
+                "audio_urls 最多 3 段，素材文件合计最多 12 个。"
             ),
         ),
         video_urls=ArraySchema(
             StringSchema("参考视频的可公开访问 HTTP(S) URL。"),
-            description="可选参考视频。Seedance 视频输入仅支持公网 URL，不支持本地文件。",
+            description=(
+                "可选参考视频。仅支持公网 HTTP(S) URL，不支持本地文件。"
+                "MiniMax H3 下为「参考视频」，最多 3 段。"
+            ),
         ),
         audio_urls=ArraySchema(
             StringSchema(
                 "参考音频：本地文件路径、可公开访问的 HTTP(S) URL，或 base64 data URL。"
             ),
-            description="可选参考音频（音画同步 / 口型参考等）。本地路径会自动转 base64 上传。",
+            description=(
+                "可选参考音频（音画同步 / 口型参考等）。本地路径会自动转 base64 上传。"
+                "MiniMax H3 下为「参考音频」，最多 3 段，且不能单独使用——"
+                "必须同时传 reference_images 或 video_urls。"
+            ),
         ),
         ratio=StringSchema(
-            "画幅比例。",
+            "画幅比例。MiniMax H3 下：文生视频必填且不接受 adaptive（缺省用 16:9），"
+            "图生视频由首帧推导、传了也会被忽略，参考生视频可选。",
             enum=_RATIOS,
         ),
         duration=IntegerSchema(
-            description="视频时长（秒），2.0 支持 4–15，2.5 支持到 30。",
+            description=(
+                "视频时长（秒），2.0 支持 4–15，2.5 支持到 30；MiniMax H3 支持 4–15，"
+                "超出会被截断到区间内。"
+            ),
             minimum=_MIN_DURATION,
             maximum=_MAX_DURATION,
         ),
         resolution=StringSchema(
-            "清晰度（4K 仅 2.5 支持）。仅文生/图生视频可用；带参考素材（r2v）时模型自动定分辨率，勿传此参数。",
+            "清晰度（4K 仅 2.5 支持）。仅文生/图生视频可用；带参考素材（r2v）时模型自动定分辨率，勿传此参数。"
+            "MiniMax H3 各模式都需要该参数，取值 768P / 2K"
+            "（480p、720p 映射为 768P，1080p、4K 映射为 2K）。",
             enum=_RESOLUTIONS,
         ),
         generate_audio=BooleanSchema(
-            description="是否开启音画同步生成音频（默认开启：未传参时自动打开音效，传 false 可关闭）。",
+            description=(
+                "是否开启音画同步生成音频（默认开启：未传参时自动打开音效，传 false 可关闭）。"
+                "MiniMax H3 无对应开关，传了会被忽略。"
+            ),
         ),
         seed=IntegerSchema(
-            description="随机种子（-1 或省略为随机）。固定 seed 可让相似输入得到可复现/可微调的结果。",
+            description=(
+                "随机种子（-1 或省略为随机）。固定 seed 可让相似输入得到可复现/可微调的结果。"
+                "MiniMax H3 不支持，传了会被忽略。"
+            ),
             minimum=-1,
             maximum=4294967295,
         ),
         watermark=BooleanSchema(
-            description="是否添加水印（默认关闭，即去水印）。",
+            description=(
+                "是否添加水印（默认关闭，即去水印）。"
+                "MiniMax H3 下对应后端的 aigc_watermark 开关。"
+            ),
         ),
         model=StringSchema(
             "可选模型覆盖（默认用配置里的 model，可切到 doubao-seedance-2-0-260128 / "
-            "doubao-seedance-2-0-mini-260615 / doubao-seedance-2-5-260628 或 Endpoint ID ep-...）。",
+            "doubao-seedance-2-0-mini-260615 / doubao-seedance-2-5-260628 或 Endpoint ID ep-...；"
+            "MiniMax H3 为 MiniMax-H3）。",
         ),
         required=["prompt"],
     )
@@ -216,8 +260,8 @@ class SeedanceVideoTool(Tool):
     """
 
     _capability = (
-        "Generate or edit videos from text/image/video/audio with Seedance or Kling "
-        "(returns file path)."
+        "Generate or edit videos from text/image/video/audio with Seedance, Kling or "
+        "MiniMax H3 (returns file path)."
     )
     _usage_md = "docs/generate_video.md"  # 工具使用说明文档路径
 
@@ -272,13 +316,16 @@ class SeedanceVideoTool(Tool):
     def description(self) -> str:
         """工具描述，指导模型如何调用。"""
         return (
-            "Generate or edit a video with Seedance (ByteDance Seed video model) or Kling "
-            "(可灵 kling-3.0, provider=\"kling\") depending on the configured provider. "
+            "Generate or edit a video with Seedance (ByteDance Seed video model), Kling "
+            "(可灵 kling-3.0, provider=\"kling\") or MiniMax H3 (provider=\"minimax\") "
+            "depending on the configured provider. "
             "Accepts text, image, video and audio inputs. Runs asynchronously and returns the "
             "downloaded video file path. Pass local paths or public URLs for image/audio reference "
             "(local files are auto base64-encoded — including images received via chat channels "
             "like WeChat: their local paths work directly, no public upload needed); "
             "for video reference pass a public HTTP(S) URL only. "
+            "With MiniMax H3, image_urls means first/last frame and reference_images means "
+            "style/subject references — the two are mutually exclusive. "
             "Sound effects/audio is generated by default (audio on): omit generate_audio to enable it; "
             "pass generate_audio=false to turn it off."
         )
@@ -589,10 +636,141 @@ class SeedanceVideoTool(Tool):
             ensure_ascii=False,
         )
 
+    # ---- MiniMax H3 厂商路径 ----------------------------------------------------
+
+    def _resolve_minimax_key(self) -> str:
+        """解析 MiniMax 密钥：模型厂商页 minimax 厂商的密钥优先，其次配置显式值。
+
+        优先级理由同可灵（见 :meth:`_resolve_kling_key`）：``config.api_key`` 是工具级
+        的方舟 key，切到 MiniMax 后可能残留 ``ark-`` 前缀值，用它鉴权必然 401。
+
+        MiniMax 视频与聊天共用同一个静态 API Key（无需可灵那样的 JWT 签名）。
+        """
+        key = (self._ark_api_key or "").strip() or (self.config.api_key or "").strip()
+        if not key:
+            raise MiniMaxVideoError(
+                "MiniMax API key 未配置：请在「模型厂商」页配置 minimax 厂商的 "
+                "API Key，或在 config.json 设置 tools.seedance_video.apiKey。"
+            )
+        return key
+
+    def _minimax_api_base(self) -> str:
+        """返回「模型厂商」页 minimax 厂商的 apiBase，留空时返回空串。
+
+        刻意不读 ``config.base_url``：那是方舟工具级 baseUrl，切厂后可能残留方舟地址
+        （``ark.cn-beijing.volces.com/api/v3``），用在 MiniMax 路径会打到错误端点。
+
+        也刻意**不在此回退默认常量**：留空即交给 ``MiniMaxVideoClient`` 归一化，这样
+        「MiniMax 同时当 LLM 用」时填的聊天式 base（带 ``/v1``）与 Anthropic 式 base
+        （带 ``/anthropic``）都只有一处收敛逻辑。
+        """
+        return (self.provider_api_base or "").rstrip("/")
+
+    def _minimax_model(self, model: str | None) -> str:
+        """解析 MiniMax 模型名：残留的 Seedance 模型名（切厂商未切模型）回退 H3 默认。
+
+        模型名大小写敏感，必须精确为 ``MiniMax-H3``；显式自定义 ID 原样保留。
+        """
+        candidate = (model or "").strip() or (self.config.model or "").strip()
+        if candidate in {_MODEL_2_0, _MODEL_2_0_MINI, _MODEL_2_5}:
+            return _MINIMAX_DEFAULT_MODEL
+        return candidate or _MINIMAX_DEFAULT_MODEL
+
+    async def _execute_minimax(
+        self,
+        *,
+        prompt: str,
+        image_urls: list[str] | None,
+        reference_images: list[str] | None,
+        video_urls: list[str] | None,
+        audio_urls: list[str] | None,
+        ratio: str | None,
+        duration: int | None,
+        resolution: str | None,
+        generate_audio: bool | None,
+        seed: int | None,
+        watermark: bool | None,
+        model: str | None,
+    ) -> str:
+        """MiniMax H3（provider=minimax）视频生成路径。
+
+        模式由输入决定（见 ``MiniMaxVideoClient.build_request``）：有参考素材 → r2va；
+        有 image_urls → i2va（首帧/尾帧）；否则 t2va。
+
+        与另两个厂商的差异：
+        - 参考图/参考音频本地路径自动转 base64 data URL；参考视频仍仅接受公网 URL；
+        - 不支持随机种子与音画同步开关，忽略并记日志；
+        - 清晰度取 768P / 2K（工具词表会自动就近映射）；
+        - 成功响应返回 file_id，需再换一次下载地址（客户端内部完成）。
+        """
+        if seed is not None:
+            logger.info("MiniMax H3 不支持随机种子，忽略 seed={}", seed)
+        if generate_audio is False:
+            logger.info("MiniMax H3 无音画同步开关，忽略 generate_audio=False")
+
+        resolved_model = self._minimax_model(model)
+
+        minimax_images = [self._resolve_image_ref(v) for v in image_urls or []]
+        minimax_references = [self._resolve_image_ref(v) for v in reference_images or []]
+        # 参考视频：仅公网 URL（与方舟、可灵一致，不额外放开本地文件）。
+        minimax_videos = [self._resolve_video_ref(v) for v in video_urls or []]
+        minimax_audios = [self._resolve_audio_ref(v) for v in audio_urls or []]
+
+        client = MiniMaxVideoClient(
+            api_key=self._resolve_minimax_key(),
+            api_base=self._minimax_api_base(),
+            poll_interval_sec=self.config.poll_interval_sec,
+            max_poll_attempts=self.config.max_poll_attempts,
+            timeout=self.config.timeout_sec,
+        )
+        endpoint, body = client.build_request(
+            prompt=prompt,
+            image_urls=minimax_images,
+            reference_images=minimax_references,
+            video_urls=minimax_videos,
+            audio_urls=minimax_audios,
+            ratio=ratio,
+            duration=duration if duration is not None else self.config.default_duration,
+            resolution=resolution or self.config.default_resolution,
+            watermark=watermark if watermark is not None else self.config.watermark,
+            model=resolved_model,
+        )
+
+        async with httpx.AsyncClient(timeout=self.config.timeout_sec) as http:
+            task_id = await client.create_task(http, endpoint, body)
+            logger.info(
+                "MiniMax H3 任务已创建：{}（model={}，endpoint={}）",
+                task_id,
+                resolved_model,
+                endpoint,
+            )
+            data = await client.poll(http, task_id)
+            # 正常流程只回 file_id，需换一次下载地址；部分网关形态会直接给 URL。
+            video_url = client.extract_direct_url(data)
+            if not video_url:
+                video_url = await client.retrieve_file_url(
+                    http, client.extract_file_id(data)
+                )
+            artifact = await self._download_and_store(http, video_url, model=resolved_model)
+
+        return json.dumps(
+            {
+                "video": artifact,
+                "task_id": task_id,
+                "model": resolved_model,
+                "next_step": (
+                    "视频已生成并保存到本地。可把 path 作为后续剪辑工具的输入，"
+                    "或通过 message 工具把视频文件交付给用户。"
+                ),
+            },
+            ensure_ascii=False,
+        )
+
     async def execute(
         self,
         prompt: str,
         image_urls: list[str] | None = None,
+        reference_images: list[str] | None = None,
         video_urls: list[str] | None = None,
         audio_urls: list[str] | None = None,
         ratio: str | None = None,
@@ -608,7 +786,10 @@ class SeedanceVideoTool(Tool):
 
         参数:
             prompt: 文本提示词（必填）。
-            image_urls: 可选参考图列表（本地路径 / URL / data URL）。
+            image_urls: 可选参考图列表（本地路径 / URL / data URL）。MiniMax H3 下为
+                首帧/尾帧（1 张 = 首帧，2 张 = 首帧 + 尾帧）。
+            reference_images: 可选「参考图」列表，仅 MiniMax H3 使用（r2va 模式，
+                与首帧/尾帧互斥）；另两个厂商会忽略并记日志。
             video_urls: 可选参考视频列表（仅公网 URL）。
             audio_urls: 可选参考音频列表（本地路径 / URL / data URL）。
             ratio: 画幅比例。
@@ -623,8 +804,10 @@ class SeedanceVideoTool(Tool):
             包含视频本地路径与元数据的 JSON 字符串；出错时返回错误说明。
         """
         try:
-            # 厂商分流：provider=kling 走可灵路径，其余（默认 volcengine）走方舟路径。
+            # 厂商分流：provider=kling / minimax 各有专用路径，其余（默认 volcengine）走方舟。
             if self.config.provider == "kling":
+                if reference_images:
+                    logger.info("可灵不支持参考图（reference_images），忽略：{}", reference_images)
                 return await self._execute_kling(
                     prompt=prompt,
                     image_urls=image_urls,
@@ -636,6 +819,23 @@ class SeedanceVideoTool(Tool):
                     generate_audio=generate_audio,
                     model=model,
                 )
+            if self.config.provider == "minimax":
+                return await self._execute_minimax(
+                    prompt=prompt,
+                    image_urls=image_urls,
+                    reference_images=reference_images,
+                    video_urls=video_urls,
+                    audio_urls=audio_urls,
+                    ratio=ratio,
+                    duration=duration,
+                    resolution=resolution,
+                    generate_audio=generate_audio,
+                    seed=seed,
+                    watermark=watermark,
+                    model=model,
+                )
+            if reference_images:
+                logger.info("Seedance 不支持参考图（reference_images），忽略：{}", reference_images)
             # 音效默认开启：未显式传参时自动打开（带参考视频/音频时始终开启）；
             # 显式传入 generate_audio 时以传入值为准（false 可关闭）。
             if generate_audio is None:
@@ -686,6 +886,8 @@ class SeedanceVideoTool(Tool):
         except SeedanceVideoError as exc:
             return f"Error: {exc}"
         except KlingVideoError as exc:
+            return f"Error: {exc}"
+        except MiniMaxVideoError as exc:
             return f"Error: {exc}"
         except (httpx.RequestError, httpx.HTTPStatusError) as exc:
             return f"Error: Seedance 请求失败：{exc}。请检查网络与 baseUrl，稍后重试"
