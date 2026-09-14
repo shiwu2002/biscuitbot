@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.apps.cli.service import (
+from xianaibot.apps.cli.service import (
     CLI_ANYTHING_RAW_BASE,
     CLI_ANYTHING_REGISTRY_URL,
     CatalogSource,
@@ -201,7 +201,7 @@ def test_default_sources_merges_config_extras(
             )
         )
     )
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda *a, **k: fake_cfg)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda *a, **k: fake_cfg)
 
     sources = CliAppManager._default_sources()
     assert [s.name for s in sources] == ["harness", "acme-corp"]
@@ -218,7 +218,7 @@ def test_default_sources_falls_back_on_config_error(
     def _boom(*a: object, **k: object) -> object:
         raise RuntimeError("config load failed")
 
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", _boom)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", _boom)
     sources = CliAppManager._default_sources()
     assert [s.name for s in sources] == ["harness"]
 
@@ -244,11 +244,11 @@ def test_payload_merges_catalog_and_marks_unsupported_installs(tmp_path: Path) -
     }
     assert apps["gimp"]["install_supported"] is True
     assert apps["gimp"]["source"] == "harness"
-    # 本地内置表随目录合并，来源标记为 builtin，manifest 来源为 biscuitbot-builtin
+    # 本地内置表随目录合并，来源标记为 builtin，manifest 来源为 xianaibot-builtin
     assert apps["officecli"]["source"] == "builtin"
     assert apps["officecli"]["entry_point"] == "officecli"
     assert apps["officecli"]["install_supported"] is True
-    assert apps["officecli"]["manifest"]["source"] == "biscuitbot-builtin"
+    assert apps["officecli"]["manifest"]["source"] == "xianaibot-builtin"
     assert apps["officecli"]["manifest"]["execution"]["entry_point"] == "officecli"
     assert apps["officecli"]["manifest"]["provisioning"]["strategy"] == "npm"
     assert apps["wecom-cli"]["source"] == "builtin"
@@ -323,7 +323,7 @@ def test_builtin_local_table_install_uses_npm(
 
     monkeypatch.setattr(manager, "_run_argv", fake_run)
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/bin/npm" if command == "npm" else None,
     )
     # 官方 skill_md 走 _fetch_skill_content，测试里不联网，注入固定内容
@@ -349,7 +349,7 @@ def test_builtin_local_table_install_uses_npm(
 
 def test_skill_content_url_allows_trusted_builtin_host() -> None:
     """技能源白名单：officecli.ai（内置工具官方技能）放行，未知域名拒绝。"""
-    from biscuitbot.apps.cli.service import _skill_content_url
+    from xianaibot.apps.cli.service import _skill_content_url
 
     assert _skill_content_url("https://officecli.ai/SKILL.md") == "https://officecli.ai/SKILL.md"
     assert _skill_content_url("https://example.com/SKILL.md") is None
@@ -412,7 +412,7 @@ def test_install_records_available_cli_without_reinstalling(
 
     monkeypatch.setattr(manager, "_run_argv", fail_run)
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: str(resolved) if command == "lark-cli" else None,
     )
 
@@ -476,7 +476,7 @@ def test_install_recovers_stale_npm_global_directory(
 
     monkeypatch.setattr(manager, "_run_argv", fake_run)
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: npm if command == "npm" else None,
     )
 
@@ -511,11 +511,11 @@ def test_install_records_entry_point_path_and_pip_distribution(
         lambda app: "---\nname: cli-anything-gimp\ndescription: GIMP\n---\n# GIMP\n",
     )
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: str(resolved) if command == "cli-anything-gimp" else None,
     )
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.importlib_metadata.distributions",
+        "xianaibot.apps.cli.service.importlib_metadata.distributions",
         lambda: [
             SimpleNamespace(
                 entry_points=[
@@ -553,7 +553,7 @@ def test_fetch_skill_content_rejects_untrusted_urls(
     def fail_get(*args, **kwargs):
         raise AssertionError("untrusted skill URL should not be fetched")
 
-    monkeypatch.setattr("biscuitbot.apps.cli.service.httpx.get", fail_get)
+    monkeypatch.setattr("xianaibot.apps.cli.service.httpx.get", fail_get)
 
     assert manager._fetch_skill_content({
         "name": "evil",
@@ -583,7 +583,7 @@ def test_fetch_skill_content_allows_cli_anything_raw_skill_url(
         seen.append(url)
         return Response()
 
-    monkeypatch.setattr("biscuitbot.apps.cli.service.httpx.get", fake_get)
+    monkeypatch.setattr("xianaibot.apps.cli.service.httpx.get", fake_get)
 
     content = manager._fetch_skill_content({
         "name": "gimp",
@@ -686,7 +686,7 @@ def test_uninstall_keeps_state_when_entry_point_still_available(
     )
     monkeypatch.setattr(manager, "_pip_available", staticmethod(lambda: True))
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/local/bin/cli-anything-gimp" if command == "cli-anything-gimp" else None,
     )
 
@@ -776,7 +776,7 @@ def test_run_installed_cli_uses_argv_without_shell(
     _seed_catalog(manager)
     resolved = str(tmp_path / "bin" / "cli-anything-gimp")
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda entry: resolved if entry == "cli-anything-gimp" else None,
     )
 
@@ -789,7 +789,7 @@ def test_run_installed_cli_uses_argv_without_shell(
             stderr="",
         )
 
-    monkeypatch.setattr("biscuitbot.apps.cli.service.subprocess.run", fake_run)
+    monkeypatch.setattr("xianaibot.apps.cli.service.subprocess.run", fake_run)
     manager._save_installed(
         {
             "gimp": {
@@ -815,7 +815,7 @@ def test_run_reports_created_artifacts(
     _seed_catalog(manager)
     resolved = str(tmp_path / "bin" / "cli-anything-gimp")
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda entry: resolved if entry == "cli-anything-gimp" else None,
     )
 
@@ -824,7 +824,7 @@ def test_run_reports_created_artifacts(
         (cwd / "diagram.png").write_bytes(b"\x89PNG\r\n\x1a\nimage")
         return subprocess.CompletedProcess(argv, 0, stdout="done", stderr="")
 
-    monkeypatch.setattr("biscuitbot.apps.cli.service.subprocess.run", fake_run)
+    monkeypatch.setattr("xianaibot.apps.cli.service.subprocess.run", fake_run)
     manager._save_installed({"gimp": {"entry_point": "cli-anything-gimp"}})
 
     result = manager.run("gimp", ["render"])
@@ -857,7 +857,7 @@ def test_install_uses_uv_pip_when_pip_unavailable(
 
     monkeypatch.setattr(CliAppManager, "_pip_available", staticmethod(lambda: False))
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/bin/uv" if command == "uv" else None,
     )
     monkeypatch.setattr(manager, "_run_argv", fake_run)
@@ -882,7 +882,7 @@ def test_update_uses_uv_pip_reinstall_when_pip_unavailable(
     manager = _manager(tmp_path)
     monkeypatch.setattr(CliAppManager, "_pip_available", staticmethod(lambda: False))
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/bin/uv" if command == "uv" else None,
     )
 
@@ -918,7 +918,7 @@ def test_uninstall_uses_uv_pip_when_pip_unavailable(
 
     monkeypatch.setattr(CliAppManager, "_pip_available", staticmethod(lambda: False))
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/bin/uv" if command == "uv" else None,
     )
     monkeypatch.setattr(manager, "_run_argv", fake_run)

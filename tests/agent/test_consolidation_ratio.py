@@ -5,11 +5,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pydantic import ValidationError
 
-import biscuitbot.agent.memory as memory_module
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.config.schema import AgentDefaults
-from biscuitbot.providers.base import GenerationSettings, LLMResponse
+import xianaibot.agent.memory as memory_module
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.bus.queue import MessageBus
+from xianaibot.config.schema import AgentDefaults
+from xianaibot.providers.base import GenerationSettings, LLMResponse
 
 
 def _make_loop(

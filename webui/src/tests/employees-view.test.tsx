@@ -130,7 +130,7 @@ describe("EmployeesView 数字人员工视图", () => {
     });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("/api/webui/employees/create");
-    const header = (init.headers as Record<string, string>)["X-Biscuitbot-Employee-Values"];
+    const header = (init.headers as Record<string, string>)["X-Xianaibot-Employee-Values"];
     expect(JSON.parse(decodeURIComponent(header))).toEqual(
       expect.objectContaining({ name: "绘野", title: "全能设计", enabled: true }),
     );
@@ -153,7 +153,7 @@ describe("EmployeesView 数字人员工视图", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toContain("/api/webui/employees/update?id=clip-master");
-    const header = (init.headers as Record<string, string>)["X-Biscuitbot-Employee-Values"];
+    const header = (init.headers as Record<string, string>)["X-Xianaibot-Employee-Values"];
     expect(JSON.parse(decodeURIComponent(header))).toEqual(
       expect.objectContaining({ name: "剪影", title: "短视频剪辑" }),
     );

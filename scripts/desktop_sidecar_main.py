@@ -1,12 +1,12 @@
-"""PyInstaller 打包入口：以无头 sidecar 方式启动 biscuitbot 网关。
+"""PyInstaller 打包入口：以无头 sidecar 方式启动 xianaibot 网关。
 
 桌面壳（Tauri）以子进程方式启动本可执行文件，通过 stdout 握手行
-（``BISCUITBOT_GATEWAY_READY <host> <port>``）获知网关就绪地址。
+（``XIANAIBOT_GATEWAY_READY <host> <port>``）获知网关就绪地址。
 """
 
 import multiprocessing
 
-from biscuitbot.desktop.sidecar import main
+from xianaibot.desktop.sidecar import main
 
 if __name__ == "__main__":
     # frozen（PyInstaller）环境必须最先调用 freeze_support()：

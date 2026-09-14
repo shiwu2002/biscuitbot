@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from biscuitbot.session.manager import Session, SessionManager
+from xianaibot.session.manager import Session, SessionManager
 
 
 def _session(count: int, last_consolidated: object) -> Session:

@@ -2,14 +2,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import biscuitbot.agent.memory as memory_module
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.providers.base import LLMResponse
+import xianaibot.agent.memory as memory_module
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.bus.queue import MessageBus
+from xianaibot.providers.base import LLMResponse
 
 
 def _make_loop(tmp_path, *, estimated_tokens: int, context_window_tokens: int) -> AgentLoop:
-    from biscuitbot.providers.base import GenerationSettings
+    from xianaibot.providers.base import GenerationSettings
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
     provider.generation = GenerationSettings(max_tokens=0)

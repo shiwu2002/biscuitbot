@@ -36,17 +36,17 @@ print_row() {
   printf "  %-16s %6s lines\n" "$label" "$count"
 }
 
-echo "biscuitbot line count"
+echo "xianaibot line count"
 echo "=================="
 echo ""
 
 echo "Core runtime"
 echo "------------"
-core_agent=$(count_top_level_py_lines "biscuitbot/agent")
-core_bus=$(count_top_level_py_lines "biscuitbot/bus")
-core_config=$(count_top_level_py_lines "biscuitbot/config")
-core_cron=$(count_top_level_py_lines "biscuitbot/cron")
-core_session=$(count_top_level_py_lines "biscuitbot/session")
+core_agent=$(count_top_level_py_lines "xianaibot/agent")
+core_bus=$(count_top_level_py_lines "xianaibot/bus")
+core_config=$(count_top_level_py_lines "xianaibot/config")
+core_cron=$(count_top_level_py_lines "xianaibot/cron")
+core_session=$(count_top_level_py_lines "xianaibot/session")
 
 print_row "agent/" "$core_agent"
 print_row "bus/" "$core_bus"
@@ -59,12 +59,12 @@ core_total=$((core_agent + core_bus + core_config + core_cron + core_session))
 echo ""
 echo "Separate buckets"
 echo "----------------"
-extra_tools=$(count_recursive_py_lines "biscuitbot/agent/tools")
-extra_skills=$(count_skill_lines "biscuitbot/skills")
-extra_api=$(count_recursive_py_lines "biscuitbot/api")
-extra_cli=$(count_recursive_py_lines "biscuitbot/cli")
-extra_channels=$(count_recursive_py_lines "biscuitbot/channels")
-extra_utils=$(count_recursive_py_lines "biscuitbot/utils")
+extra_tools=$(count_recursive_py_lines "xianaibot/agent/tools")
+extra_skills=$(count_skill_lines "xianaibot/skills")
+extra_api=$(count_recursive_py_lines "xianaibot/api")
+extra_cli=$(count_recursive_py_lines "xianaibot/cli")
+extra_channels=$(count_recursive_py_lines "xianaibot/channels")
+extra_utils=$(count_recursive_py_lines "xianaibot/utils")
 
 print_row "tools/" "$extra_tools"
 print_row "skills/" "$extra_skills"
@@ -84,7 +84,7 @@ print_row "extra total" "$extra_total"
 echo ""
 echo "Notes"
 echo "-----"
-echo "  - agent/ only counts top-level Python files under biscuitbot/agent"
-echo "  - tools/ is counted separately from biscuitbot/agent/tools"
+echo "  - agent/ only counts top-level Python files under xianaibot/agent"
+echo "  - tools/ is counted separately from xianaibot/agent/tools"
 echo "  - skills/ counts .md, .py, and .sh files"
-echo "  - not included here: command/, providers/, security/, templates/, biscuitbot.py, root files"
+echo "  - not included here: command/, providers/, security/, templates/, xianaibot.py, root files"

@@ -1,7 +1,7 @@
 {
-  "name": "biscuitbot-whatsapp-bridge",
+  "name": "xianaibot-whatsapp-bridge",
   "version": "0.1.0",
-  "description": "WhatsApp bridge for biscuitbot using Baileys",
+  "description": "WhatsApp bridge for xianaibot using Baileys",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

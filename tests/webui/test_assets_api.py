@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.config.loader import save_config
-from biscuitbot.config.schema import Config
-from biscuitbot.webui.assets_api import assets_payload, delete_asset, document_preview
-from biscuitbot.webui.settings_api import WebUISettingsError
+from xianaibot.config.loader import save_config
+from xianaibot.config.schema import Config
+from xianaibot.webui.assets_api import assets_payload, delete_asset, document_preview
+from xianaibot.webui.settings_api import WebUISettingsError
 
 IMG_ID = "img_1234567890ab"
 VID_ID = "vid_1234567890ab"
@@ -24,7 +24,7 @@ def _make_env(
     config = Config()
     config.agents.defaults.workspace = str(tmp_path / "workspace")
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
     return config_path.parent / "media", tmp_path / "workspace"
 
 

@@ -157,7 +157,7 @@ describe("webui i18n", () => {
     await waitFor(() => {
       expect(document.documentElement.lang).toBe("zh-TW");
     });
-    expect(localStorage.getItem("biscuitbot.locale")).toBe("zh-TW");
+    expect(localStorage.getItem("xianaibot.locale")).toBe("zh-TW");
     expect(screen.getByPlaceholderText("輸入訊息…")).toBeInTheDocument();
   });
 

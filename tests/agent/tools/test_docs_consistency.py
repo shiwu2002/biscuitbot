@@ -6,15 +6,15 @@ from pathlib import Path
 from typing import Any
 
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.docs_consistency import (
+from xianaibot.agent.tools.base import Tool, tool_parameters
+from xianaibot.agent.tools.docs_consistency import (
     DocsMismatch,
     _extract_md_params,
     _resolve_md_path,
     build_repair_task,
     check_docs_consistency,
 )
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.agent.tools.registry import ToolRegistry
 
 
 # ---------------------------------------------------------------------------
@@ -245,7 +245,7 @@ def test_build_repair_task_includes_tool_names_and_issues():
         DocsMismatch(
             tool_name="weather",
             usage_md="docs/weather.md",
-            source_file="biscuitbot/agent/tools/weather.py",
+            source_file="xianaibot/agent/tools/weather.py",
             issues=["md 缺少参数说明：['city']"],
         ),
     ]

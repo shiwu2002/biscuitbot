@@ -66,7 +66,7 @@ import {
   type RestoredReadyImage,
 } from "@/hooks/useAttachedImages";
 import { useClipboardAndDrop } from "@/hooks/useClipboardAndDrop";
-import type { SendImage, SendOptions } from "@/hooks/useBiscuitbotStream";
+import type { SendImage, SendOptions } from "@/hooks/useXianaibotStream";
 import { useVoiceRecorder, type VoiceRecorderErrorKey } from "@/hooks/useVoiceRecorder";
 import type {
   CliAppInfo,
@@ -203,9 +203,9 @@ const SLASH_PALETTE_GAP_PX = 8;
 const SLASH_PALETTE_MAX_HEIGHT_PX = 288;
 const SLASH_PALETTE_MIN_HEIGHT_PX = 144;
 const SLASH_PALETTE_CHROME_PX = 12;
-const SLASH_RECENTS_STORAGE_KEY = "biscuitbot.webui.slashCommandRecents";
+const SLASH_RECENTS_STORAGE_KEY = "xianaibot.webui.slashCommandRecents";
 const SLASH_RECENTS_LIMIT = 5;
-const QUEUED_PROMPTS_STORAGE_PREFIX = "biscuitbot.webui.composerQueuedGuidance.v1:";
+const QUEUED_PROMPTS_STORAGE_PREFIX = "xianaibot.webui.composerQueuedGuidance.v1:";
 const QUEUED_PROMPTS_LIMIT = 20;
 const QUEUED_PROMPT_MAX_CHARS = 4000;
 
@@ -712,10 +712,10 @@ function RunElapsedStrip({
       {goalPanelOpen && canExpandGoal && (markdownBody || hasTasks) ? (
         <div
           ref={panelRef}
-          id="biscuitbot-goal-panel-root"
+          id="xianaibot-goal-panel-root"
           role="dialog"
           aria-modal="false"
-          aria-labelledby="biscuitbot-goal-panel-title"
+          aria-labelledby="xianaibot-goal-panel-title"
           tabIndex={-1}
           className={cn(
             "absolute bottom-[calc(100%+8px)] left-3 right-3 z-[50] flex max-w-none flex-col overflow-hidden",
@@ -726,7 +726,7 @@ function RunElapsedStrip({
         >
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-black/[0.06] px-3 py-2 dark:border-white/[0.08]">
             <h2
-              id="biscuitbot-goal-panel-title"
+              id="xianaibot-goal-panel-title"
               className="min-w-0 truncate text-[13px] font-semibold tracking-tight text-foreground"
             >
               {t("thread.composer.goalStateSheetTitle")}
@@ -745,7 +745,7 @@ function RunElapsedStrip({
             </button>
           </div>
           <div
-            id="biscuitbot-goal-panel-scroll"
+            id="xianaibot-goal-panel-scroll"
             className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-3 pb-3 pt-2"
           >
             {hasTasks ? (
@@ -825,7 +825,7 @@ function RunElapsedStrip({
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             )}
             aria-expanded={goalPanelOpen}
-            aria-controls={goalPanelOpen ? "biscuitbot-goal-panel-root" : undefined}
+            aria-controls={goalPanelOpen ? "xianaibot-goal-panel-root" : undefined}
             aria-label={t("thread.composer.goalStateExpandAria")}
             title={t("thread.composer.goalStateExpandAria")}
             onClick={() => setGoalPanelOpen((o) => !o)}

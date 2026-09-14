@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from biscuitbot.agent.tools.screenshot import ScreenshotTool, ScreenshotToolConfig
+from xianaibot.agent.tools.screenshot import ScreenshotTool, ScreenshotToolConfig
 
 
 def _make_png(width: int = 10, height: int = 10) -> bytes:
@@ -247,19 +247,19 @@ class TestScreenshotToolResize:
 
 class TestBuildVisionProvider:
     def test_returns_none_when_not_configured(self):
-        from biscuitbot.config.schema import Config
+        from xianaibot.config.schema import Config
 
         config = Config()
         config.agents.defaults.vision_model = None
-        from biscuitbot.providers.factory import build_vision_provider
+        from xianaibot.providers.factory import build_vision_provider
 
         assert build_vision_provider(config) is None
 
     def test_returns_none_for_unknown_preset(self):
-        from biscuitbot.config.schema import Config
+        from xianaibot.config.schema import Config
 
         config = Config()
         config.agents.defaults.vision_model = "nonexistent-preset"
-        from biscuitbot.providers.factory import build_vision_provider
+        from xianaibot.providers.factory import build_vision_provider
 
         assert build_vision_provider(config) is None

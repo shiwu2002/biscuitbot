@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * biscuitbot WhatsApp Bridge
+ * xianaibot WhatsApp Bridge
  * 
- * This bridge connects WhatsApp Web to biscuitbot's Python backend
+ * This bridge connects WhatsApp Web to xianaibot's Python backend
  * via WebSocket. It handles authentication, message forwarding,
  * and reconnection logic.
  * 
@@ -10,7 +10,7 @@
  *   npm run build && npm start
  *   
  * Or with custom settings:
- *   BRIDGE_PORT=3001 AUTH_DIR=~/.biscuitbot/whatsapp npm start
+ *   BRIDGE_PORT=3001 AUTH_DIR=~/.xianaibot/whatsapp npm start
  */
 
 // Polyfill crypto for Baileys in ESM
@@ -24,15 +24,15 @@ import { homedir } from 'os';
 import { join } from 'path';
 
 const PORT = parseInt(process.env.BRIDGE_PORT || '3001', 10);
-const AUTH_DIR = process.env.AUTH_DIR || join(homedir(), '.biscuitbot', 'whatsapp-auth');
+const AUTH_DIR = process.env.AUTH_DIR || join(homedir(), '.xianaibot', 'whatsapp-auth');
 const TOKEN = process.env.BRIDGE_TOKEN?.trim();
 
 if (!TOKEN) {
-  console.error('BRIDGE_TOKEN is required. Start the bridge via biscuitbot so it can provision a local secret automatically.');
+  console.error('BRIDGE_TOKEN is required. Start the bridge via xianaibot so it can provision a local secret automatically.');
   process.exit(1);
 }
 
-console.log('🐈 biscuitbot WhatsApp Bridge');
+console.log('🐈 xianaibot WhatsApp Bridge');
 console.log('========================\n');
 
 const server = new BridgeServer(PORT, AUTH_DIR, TOKEN);

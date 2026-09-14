@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 
-from biscuitbot.api.server import (
+from xianaibot.api.server import (
     _FileSizeExceeded,
     _parse_json_content,
     _save_base64_data_url,
     create_app,
 )
-from biscuitbot.config.loader import save_config
-from biscuitbot.config.schema import Config
-from biscuitbot.utils.document import extract_documents
+from xianaibot.config.loader import save_config
+from xianaibot.config.schema import Config
+from xianaibot.utils.document import extract_documents
 
 try:
     from aiohttp.test_utils import TestClient, TestServer
@@ -35,11 +35,11 @@ def _isolate_instance_dir(tmp_path, monkeypatch):
 
     上传路径（``get_media_dir("api")`` → ``get_data_dir()`` → ``get_config_path()``）
     最终由 ``config.loader._current_config_path`` 决定；不隔离的话 multipart/base64
-    测试会把文件写进真实的 ``~/.biscuitbot/media/api/``。
+    测试会把文件写进真实的 ``~/.xianaibot/media/api/``。
     """
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
 
 def _make_mock_agent(response_text: str = "mock response") -> MagicMock:
@@ -388,7 +388,7 @@ async def test_json_base64_image_upload(aiohttp_client, mock_agent, tmp_path) ->
 
 
 # ---------------------------------------------------------------------------
-# extract_documents tests (now in biscuitbot.utils.document)
+# extract_documents tests (now in xianaibot.utils.document)
 # ---------------------------------------------------------------------------
 
 def test_extract_documents_separates_images_from_docs(tmp_path) -> None:
@@ -415,7 +415,7 @@ def test_extract_documents_skips_extraction_errors(tmp_path, monkeypatch) -> Non
     bad_file = tmp_path / "broken.docx"
     bad_file.write_text("not a docx", encoding="utf-8")
 
-    import biscuitbot.utils.document as _doc
+    import xianaibot.utils.document as _doc
     monkeypatch.setattr(
         _doc, "extract_text",
         lambda _path: "[error: failed to extract DOCX: boom]",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from biscuitbot.webui.ws_http import (
+from xianaibot.webui.ws_http import (
     GatewayHTTPHandler,
     _resolve_avatar_path,
 )
@@ -36,7 +36,7 @@ def test_resolve_avatar_path_finds_user_data_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """人才市场下载的头像落在实例数据目录 <config>/avatars/，路由也能命中。"""
-    from biscuitbot.config import paths as config_paths
+    from xianaibot.config import paths as config_paths
 
     user_avatar_dir = tmp_path / "avatars"
     user_avatar_dir.mkdir()

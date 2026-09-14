@@ -10,8 +10,8 @@ from typing import Any
 import httpx
 import pytest
 
-from biscuitbot.agent.employees import EmployeeStore, EmployeeValidationError
-from biscuitbot.webui.talent_market import (
+from xianaibot.agent.employees import EmployeeStore, EmployeeValidationError
+from xianaibot.webui.talent_market import (
     TalentMarketError,
     _http_get_json,
     _talent_urls_from_gateway,
@@ -33,7 +33,7 @@ def _store(tmp_path: Path) -> EmployeeStore:
 def _isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """每个测试把人才市场缓存目录隔离到临时目录，避免污染真实缓存。"""
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.get_runtime_subdir",
+        "xianaibot.webui.talent_market.get_runtime_subdir",
         lambda name: tmp_path / name,
     )
 
@@ -104,7 +104,7 @@ def test_catalog_fetch_and_normalize(
         }
     )
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: _catalog_registry(),
     )
     payload = talent_catalog_payload("https://example.com/registry.json", store)
@@ -127,7 +127,7 @@ def test_catalog_fetch_and_normalize(
 
 def test_catalog_installed_when_store_none(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: _catalog_registry(),
     )
     payload = talent_catalog_payload("https://example.com/registry.json", None)
@@ -139,7 +139,7 @@ def test_catalog_fallback_talent_key(tmp_path: Path, monkeypatch: pytest.MonkeyP
     store = _store(tmp_path)
     registry = {"talent": [{"id": "a", "name": "A", "system_prompt": "p", "skills": []}]}
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json", lambda url, **kwargs: registry
+        "xianaibot.webui.talent_market._http_get_json", lambda url, **kwargs: registry
     )
     payload = talent_catalog_payload("https://example.com/registry.json", store)
     assert len(payload["employees"]) == 1
@@ -160,7 +160,7 @@ def test_catalog_ttl_cache_hit_and_stale_fallback(
         return _catalog_registry()
 
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json", fake_fetch
+        "xianaibot.webui.talent_market._http_get_json", fake_fetch
     )
 
     url = "https://example.com/registry.json"
@@ -176,7 +176,7 @@ def test_catalog_ttl_cache_hit_and_stale_fallback(
         raise TalentMarketError("boom", status=502)
 
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json", fail_fetch
+        "xianaibot.webui.talent_market._http_get_json", fail_fetch
     )
     payload = talent_catalog_payload(url, store)
     assert payload["employees"]  # stale 数据可用
@@ -187,7 +187,7 @@ def test_catalog_no_cache_no_fetch_raises_502(
 ) -> None:
     store = _store(tmp_path)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: (_ for _ in ()).throw(
             TalentMarketError("boom", status=502)
         ),
@@ -203,7 +203,7 @@ def test_force_refresh_bypasses_cache(
     store = _store(tmp_path)
     calls: list[str] = []
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: (calls.append(url) or _catalog_registry()),
     )
     url = "https://example.com/registry.json"
@@ -258,7 +258,7 @@ class _FakeClient:
 def test_http_get_json_rejects_non_dict(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     client._content = b"[1,2,3]"
-    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr("xianaibot.webui.talent_market.httpx.Client", lambda **kw: client)
     with pytest.raises(TalentMarketError) as exc:
         _http_get_json("https://example.com/registry.json")
     assert exc.value.status == 502
@@ -267,7 +267,7 @@ def test_http_get_json_rejects_non_dict(monkeypatch: pytest.MonkeyPatch) -> None
 def test_http_get_json_size_cap(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     client._content = b"x" * (2 * 1024 * 1024 + 1)
-    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr("xianaibot.webui.talent_market.httpx.Client", lambda **kw: client)
     with pytest.raises(TalentMarketError) as exc:
         _http_get_json("https://example.com/registry.json")
     assert exc.value.status == 502
@@ -338,7 +338,7 @@ def test_install_ignores_non_whitelisted_keys(tmp_path: Path) -> None:
 def test_install_downloads_bundled_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+    from xianaibot.agent.skill_owners import SkillOwnershipStore
 
     store = _store(tmp_path)
     registry = {
@@ -362,7 +362,7 @@ def test_install_downloads_bundled_skills(
         ],
     }
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: registry,
     )
     result = install_talent_employee(
@@ -396,7 +396,7 @@ JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01" + b"\x00" * 16
 
 
 def test_avatar_ext_from_magic() -> None:
-    from biscuitbot.webui.talent_market import _avatar_ext_from_magic
+    from xianaibot.webui.talent_market import _avatar_ext_from_magic
 
     assert _avatar_ext_from_magic(PNG_BYTES) == ".png"
     assert _avatar_ext_from_magic(JPEG_BYTES) == ".jpg"
@@ -413,9 +413,9 @@ def test_install_downloads_market_avatar(
     client = _FakeClient()
     client._content = PNG_BYTES
     client._headers = {"content-type": "image/png"}
-    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr("xianaibot.webui.talent_market.httpx.Client", lambda **kw: client)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        "xianaibot.webui.talent_market._fetch_talent_catalog",
         lambda url, **kw: {
             "employees": [
                 {
@@ -444,7 +444,7 @@ def test_install_keeps_emoji_avatar(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     """emoji 头像不触发下载，原样落库。"""
     store = _store(tmp_path)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        "xianaibot.webui.talent_market._fetch_talent_catalog",
         lambda url, **kw: {
             "employees": [
                 {
@@ -471,9 +471,9 @@ def test_install_avatar_download_failure_keeps_original(
     store = _store(tmp_path)
     client = _FakeClient()
     client._status = 500
-    monkeypatch.setattr("biscuitbot.webui.talent_market.httpx.Client", lambda **kw: client)
+    monkeypatch.setattr("xianaibot.webui.talent_market.httpx.Client", lambda **kw: client)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        "xianaibot.webui.talent_market._fetch_talent_catalog",
         lambda url, **kw: {
             "employees": [
                 {
@@ -500,7 +500,7 @@ def test_install_market_avatar_rejects_non_http_scheme(
     """file:// 等非 http 头像 URL 不下载，原样返回。"""
     store = _store(tmp_path)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._fetch_talent_catalog",
+        "xianaibot.webui.talent_market._fetch_talent_catalog",
         lambda url, **kw: {
             "employees": [
                 {
@@ -538,7 +538,7 @@ def test_catalog_flattens_bundled_skill_names(
         ]
     }
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: registry,
     )
     payload = talent_catalog_payload("https://example.com/registry.json", store)
@@ -679,7 +679,7 @@ def test_multi_source_payload_merges_and_dedups(
         "https://b.example/y.json": _registry_b(),
     }
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: by_url[url],
     )
 
@@ -718,7 +718,7 @@ def test_multi_source_single_failure_still_raises(
 ) -> None:
     store = _store(tmp_path)
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: (_ for _ in ()).throw(
             TalentMarketError("boom", status=502)
         ),
@@ -743,7 +743,7 @@ def test_multi_source_one_failure_skips_others(
         return by_url[url]
 
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json", fake_fetch
+        "xianaibot.webui.talent_market._http_get_json", fake_fetch
     )
 
     payload = talent_catalog_payload(
@@ -771,8 +771,8 @@ def gateway_bus() -> Any:
 
 def _gateway_channel(tmp_path: Path, bus: Any) -> Any:
     """Build a WebSocketChannel whose gateway serves the HTTP routes."""
-    from biscuitbot.channels.websocket import WebSocketChannel, WebSocketConfig
-    from biscuitbot.webui.gateway_services import build_gateway_services
+    from xianaibot.channels.websocket import WebSocketChannel, WebSocketConfig
+    from xianaibot.webui.gateway_services import build_gateway_services
 
     parsed = WebSocketConfig.model_validate(
         {
@@ -813,7 +813,7 @@ def test_catalog_handler_uses_configured_url_and_ignores_client_url(
     config_path = _write_config(
         tmp_path, {"talent_market_registry_url": "https://example.com/employees.json"}
     )
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     captured: dict[str, object] = {}
 
@@ -830,7 +830,7 @@ def test_catalog_handler_uses_configured_url_and_ignores_client_url(
         }
 
     monkeypatch.setattr(
-        "biscuitbot.webui.ws_http.talent_catalog_payload", fake_payload
+        "xianaibot.webui.ws_http.talent_catalog_payload", fake_payload
     )
 
     import asyncio
@@ -856,7 +856,7 @@ def test_catalog_handler_unconfigured_returns_configured_false(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, gateway_bus: Any
 ) -> None:
     config_path = _write_config(tmp_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     called: list[str] = []
 
@@ -865,7 +865,7 @@ def test_catalog_handler_unconfigured_returns_configured_false(
         raise AssertionError("unconfigured 时不应发起拉取")
 
     monkeypatch.setattr(
-        "biscuitbot.webui.ws_http.talent_catalog_payload", fake_payload
+        "xianaibot.webui.ws_http.talent_catalog_payload", fake_payload
     )
 
     import asyncio

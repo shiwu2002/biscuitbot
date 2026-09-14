@@ -9,9 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
-from biscuitbot.agent.tools.text_to_speech import TextToSpeechTool
-from biscuitbot.audio.tts import TtsServiceError
-from biscuitbot.config.schema import Config
+from xianaibot.agent.tools.text_to_speech import TextToSpeechTool
+from xianaibot.audio.tts import TtsServiceError
+from xianaibot.config.schema import Config
 
 
 def _tool(tmp_path: Path, **cfg: object) -> TextToSpeechTool:
@@ -55,7 +55,7 @@ def test_create_wires_workspace_and_config(tmp_path: Path) -> None:
 
 
 def test_enabled_and_create_use_root_config(tmp_path: Path) -> None:
-    from biscuitbot.agent.tools.context import ToolContext
+    from xianaibot.agent.tools.context import ToolContext
 
     cfg = Config()
     cfg.tts.enabled = True
@@ -69,9 +69,9 @@ def test_enabled_and_create_use_root_config(tmp_path: Path) -> None:
 
 
 def test_registers_via_tool_loader(tmp_path: Path) -> None:
-    from biscuitbot.agent.tools.context import ToolContext
-    from biscuitbot.agent.tools.loader import ToolLoader
-    from biscuitbot.agent.tools.registry import ToolRegistry
+    from xianaibot.agent.tools.context import ToolContext
+    from xianaibot.agent.tools.loader import ToolLoader
+    from xianaibot.agent.tools.registry import ToolRegistry
 
     cfg = Config()
     cfg.tts.enabled = True
@@ -93,7 +93,7 @@ async def test_execute_returns_audio_metadata(
 
     tool = _tool(tmp_path)
     with patch(
-        "biscuitbot.agent.tools.text_to_speech.synthesize_speech_file",
+        "xianaibot.agent.tools.text_to_speech.synthesize_speech_file",
         side_effect=fake_synthesize,
     ):
         result = await tool.execute("你好，世界")
@@ -122,7 +122,7 @@ async def test_execute_resolves_provider_override(
 
     tool = _tool(tmp_path)
     with patch(
-        "biscuitbot.agent.tools.text_to_speech.synthesize_speech_file",
+        "xianaibot.agent.tools.text_to_speech.synthesize_speech_file",
         side_effect=fake_synthesize,
     ):
         result = await tool.execute(
@@ -148,7 +148,7 @@ async def test_execute_returns_error_message_on_failure(
 
     tool = _tool(tmp_path)
     with patch(
-        "biscuitbot.agent.tools.text_to_speech.synthesize_speech_file",
+        "xianaibot.agent.tools.text_to_speech.synthesize_speech_file",
         side_effect=fake_synthesize,
     ):
         result = await tool.execute("hi")

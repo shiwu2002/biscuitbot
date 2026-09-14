@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 try:
-    from biscuitbot.channels import qq
+    from xianaibot.channels import qq
 
     QQ_AVAILABLE = getattr(qq, "QQ_AVAILABLE", False)
 except ImportError:
@@ -22,8 +22,8 @@ except ImportError:
 if not QQ_AVAILABLE:
     pytest.skip("QQ dependencies not installed (qq-botpy)", allow_module_level=True)
 
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.qq import QQChannel, QQConfig
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.qq import QQChannel, QQConfig
 
 
 class _FakeApi:

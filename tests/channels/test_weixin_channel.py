@@ -9,10 +9,10 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-import biscuitbot.channels.weixin as weixin_mod
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.pairing import store as pairing_store
-from biscuitbot.channels.weixin import (
+import xianaibot.channels.weixin as weixin_mod
+from xianaibot.bus.queue import MessageBus
+from xianaibot.pairing import store as pairing_store
+from xianaibot.channels.weixin import (
     ITEM_IMAGE,
     ITEM_TEXT,
     MESSAGE_TYPE_BOT,
@@ -26,7 +26,7 @@ from biscuitbot.channels.weixin import (
 
 @pytest.fixture(autouse=True)
 def _isolate_pairing_store(tmp_path, monkeypatch):
-    """隔离 pairing 存储，避免测试写入真实的 ~/.biscuitbot/pairing.json。"""
+    """隔离 pairing 存储，避免测试写入真实的 ~/.xianaibot/pairing.json。"""
     monkeypatch.setattr(pairing_store, "_store_path", lambda: tmp_path / "pairing.json")
 
 
@@ -42,7 +42,7 @@ def _make_channel() -> tuple[WeixinChannel, MessageBus]:
         WeixinConfig(
             enabled=True,
             allow_from=["*"],
-            state_dir=tempfile.mkdtemp(prefix="biscuitbot-weixin-test-"),
+            state_dir=tempfile.mkdtemp(prefix="xianaibot-weixin-test-"),
         ),
         bus,
     )
@@ -159,7 +159,7 @@ async def test_process_message_pairs_unauthorized_sender_before_media_side_effec
     channel._get_typing_ticket = AsyncMock(return_value="")
     channel._send_text = AsyncMock()
     monkeypatch.setattr(
-        "biscuitbot.channels.base.generate_code", lambda _ch, _sid: "ABCD-EFGH"
+        "xianaibot.channels.base.generate_code", lambda _ch, _sid: "ABCD-EFGH"
     )
 
     await channel._process_message(
@@ -492,7 +492,7 @@ async def test_stale_instance_does_not_overwrite_fresh_login_token() -> None:
     写入 account.json，但仍在长轮询旧账号的主渠道实例每次 _save_state 都会用
     旧 token 覆盖掉它。登录代数据此让旧实例跳过写入。
     """
-    state_dir = tempfile.mkdtemp(prefix="biscuitbot-weixin-test-")
+    state_dir = tempfile.mkdtemp(prefix="xianaibot-weixin-test-")
     # 主渠道实例（bus=MessageBus）持有旧账号 A 状态。
     main = WeixinChannel(
         WeixinConfig(enabled=True, allow_from=["*"], state_dir=state_dir),
@@ -1148,7 +1148,7 @@ async def test_download_media_item_non_image_requires_aes_key_even_with_full_url
 
 def _make_outbound_msg(chat_id: str = "wx-user", content: str = "", media: list | None = None):
     """Build a minimal OutboundMessage-like object for send() tests."""
-    from biscuitbot.bus.events import OutboundMessage
+    from xianaibot.bus.events import OutboundMessage
 
     return OutboundMessage(
         channel="weixin",

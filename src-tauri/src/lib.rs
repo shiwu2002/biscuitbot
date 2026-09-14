@@ -1,7 +1,7 @@
-//! biscuitbot 桌面壳。
+//! xianaibot 桌面壳。
 //!
 //! 启动无头 gateway sidecar（PyInstaller 打包的 Python 进程），解析其 stdout
-//! 握手行 ``BISCUITBOT_GATEWAY_READY <host> <port>`` 后把窗口导航到 WebUI。
+//! 握手行 ``XIANAIBOT_GATEWAY_READY <host> <port>`` 后把窗口导航到 WebUI。
 //! 关闭〔X〕按键时窗口**隐藏到系统托盘**，壳与 gateway（sidecar）进程继续存活，
 //! 后台 cron/自动化任务因此持续执行；仅托盘菜单「退出」才杀掉 sidecar 并退出应用，
 //! 避免残留后台 gateway。sidecar 请求引擎重启（``/api/desktop/restart``）退出后，
@@ -22,9 +22,9 @@ const TRAY_SHOW: &str = "show";
 const TRAY_QUIT: &str = "quit";
 
 /// sidecar 就绪握手行前缀（后接空格 + host + 空格 + port）
-const READY_PREFIX: &str = "BISCUITBOT_GATEWAY_READY";
+const READY_PREFIX: &str = "XIANAIBOT_GATEWAY_READY";
 /// sidecar 启动失败错误行前缀
-const ERROR_PREFIX: &str = "BISCUITBOT_GATEWAY_ERROR";
+const ERROR_PREFIX: &str = "XIANAIBOT_GATEWAY_ERROR";
 /// 启动失败/网关意外退出时窗口回退到的内嵌错误页
 const ERROR_PAGE: &str = "tauri://localhost/index.html?gateway_error=1";
 
@@ -69,9 +69,9 @@ fn reveal_main_window(app: &AppHandle) {
 
 /// 启动 sidecar 并在就绪后把主窗口导航到 WebUI；退出后按需重新拉起。
 fn spawn_sidecar(app: &AppHandle) {
-    // 开发模式旁路：设置 BISCUITBOT_DEV_GATEWAY_URL 时直接导航，不启动 sidecar。
-    // 便于本地用 ``biscuitbot gateway`` 手动跑网关后调试壳本身。
-    if let Ok(url) = std::env::var("BISCUITBOT_DEV_GATEWAY_URL") {
+    // 开发模式旁路：设置 XIANAIBOT_DEV_GATEWAY_URL 时直接导航，不启动 sidecar。
+    // 便于本地用 ``xianaibot gateway`` 手动跑网关后调试壳本身。
+    if let Ok(url) = std::env::var("XIANAIBOT_DEV_GATEWAY_URL") {
         let url = url.trim();
         if !url.is_empty() {
             navigate_to(app, url);
@@ -102,7 +102,7 @@ fn spawn_sidecar(app: &AppHandle) {
                         .saturating_mul(1u64 << respawn_count.min(5))
                         .min(30);
                     eprintln!(
-                        "[biscuitbot] sidecar exited after ready; respawning #{} in {}s",
+                        "[xianaibot] sidecar exited after ready; respawning #{} in {}s",
                         respawn_count, delay_secs
                     );
                     tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
@@ -119,15 +119,15 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     // 随 app 分发（不再走 externalBin），需从 resource 目录解析可执行文件后手动启动。
     let sidecar = match app.path().resource_dir() {
         Ok(dir) => {
-            let bin_name = format!("biscuitbot-sidecar{}", std::env::consts::EXE_SUFFIX);
+            let bin_name = format!("xianaibot-sidecar{}", std::env::consts::EXE_SUFFIX);
             app.shell().command(
                 dir.join("binaries")
-                    .join("biscuitbot-sidecar")
+                    .join("xianaibot-sidecar")
                     .join(bin_name),
             )
         }
         Err(err) => {
-            eprintln!("[biscuitbot] failed to resolve resource dir: {err}");
+            eprintln!("[xianaibot] failed to resolve resource dir: {err}");
             navigate_to(app, ERROR_PAGE);
             return SidecarOutcome::StartupFailed;
         }
@@ -136,12 +136,12 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     // 把壳自身 PID 经环境变量传给 sidecar，其看门狗据此在壳被强杀时自清理，避免
     // 残留后台 gateway。（onefile 时代因 bootstrap→runtime 两级结构必须如此；onedir
     // 下 getppid() 已直接指向壳，此环境变量仍保留以保持看门狗逻辑不变。）
-    let sidecar = sidecar.env("BISCUITBOT_PARENT_PID", std::process::id().to_string());
+    let sidecar = sidecar.env("XIANAIBOT_PARENT_PID", std::process::id().to_string());
 
     let (mut rx, child) = match sidecar.spawn() {
         Ok(pair) => pair,
         Err(err) => {
-            eprintln!("[biscuitbot] failed to spawn sidecar: {err}");
+            eprintln!("[xianaibot] failed to spawn sidecar: {err}");
             navigate_to(app, ERROR_PAGE);
             return SidecarOutcome::StartupFailed;
         }
@@ -207,13 +207,13 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     }
 }
 
-/// 创建系统托盘图标，提供「打开 biscuitbot / 退出」菜单。
+/// 创建系统托盘图标，提供「打开 xianaibot / 退出」菜单。
 ///
 /// icon 复用窗口默认图标；``TrayIconBuilder::build`` 内部会将 ``TrayIcon`` clone
 /// 进 app 资源表，因此无需保留返回句柄。菜单项 id 见 :const:`TRAY_SHOW` /
 /// :const:`TRAY_QUIT`。
 fn create_tray(app: &AppHandle) -> tauri::Result<()> {
-    let show = MenuItemBuilder::with_id(TRAY_SHOW, "打开 biscuitbot").build(app)?;
+    let show = MenuItemBuilder::with_id(TRAY_SHOW, "打开夏奈儿").build(app)?;
     let quit = MenuItemBuilder::with_id(TRAY_QUIT, "退出").build(app)?;
     let menu = MenuBuilder::new(app).items(&[&show, &quit]).build()?;
 
@@ -222,9 +222,9 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .cloned()
         .expect("missing default window icon");
 
-    TrayIconBuilder::with_id("biscuitbot-main-tray")
+    TrayIconBuilder::with_id("xianaibot-main-tray")
         .icon(icon)
-        .tooltip("biscuitbot")
+        .tooltip("夏奈儿")
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -268,13 +268,13 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("error while building biscuitbot tauri application");
+        .expect("error while building xianaibot tauri application");
 
     app.run(|app_handle, event| match event {
         #[cfg(target_os = "macos")]
         // 点击 Dock 图标重开应用：窗口被关闭〔X〕隐藏到托盘后已无可见窗口，
         // macOS 会经 applicationShouldHandleReopen 触发 Reopen，但默认不会自动
-        // 重新显示程序化 hide() 的窗口——此前只能靠托盘菜单「打开 biscuitbot」，
+        // 重新显示程序化 hide() 的窗口——此前只能靠托盘菜单「打开 xianaibot」，
         // 现于此处显式 show/focus 主窗口。
         RunEvent::Reopen { .. } => reveal_main_window(app_handle),
         RunEvent::ExitRequested { .. } | RunEvent::Exit => {

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from biscuitbot.agent.tools.base import Tool
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.agent.tools.base import Tool
+from xianaibot.agent.tools.registry import ToolRegistry
 
 
 class _FakeTool(Tool):

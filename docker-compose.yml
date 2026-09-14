@@ -3,7 +3,7 @@ x-common-config: &common-config
     context: .
     dockerfile: Dockerfile
   volumes:
-    - ~/.biscuitbot:/home/biscuitbot/.biscuitbot
+    - ~/.xianaibot:/home/xianaibot/.xianaibot
   cap_drop:
     - ALL
   cap_add:
@@ -13,8 +13,8 @@ x-common-config: &common-config
     - seccomp=unconfined
 
 services:
-  biscuitbot-gateway:
-    container_name: biscuitbot-gateway
+  xianaibot-gateway:
+    container_name: xianaibot-gateway
     <<: *common-config
     command: ["gateway"]
     restart: unless-stopped
@@ -30,11 +30,11 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  biscuitbot-api:
-    container_name: biscuitbot-api
+  xianaibot-api:
+    container_name: xianaibot-api
     <<: *common-config
     command:
-      ["serve", "--host", "0.0.0.0", "-w", "/home/biscuitbot/.biscuitbot/api-workspace"]
+      ["serve", "--host", "0.0.0.0", "-w", "/home/xianaibot/.xianaibot/api-workspace"]
     restart: unless-stopped
     ports:
       - 127.0.0.1:8900:8900
@@ -47,7 +47,7 @@ services:
           cpus: "0.25"
           memory: 256M
 
-  biscuitbot-cli:
+  xianaibot-cli:
     <<: *common-config
     profiles:
       - cli

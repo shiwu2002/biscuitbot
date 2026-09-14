@@ -6,7 +6,7 @@ import importlib.util
 
 import pytest
 
-from biscuitbot.channels import deps
+from xianaibot.channels import deps
 
 
 class _FakeMissing:
@@ -54,10 +54,10 @@ def test_ensure_deps_triggers_background_install(monkeypatch: pytest.MonkeyPatch
 
     # 渠道 SDK 缺失但 pip 可用 → 触发后台安装
     monkeypatch.setattr(
-        "biscuitbot.channels.deps.importlib.util.find_spec",
+        "xianaibot.channels.deps.importlib.util.find_spec",
         lambda m: spec if m == "pip" else None,
     )
-    monkeypatch.setattr("biscuitbot.channels.deps._run_pip_install", lambda *a, **k: None)
+    monkeypatch.setattr("xianaibot.channels.deps._run_pip_install", lambda *a, **k: None)
     assert deps.ensure_channel_deps(_FakeMissing) is True
     assert _FakeMissing.name in deps._IN_PROGRESS
     status = deps.deps_status(_FakeMissing)
@@ -72,7 +72,7 @@ def test_ensure_deps_triggers_background_install(monkeypatch: pytest.MonkeyPatch
 def test_ensure_deps_pip_unavailable_sets_error(monkeypatch: pytest.MonkeyPatch) -> None:
     deps._IN_PROGRESS.clear()
     deps._ERRORS.clear()
-    monkeypatch.setattr("biscuitbot.channels.deps.importlib.util.find_spec", lambda m: None)
+    monkeypatch.setattr("xianaibot.channels.deps.importlib.util.find_spec", lambda m: None)
     assert deps.ensure_channel_deps(_FakeMissing) is False
     assert _FakeMissing.name in deps._ERRORS
     assert deps.deps_status(_FakeMissing)["deps_installing"] is False
@@ -81,11 +81,11 @@ def test_ensure_deps_pip_unavailable_sets_error(monkeypatch: pytest.MonkeyPatch)
 
 def test_gated_channels_declare_deps() -> None:
     """有 SDK 门槛的渠道都应声明 requires_module 与 pip_requires。"""
-    from biscuitbot.channels.dingtalk import DingTalkChannel
-    from biscuitbot.channels.feishu import FeishuChannel
-    from biscuitbot.channels.mochat import MochatChannel
-    from biscuitbot.channels.qq import QQChannel
-    from biscuitbot.channels.wecom import WecomChannel
+    from xianaibot.channels.dingtalk import DingTalkChannel
+    from xianaibot.channels.feishu import FeishuChannel
+    from xianaibot.channels.mochat import MochatChannel
+    from xianaibot.channels.qq import QQChannel
+    from xianaibot.channels.wecom import WecomChannel
 
     for cls in (WecomChannel, FeishuChannel, QQChannel, DingTalkChannel, MochatChannel):
         assert getattr(cls, "requires_module", None), cls.__name__

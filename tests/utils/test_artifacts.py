@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.config.loader import set_config_path
-from biscuitbot.utils.artifacts import (
+from xianaibot.config.loader import set_config_path
+from xianaibot.utils.artifacts import (
     ArtifactError,
     decode_image_data_url,
     store_generated_image_artifact,

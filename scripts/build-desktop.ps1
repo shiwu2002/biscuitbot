@@ -1,8 +1,8 @@
-﻿# 构建 biscuitbot 桌面应用（Windows）。
+# 构建 xianaibot 桌面应用（Windows）。
 #
 # 产物：
 #   - 安装包     output\windows\*.exe
-#   - sidecar    src-tauri\binaries\biscuitbot-sidecar\（onedir 目录）
+#   - sidecar    src-tauri\binaries\xianaibot-sidecar\（onedir 目录）
 #
 # 前置要求：
 #   - Python 虚拟环境 .venv（含项目依赖）
@@ -49,7 +49,7 @@ else {
     Write-Info "    版本 $BeforeVersion 无法自动递增（非 X.Y.Z 纯数字格式），保持不动"
 }
 
-Write-Info "==> 2/6 构建 WebUI（webui/dist → biscuitbot/web/dist）"
+Write-Info "==> 2/6 构建 WebUI（webui/dist → xianaibot/web/dist）"
 Set-Location (Join-Path $Root "webui")
 bun install --frozen-lockfile
 if ($LASTEXITCODE -ne 0) { bun install }
@@ -72,8 +72,8 @@ Write-Info "==> 4/6 打包 gateway sidecar（PyInstaller onedir）"
 # 剔除与 Python 解释器无关的运行时第三方依赖（渠道 SDK / GUI）；
 # prompt_toolkit 在 cli/commands.py 顶部被导入，必须保留。
 # 注意：不要剔除渠道 SDK（lark_oapi / dingtalk_stream / socketio / botpy 等）——
-# 渠道模块是动态导入的（见 biscuitbot/channels/registry.py），PyInstaller 静态
-# 分析看不到，必须用 --collect-submodules biscuitbot.channels 显式收集，并保留
+# 渠道模块是动态导入的（见 xianaibot/channels/registry.py），PyInstaller 静态
+# 分析看不到，必须用 --collect-submodules xianaibot.channels 显式收集，并保留
 # 其依赖的 SDK，否则打包后桌面端会缺渠道。
 $Excludes = @(
     "--exclude-module", "telegram",
@@ -92,7 +92,7 @@ $Excludes = @(
 # 或报「未安装 xxx SDK」。dashscope 用 --collect-all 以连其 tts_v2 子模块与
 # websocket-client 依赖一并收进。
 $HiddenImports = @(
-    "--hidden-import", "biscuitbot.providers.tts",
+    "--hidden-import", "xianaibot.providers.tts",
     "--collect-all", "dashscope",
     "--collect-all", "pynput",
     "--collect-all", "serial"
@@ -106,14 +106,14 @@ $HiddenImports = @(
     --distpath "$DistDir" `
     --workpath "$WorkDir" `
     --paths "$Root" `
-    --collect-submodules biscuitbot.channels `
-    --collect-submodules biscuitbot.agent.tools `
-    --name biscuitbot-sidecar `
-    --add-data "biscuitbot/web/dist;biscuitbot/web/dist" `
-    --add-data "biscuitbot/templates;biscuitbot/templates" `
-    --add-data "biscuitbot/skills;biscuitbot/skills" `
-    --add-data "biscuitbot/agent/tools/docs;biscuitbot/agent/tools/docs" `
-    --add-data "images/bot;biscuitbot/avatars" `
+    --collect-submodules xianaibot.channels `
+    --collect-submodules xianaibot.agent.tools `
+    --name xianaibot-sidecar `
+    --add-data "xianaibot/web/dist;xianaibot/web/dist" `
+    --add-data "xianaibot/templates;xianaibot/templates" `
+    --add-data "xianaibot/skills;xianaibot/skills" `
+    --add-data "xianaibot/agent/tools/docs;xianaibot/agent/tools/docs" `
+    --add-data "images/bot;xianaibot/avatars" `
     @HiddenImports `
     @Excludes `
     scripts/desktop_sidecar_main.py
@@ -121,10 +121,10 @@ if ($LASTEXITCODE -ne 0) { throw "PyInstaller 打包失败" }
 
 New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
 # onedir：整体复制目录（可执行文件 + _internal\），sidecar 启动时按相对路径找依赖
-$SidecarDir = Join-Path $BinariesDir "biscuitbot-sidecar"
+$SidecarDir = Join-Path $BinariesDir "xianaibot-sidecar"
 if (Test-Path $SidecarDir) { Remove-Item -Recurse -Force $SidecarDir }
-Copy-Item -Recurse -Force (Join-Path $DistDir "biscuitbot-sidecar") $SidecarDir
-Write-Info "    sidecar → src-tauri\binaries\biscuitbot-sidecar\"
+Copy-Item -Recurse -Force (Join-Path $DistDir "xianaibot-sidecar") $SidecarDir
+Write-Info "    sidecar → src-tauri\binaries\xianaibot-sidecar\"
 
 if ($SkipTauri) {
     Write-Info "（--SkipTauri 已跳过第 4/5、5/5 步）"
@@ -154,7 +154,7 @@ Set-Location $Root
 # 复制前先把输出目录里的历史 .exe 清掉，让 output\windows\ 始终只保留最新一版。
 $NsisDir = Join-Path $Root "src-tauri\target\release\bundle\nsis"
 $BuildVersion = [string]((Get-Content $TauriConfPath -Raw | ConvertFrom-Json).version)
-$CurrentInstaller = Join-Path $NsisDir "biscuitbot_${BuildVersion}_x64-setup.exe"
+$CurrentInstaller = Join-Path $NsisDir "夏奈儿_${BuildVersion}_x64-setup.exe"
 if (-not (Test-Path $CurrentInstaller)) {
     throw "找不到当前版本安装包：$CurrentInstaller"
 }

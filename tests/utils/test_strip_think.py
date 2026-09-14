@@ -1,4 +1,4 @@
-from biscuitbot.utils.helpers import extract_reasoning, extract_think, strip_think
+from xianaibot.utils.helpers import extract_reasoning, extract_think, strip_think
 
 
 class TestStripThinkTag:

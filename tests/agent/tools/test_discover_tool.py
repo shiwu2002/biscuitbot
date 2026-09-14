@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.discover import DiscoverToolsTool
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.agent.tools.base import Tool, tool_parameters
+from xianaibot.agent.tools.discover import DiscoverToolsTool
+from xianaibot.agent.tools.registry import ToolRegistry
 
 
 def _make_tool(name: str, description: str, *, capability: str = "") -> Tool:

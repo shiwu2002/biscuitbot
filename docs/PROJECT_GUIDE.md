@@ -1,13 +1,13 @@
-# biscuitbot 项目文档
+# xianaibot 项目文档
 
-> **biscuitbot** 是一个轻量级、开源的 AI Agent 框架，使用 Python + React/TypeScript 构建。围绕精简的 agent 循环：从聊天渠道接收消息 → 调用 LLM Provider → 执行工具 → 管理会话记忆。
+> **xianaibot** 是一个轻量级、开源的 AI Agent 框架，使用 Python + React/TypeScript 构建。围绕精简的 agent 循环：从聊天渠道接收消息 → 调用 LLM Provider → 执行工具 → 管理会话记忆。
 
 | 属性 | 值 |
 |------|---|
 | **版本** | 0.2.7 |
 | **语言** | Python 3.11+ / TypeScript |
 | **许可证** | MIT |
-| **PyPI 包名** | `biscuitbot` |
+| **PyPI 包名** | `xianaibot` |
 | **构建** | hatchling (Python) / Vite + bun (WebUI) |
 | **代码风格** | ruff (E, F, I, N, W，E501 忽略，行宽 100) |
 | **测试** | pytest (asyncio_mode=auto) / vitest |
@@ -60,7 +60,7 @@
 - **Dream 两阶段记忆** — 会话级归档 + 周期性长期记忆更新，MECE 分类，Git 版本控制
 - **WebUI** — React + Vite 富客户端，流式输出、活动追踪、技能管理、高级设置、版本检查与一键更新
 - **CLI 全中文** — 所有命令帮助、运行时提示、交互引导均为中文
-- **自动打开 WebUI** — `biscuitbot gateway` 启动后自动在浏览器打开 WebUI 界面
+- **自动打开 WebUI** — `xianaibot gateway` 启动后自动在浏览器打开 WebUI 界面
 - **OpenAI 兼容 API** — `/v1/chat/completions`、`/v1/models`
 - **夜间维护** — 每天 23:00 自动执行文档一致性检查、重复检测、冷门轮转
 
@@ -85,12 +85,12 @@ curl -fsSL https://bun.sh/install | bash
 
 ```bash
 # 从 PyPI 安装（推荐）
-pip install biscuitbot
+pip install xianaibot
 
 # 可选依赖按需安装
-pip install 'biscuitbot[api]'      # OpenAI 兼容 API 服务器
-pip install 'biscuitbot[wecom]'    # 企业微信频道
-pip install 'biscuitbot[weixin]'   # 微信频道
+pip install 'xianaibot[api]'      # OpenAI 兼容 API 服务器
+pip install 'xianaibot[wecom]'    # 企业微信频道
+pip install 'xianaibot[weixin]'   # 微信频道
 
 # 开发模式安装
 git clone <repo-url> && cd nanobot
@@ -104,11 +104,11 @@ cd webui && bun install
 
 ```bash
 # 交互式引导（推荐首次使用）
-biscuitbot onboard --wizard
+xianaibot onboard --wizard
 
 # 或手动创建
-mkdir -p ~/.biscuitbot
-cp config.example.yaml ~/.biscuitbot/config.yaml
+mkdir -p ~/.xianaibot
+cp config.example.yaml ~/.xianaibot/config.yaml
 ```
 
 设置环境变量：
@@ -122,16 +122,16 @@ export OPENAI_API_KEY="sk-xxx"
 
 ```bash
 # 启动网关（含 WebUI + Channels + Agent）
-biscuitbot gateway
+xianaibot gateway
 
 # WebUI 前端热重载（另一个终端）
 cd webui && bun run dev
 
 # OpenAI 兼容 API 服务器
-biscuitbot serve
+xianaibot serve
 
 # CLI 直接对话
-biscuitbot agent
+xianaibot agent
 ```
 
 访问 `http://127.0.0.1:8765` 使用 WebUI。
@@ -144,11 +144,11 @@ biscuitbot agent
 # Python 测试
 pytest tests/agent/ -v              # 运行模块测试
 pytest tests/agent/tools/ -v        # 工具系统测试
-pytest --cov=biscuitbot                # 带覆盖率
+pytest --cov=xianaibot                # 带覆盖率
 
 # Python lint
-ruff check biscuitbot/                 # 检查
-ruff check biscuitbot/ --fix           # 自动修复
+ruff check xianaibot/                 # 检查
+ruff check xianaibot/ --fix           # 自动修复
 
 # WebUI
 cd webui && bun run dev             # 开发服务器
@@ -163,20 +163,20 @@ cd webui && bun run lint            # Lint
 
 | 命令 | 说明 |
 |------|------|
-| `biscuitbot -v` 或 `biscuitbot --version` | 查看版本号 |
-| `biscuitbot -h` | 查看帮助 |
-| `biscuitbot onboard --wizard` | 交互式初始化配置 |
-| `biscuitbot gateway` | 启动网关（自动打开 WebUI） |
-| `biscuitbot gateway -v` | 启动网关（详细日志） |
-| `biscuitbot serve` | 启动 OpenAI 兼容 API 服务器 |
-| `biscuitbot agent` | CLI 模式与 agent 对话 |
-| `biscuitbot channels` | 管理频道（无子命令时显示帮助） |
-| `biscuitbot plugins` | 管理频道插件（无子命令时显示帮助） |
+| `xianaibot -v` 或 `xianaibot --version` | 查看版本号 |
+| `xianaibot -h` | 查看帮助 |
+| `xianaibot onboard --wizard` | 交互式初始化配置 |
+| `xianaibot gateway` | 启动网关（自动打开 WebUI） |
+| `xianaibot gateway -v` | 启动网关（详细日志） |
+| `xianaibot serve` | 启动 OpenAI 兼容 API 服务器 |
+| `xianaibot agent` | CLI 模式与 agent 对话 |
+| `xianaibot channels` | 管理频道（无子命令时显示帮助） |
+| `xianaibot plugins` | 管理频道插件（无子命令时显示帮助） |
 | `cd webui && bun run dev` | 启动 WebUI 前端开发服务器 |
 
 ### WebUI 自动更新
 
-在 WebUI 设置页面点击「检查更新」，检测到新版本后可直接点击「立即更新」按钮，系统会自动执行 `pip install --upgrade biscuitbot` 完成升级，更新成功后提示重启应用。
+在 WebUI 设置页面点击「检查更新」，检测到新版本后可直接点击「立即更新」按钮，系统会自动执行 `pip install --upgrade xianaibot` 完成升级，更新成功后提示重启应用。
 
 ## 关键环境变量
 
@@ -184,16 +184,16 @@ cd webui && bun run lint            # Lint
 |---------|--------|------|
 | `ANTHROPIC_API_KEY` | — | Anthropic Claude API Key |
 | `OPENAI_API_KEY` | — | OpenAI API Key |
-| `BISCUITBOT_MAX_CONCURRENT_REQUESTS` | 3 | 全局并发请求数 |
-| `BISCUITBOT_LLM_TIMEOUT_S` | 300 | LLM 调用超时（秒） |
-| `BISCUITBOT_STREAM_IDLE_TIMEOUT_S` | 90 | 流式空闲超时（秒） |
+| `XIANAIBOT_MAX_CONCURRENT_REQUESTS` | 3 | 全局并发请求数 |
+| `XIANAIBOT_LLM_TIMEOUT_S` | 300 | LLM 调用超时（秒） |
+| `XIANAIBOT_STREAM_IDLE_TIMEOUT_S` | 90 | 流式空闲超时（秒） |
 
 ---
 
 ## 项目结构概览
 
 ```
-biscuitbot/
+xianaibot/
 ├── agent/              # 智能体核心引擎
 │   ├── loop.py         # AgentLoop 状态机
 │   ├── runner.py       # AgentRunner LLM 调用循环
@@ -216,5 +216,5 @@ biscuitbot/
 └── utils/              # 工具模块
 webui/                  # React 前端 SPA
 bridge/                 # TypeScript 桥接服务
-tests/                  # 测试（镜像 biscuitbot/ 结构）
+tests/                  # 测试（镜像 xianaibot/ 结构）
 ```

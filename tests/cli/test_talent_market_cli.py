@@ -1,6 +1,6 @@
 """人才市场注册表 URL 的 CLI 管理测试。
 
-验证 ``biscuitbot talent-market set/add/remove/list/show/clear``：
+验证 ``xianaibot talent-market set/add/remove/list/show/clear``：
 - ``set`` 整体替换为列表、``add`` 追加、``remove`` 精确删除、``list``/``show`` 打印全部；
 - 手术式写回 ``gateway`` 相关键，绝不触碰配置文件里的其他键（含 API Key）；
 - 校验 http/https，非法地址拒绝并保持文件不变；
@@ -15,8 +15,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from biscuitbot.cli.commands import app
-from biscuitbot.config.loader import _current_config_path
+from xianaibot.cli.commands import app
+from xianaibot.config.loader import _current_config_path
 
 runner = CliRunner()
 
@@ -25,7 +25,7 @@ runner = CliRunner()
 def _restore_config_path():
     saved = _current_config_path
     yield
-    import biscuitbot.config.loader as loader
+    import xianaibot.config.loader as loader
 
     loader._current_config_path = saved
 

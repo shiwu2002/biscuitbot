@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.agent.tools._cinematic import workflow
-from biscuitbot.agent.tools._cinematic.state import ProjectStore
-from biscuitbot.agent.tools._cinematic.validators import CinematicDirectorError
-from biscuitbot.agent.tools.cinematic_director import CinematicDirectorTool
+from xianaibot.agent.tools._cinematic import workflow
+from xianaibot.agent.tools._cinematic.state import ProjectStore
+from xianaibot.agent.tools._cinematic.validators import CinematicDirectorError
+from xianaibot.agent.tools.cinematic_director import CinematicDirectorTool
 
 
 # ---------------------------------------------------------------------------

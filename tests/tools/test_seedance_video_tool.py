@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.agent.tools.kling_video import _DEFAULT_BASE_URL as _KLING_DEFAULT_BASE_URL
-from biscuitbot.agent.tools.seedance_video import (
+from xianaibot.agent.tools.kling_video import _DEFAULT_BASE_URL as _KLING_DEFAULT_BASE_URL
+from xianaibot.agent.tools.seedance_video import (
     _AIGC_CHARACTER_DISCLAIMER,
     SeedanceVideoError,
     SeedanceVideoTool,
@@ -140,8 +140,8 @@ async def test_execute_reports_missing_api_key(
 
 
 def test_config_registered_in_schema() -> None:
-    from biscuitbot.config.schema import SeedanceVideoToolConfig as SchemaConfig
-    from biscuitbot.config.schema import ToolsConfig
+    from xianaibot.config.schema import SeedanceVideoToolConfig as SchemaConfig
+    from xianaibot.config.schema import ToolsConfig
 
     assert "seedance_video" in ToolsConfig.model_fields
     assert SchemaConfig is SeedanceVideoToolConfig

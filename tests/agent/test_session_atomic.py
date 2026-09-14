@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from biscuitbot.session.manager import Session, SessionManager
+from xianaibot.session.manager import Session, SessionManager
 
 
 class TestAtomicSave:
@@ -63,7 +63,7 @@ class TestAtomicSave:
         ]
 
         import unittest.mock
-        with unittest.mock.patch("biscuitbot.session.manager.json.dumps", side_effect=failing_dumps):
+        with unittest.mock.patch("xianaibot.session.manager.json.dumps", side_effect=failing_dumps):
             try:
                 mgr.save(session)
             except OSError:

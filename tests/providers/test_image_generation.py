@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 import pytest
 
-from biscuitbot.providers.image_generation import (
+from xianaibot.providers.image_generation import (
     GeminiImageGenerationClient,
     GenericOpenAIImageGenerationClient,
     ImageGenerationError,
@@ -41,7 +41,7 @@ def allow_test_image_urls(monkeypatch: pytest.MonkeyPatch) -> None:
     由 test_download_image_data_url_blocks_private_target 单独覆盖。
     """
     monkeypatch.setattr(
-        "biscuitbot.providers.image_generation.validate_url_target",
+        "xianaibot.providers.image_generation.validate_url_target",
         lambda url, **kwargs: (True, ""),
     )
 
@@ -99,7 +99,7 @@ def test_image_gen_provider_configs_includes_model_extra_providers() -> None:
     """「模型厂商」页把能力专用厂商（volcengine/gemini/aihubmix）存进
     providers.model_extra 而非固定字段，image_gen_provider_configs 必须也能取到，
     否则文生图/文生视频（seedance 共用火山方舟密钥）会报「无 api key」。"""
-    from biscuitbot.config.schema import Config
+    from xianaibot.config.schema import Config
 
     cfg = Config(providers={"volcengine": {"apiKey": "test-ark-key"}})
     result = image_gen_provider_configs(cfg)
@@ -113,7 +113,7 @@ def test_image_gen_provider_configs_includes_model_extra_providers() -> None:
 def test_unified_provider_configs_includes_fixed_and_model_extra() -> None:
     """unified_provider_configs 必须同时返回固定字段与 model_extra 里的自定义厂商，
     这是 seedance_video 等工具按 provider 名解析密钥的统一来源。"""
-    from biscuitbot.config.schema import Config
+    from xianaibot.config.schema import Config
 
     cfg = Config(
         providers={
@@ -143,12 +143,12 @@ def test_newapi_image_client_resolves_v1_path() -> None:
 
 def test_newapi_registered_across_capabilities() -> None:
     """New API 中转站作为一个厂商，应同时具备 LLM/视觉/图像/TTS/转写能力。"""
-    from biscuitbot.audio.transcription_registry import get_transcription_provider
-    from biscuitbot.audio.tts_registry import get_tts_provider
-    from biscuitbot.config.schema import Config
-    from biscuitbot.providers.image_generation import get_image_gen_provider
-    from biscuitbot.providers.registry import find_by_name
-    from biscuitbot.webui.settings_api import _provider_capabilities
+    from xianaibot.audio.transcription_registry import get_transcription_provider
+    from xianaibot.audio.tts_registry import get_tts_provider
+    from xianaibot.config.schema import Config
+    from xianaibot.providers.image_generation import get_image_gen_provider
+    from xianaibot.providers.registry import find_by_name
+    from xianaibot.webui.settings_api import _provider_capabilities
 
     assert find_by_name("newapi") is not None
     assert get_image_gen_provider("newapi") is not None
@@ -171,8 +171,8 @@ def test_generic_image_client_resolves_v1_path() -> None:
 
 def test_provider_capabilities_respects_declared_capabilities() -> None:
     """用户在「模型厂商」页显式声明的能力标签应覆盖注册表自动推断。"""
-    from biscuitbot.config.schema import Config
-    from biscuitbot.webui.settings_api import _provider_capabilities
+    from xianaibot.config.schema import Config
+    from xianaibot.webui.settings_api import _provider_capabilities
 
     # newapi 默认自动推断出 llm/vision/image/tts/transcription，但用户可收窄为仅图像
     cfg = Config(
@@ -193,17 +193,17 @@ def test_provider_capabilities_respects_declared_capabilities() -> None:
 
 def test_generic_tts_spec_resolution() -> None:
     """未知厂商的 TTS 解析应合成通用 OpenAI 兼容规格而非报错。"""
-    from biscuitbot.audio.tts_registry import get_tts_provider, resolve_tts_spec
+    from xianaibot.audio.tts_registry import get_tts_provider, resolve_tts_spec
 
     assert get_tts_provider("my_relay") is None
     spec = resolve_tts_spec("my_relay")
     assert spec.name == "my_relay"
-    assert spec.adapter == "biscuitbot.providers.tts:OpenAITtsProvider"
+    assert spec.adapter == "xianaibot.providers.tts:OpenAITtsProvider"
 
 
 def test_generic_transcription_spec_resolution() -> None:
     """未知厂商的转写解析应合成通用 OpenAI 兼容规格而非回退默认厂商。"""
-    from biscuitbot.audio.transcription_registry import (
+    from xianaibot.audio.transcription_registry import (
         get_transcription_provider,
         resolve_transcription_spec,
     )
@@ -211,7 +211,7 @@ def test_generic_transcription_spec_resolution() -> None:
     assert get_transcription_provider("my_relay") is None
     spec = resolve_transcription_spec("my_relay")
     assert spec.name == "my_relay"
-    assert spec.adapter == "biscuitbot.providers.transcription:GenericOpenAITranscriptionProvider"
+    assert spec.adapter == "xianaibot.providers.transcription:GenericOpenAITranscriptionProvider"
 
 
 @pytest.mark.asyncio
@@ -489,7 +489,7 @@ async def test_openai_url_download_fallback(allow_test_image_urls: None) -> None
 @pytest.mark.asyncio
 async def test_download_image_data_url_blocks_private_target() -> None:
     """SSRF 防护：内网/回环地址的图片 URL 必须在校验阶段被拦截。"""
-    from biscuitbot.providers.image_generation import _download_image_data_url
+    from xianaibot.providers.image_generation import _download_image_data_url
 
     fake = FakeClient(FakeResponse({}, content=PNG_BYTES))
     with pytest.raises(ImageGenerationError, match="blocked"):

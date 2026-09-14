@@ -23,7 +23,7 @@ export interface HostRuntimeInfo {
   engine_transport?: "unix_socket";
 }
 
-export interface BiscuitbotHostApi {
+export interface XianaibotHostApi {
   getRuntimeInfo(): Promise<HostRuntimeInfo>;
   restartEngine(): Promise<void>;
   pickFolder(): Promise<string | null>;
@@ -47,7 +47,7 @@ export type HostSocketEvent =
   | { code?: number; id: string; reason?: string; type: "close" };
 
 type HostSocketBridge = Required<Pick<
-  BiscuitbotHostApi,
+  XianaibotHostApi,
   "closeSocket" | "onSocketEvent" | "openSocket" | "sendSocket"
 >>;
 
@@ -58,7 +58,7 @@ const HOST_WS_CLOSED = 3;
 
 declare global {
   interface Window {
-    biscuitbotHost?: BiscuitbotHostApi;
+    xianaibotHost?: XianaibotHostApi;
     __TAURI__?: TauriHostGlobal;
   }
 }
@@ -70,21 +70,21 @@ interface TauriHostGlobal {
   };
 }
 
-export function getHostApi(): BiscuitbotHostApi | null {
+export function getHostApi(): XianaibotHostApi | null {
   if (typeof window === "undefined") return null;
-  const existing = window.biscuitbotHost;
+  const existing = window.xianaibotHost;
   if (existing) return existing;
   return deriveTauriHostApi();
 }
 
 /**
- * 桌面壳目前不注入 `window.biscuitbotHost`，但 Tauri 壳启用了 `withGlobalTauri`，
+ * 桌面壳目前不注入 `window.xianaibotHost`，但 Tauri 壳启用了 `withGlobalTauri`，
  * 会暴露 `window.__TAURI__`。这里据此现场派生一个宿主对象：仅提供 `pickFolder`
  * （走系统目录选择框），其余方法保持 `undefined`——这样 `getHostApi()?.restartEngine`
  * 依旧落到 HTTP 兜底、`isNativeHost` 也不受影响（其已由 `surface === "native"` 决定）。
  * 浏览器下 `window.__TAURI__` 不存在，返回值仍为 `null`，行为不变。
  */
-function deriveTauriHostApi(): BiscuitbotHostApi | null {
+function deriveTauriHostApi(): XianaibotHostApi | null {
   const invoke = window.__TAURI__?.core?.invoke;
   if (!invoke) return null;
   const host = {
@@ -95,8 +95,8 @@ function deriveTauriHostApi(): BiscuitbotHostApi | null {
       if (Array.isArray(result)) return result[0] ?? null;
       return (result as string | null) ?? null;
     },
-  } as unknown as BiscuitbotHostApi;
-  window.biscuitbotHost = host;
+  } as unknown as XianaibotHostApi;
+  window.xianaibotHost = host;
   return host;
 }
 

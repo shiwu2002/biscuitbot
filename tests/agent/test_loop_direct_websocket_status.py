@@ -3,11 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.providers.base import GenerationSettings, LLMResponse
-from biscuitbot.session.webui_turns import WebuiTurnCoordinator
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.providers.base import GenerationSettings, LLMResponse
+from xianaibot.session.webui_turns import WebuiTurnCoordinator
 
 
 def _make_loop(tmp_path):

@@ -30,7 +30,7 @@ function settingsPayload(overrides: Partial<SettingsPayload> = {}): SettingsPayl
       temperature: 1.0,
       reasoning_effort: null,
       timezone: "Asia/Shanghai",
-      bot_name: "biscuitbot",
+      bot_name: "xianaibot",
       vision_model: null,
       vision_model_override: null,
       vision_model_configured: false,
@@ -76,7 +76,7 @@ describe("WelcomeSetup", () => {
   beforeEach(() => {
     vi.mocked(fetchSettings).mockReset();
     vi.mocked(completeSetup).mockReset();
-    window.localStorage.removeItem("biscuitbot-webui.setup-skipped");
+    window.localStorage.removeItem("xianaibot-webui.setup-skipped");
   });
 
   it("renders the provider list and hides oauth-only providers", async () => {

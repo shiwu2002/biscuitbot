@@ -1,6 +1,6 @@
 """Tests for LLMProvider._enforce_role_alternation."""
 
-from biscuitbot.providers.base import _SYNTHETIC_USER_CONTENT, LLMProvider
+from xianaibot.providers.base import _SYNTHETIC_USER_CONTENT, LLMProvider
 
 
 class TestEnforceRoleAlternation:

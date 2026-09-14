@@ -5,8 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.agent.employees import (
+from xianaibot.agent.context import ContextBuilder
+from xianaibot.agent.employees import (
     BUILTIN_EMPLOYEES_VERSION,
     EmployeeStore,
     is_image_avatar,

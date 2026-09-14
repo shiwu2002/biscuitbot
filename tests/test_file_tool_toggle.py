@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 
-from biscuitbot.agent.tools.context import ToolContext
-from biscuitbot.agent.tools.file_state import FileStates
-from biscuitbot.agent.tools.filesystem import FileToolsConfig, ReadFileTool
-from biscuitbot.agent.tools.loader import ToolLoader
-from biscuitbot.agent.tools.registry import ToolRegistry
-from biscuitbot.config.schema import Config, ToolsConfig
+from xianaibot.agent.tools.context import ToolContext
+from xianaibot.agent.tools.file_state import FileStates
+from xianaibot.agent.tools.filesystem import FileToolsConfig, ReadFileTool
+from xianaibot.agent.tools.loader import ToolLoader
+from xianaibot.agent.tools.registry import ToolRegistry
+from xianaibot.config.schema import Config, ToolsConfig
 
 FILE_TOOL_NAMES = {
     "apply_patch",

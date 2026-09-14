@@ -10,7 +10,7 @@ import { ApiError, completeSetup, fetchSettings } from "@/lib/api";
 import type { SettingsPayload } from "@/lib/types";
 import { providerBrand } from "@/lib/provider-brand";
 
-const SETUP_SKIP_KEY = "biscuitbot-webui.setup-skipped";
+const SETUP_SKIP_KEY = "xianaibot-webui.setup-skipped";
 
 /**
  * Pre-filled recommended model per provider (the fallback when unset).
@@ -259,7 +259,7 @@ export function WelcomeSetup({
             <Rocket className="h-7 w-7" aria-hidden />
           </div>
           <p className="mt-2 text-xl font-semibold leading-6">
-            {tx("setup.welcome.title", "欢迎使用 biscuitbot")}
+            {tx("setup.welcome.title", "欢迎使用夏奈儿")}
           </p>
           <p className="max-w-sm text-[13px] leading-5 text-muted-foreground">
             {tx(

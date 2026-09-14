@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-biscuitbot 是一个轻量级、开源的 AI Agent 框架（Python 3.11+ / asyncio）+ React/TypeScript WebUI，另有 Tauri 2 桌面壳。核心循环：**聊天渠道收消息 → 调用 LLM Provider → 执行工具 → 管理会话记忆**。
+XiaNaiBot（产品名：夏奈儿，智能体名：夏奈）是一个轻量级、开源的 AI Agent 框架（Python 3.11+ / asyncio）+ React/TypeScript WebUI，另有 Tauri 2 桌面壳。核心循环：**聊天渠道收消息 → 调用 LLM Provider → 执行工具 → 管理会话记忆**。
 
 CLI、命令帮助、运行时提示、交互引导全部为中文。
 
@@ -18,20 +18,20 @@ uv pip install -e ".[dev]"
 cd webui && bun install
 
 # 运行
-uv run biscuitbot gateway        # 主网关（channels + WebUI + agent，自动打开浏览器）
-uv run biscuitbot agent          # CLI 对话
-uv run biscuitbot serve          # OpenAI 兼容 API 服务器
-uv run biscuitbot onboard --wizard  # 交互式配置初始化
+uv run xianaibot gateway        # 主网关（channels + WebUI + agent，自动打开浏览器）
+uv run xianaibot agent          # CLI 对话
+uv run xianaibot serve          # OpenAI 兼容 API 服务器
+uv run xianaibot onboard --wizard  # 交互式配置初始化
 
 # Python 测试
 uv run pytest tests/             # 全部
 uv run pytest tests/agent/tools/test_xxx.py::test_func -v   # 单个测试
 
 # Python lint / 类型检查
-uv run ruff check biscuitbot     # 只跑 check（见下方 ruff 陷阱）
-uv run pyright biscuitbot
+uv run ruff check xianaibot     # 只跑 check（见下方 ruff 陷阱）
+uv run pyright xianaibot
 
-# WebUI（构建输出到 biscuitbot/web/dist，会打包进 wheel）
+# WebUI（构建输出到 xianaibot/web/dist，会打包进 wheel）
 cd webui && bun run dev          # 开发服务器（代理 API/WS 到网关 :8765）
 cd webui && bun run build        # tsc + vite build
 cd webui && bun run test         # vitest
@@ -42,7 +42,7 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`
 
 ## 核心架构
 
-**数据流**：`Channels`（`biscuitbot/channels/`）从外部平台收消息 → 发布 `InboundMessage` 到异步 `MessageBus`（`biscuitbot/bus/queue.py`）→ `AgentLoop` 消费并驱动 8 状态状态机（`RESTORE → COMPACT → COMMAND → BUILD → RUN → SAVE → RESPOND → DONE`，`biscuitbot/agent/loop.py`）→ `AgentRunner` 执行多轮 LLM + 工具调用（`biscuitbot/agent/runner.py`）→ 以 `OutboundMessage` 回传 channel。详见 `docs/architecture.md`。
+**数据流**：`Channels`（`xianaibot/channels/`）从外部平台收消息 → 发布 `InboundMessage` 到异步 `MessageBus`（`xianaibot/bus/queue.py`）→ `AgentLoop` 消费并驱动 8 状态状态机（`RESTORE → COMPACT → COMMAND → BUILD → RUN → SAVE → RESPOND → DONE`，`xianaibot/agent/loop.py`）→ `AgentRunner` 执行多轮 LLM + 工具调用（`xianaibot/agent/runner.py`）→ 以 `OutboundMessage` 回传 channel。详见 `docs/architecture.md`。
 
 **关键子系统**：
 
@@ -51,14 +51,14 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`
 - **Channels**（`channels/`）：飞书、钉钉、QQ、napcat（QQ 协议端）、微信、企业微信、Email、WebSocket、mochat 等；`manager.py` 发现并协调。每个 channel 文件应自包含、可独立阅读（不抽共享基类）；通用工具（文件名净化、消息去重 LRU、原子 JSON 写）复用 `utils/helpers.py`。
 - **Tools**（`agent/tools/`）：`registry.py` 为工具注册表；文件系统、Shell（含沙箱）、网页搜索、MCP、cron、子代理、数字员工（`employee.py`/`employee_discover.py`）等。渐进式发现 + 冷门仓库（`cold_storage.py`）。
 - **Memory / Session**（`agent/memory.py`、`session/`）：JSONL 持久化，原子写（tmp + fsync + rename）。Dream 两阶段记忆整合 + AutoCompact。
-- **Config**（`config/schema.py`、`loader.py`）：Pydantic 模型，从 `~/.biscuitbot/config.json` 加载（注意是 JSON，非 yaml）。
+- **Config**（`config/schema.py`、`loader.py`）：Pydantic 模型，从 `~/.xianaibot/config.json` 加载（注意是 JSON，非 yaml）。
 - **Security**（`security/`）：SSRF 防护（`network.py`）、workspace 边界、guard_level 策略、PTH 防护。
-- **WebUI 后端**（`biscuitbot/webui/`）：WebSocket 多路复用协议 + HTTP API，覆盖资产、技能/能力、会话分叉、媒体、知识库、人才市场等。
+- **WebUI 后端**（`xianaibot/webui/`）：WebSocket 多路复用协议 + HTTP API，覆盖资产、技能/能力、会话分叉、媒体、知识库、人才市场等。
 - **Capability 模型**（`capabilities/registry.py`）：把「技能 / CLI 应用 / MCP 预设」读时聚合为统一能力列表，按 `runtime`（`prompt`/`process`/`mcp`）区分执行方式。这是近期「能力中心」重构的产物。
 
 ## 桌面打包（Tauri 2 + PyInstaller sidecar）
 
-桌面应用 = Tauri 2 壳（`src-tauri/`，系统 WebView 渲染 WebUI）+ PyInstaller onedir 打包的无头 Python gateway（sidecar 子进程）。构建脚本 `scripts/build-desktop.sh`（macOS/Linux）、`scripts/build-desktop.ps1`（Windows），sidecar 打包（排除 telegram/slack/lark 等 channel 依赖）内联在脚本中。`biscuitbot/desktop/` 含无头 gateway 运行时（`start_gateway`）与 sidecar 看门狗（靠 `BISCUITBOT_PARENT_PID` 探测壳存活，每 5s `os.kill(pid,0)`）。桌面端为**托盘常驻**：关闭〔X〕窗口隐藏到托盘、gateway 继续在后台跑 cron/自动化任务；仅托盘菜单「退出」才退出进程并清理 sidecar。
+桌面应用 = Tauri 2 壳（`src-tauri/`，系统 WebView 渲染 WebUI）+ PyInstaller onedir 打包的无头 Python gateway（sidecar 子进程）。构建脚本 `scripts/build-desktop.sh`（macOS/Linux）、`scripts/build-desktop.ps1`（Windows），sidecar 打包（排除 telegram/slack/lark 等 channel 依赖）内联在脚本中。`xianaibot/desktop/` 含无头 gateway 运行时（`start_gateway`）与 sidecar 看门狗（靠 `XIANAIBOT_PARENT_PID` 探测壳存活，每 5s `os.kill(pid,0)`）。桌面端为**托盘常驻**：关闭〔X〕窗口隐藏到托盘、gateway 继续在后台跑 cron/自动化任务；仅托盘菜单「退出」才退出进程并清理 sidecar。
 
 改完前端需重跑 `scripts/build-desktop.sh`（dist 嵌在 PyInstaller bundle 里）。
 
@@ -67,7 +67,7 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`
 - **不要运行 `ruff format`**：会破坏 git blame 历史，只用 `ruff check`（见 `.agent/gotchas.md`）。
 - **Config `${VAR}` 引用**：`config/loader.py` 在加载时解析 `config.json` 里的 `${VAR}`，环境变量缺失会抛 `ValueError` 并回退默认配置。
 - **MCP cancel scope 是 task-local 的**：永远不要在当前 task 之外 `stack.aclose()` 或调用 `connect_mcp_servers`（会在别的 task 进入 anyio cancel scope → `RuntimeError` + 泄漏）。tracked as `AgentLoop._mcp_owner_task`；跨 task 时用 deferred close（`_mcp_deferred_stacks`）/ deferred reconnect（`_mcp_reconnect_requests`）。详见 `docs/architecture.md` §8 与 `.agent/gotchas.md`。
-- **site-packages 遮蔽**：`.venv` 里装的 biscuitbot 可能是普通（非 editable）副本，console script 会走 site-packages 旧代码 → 新路由 404。跑 `biscuitbot gateway` 要加 `PYTHONPATH=<repo>`，或用 `pip install -e . --no-build-isolation`。
+- **site-packages 遮蔽**：`.venv` 里装的 xianaibot 可能是普通（非 editable）副本，console script 会走 site-packages 旧代码 → 新路由 404。跑 `xianaibot gateway` 要加 `PYTHONPATH=<repo>`，或用 `pip install -e . --no-build-isolation`。
 - **React hooks 顺序**：`webui/src` 中 hooks 必须全部放在条件 return 之前，否则触发 React #310「Rendered more hooks」白屏（历史根因在 `ChatList.tsx`）。
 - **Workspace 边界 / SSRF**：任何新路径处理须过 `_resolve_path`（`agent/tools/filesystem.py`）；工具内禁止直接 `httpx.get`/`requests.get`，须过 `validate_url_target`（`security/network.py`）。这些结构性访问控制**不**受 `guard_level` 门控。
 

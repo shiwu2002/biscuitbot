@@ -40,7 +40,7 @@ import {
 } from "@/lib/bootstrap";
 import { displayTitle } from "@/lib/chat-groups";
 import { deriveTitle } from "@/lib/format";
-import { BiscuitbotClient } from "@/lib/biscuitbot-client";
+import { XianaibotClient } from "@/lib/xianaibot-client";
 import { ClientProvider, useClient } from "@/providers/ClientProvider";
 import type {
   ChatSummary,
@@ -68,17 +68,17 @@ type BootState =
   | { status: "setup"; token: string }
   | {
       status: "ready";
-      client: BiscuitbotClient;
+      client: XianaibotClient;
       token: string;
       tokenExpiresAt: number;
       modelName: string | null;
       runtimeSurface: RuntimeSurface;
     };
 
-const SIDEBAR_STORAGE_KEY = "biscuitbot-webui.sidebar";
-const SESSION_UPDATES_STORAGE_KEY = "biscuitbot-webui.sidebar.session-updates.v1";
-const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "biscuitbot-webui.sidebar.completed-runs.v1";
-const RESTART_STARTED_KEY = "biscuitbot-webui.restartStartedAt";
+const SIDEBAR_STORAGE_KEY = "xianaibot-webui.sidebar";
+const SESSION_UPDATES_STORAGE_KEY = "xianaibot-webui.sidebar.session-updates.v1";
+const LEGACY_COMPLETED_RUNS_STORAGE_KEY = "xianaibot-webui.sidebar.completed-runs.v1";
+const RESTART_STARTED_KEY = "xianaibot-webui.restartStartedAt";
 const SIDEBAR_WIDTH = 272;
 const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
@@ -374,11 +374,11 @@ function HostChrome({
       <div className="host-no-drag pointer-events-auto absolute left-3 top-2 flex items-center gap-1">
         <div
           className="flex h-6 w-6 shrink-0 select-none items-center justify-center rounded-lg bg-[hsl(var(--cyber-glow)/0.15)] shadow-[0_0_12px_hsl(var(--cyber-glow-soft)/0.35)]"
-          title="biscuitbot"
+          title="夏奈儿"
         >
           <img
-            src="/brand/biscuitbot_icon.png?v=20260903"
-            alt="biscuitbot"
+            src="/brand/xianaibot_icon.png?v=20260903"
+            alt="夏奈儿"
             className="h-5 w-5 shrink-0 select-none object-contain"
             draggable={false}
           />
@@ -417,7 +417,7 @@ export default function App() {
   const bootstrapSecretRef = useRef("");
 
   const refreshReadyClient = useCallback(
-    async (client: BiscuitbotClient, fallbackSurface: RuntimeSurface) => {
+    async (client: XianaibotClient, fallbackSurface: RuntimeSurface) => {
       const boot = await fetchBootstrap("", bootstrapSecretRef.current);
       const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
       const runtimeSurface = boot.runtime_surface
@@ -472,7 +472,7 @@ export default function App() {
           const url = deriveWsUrl(boot.ws_path, boot.token, boot.ws_url);
           const runtimeSurface = toRuntimeSurface(boot.runtime_surface);
           const runtimeHost = createRuntimeHost(runtimeSurface, boot.runtime_capabilities);
-          const client = new BiscuitbotClient({
+          const client = new XianaibotClient({
             url,
             socketFactory: runtimeHost.socketFactory,
             onReauth: async () => {
@@ -599,7 +599,7 @@ export default function App() {
       const refreshed = await refreshReadyClient(state.client, state.runtimeSurface);
       return refreshed.token;
     }
-    // 打包壳未注入 window.biscuitbotHost：走后端 HTTP 兜底。sidecar 响应后会
+    // 打包壳未注入 window.xianaibotHost：走后端 HTTP 兜底。sidecar 响应后会
     // 退出进程，Tauri 壳自动重新拉起并导航回 WebUI（整页刷新），这里直接返回
     // 当前 token，无需在重启窗口内再刷新客户端。
     await requestEngineRestart(state.token);

@@ -58,7 +58,7 @@ function baseSettingsPayload() {
       temperature: 0.1,
       reasoning_effort: null,
       timezone: "UTC",
-      bot_name: "biscuitbot",
+      bot_name: "xianaibot",
       bot_icon: "nb",
       tool_hint_max_length: 40,
     },
@@ -211,7 +211,7 @@ vi.mock("@/lib/bootstrap", () => ({
   clearSavedSecret: vi.fn(),
 }));
 
-vi.mock("@/lib/biscuitbot-client", () => {
+vi.mock("@/lib/xianaibot-client", () => {
   class MockClient {
     status = "idle" as const;
     defaultChatId: string | null = null;
@@ -237,7 +237,7 @@ vi.mock("@/lib/biscuitbot-client", () => {
     updateUrl = updateUrlSpy;
   }
 
-  return { BiscuitbotClient: MockClient };
+  return { XianaibotClient: MockClient };
 });
 
 import { deriveWsUrl, fetchBootstrap } from "@/lib/bootstrap";
@@ -259,9 +259,9 @@ describe("App layout", () => {
     sessionUpdateHandlers.clear();
     window.history.replaceState(null, "", "/");
     setNavigatorPlatform("Linux x86_64");
-    localStorage.removeItem("biscuitbot-webui.sidebar");
-    localStorage.removeItem("biscuitbot-webui.sidebar.completed-runs.v1");
-    localStorage.removeItem("biscuitbot-webui.sidebar.session-updates.v1");
+    localStorage.removeItem("xianaibot-webui.sidebar");
+    localStorage.removeItem("xianaibot-webui.sidebar.completed-runs.v1");
+    localStorage.removeItem("xianaibot-webui.sidebar.session-updates.v1");
     vi.mocked(fetchBootstrap).mockReset().mockResolvedValue({
       token: "tok",
       ws_path: "/",
@@ -388,7 +388,7 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("能力 · biscuitbot");
+    expect(document.title).toBe("能力 · 夏奈儿");
 
     fireEvent.click(screen.getByRole("button", { name: "返回聊天" }));
     expect(await screen.findByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
@@ -497,7 +497,7 @@ describe("App layout", () => {
       "aria-current",
       "page",
     );
-    expect(document.title).toBe("自动任务 · biscuitbot");
+    expect(document.title).toBe("自动任务 · 夏奈儿");
 
     const searchInput = within(automationsMain as HTMLElement).getByPlaceholderText(
       "搜索任务、消息、关联会话或计划",
@@ -583,7 +583,7 @@ describe("App layout", () => {
     );
     expect(updateCall).toBeTruthy();
     const headers = updateCall?.[1]?.headers as Record<string, string>;
-    expect(JSON.parse(decodeURIComponent(headers["X-Biscuitbot-Automation-Values"]))).toEqual({
+    expect(JSON.parse(decodeURIComponent(headers["X-Xianaibot-Automation-Values"]))).toEqual({
       name: "Past one-shot",
       message: "Updated one-shot message",
     });
@@ -725,7 +725,7 @@ describe("App layout", () => {
     expect(screen.queryByText("近期无问题")).not.toBeInTheDocument();
     expect(screen.queryByText("Workspace automations")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "刷新" })).not.toBeInTheDocument();
-    expect(document.title).toBe("自动任务 · biscuitbot");
+    expect(document.title).toBe("自动任务 · 夏奈儿");
   });
 
   it("fully collapses the native host sidebar and previews it on hover", async () => {
@@ -1053,7 +1053,7 @@ describe("App layout", () => {
         chatId: "new",
         createdAt: "2026-04-15T12:00:00Z",
         updatedAt: "2026-04-15T12:00:00Z",
-        preview: "hi biscuitbot",
+        preview: "hi 夏奈",
       },
       {
         key: "websocket:alpha",
@@ -1270,7 +1270,7 @@ describe("App layout", () => {
       },
     ];
     localStorage.setItem(
-      "biscuitbot-webui.sidebar.session-updates.v1",
+      "xianaibot-webui.sidebar.session-updates.v1",
       JSON.stringify(["chat-b"]),
     );
 
@@ -1313,7 +1313,7 @@ describe("App layout", () => {
     render(<App />);
 
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
-    await waitFor(() => expect(document.title).toBe("Active after reload · biscuitbot"));
+    await waitFor(() => expect(document.title).toBe("Active after reload · 夏奈儿"));
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
     expect(
       within(sidebar).getByRole("button", { name: /^Active after reload$/ }),
@@ -1368,7 +1368,7 @@ describe("App layout", () => {
                 temperature: 0.1,
                 reasoning_effort: null,
                 timezone: "UTC",
-                bot_name: "biscuitbot",
+                bot_name: "xianaibot",
                 bot_icon: "nb",
                 tool_hint_max_length: 40,
               },
@@ -1564,12 +1564,12 @@ describe("App layout", () => {
     fireEvent.click(within(sidebar).getByRole("button", { name: "设置" }));
 
     expect(await screen.findByRole("heading", { name: "概览" })).toBeInTheDocument();
-    expect(document.title).toBe("设置 · biscuitbot");
+    expect(document.title).toBe("设置 · 夏奈儿");
     expect(screen.getByTestId("overview-logo-openai")).toBeInTheDocument();
     expect(screen.queryByTestId("overview-logo-brave")).not.toBeInTheDocument();
     expect(screen.queryByTestId("overview-logo-openrouter")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("overview-logo-biscuitbot-gateway")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("overview-logo-biscuitbot-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("overview-logo-xianaibot-gateway")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("overview-logo-xianaibot-workspace")).not.toBeInTheDocument();
     expect(screen.queryByRole("navigation", { name: "侧边栏导航" })).not.toBeInTheDocument();
     const settingsNav = screen.getByRole("navigation", { name: "设置分区" });
     expect(settingsNav.className).toContain("overflow-x-auto");
@@ -1769,7 +1769,7 @@ describe("App layout", () => {
                 temperature: 0.1,
                 reasoning_effort: null,
                 timezone: "UTC",
-                bot_name: "biscuitbot",
+                bot_name: "xianaibot",
                 bot_icon: "nb",
                 tool_hint_max_length: 40,
               },
@@ -1882,13 +1882,13 @@ describe("App layout", () => {
     await waitFor(() => expect(connectSpy).toHaveBeenCalled());
     const sidebar = screen.getByRole("navigation", { name: "侧边栏导航" });
     fireEvent.click(within(sidebar).getByRole("button", { name: "新建对话" }));
-    await waitFor(() => expect(document.title).toBe("biscuitbot"));
+    await waitFor(() => expect(document.title).toBe("夏奈儿"));
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "设置" }));
     expect(await screen.findByRole("heading", { name: "概览" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "返回聊天" }));
 
-    await waitFor(() => expect(document.title).toBe("biscuitbot"));
+    await waitFor(() => expect(document.title).toBe("夏奈儿"));
     expect(screen.getByText(HERO_GREETING_PATTERN)).toBeInTheDocument();
   });
 

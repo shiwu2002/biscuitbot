@@ -2,7 +2,7 @@
 
 本文档定义数字员工「人才市场」注册表的 JSON 格式。人才市场项目启动后，
 注册表会托管在某个 `http(s)://` 地址上，由后台 CLI 配置
-（`biscuitbot talent-market set <url>`），WebUI / 桌面应用只读拉取。
+（`xianaibot talent-market set <url>`），WebUI / 桌面应用只读拉取。
 
 ## 1. 顶层结构
 

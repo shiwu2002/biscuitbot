@@ -6,15 +6,15 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="biscuitbot web UI — chat with your biscuitbot workspace."
+      content="夏奈儿 web UI — chat with your 夏奈儿 workspace."
       data-i18n-meta="description"
     />
     <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#161618" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/x-icon" href="/brand/favicon.ico" />
-    <link rel="icon" type="image/png" sizes="32x32" href="/brand/biscuitbot_favicon_32.png" />
-    <link rel="icon" type="image/png" sizes="73x75" href="/brand/biscuitbot_icon.png" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/brand/biscuitbot_apple_touch.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/xianaibot_favicon_32.png" />
+    <link rel="icon" type="image/png" sizes="73x75" href="/brand/xianaibot_icon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/xianaibot_apple_touch.png" />
     <style>
       html,
       body,
@@ -81,7 +81,7 @@
     <script>
       (function () {
         try {
-          var stored = localStorage.getItem("biscuitbot-webui.theme");
+          var stored = localStorage.getItem("xianaibot-webui.theme");
           var dark =
             stored === "dark" ||
             (!stored &&
@@ -93,43 +93,43 @@
     </script>
     <script>
       (function () {
-        var localeKey = "biscuitbot.locale";
+        var localeKey = "xianaibot.locale";
         var copy = {
           en: {
-            boot: "Loading biscuitbot…",
-            description: "biscuitbot web UI — chat with your biscuitbot workspace."
+            boot: "Loading 夏奈儿…",
+            description: "夏奈儿 web UI — chat with your 夏奈儿 workspace."
           },
           "zh-CN": {
-            boot: "正在加载 biscuitbot…",
-            description: "biscuitbot Web UI —— 与你的 biscuitbot 工作区对话。"
+            boot: "正在加载夏奈儿…",
+            description: "夏奈儿 Web UI —— 与你的夏奈儿工作区对话。"
           },
           "zh-TW": {
-            boot: "正在載入 biscuitbot…",
-            description: "biscuitbot Web UI —— 與你的 biscuitbot 工作區對話。"
+            boot: "正在載入夏奈兒…",
+            description: "夏奈兒 Web UI —— 與你的夏奈兒工作區對話。"
           },
           fr: {
-            boot: "Chargement de biscuitbot…",
-            description: "Interface web biscuitbot — discutez avec votre espace de travail biscuitbot."
+            boot: "Chargement de 夏奈儿…",
+            description: "Interface web 夏奈儿 — discutez avec votre espace de travail 夏奈儿."
           },
           ja: {
-            boot: "biscuitbot を読み込み中…",
-            description: "biscuitbot Web UI — biscuitbot ワークスペースと会話します。"
+            boot: "夏奈儿 を読み込み中…",
+            description: "夏奈儿 Web UI — 夏奈儿 ワークスペースと会話します。"
           },
           ko: {
-            boot: "biscuitbot 불러오는 중…",
-            description: "biscuitbot 웹 UI — biscuitbot 작업공간과 대화하세요."
+            boot: "夏奈儿 불러오는 중…",
+            description: "夏奈儿 웹 UI — 夏奈儿 작업공간과 대화하세요."
           },
           es: {
-            boot: "Cargando biscuitbot…",
-            description: "Interfaz web de biscuitbot: conversa con tu espacio de trabajo de biscuitbot."
+            boot: "Cargando 夏奈儿…",
+            description: "Interfaz web de 夏奈儿: conversa con tu espacio de trabajo de 夏奈儿."
           },
           vi: {
-            boot: "Đang tải biscuitbot…",
-            description: "Giao diện web biscuitbot — trò chuyện với workspace biscuitbot của bạn."
+            boot: "Đang tải 夏奈儿…",
+            description: "Giao diện web 夏奈儿 — trò chuyện với workspace 夏奈儿 của bạn."
           },
           id: {
-            boot: "Memuat biscuitbot…",
-            description: "UI web biscuitbot — ngobrol dengan workspace biscuitbot Anda."
+            boot: "Memuat 夏奈儿…",
+            description: "UI web 夏奈儿 — ngobrol dengan workspace 夏奈儿 Anda."
           }
         };
 
@@ -171,14 +171,14 @@
         } catch {}
       })();
     </script>
-    <title>biscuitbot</title>
+    <title>夏奈儿</title>
   </head>
   <body class="bg-background text-foreground antialiased">
     <div id="root">
       <div class="boot-splash">
         <div class="boot-splash-inner">
           <span class="boot-dot" aria-hidden="true"></span>
-          <span data-boot-copy>Loading biscuitbot…</span>
+          <span data-boot-copy>Loading 夏奈儿…</span>
         </div>
       </div>
     </div>

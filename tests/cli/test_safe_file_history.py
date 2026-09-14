@@ -3,7 +3,7 @@
 Surrogate characters in CLI input must not crash history file writes.
 """
 
-from biscuitbot.cli.commands import SafeFileHistory, _sanitize_surrogates
+from xianaibot.cli.commands import SafeFileHistory, _sanitize_surrogates
 
 
 class TestSanitizeSurrogates:
@@ -23,7 +23,7 @@ class TestSanitizeSurrogates:
 
     def test_emoji_already_correct(self):
         """Properly encoded emoji should pass through unchanged."""
-        assert _sanitize_surrogates("hello 🐈 biscuitbot") == "hello 🐈 biscuitbot"
+        assert _sanitize_surrogates("hello 🐈 xianaibot") == "hello 🐈 xianaibot"
 
     def test_mixed_unicode_preserved(self):
         assert _sanitize_surrogates("你好 hello こんにちは 🎉") == "你好 hello こんにちは 🎉"
@@ -53,9 +53,9 @@ class TestSafeFileHistory:
 
     def test_emoji_preserved(self, tmp_path):
         hist = SafeFileHistory(str(tmp_path / "history"))
-        hist.store_string("hello 🐈 biscuitbot")
+        hist.store_string("hello 🐈 xianaibot")
         entries = list(hist.load_history_strings())
-        assert entries[0] == "hello 🐈 biscuitbot"
+        assert entries[0] == "hello 🐈 xianaibot"
 
     def test_mixed_unicode_preserved(self, tmp_path):
         """CJK + emoji + latin should all pass through cleanly."""

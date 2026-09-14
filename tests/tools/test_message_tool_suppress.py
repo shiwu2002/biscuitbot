@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.agent.tools.message import MessageTool
-from biscuitbot.bus.events import InboundMessage, OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.providers.base import LLMResponse, ToolCallRequest
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.agent.tools.message import MessageTool
+from xianaibot.bus.events import InboundMessage, OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.providers.base import LLMResponse, ToolCallRequest
 
 
 def _make_loop(tmp_path: Path) -> AgentLoop:
@@ -156,7 +156,7 @@ class TestMessageToolTurnTracking:
 
     def test_sent_in_turn_tracks_same_target(self) -> None:
         tool = MessageTool()
-        from biscuitbot.agent.tools.context import RequestContext
+        from xianaibot.agent.tools.context import RequestContext
         tool.set_context(RequestContext(channel="feishu", chat_id="chat1"))
         assert not tool._sent_in_turn
         tool._sent_in_turn = True

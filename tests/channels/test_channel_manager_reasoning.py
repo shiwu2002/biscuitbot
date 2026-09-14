@@ -21,11 +21,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.channels.manager import ChannelManager
-from biscuitbot.config.schema import Config
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.base import BaseChannel
+from xianaibot.channels.manager import ChannelManager
+from xianaibot.config.schema import Config
 
 
 class _MockChannel(BaseChannel):
@@ -67,7 +67,7 @@ def manager() -> ChannelManager:
 
 def test_websocket_gateway_uses_configured_workspace_restriction(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "biscuitbot.webui.workspaces.read_webui_default_access_mode",
+        "xianaibot.webui.workspaces.read_webui_default_access_mode",
         lambda: "default",
     )
     config = Config.model_validate(

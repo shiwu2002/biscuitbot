@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from biscuitbot.session.manager import SessionManager
+from xianaibot.session.manager import SessionManager
 
 _IS_WINDOWS = sys.platform == "win32"
 

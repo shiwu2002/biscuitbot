@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 
-from biscuitbot.agent.tools.context import RequestContext
-from biscuitbot.agent.tools.cron import CronTool
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.agent.tools.context import RequestContext
+from xianaibot.agent.tools.cron import CronTool
+from xianaibot.agent.tools.registry import ToolRegistry
 
 
 class _SvcStub:

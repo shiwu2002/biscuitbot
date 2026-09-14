@@ -7,15 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from biscuitbot.agent.hook import AgentHookContext
-from biscuitbot.agent.runner import AgentRunResult
-from biscuitbot.agent.subagent import (
+from xianaibot.agent.hook import AgentHookContext
+from xianaibot.agent.runner import AgentRunResult
+from xianaibot.agent.subagent import (
     SubagentManager,
     SubagentStatus,
     _SubagentHook,
 )
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.providers.base import LLMProvider
+from xianaibot.bus.queue import MessageBus
+from xianaibot.providers.base import LLMProvider
 
 # ---------------------------------------------------------------------------
 # Helpers

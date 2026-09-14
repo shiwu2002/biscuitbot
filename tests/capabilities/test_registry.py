@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.capabilities.registry import CapabilityRegistry, normalize_kind
+from xianaibot.capabilities.registry import CapabilityRegistry, normalize_kind
 
 
 def _write_skill(workspace: Path, name: str, frontmatter: str, body: str = "") -> None:
@@ -36,7 +36,7 @@ class _FakeCliManager:
 def empty_mcp(monkeypatch: pytest.MonkeyPatch):
     """让 MCP 来源返回空预设，隔离 load_config 副作用。"""
     monkeypatch.setattr(
-        "biscuitbot.webui.mcp_presets_api.mcp_presets_payload",
+        "xianaibot.webui.mcp_presets_api.mcp_presets_payload",
         lambda **_: {"presets": []},
     )
 
@@ -242,7 +242,7 @@ def test_registry_mcp_presets_are_mcp(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.mcp_presets_api.mcp_presets_payload",
+        "xianaibot.webui.mcp_presets_api.mcp_presets_payload",
         lambda **_: {
             "presets": [
                 {

@@ -1,7 +1,7 @@
 {
   "agents": {
     "defaults": {
-      "workspace": "~/.biscuitbot/workspace",
+      "workspace": "~/.xianaibot/workspace",
       "model": "deepseek/deepseek-v4-pro",
       "provider": "deepseek",
       "maxTokens": 8192,

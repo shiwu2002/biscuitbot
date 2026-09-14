@@ -1,7 +1,7 @@
 import pytest
 
-from biscuitbot.bus.events import InboundMessage
-from biscuitbot.bus.runtime_events import (
+from xianaibot.bus.events import InboundMessage
+from xianaibot.bus.runtime_events import (
     RuntimeEventBus,
     RuntimeEventContext,
     RuntimeEventPublisher,

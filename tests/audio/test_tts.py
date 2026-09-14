@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from biscuitbot.audio.tts import (
+from xianaibot.audio.tts import (
     EffectiveTtsConfig,
     resolve_tts_config,
     resolve_tts_config_with_overrides,
 )
-from biscuitbot.audio.tts_registry import resolve_tts_provider
-from biscuitbot.config.schema import Config
+from xianaibot.audio.tts_registry import resolve_tts_provider
+from xianaibot.config.schema import Config
 
 
 def test_default_resolves_to_edge_tts() -> None:

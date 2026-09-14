@@ -122,7 +122,7 @@ export class WhatsAppClient {
       version,
       logger,
       printQRInTerminal: false,
-      browser: ['biscuitbot', 'cli', VERSION],
+      browser: ['xianaibot', 'cli', VERSION],
       syncFullHistory: false,
       markOnlineOnConnect: false,
     });

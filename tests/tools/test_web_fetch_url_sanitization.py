@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from biscuitbot.agent.tools.web import WebFetchTool, _validate_url
+from xianaibot.agent.tools.web import WebFetchTool, _validate_url
 
 
 def _fake_resolve_public(hostname, port, family=0, type_=0):
@@ -42,8 +42,8 @@ class FakeClient:
 
 
 def _patch_env():
-    return patch("biscuitbot.security.network.socket.getaddrinfo", _fake_resolve_public), \
-           patch("biscuitbot.agent.tools.web.httpx.AsyncClient", FakeClient)
+    return patch("xianaibot.security.network.socket.getaddrinfo", _fake_resolve_public), \
+           patch("xianaibot.agent.tools.web.httpx.AsyncClient", FakeClient)
 
 
 # --- urlparse / _validate_url level tests ---

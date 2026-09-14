@@ -88,7 +88,7 @@ vi.mock("@/lib/bootstrap", () => ({
   clearSavedSecret: vi.fn(),
 }));
 
-vi.mock("@/lib/biscuitbot-client", () => {
+vi.mock("@/lib/xianaibot-client", () => {
   class MockClient {
     status = "idle" as const;
     defaultChatId: string | null = null;
@@ -110,7 +110,7 @@ vi.mock("@/lib/biscuitbot-client", () => {
     close = vi.fn();
     updateUrl = vi.fn();
   }
-  return { BiscuitbotClient: MockClient };
+  return { XianaibotClient: MockClient };
 });
 
 import App from "@/App";

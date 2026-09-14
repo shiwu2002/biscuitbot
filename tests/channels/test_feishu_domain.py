@@ -2,8 +2,8 @@
 from unittest.mock import MagicMock
 
 
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.feishu import FeishuChannel, FeishuConfig
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.feishu import FeishuChannel, FeishuConfig
 
 
 def _make_channel(domain: str = "feishu") -> FeishuChannel:

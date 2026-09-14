@@ -1,9 +1,9 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { BiscuitbotClient } from "@/lib/biscuitbot-client";
+import type { XianaibotClient } from "@/lib/xianaibot-client";
 
 interface ClientContextValue {
-  client: BiscuitbotClient;
+  client: XianaibotClient;
   token: string;
   modelName: string | null;
 }
@@ -16,7 +16,7 @@ export function ClientProvider({
   modelName = null,
   children,
 }: {
-  client: BiscuitbotClient;
+  client: XianaibotClient;
   token: string;
   modelName?: string | null;
   children: ReactNode;
