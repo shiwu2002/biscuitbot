@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from biscuitbot.utils.runtime import (
+from xianaibot.utils.runtime import (
     build_repeated_error_reminder_message,
     error_signature,
     repeated_tool_call_error,
@@ -14,14 +14,14 @@ def test_shell_signature_collapses_grep_and_redirect_variations():
     """不同的 grep/head 尾部应坍缩到同一个 find 基命令签名。"""
     a = tool_call_signature(
         "exec",
-        {"command": 'find /Applications/biscuitbot.app -name "*.md" 2>/dev/null | grep -i "tool" | head -20'},
+        {"command": 'find /Applications/xianaibot.app -name "*.md" 2>/dev/null | grep -i "tool" | head -20'},
     )
     b = tool_call_signature(
         "exec",
-        {"command": 'find /Applications/biscuitbot.app -name "*.md" 2>/dev/null | grep -i "usage" | head -20'},
+        {"command": 'find /Applications/xianaibot.app -name "*.md" 2>/dev/null | grep -i "usage" | head -20'},
     )
     assert a == b
-    assert 'find /Applications/biscuitbot.app -name "*.md"' in a
+    assert 'find /Applications/xianaibot.app -name "*.md"' in a
 
 
 def test_shell_signature_for_plain_command():

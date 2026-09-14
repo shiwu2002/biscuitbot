@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.providers.base import LLMProvider
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.bus.queue import MessageBus
+from xianaibot.providers.base import LLMProvider
 
 
 def make_provider(
@@ -77,9 +77,9 @@ def make_loop(
         kwargs["hooks"] = hooks
 
     if patch_deps:
-        with patch("biscuitbot.agent.loop.ContextBuilder"), \
-             patch("biscuitbot.agent.loop.SessionManager"), \
-             patch("biscuitbot.agent.loop.SubagentManager") as MockSubMgr:
+        with patch("xianaibot.agent.loop.ContextBuilder"), \
+             patch("xianaibot.agent.loop.SessionManager"), \
+             patch("xianaibot.agent.loop.SubagentManager") as MockSubMgr:
             MockSubMgr.return_value.cancel_by_session = AsyncMock(return_value=0)
             return AgentLoop(**kwargs)
     return AgentLoop(**kwargs)

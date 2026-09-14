@@ -535,8 +535,8 @@ describe("AgentActivityCluster", () => {
             id: "t-search",
             role: "tool",
             kind: "trace",
-            content: 'web_search({"query":"biscuitbot architecture"})',
-            traces: ['web_search({"query":"biscuitbot architecture"})'],
+            content: 'web_search({"query":"xianaibot architecture"})',
+            traces: ['web_search({"query":"xianaibot architecture"})'],
             createdAt: 1,
           },
           {
@@ -881,7 +881,7 @@ describe("AgentActivityCluster", () => {
           fileEdits: [{
             call_id: "call-write",
             tool: "write_file",
-            path: "/Users/renxubin/.biscuitbot/workspace/agent-research-video/composition.html",
+            path: "/Users/renxubin/.xianaibot/workspace/agent-research-video/composition.html",
             phase: "error",
             added: 0,
             deleted: 0,

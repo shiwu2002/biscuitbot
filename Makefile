@@ -7,7 +7,7 @@ install:
 
 # 启动开发服务器
 dev:
-	uv run biscuitbot run
+	uv run xianaibot run
 
 # WebUI 开发
 webui-dev:
@@ -31,16 +31,16 @@ test-fast:
 
 # 代码检查
 lint:
-	uv run ruff check biscuitbot
-	uv run ruff format --check biscuitbot
+	uv run ruff check xianaibot
+	uv run ruff format --check xianaibot
 
 format:
-	uv run ruff check biscuitbot --fix
-	uv run ruff format biscuitbot
+	uv run ruff check xianaibot --fix
+	uv run ruff format xianaibot
 
 # 类型检查
 typecheck:
-	uv run pyright biscuitbot
+	uv run pyright xianaibot
 
 # 全量检查（提交前运行）
 check: lint test

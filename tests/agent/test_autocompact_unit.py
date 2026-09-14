@@ -5,8 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.autocompact import AutoCompact
-from biscuitbot.session.manager import Session, SessionManager
+from xianaibot.agent.autocompact import AutoCompact
+from xianaibot.session.manager import Session, SessionManager
 
 
 def _make_session(

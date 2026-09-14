@@ -235,7 +235,7 @@ const FALLBACK_TIMEZONES = [
   "Pacific/Auckland",
 ];
 
-const LOCAL_PREFS_STORAGE_KEY = "biscuitbot-webui.settings-preferences";
+const LOCAL_PREFS_STORAGE_KEY = "xianaibot-webui.settings-preferences";
 
 const DEFAULT_LOCAL_PREFS: LocalPreferences = {
   density: "comfortable",
@@ -359,7 +359,7 @@ const DEFAULT_AGENT_SETTINGS_DRAFT: AgentSettingsDraft = {
   presetLabel: "Default",
   contextWindowTokens: 65_536,
   timezone: "UTC",
-  botName: "biscuitbot",
+  botName: "夏奈",
   botIcon: "",
   toolHintMaxLength: 40,
   workspacePath: "",
@@ -2158,7 +2158,7 @@ function VersionCheckRow({ currentVersion }: { currentVersion?: string }) {
           {tx("settings.about.version", "Version")}
         </div>
         <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
-          {currentVersion ? `v${currentVersion}` : "biscuitbot"}
+          {currentVersion ? `v${currentVersion}` : "夏奈儿"}
         </div>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-2">
@@ -4366,7 +4366,7 @@ function AutomationsSettings({
             <div className="mx-auto mt-2 max-w-[28rem] text-[12px] leading-5">
               {tx(
                 "settings.automations.emptyHint",
-                "Create one from where it should run so biscuitbot keeps the right context.",
+                "Create one from where it should run so 夏奈儿 keeps the right context.",
               )}
             </div>
           ) : null}
@@ -5661,7 +5661,7 @@ function RuntimeSettings({
       <section>
         <SettingsSectionTitle>{tx("settings.sections.identity", "Identity")}</SettingsSectionTitle>
         <SettingsGroup>
-          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever biscuitbot uses a display name.")}>
+          <SettingsRow title={tx("settings.rows.botName", "Bot name")} description={tx("settings.help.botName", "Shown wherever 夏奈 uses a display name.")}>
             <Input
               value={form.botName}
               onChange={(event) => setForm((prev) => ({ ...prev, botName: event.target.value }))}
@@ -5687,7 +5687,7 @@ function RuntimeSettings({
             pendingRestart={requiresRestartPending}
             dirtyMessage={
               isNativeHost
-                ? tx("settings.status.hostRestartAfterSaving", "Save changes and biscuitbot will restart its engine.")
+                ? tx("settings.status.hostRestartAfterSaving", "Save changes and 夏奈儿 will restart its engine.")
                 : tx("settings.status.restartAfterSaving", "Save changes, then restart when ready.")
             }
             pendingMessage={

@@ -4,8 +4,8 @@ import time
 
 import pytest
 
-from biscuitbot.cron.service import CronJobSkippedError, CronService
-from biscuitbot.cron.types import CronJob, CronPayload, CronSchedule
+from xianaibot.cron.service import CronJobSkippedError, CronService
+from xianaibot.cron.types import CronJob, CronPayload, CronSchedule
 
 
 async def _wait_until(predicate, *, timeout: float = 1.0, interval: float = 0.01) -> None:

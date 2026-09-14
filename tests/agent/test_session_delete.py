@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from biscuitbot.session.manager import Session, SessionManager
+from xianaibot.session.manager import Session, SessionManager
 
 
 def _seed(workspace: Path, key: str = "telegram:abc") -> SessionManager:

@@ -8,10 +8,10 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.agent.employees import EmployeeStore
-from biscuitbot.agent.tools.context import ToolContext
-from biscuitbot.agent.tools.employee_discover import DiscoverEmployeesTool
-from biscuitbot.webui.talent_market import TalentMarketError
+from xianaibot.agent.employees import EmployeeStore
+from xianaibot.agent.tools.context import ToolContext
+from xianaibot.agent.tools.employee_discover import DiscoverEmployeesTool
+from xianaibot.webui.talent_market import TalentMarketError
 
 
 def _store(tmp_path: Path) -> EmployeeStore:
@@ -49,7 +49,7 @@ def _catalog() -> dict[str, Any]:
 def _isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """隔离人才市场缓存目录到临时目录，避免污染真实 config 目录。"""
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.get_runtime_subdir",
+        "xianaibot.webui.talent_market.get_runtime_subdir",
         lambda name: tmp_path / name,
     )
 
@@ -58,7 +58,7 @@ def _isolated_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def _registry_unconfigured_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """默认注册表未配置，避免测试触碰真实 config 或发起真实网络请求。"""
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.read_talent_market_registry_urls",
+        "xianaibot.webui.talent_market.read_talent_market_registry_urls",
         lambda *a, **k: [],
     )
 
@@ -67,14 +67,14 @@ def _configure_registry(
     monkeypatch: pytest.MonkeyPatch, url: str = "https://example.com/registry.json"
 ) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market.read_talent_market_registry_urls",
+        "xianaibot.webui.talent_market.read_talent_market_registry_urls",
         lambda *a, **k: [url],
     )
 
 
 def _mock_fetch(monkeypatch: pytest.MonkeyPatch, catalog: dict[str, Any]) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.talent_market._http_get_json",
+        "xianaibot.webui.talent_market._http_get_json",
         lambda url, **kwargs: catalog,
     )
 
@@ -234,7 +234,7 @@ class TestMarketplaceSearch:
         def _boom(url: str, **kwargs: Any) -> Any:
             raise TalentMarketError("boom", status=502)
 
-        monkeypatch.setattr("biscuitbot.webui.talent_market._http_get_json", _boom)
+        monkeypatch.setattr("xianaibot.webui.talent_market._http_get_json", _boom)
         tool = DiscoverEmployeesTool(employees=_store(tmp_path))
         result = _payload(await tool.execute("剪辑"))
         assert result["employees"]

@@ -2,10 +2,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.base import BaseChannel
-from biscuitbot.channels.wecom import WecomConfig
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.base import BaseChannel
+from xianaibot.channels.wecom import WecomConfig
 
 
 class _DummyChannel(BaseChannel):
@@ -92,7 +92,7 @@ def test_is_allowed_allow_all_false_ignores() -> None:
 def test_is_allowed_pairing_fallback(monkeypatch) -> None:
     channel = _DummyChannel({"allowFrom": []}, MessageBus())
     monkeypatch.setattr(
-        "biscuitbot.channels.base.is_approved", lambda _ch, sid: sid == "paired"
+        "xianaibot.channels.base.is_approved", lambda _ch, sid: sid == "paired"
     )
     assert channel.is_allowed("paired") is True
     assert channel.is_allowed("unknown") is False
@@ -102,7 +102,7 @@ def test_is_allowed_pairing_fallback(monkeypatch) -> None:
 async def test_handle_message_dm_sends_pairing_code(monkeypatch) -> None:
     channel = _DummyChannel({"allowFrom": []}, MessageBus())
     monkeypatch.setattr(
-        "biscuitbot.channels.base.generate_code", lambda _ch, sid: "ABCD-EFGH"
+        "xianaibot.channels.base.generate_code", lambda _ch, sid: "ABCD-EFGH"
     )
 
     await channel._handle_message(

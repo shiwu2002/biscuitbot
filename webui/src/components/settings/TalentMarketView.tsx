@@ -235,7 +235,7 @@ export function TalentMarketView({
                 )}
               </p>
               <pre className="mx-auto mt-4 inline-block rounded-[10px] bg-muted/70 px-4 py-2 font-mono text-[12.5px] leading-6 text-foreground/80">
-                biscuitbot talent-market set{" "}
+                xianaibot talent-market set{" "}
                 <span className="text-muted-foreground">
                   {"<http(s)://.../employees.json>"}
                 </span>

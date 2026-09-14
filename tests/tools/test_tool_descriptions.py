@@ -1,8 +1,8 @@
-from biscuitbot.agent.tools.apply_patch import ApplyPatchTool
-from biscuitbot.agent.tools.exec_session import ListExecSessionsTool, WriteStdinTool
-from biscuitbot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
-from biscuitbot.agent.tools.search import FindFilesTool, GrepTool
-from biscuitbot.agent.tools.shell import ExecTool
+from xianaibot.agent.tools.apply_patch import ApplyPatchTool
+from xianaibot.agent.tools.exec_session import ListExecSessionsTool, WriteStdinTool
+from xianaibot.agent.tools.filesystem import EditFileTool, ReadFileTool, WriteFileTool
+from xianaibot.agent.tools.search import FindFilesTool, GrepTool
+from xianaibot.agent.tools.shell import ExecTool
 
 
 def test_coding_tool_descriptions_steer_editing_priority() -> None:

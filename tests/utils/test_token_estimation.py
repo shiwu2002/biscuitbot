@@ -1,4 +1,4 @@
-from biscuitbot.utils.helpers import estimate_prompt_tokens_chain
+from xianaibot.utils.helpers import estimate_prompt_tokens_chain
 
 
 class _NoCounterProvider:

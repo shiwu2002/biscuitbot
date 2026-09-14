@@ -1,7 +1,7 @@
-from biscuitbot.config.schema import Config
-from biscuitbot.agent.tools.loader import ToolLoader
-from biscuitbot.agent.tools.context import ToolContext
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.config.schema import Config
+from xianaibot.agent.tools.loader import ToolLoader
+from xianaibot.agent.tools.context import ToolContext
+from xianaibot.agent.tools.registry import ToolRegistry
 
 
 def test_tool_loader_scope_memory_only_returns_memory_tools():

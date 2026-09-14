@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.agent.skills import SkillsLoader
-from biscuitbot.bus.events import InboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.command.builtin import cmd_skill, register_builtin_commands
-from biscuitbot.command.router import CommandContext, CommandRouter
-from biscuitbot.config.schema import ModelPresetConfig
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.agent.skills import SkillsLoader
+from xianaibot.bus.events import InboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.command.builtin import cmd_skill, register_builtin_commands
+from xianaibot.command.router import CommandContext, CommandRouter
+from xianaibot.config.schema import ModelPresetConfig
 
 
 def _provider(default_model: str = "test-model") -> MagicMock:

@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.runner import AgentRunResult
-from biscuitbot.agent.subagent import SubagentManager, SubagentStatus
-from biscuitbot.bus.queue import MessageBus
+from xianaibot.agent.runner import AgentRunResult
+from xianaibot.agent.subagent import SubagentManager, SubagentStatus
+from xianaibot.bus.queue import MessageBus
 
 
 @pytest.mark.asyncio

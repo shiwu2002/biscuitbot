@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-from biscuitbot.cli.stream import StreamRenderer, ThinkingSpinner
-from biscuitbot.config.schema import AgentDefaults, Config
+from xianaibot.cli.stream import StreamRenderer, ThinkingSpinner
+from xianaibot.config.schema import AgentDefaults, Config
 
 
 def test_bot_name_and_icon_defaults_preserve_current_branding() -> None:
-    """Default values keep the existing 'biscuitbot' name and cat icon."""
+    """Default values keep the existing '夏奈' name and cookie icon."""
     defaults = AgentDefaults()
 
-    assert defaults.bot_name == "biscuitbot"
+    assert defaults.bot_name == "夏奈"
     assert defaults.bot_icon == "🍪"
 
 

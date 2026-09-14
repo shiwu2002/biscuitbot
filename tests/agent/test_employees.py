@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.agent.employees import (
+from xianaibot.agent.employees import (
     BUILTIN_EMPLOYEES_VERSION,
     EmployeeStore,
     EmployeeValidationError,
@@ -223,7 +223,7 @@ class TestCrudAgainstBuiltins:
 
 class TestBundledSkillCascade:
     def test_delete_employee_cascades_bundled_skills(self, tmp_path: Path) -> None:
-        from biscuitbot.agent.skill_owners import SkillOwnershipStore, write_skill_files
+        from xianaibot.agent.skill_owners import SkillOwnershipStore, write_skill_files
 
         store = _store(tmp_path)
         emp = store.create_employee(
@@ -245,7 +245,7 @@ class TestBundledSkillCascade:
         assert owners.owner_of("bundled-a") is None
 
     def test_delete_employee_keeps_unowned_skills(self, tmp_path: Path) -> None:
-        from biscuitbot.agent.skill_owners import write_skill_files
+        from xianaibot.agent.skill_owners import write_skill_files
 
         store = _store(tmp_path)
         emp = store.create_employee(

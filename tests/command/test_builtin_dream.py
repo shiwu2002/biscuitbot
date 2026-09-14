@@ -5,10 +5,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.bus.events import InboundMessage
-from biscuitbot.command.builtin import cmd_dream, cmd_dream_log, cmd_dream_restore
-from biscuitbot.command.router import CommandContext
-from biscuitbot.utils.gitstore import CommitInfo
+from xianaibot.bus.events import InboundMessage
+from xianaibot.command.builtin import cmd_dream, cmd_dream_log, cmd_dream_restore
+from xianaibot.command.router import CommandContext
+from xianaibot.utils.gitstore import CommitInfo
 
 
 class _FakeStore:

@@ -8,9 +8,9 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.config.loader import save_config
-from biscuitbot.config.schema import Config
-from biscuitbot.webui.transcription_ws import webui_transcription_event
+from xianaibot.config.loader import save_config
+from xianaibot.config.schema import Config
+from xianaibot.webui.transcription_ws import webui_transcription_event
 
 
 def _audio_data_url(payload: bytes = b"voice", mime: str = "audio/webm") -> str:
@@ -28,7 +28,7 @@ async def test_webui_transcribe_audio_rejects_unconfigured_provider(
     })
     config.transcription.provider = "groq"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     event, payload = await webui_transcription_event({
         "request_id": "voice-1",
@@ -54,7 +54,7 @@ async def test_webui_transcribe_audio_rejects_unsupported_mime(
     })
     config.transcription.provider = "groq"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     event, payload = await webui_transcription_event({
         "request_id": "voice-1",
@@ -78,8 +78,8 @@ async def test_webui_transcribe_audio_rejects_oversized_audio(
     config.transcription.provider = "groq"
     config.transcription.max_upload_mb = 1
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.audio.transcription.get_media_dir", lambda _channel=None: tmp_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.audio.transcription.get_media_dir", lambda _channel=None: tmp_path)
 
     event, payload = await webui_transcription_event({
         "request_id": "voice-1",
@@ -104,9 +104,9 @@ async def test_webui_transcribe_audio_returns_text_and_removes_temp_file(
     })
     config.transcription.provider = "groq"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
     monkeypatch.setattr(
-        "biscuitbot.audio.transcription.get_media_dir",
+        "xianaibot.audio.transcription.get_media_dir",
         lambda _channel=None: media_dir,
     )
     captured_paths: list[Path] = []
@@ -118,7 +118,7 @@ async def test_webui_transcribe_audio_returns_text_and_removes_temp_file(
         return "hello voice"
 
     monkeypatch.setattr(
-        "biscuitbot.audio.transcription.transcribe_audio_file",
+        "xianaibot.audio.transcription.transcribe_audio_file",
         fake_transcribe_audio_file,
     )
 

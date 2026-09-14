@@ -2,7 +2,7 @@
 
 Covers the port-avoidance logic, first-run runtime initialization, and the
 stdout handshake line the Tauri shell parses. The heavy gateway itself is
-mocked out; :func:`biscuitbot.desktop.sidecar.main` is exercised with a fake
+mocked out; :func:`xianaibot.desktop.sidecar.main` is exercised with a fake
 ``start_gateway``.
 """
 
@@ -17,10 +17,10 @@ from unittest.mock import patch
 
 import pytest
 
-from biscuitbot.config.loader import load_config, save_config
-from biscuitbot.config.schema import Config
-from biscuitbot.desktop import app as desktop_app
-from biscuitbot.desktop import sidecar
+from xianaibot.config.loader import load_config, save_config
+from xianaibot.config.schema import Config
+from xianaibot.desktop import app as desktop_app
+from xianaibot.desktop import sidecar
 
 
 def _free_port() -> int:
@@ -62,7 +62,7 @@ def test_ensure_runtime_persists_default_config_and_enables_websocket(
     tmp_path, monkeypatch
 ) -> None:
     config_path = tmp_path / "config.json"
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     cfg = sidecar.ensure_runtime()
 
@@ -82,22 +82,22 @@ def test_pick_free_port_prefers_configured_port() -> None:
 
 def test_parent_vanished_detects_reparent(tmp_path, monkeypatch) -> None:
     # 父进程 PID 变为 1（reparent 到 launchd/init）→ 判定为壳已退出
-    monkeypatch.setattr("biscuitbot.desktop.sidecar.os.getppid", lambda: 1)
+    monkeypatch.setattr("xianaibot.desktop.sidecar.os.getppid", lambda: 1)
     assert sidecar._parent_vanished(1234) is True
     # 父进程 PID 未变化 → 壳仍存活
-    monkeypatch.setattr("biscuitbot.desktop.sidecar.os.getppid", lambda: 1234)
+    monkeypatch.setattr("xianaibot.desktop.sidecar.os.getppid", lambda: 1234)
     assert sidecar._parent_vanished(1234) is False
 
 
 def test_watch_pid_reads_env(monkeypatch) -> None:
     # 未设置环境变量 → 返回 None（退化为 getppid 检测）
-    monkeypatch.delenv("BISCUITBOT_PARENT_PID", raising=False)
+    monkeypatch.delenv("XIANAIBOT_PARENT_PID", raising=False)
     assert sidecar._watch_pid() is None
     # 设置后 → 返回壳 PID
-    monkeypatch.setenv("BISCUITBOT_PARENT_PID", "4242")
+    monkeypatch.setenv("XIANAIBOT_PARENT_PID", "4242")
     assert sidecar._watch_pid() == 4242
     # 非法值 → None
-    monkeypatch.setenv("BISCUITBOT_PARENT_PID", "abc")
+    monkeypatch.setenv("XIANAIBOT_PARENT_PID", "abc")
     assert sidecar._watch_pid() is None
 
 
@@ -133,7 +133,7 @@ def test_pick_free_port_scans_when_preferred_is_busy() -> None:
 def test_main_prints_ready_line(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     class FakeHandle:
         host = "127.0.0.1"
@@ -144,19 +144,19 @@ def test_main_prints_ready_line(tmp_path, monkeypatch) -> None:
             return True
 
     with (
-        patch("biscuitbot.desktop.app.start_gateway", return_value=FakeHandle()),
+        patch("xianaibot.desktop.app.start_gateway", return_value=FakeHandle()),
         patch.object(sidecar, "_block_until_killed", lambda: None),
         redirect_stdout(io.StringIO()) as buf,
     ):
         sidecar.main(config=load_config(config_path))
 
-    assert "BISCUITBOT_GATEWAY_READY 127.0.0.1 8765" in buf.getvalue()
+    assert "XIANAIBOT_GATEWAY_READY 127.0.0.1 8765" in buf.getvalue()
 
 
 def test_main_prints_error_line_on_startup_failure(tmp_path, monkeypatch) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     class FailingHandle:
         host = "127.0.0.1"
@@ -167,14 +167,14 @@ def test_main_prints_error_line_on_startup_failure(tmp_path, monkeypatch) -> Non
             return False
 
     with (
-        patch("biscuitbot.desktop.app.start_gateway", return_value=FailingHandle()),
+        patch("xianaibot.desktop.app.start_gateway", return_value=FailingHandle()),
         redirect_stdout(io.StringIO()) as buf,
     ):
         with pytest.raises(SystemExit) as excinfo:
             sidecar.main(config=load_config(config_path))
 
     assert excinfo.value.code == 1
-    assert "BISCUITBOT_GATEWAY_ERROR" in buf.getvalue()
+    assert "XIANAIBOT_GATEWAY_ERROR" in buf.getvalue()
 
 
 def test_install_gateway_file_logging_writes_gateway_log(tmp_path, monkeypatch) -> None:
@@ -187,7 +187,7 @@ def test_install_gateway_file_logging_writes_gateway_log(tmp_path, monkeypatch) 
 
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     desktop_app._FILE_LOG_SINK_ID = None
     desktop_app._install_gateway_file_logging()
@@ -251,7 +251,7 @@ class TestPythonInterpreterMode:
         monkeypatch.setattr(
             sys,
             "argv",
-            ["biscuitbot-sidecar", sidecar._PYTHON_MODE_MARKER, "-c", "print('early')"],
+            ["xianaibot-sidecar", sidecar._PYTHON_MODE_MARKER, "-c", "print('early')"],
         )
         with pytest.raises(SystemExit) as excinfo:
             sidecar.main()

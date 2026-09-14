@@ -2,7 +2,7 @@ import warnings
 
 import pytest
 
-from biscuitbot.config.schema import Config
+from xianaibot.config.schema import Config
 
 
 def test_resolve_preset_returns_defaults_when_no_preset() -> None:

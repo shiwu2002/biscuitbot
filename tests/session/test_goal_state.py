@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from biscuitbot.session.goal_state import (
+from xianaibot.session.goal_state import (
     GOAL_STATE_KEY,
     _MAX_TASKS,
     _MAX_TASKS_IN_RUNTIME,
@@ -16,7 +16,7 @@ from biscuitbot.session.goal_state import (
     runner_wall_llm_timeout_s,
     sustained_goal_active,
 )
-from biscuitbot.session.manager import SessionManager
+from xianaibot.session.manager import SessionManager
 
 
 def test_runtime_lines_empty_when_no_metadata():

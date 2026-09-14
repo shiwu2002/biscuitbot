@@ -1,4 +1,4 @@
-"""Hatch build hook that bundles the webui (Vite) into biscuitbot/web/dist.
+"""Hatch build hook that bundles the webui (Vite) into xianaibot/web/dist.
 
 Triggered automatically by `python -m build` (and any other hatch-driven build)
 so published wheels and sdists ship a fresh webui without requiring developers
@@ -10,10 +10,10 @@ Behaviour:
   development; webui contributors use `cd webui && bun run dev` (Vite HMR) and
   do not need a packaged `dist/`.
 - No-op when `webui/package.json` is absent (e.g. installing from an sdist that
-  already contains a prebuilt `biscuitbot/web/dist/`).
-- Skips when `BISCUITBOT_SKIP_WEBUI_BUILD=1` is set.
-- Skips when `biscuitbot/web/dist/index.html` already exists, unless
-  `BISCUITBOT_FORCE_WEBUI_BUILD=1` is set.
+  already contains a prebuilt `xianaibot/web/dist/`).
+- Skips when `XIANAIBOT_SKIP_WEBUI_BUILD=1` is set.
+- Skips when `xianaibot/web/dist/index.html` already exists, unless
+  `XIANAIBOT_FORCE_WEBUI_BUILD=1` is set.
 - Uses `bun` when available, otherwise falls back to `npm`. The chosen tool
   performs `install` followed by `run build`.
 """
@@ -35,7 +35,7 @@ class WebUIBuildHook(BuildHookInterface):
         root = Path(self.root)
         webui_dir = root / "webui"
         package_json = webui_dir / "package.json"
-        dist_dir = root / "biscuitbot" / "web" / "dist"
+        dist_dir = root / "xianaibot" / "web" / "dist"
         index_html = dist_dir / "index.html"
 
         # `pip install -e .` builds an editable wheel; skip the (slow) webui
@@ -48,21 +48,21 @@ class WebUIBuildHook(BuildHookInterface):
             )
             return
 
-        if os.environ.get("BISCUITBOT_SKIP_WEBUI_BUILD") == "1":
-            self.app.display_info("[webui-build] skipped via BISCUITBOT_SKIP_WEBUI_BUILD=1")
+        if os.environ.get("XIANAIBOT_SKIP_WEBUI_BUILD") == "1":
+            self.app.display_info("[webui-build] skipped via XIANAIBOT_SKIP_WEBUI_BUILD=1")
             return
 
         if not package_json.is_file():
             self.app.display_info(
-                "[webui-build] no webui/ source tree, assuming prebuilt biscuitbot/web/dist/"
+                "[webui-build] no webui/ source tree, assuming prebuilt xianaibot/web/dist/"
             )
             return
 
-        force = os.environ.get("BISCUITBOT_FORCE_WEBUI_BUILD") == "1"
+        force = os.environ.get("XIANAIBOT_FORCE_WEBUI_BUILD") == "1"
         if index_html.is_file() and not force:
             self.app.display_info(
                 f"[webui-build] reusing existing build at {dist_dir} "
-                "(set BISCUITBOT_FORCE_WEBUI_BUILD=1 to rebuild)"
+                "(set XIANAIBOT_FORCE_WEBUI_BUILD=1 to rebuild)"
             )
             return
 
@@ -70,7 +70,7 @@ class WebUIBuildHook(BuildHookInterface):
         if runner is None:
             raise RuntimeError(
                 "[webui-build] neither `bun` nor `npm` is available on PATH; "
-                "install one or set BISCUITBOT_SKIP_WEBUI_BUILD=1 to bypass."
+                "install one or set XIANAIBOT_SKIP_WEBUI_BUILD=1 to bypass."
             )
 
         self.app.display_info(f"[webui-build] using {runner} to build webui")

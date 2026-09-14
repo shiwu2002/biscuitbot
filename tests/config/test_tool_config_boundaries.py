@@ -7,8 +7,8 @@ from pathlib import Path
 def test_config_base_import_does_not_load_config_schema():
     code = """
 import sys
-from biscuitbot.config_base import Base
-print("biscuitbot.config.schema" in sys.modules)
+from xianaibot.config_base import Base
+print("xianaibot.config.schema" in sys.modules)
 """
     result = subprocess.run(
         [sys.executable, "-c", code],
@@ -22,7 +22,7 @@ print("biscuitbot.config.schema" in sys.modules)
 
 def test_builtin_tool_configs_do_not_depend_on_config_schema_base():
     repo = Path(__file__).resolve().parents[2]
-    tool_paths = sorted((repo / "biscuitbot/agent/tools").glob("*.py"))
+    tool_paths = sorted((repo / "xianaibot/agent/tools").glob("*.py"))
 
     violations = []
     for path in tool_paths:
@@ -30,7 +30,7 @@ def test_builtin_tool_configs_do_not_depend_on_config_schema_base():
         for node in ast.walk(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue
-            if node.module != "biscuitbot.config.schema":
+            if node.module != "xianaibot.config.schema":
                 continue
             if any(alias.name == "Base" for alias in node.names):
                 violations.append(str(path.relative_to(repo)))

@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.agent.tools.base import Tool, tool_parameters
-from biscuitbot.agent.tools.duplicate_check import (
+from xianaibot.agent.tools.base import Tool, tool_parameters
+from xianaibot.agent.tools.duplicate_check import (
     SKILL_DUPLICATE,
     TOOL_DUPLICATE,
     DuplicatePair,
@@ -15,7 +15,7 @@ from biscuitbot.agent.tools.duplicate_check import (
     check_duplicates,
     check_skill_duplicates,
 )
-from biscuitbot.agent.tools.registry import ToolRegistry
+from xianaibot.agent.tools.registry import ToolRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

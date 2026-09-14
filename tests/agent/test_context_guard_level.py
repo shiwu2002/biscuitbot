@@ -6,10 +6,10 @@ untrusted-content snippet at standard/minimal and exclude it at off.
 
 from __future__ import annotations
 
-from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.agent.subagent import SubagentManager
-from biscuitbot.config.schema import ToolsConfig
-from biscuitbot.providers.base import LLMProvider
+from xianaibot.agent.context import ContextBuilder
+from xianaibot.agent.subagent import SubagentManager
+from xianaibot.config.schema import ToolsConfig
+from xianaibot.providers.base import LLMProvider
 
 _UNTRUSTED_MARKER = "untrusted external data"
 

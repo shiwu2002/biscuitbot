@@ -1,7 +1,7 @@
 import pytest
 
-from biscuitbot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
-from biscuitbot.utils.evaluator import evaluate_response
+from xianaibot.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from xianaibot.utils.evaluator import evaluate_response
 
 
 class DummyProvider(LLMProvider):

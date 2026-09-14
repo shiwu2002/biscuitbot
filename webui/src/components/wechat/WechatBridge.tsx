@@ -99,7 +99,7 @@ export function WechatBridge({
             <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
               {tx(
                 "setup.wechat.subtitle",
-                "扫码登录后，即可在微信中与 biscuitbot 对话。",
+                "扫码登录后，即可在微信中与夏奈对话。",
               )}
             </p>
           </div>
@@ -143,7 +143,7 @@ export function WechatBridge({
           <p className="text-[12px] text-muted-foreground">
             {tx(
               "setup.wechat.confirmedHint",
-              "重启网关后，即可在微信中与 biscuitbot 对话。",
+              "重启网关后，即可在微信中与夏奈对话。",
             )}
           </p>
         </div>

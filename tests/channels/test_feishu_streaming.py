@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.feishu import FeishuChannel, FeishuConfig, _FeishuStreamBuf
 
 
 def _make_channel(streaming: bool = True, reply_to_message: bool = False) -> FeishuChannel:

@@ -1,10 +1,10 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.agent.tools.cron import CronTool
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.cron.service import CronService
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.agent.tools.cron import CronTool
+from xianaibot.bus.queue import MessageBus
+from xianaibot.cron.service import CronService
 
 
 def test_agent_loop_registers_cron_tool_with_configured_timezone(tmp_path: Path) -> None:

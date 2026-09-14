@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from biscuitbot.agent.tools.self import MyTool
+from xianaibot.agent.tools.self import MyTool
 
 
 @pytest.mark.asyncio

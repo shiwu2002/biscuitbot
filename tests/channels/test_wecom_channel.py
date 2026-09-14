@@ -17,10 +17,10 @@ except ImportError:
 if not WECOM_AVAILABLE:
     pytest.skip("WeCom dependencies not installed (wecom_aibot_sdk)", allow_module_level=True)
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.wecom import WecomChannel, WecomConfig, _guess_wecom_media_type
-from biscuitbot.utils.helpers import safe_filename as _sanitize_filename
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.wecom import WecomChannel, WecomConfig, _guess_wecom_media_type
+from xianaibot.utils.helpers import safe_filename as _sanitize_filename
 
 # Try to import the real response class; fall back to a stub if unavailable.
 try:
@@ -129,7 +129,7 @@ async def test_download_and_save_success() -> None:
     fake_data = b"\x89PNG\r\nfake image"
     client.download_file.return_value = (fake_data, "raw_photo.png")
 
-    with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
+    with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
         path = await channel._download_and_save_media("https://example.com/img.png", "aes_key", "image", "photo.png")
 
     assert path is not None
@@ -149,7 +149,7 @@ async def test_download_and_save_oversized_rejected() -> None:
     big_data = b"\x00" * (200 * 1024 * 1024 + 1)  # 200MB + 1 byte
     client.download_file.return_value = (big_data, "big.bin")
 
-    with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
+    with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
         result = await channel._download_and_save_media("https://example.com/big.bin", "key", "file", "big.bin")
 
     assert result is None
@@ -164,7 +164,7 @@ async def test_download_and_save_failure() -> None:
 
     client.download_file.return_value = (None, None)
 
-    with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
+    with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(tempfile.gettempdir())):
         result = await channel._download_and_save_media("https://example.com/fail.png", "key", "image")
 
     assert result is None
@@ -579,7 +579,7 @@ async def test_process_image_message() -> None:
     channel._client = client
 
     try:
-        with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
+        with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
             frame = _FakeFrame(body={
                 "msgid": "msg_img_1",
                 "chatid": "chat1",
@@ -615,7 +615,7 @@ async def test_process_file_message() -> None:
     channel._client = client
 
     try:
-        with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
+        with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
             frame = _FakeFrame(body={
                 "msgid": "msg_file_1",
                 "chatid": "chat1",
@@ -642,7 +642,7 @@ async def test_process_file_message_uses_sdk_filename_when_name_missing(tmp_path
     client.download_file.return_value = (b"%PDF-1.4 fake", "real_name.pdf")
     channel._client = client
 
-    with patch("biscuitbot.channels.wecom.get_media_dir", return_value=tmp_path):
+    with patch("xianaibot.channels.wecom.get_media_dir", return_value=tmp_path):
         frame = _FakeFrame(body={
             "msgid": "msg_file_2", "chatid": "chat1", "from": {"userid": "user1"},
             "file": {"url": "https://example.com/x", "aeskey": "key456"},
@@ -689,7 +689,7 @@ async def test_process_mixed_message() -> None:
     channel._client = client
 
     try:
-        with patch("biscuitbot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
+        with patch("xianaibot.channels.wecom.get_media_dir", return_value=Path(os.path.dirname(saved))):
             frame = _FakeFrame(body={
                 "msgid": "msg_mixed_1",
                 "chatid": "chat1",

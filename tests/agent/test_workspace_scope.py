@@ -6,13 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.agent.tools.cli_apps import CliAppsTool
-from biscuitbot.agent.tools.filesystem import ReadFileTool
-from biscuitbot.agent.tools.image_generation import ImageGenerationError, ImageGenerationTool
-from biscuitbot.agent.tools.message import MessageTool
-from biscuitbot.agent.tools.shell import ExecTool
-from biscuitbot.agent.tools.spawn import SpawnTool
-from biscuitbot.security.workspace_access import (
+from xianaibot.agent.tools.cli_apps import CliAppsTool
+from xianaibot.agent.tools.filesystem import ReadFileTool
+from xianaibot.agent.tools.image_generation import ImageGenerationError, ImageGenerationTool
+from xianaibot.agent.tools.message import MessageTool
+from xianaibot.agent.tools.shell import ExecTool
+from xianaibot.agent.tools.spawn import SpawnTool
+from xianaibot.security.workspace_access import (
     WORKSPACE_SCOPE_METADATA_KEY,
     WorkspaceScopeError,
     bind_workspace_scope,
@@ -21,8 +21,8 @@ from biscuitbot.security.workspace_access import (
     validate_workspace_scope_payload,
     workspace_scope_from_metadata,
 )
-from biscuitbot.apps.cli.service import CliAppManager, CliAppsRuntimeConfig
-from biscuitbot.config.schema import ImageGenerationToolConfig, ProviderConfig
+from xianaibot.apps.cli.service import CliAppManager, CliAppsRuntimeConfig
+from xianaibot.config.schema import ImageGenerationToolConfig, ProviderConfig
 
 PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
@@ -271,9 +271,9 @@ async def test_cli_app_scope_controls_working_dir(
     CliAppManager(workspace=project, data_dir=data_dir)._save_installed(
         {"demo": {"entry_point": "demo-cli"}}
     )
-    monkeypatch.setattr("biscuitbot.apps.cli.service.get_runtime_subdir", lambda _name: data_dir)
+    monkeypatch.setattr("xianaibot.apps.cli.service.get_runtime_subdir", lambda _name: data_dir)
     monkeypatch.setattr(
-        "biscuitbot.apps.cli.service.shutil.which",
+        "xianaibot.apps.cli.service.shutil.which",
         lambda entry: "/usr/bin/demo-cli" if entry == "demo-cli" else None,
     )
 
@@ -283,7 +283,7 @@ async def test_cli_app_scope_controls_working_dir(
         seen["cwd"] = kwargs["cwd"]
         return SimpleNamespace(returncode=0, stdout="ok", stderr="")
 
-    monkeypatch.setattr("biscuitbot.apps.cli.service.subprocess.run", fake_run)
+    monkeypatch.setattr("xianaibot.apps.cli.service.subprocess.run", fake_run)
     tool = CliAppsTool(
         workspace=tmp_path,
         restrict_to_workspace=True,

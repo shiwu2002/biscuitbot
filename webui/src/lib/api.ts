@@ -81,7 +81,7 @@ async function request<T>(
     throw new ApiError(
       res.status,
       isHtml
-        ? "Gateway returned WebUI HTML instead of JSON. Restart biscuitbot gateway and try again."
+        ? "Gateway returned WebUI HTML instead of JSON. Restart 夏奈儿 gateway and try again."
         : "Gateway returned a non-JSON response.",
     );
   }
@@ -100,11 +100,11 @@ function mcpValuesHeader(values: Record<string, unknown>): HeadersInit | undefin
     payload[key] = value;
   });
   if (!Object.keys(payload).length) return undefined;
-  return { "X-Biscuitbot-MCP-Values": JSON.stringify(payload) };
+  return { "X-Xianaibot-MCP-Values": JSON.stringify(payload) };
 }
 
 function automationValuesHeader(values: AutomationUpdatePayload): HeadersInit {
-  return { "X-Biscuitbot-Automation-Values": encodeURIComponent(JSON.stringify(values)) };
+  return { "X-Xianaibot-Automation-Values": encodeURIComponent(JSON.stringify(values)) };
 }
 
 /** 数字人员工的创建/更新字段（均可选；后端负责必填校验与归一化）。 */
@@ -119,7 +119,7 @@ export interface EmployeeValues {
 }
 
 function employeeValuesHeader(values: EmployeeValues): HeadersInit {
-  return { "X-Biscuitbot-Employee-Values": encodeURIComponent(JSON.stringify(values)) };
+  return { "X-Xianaibot-Employee-Values": encodeURIComponent(JSON.stringify(values)) };
 }
 
 function splitKey(key: string): { channel: string; chatId: string } {
@@ -812,7 +812,7 @@ export async function completeSetup(
   );
 }
 
-/** 请求后端重启引擎（打包桌面端兜底：宿主未注入 biscuitbotHost 时使用）。 */
+/** 请求后端重启引擎（打包桌面端兜底：宿主未注入 xianaibotHost 时使用）。 */
 export async function requestEngineRestart(
   token: string,
   base: string = "",

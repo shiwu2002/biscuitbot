@@ -5,19 +5,19 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.bus.events import InboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.cron.session_turns import CRON_HISTORY_META, CRON_TRIGGER_META
-from biscuitbot.providers.base import LLMResponse
-from biscuitbot.session.goal_state import GOAL_STATE_KEY
-from biscuitbot.session.manager import Session, SessionManager
-from biscuitbot.session.turn_continuation import (
+from xianaibot.agent.context import ContextBuilder
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.bus.events import InboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.cron.session_turns import CRON_HISTORY_META, CRON_TRIGGER_META
+from xianaibot.providers.base import LLMResponse
+from xianaibot.session.goal_state import GOAL_STATE_KEY
+from xianaibot.session.manager import Session, SessionManager
+from xianaibot.session.turn_continuation import (
     INTERNAL_CONTINUATION_META,
     INTERNAL_CONTINUATION_RUN_STARTED_AT_META,
 )
-from biscuitbot.session.webui_turns import (
+from xianaibot.session.webui_turns import (
     TITLE_GENERATION_MAX_TOKENS,
     TITLE_GENERATION_REASONING_EFFORT,
     WEBUI_SESSION_METADATA_KEY,
@@ -26,12 +26,12 @@ from biscuitbot.session.webui_turns import (
     clean_generated_title,
     maybe_generate_webui_title,
 )
-from biscuitbot.utils.llm_runtime import LLMRuntime
+from xianaibot.utils.llm_runtime import LLMRuntime
 
 
 def _mk_loop() -> AgentLoop:
     loop = AgentLoop.__new__(AgentLoop)
-    from biscuitbot.config.schema import AgentDefaults
+    from xianaibot.config.schema import AgentDefaults
 
     loop.max_tool_result_chars = AgentDefaults().max_tool_result_chars
     return loop
@@ -222,7 +222,7 @@ def test_webui_title_update_uses_captured_llm_runtime(
         return False
 
     monkeypatch.setattr(
-        "biscuitbot.session.webui_turns.maybe_generate_webui_title_after_turn",
+        "xianaibot.session.webui_turns.maybe_generate_webui_title_after_turn",
         fake_title_after_turn,
     )
     coordinator = WebuiTurnCoordinator(
@@ -959,7 +959,7 @@ async def test_process_message_uses_explicit_session_metadata_for_goal_context(
 async def test_run_agent_loop_goal_continue_message_reads_latest_metadata(
     tmp_path: Path,
 ) -> None:
-    from biscuitbot.agent.runner import AgentRunResult
+    from xianaibot.agent.runner import AgentRunResult
 
     loop = _make_full_loop(tmp_path)
     session = loop.sessions.get_or_create("websocket:late-goal")
@@ -994,7 +994,7 @@ async def test_run_agent_loop_goal_continue_message_reads_latest_metadata(
 async def test_run_agent_loop_goal_continue_message_includes_task_checklist(
     tmp_path: Path,
 ) -> None:
-    from biscuitbot.agent.runner import AgentRunResult
+    from xianaibot.agent.runner import AgentRunResult
 
     loop = _make_full_loop(tmp_path)
     session = loop.sessions.get_or_create("websocket:tasked-goal")
@@ -1122,8 +1122,8 @@ async def test_next_turn_after_crash_closes_pending_user_turn_before_new_input(t
 
 @pytest.mark.asyncio
 async def test_stop_preserves_runtime_checkpoint_for_next_turn(tmp_path: Path) -> None:
-    from biscuitbot.command.builtin import cmd_stop
-    from biscuitbot.command.router import CommandContext
+    from xianaibot.command.builtin import cmd_stop
+    from xianaibot.command.router import CommandContext
 
     loop = _make_full_loop(tmp_path)
     loop.consolidator.maybe_consolidate_by_tokens = AsyncMock(return_value=False)  # type: ignore[method-assign]

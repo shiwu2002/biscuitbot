@@ -31,9 +31,9 @@ SQUARE = 1024
 MARGIN = 0.045  # 机器人四周各留 ~4.5% 透明边
 
 # 原始 brand 尺寸（照搬，避免改动布局假设）
-ICON_SIZE = 1807     # biscuitbot_icon.png / biscuitbot_logo.png
-APPLE = 180          # biscuitbot_apple_touch.png
-FAV32 = 32           # biscuitbot_favicon_32.png
+ICON_SIZE = 1807     # xianaibot_icon.png / xianaibot_logo.png
+APPLE = 180          # xianaibot_apple_touch.png
+FAV32 = 32           # xianaibot_favicon_32.png
 ICO_SIZES = [16, 24, 32, 48, 64]
 
 
@@ -73,20 +73,20 @@ def white_silhouette(robot: Image.Image, size: int) -> Image.Image:
 
 def regen_masters(robot: Image.Image) -> None:
     """images/ 下的母版图（此前是狼），全部重生成机器人。"""
-    for name in ("biscuitbot_icon_transparent.png", "biscuitbot_logo.png"):
+    for name in ("xianaibot_icon_transparent.png", "xianaibot_logo.png"):
         save_sized(robot, ICON_SIZE).save(ROOT / "images" / name)
         print(f"  images/{name}  ← {ICON_SIZE}x{ICON_SIZE}")
-    white_silhouette(robot, ICON_SIZE).save(ROOT / "images" / "biscuitbot_logo_white.png")
-    print(f"  images/biscuitbot_logo_white.png  ← {ICON_SIZE}x{ICON_SIZE}（白色剪影）")
+    white_silhouette(robot, ICON_SIZE).save(ROOT / "images" / "xianaibot_logo_white.png")
+    print(f"  images/xianaibot_logo_white.png  ← {ICON_SIZE}x{ICON_SIZE}（白色剪影）")
 
 
 def regen_brand(robot: Image.Image) -> None:
     BRAND.mkdir(parents=True, exist_ok=True)
     jobs = {
-        "biscuitbot_icon.png": ICON_SIZE,
-        "biscuitbot_logo.png": ICON_SIZE,
-        "biscuitbot_apple_touch.png": APPLE,
-        "biscuitbot_favicon_32.png": FAV32,
+        "xianaibot_icon.png": ICON_SIZE,
+        "xianaibot_logo.png": ICON_SIZE,
+        "xianaibot_apple_touch.png": APPLE,
+        "xianaibot_favicon_32.png": FAV32,
     }
     for name, size in jobs.items():
         img = save_sized(robot, size)

@@ -15,12 +15,12 @@ from urllib.parse import quote, urlencode
 import httpx
 import pytest
 
-from biscuitbot.channels.websocket import WebSocketChannel, WebSocketConfig
-from biscuitbot.cron.service import CronService
-from biscuitbot.cron.types import CronJob, CronPayload, CronSchedule
-from biscuitbot.session.keys import UNIFIED_SESSION_KEY
-from biscuitbot.session.manager import Session, SessionManager
-from biscuitbot.webui.gateway_services import GatewayServices, build_gateway_services
+from xianaibot.channels.websocket import WebSocketChannel, WebSocketConfig
+from xianaibot.cron.service import CronService
+from xianaibot.cron.types import CronJob, CronPayload, CronSchedule
+from xianaibot.session.keys import UNIFIED_SESSION_KEY
+from xianaibot.session.manager import Session, SessionManager
+from xianaibot.webui.gateway_services import GatewayServices, build_gateway_services
 
 _PORT = 29900
 
@@ -360,12 +360,12 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
             "name: zz-unavailable-skill",
             "description: Missing CLI skill.",
             "metadata:",
-            "  biscuitbot:",
+            "  xianaibot:",
             "    requires:",
             "      bins:",
-            "        - definitely-missing-biscuitbot-skill-cli",
+            "        - definitely-missing-xianaibot-skill-cli",
             "      env:",
-            "        - DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV",
+            "        - DEFINITELY_MISSING_XIANAIBOT_SKILL_ENV",
             "---",
             "Use the missing CLI and env var.",
         ]),
@@ -410,8 +410,8 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
         unavailable = next(skill for skill in body["skills"] if skill["name"] == "zz-unavailable-skill")
         assert unavailable["available"] is False
         assert unavailable["unavailable_reason"] == (
-            "CLI: definitely-missing-biscuitbot-skill-cli, "
-            "ENV: DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV"
+            "CLI: definitely-missing-xianaibot-skill-cli, "
+            "ENV: DEFINITELY_MISSING_XIANAIBOT_SKILL_ENV"
         )
 
         detail = await _http_get(
@@ -422,11 +422,11 @@ async def test_webui_skills_route_requires_token_and_hides_paths(
         detail_body = detail.json()
         assert "path" not in detail_body
         assert detail_body["requirements"] == {
-            "bins": ["definitely-missing-biscuitbot-skill-cli"],
-            "env": ["DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV"],
+            "bins": ["definitely-missing-xianaibot-skill-cli"],
+            "env": ["DEFINITELY_MISSING_XIANAIBOT_SKILL_ENV"],
             "pkgs": [],
-            "missing_bins": ["definitely-missing-biscuitbot-skill-cli"],
-            "missing_env": ["DEFINITELY_MISSING_BISCUITBOT_SKILL_ENV"],
+            "missing_bins": ["definitely-missing-xianaibot-skill-cli"],
+            "missing_env": ["DEFINITELY_MISSING_XIANAIBOT_SKILL_ENV"],
         }
         assert "Use the missing CLI and env var." in detail_body["raw_markdown"]
     finally:
@@ -441,7 +441,7 @@ async def test_cli_apps_routes_require_token_and_return_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.settings_routes.cli_apps_payload",
+        "xianaibot.webui.settings_routes.cli_apps_payload",
         lambda: {
             "apps": [
                 {
@@ -466,7 +466,7 @@ async def test_cli_apps_routes_require_token_and_return_payload(
         },
     )
     monkeypatch.setattr(
-        "biscuitbot.webui.settings_routes.cli_apps_action",
+        "xianaibot.webui.settings_routes.cli_apps_action",
         lambda action, query: {
             "apps": [],
             "installed_count": 1,
@@ -517,7 +517,7 @@ async def test_cli_apps_catalog_does_not_block_other_webui_http_routes(
         release.wait(2.0)
         return {"apps": [], "installed_count": 0, "catalog_updated_at": None}
 
-    monkeypatch.setattr("biscuitbot.webui.settings_routes.cli_apps_payload", slow_payload)
+    monkeypatch.setattr("xianaibot.webui.settings_routes.cli_apps_payload", slow_payload)
     channel = _ch(bus, session_manager=_seed_session(tmp_path), port=29935)
     server_task = asyncio.create_task(channel.start())
     await asyncio.sleep(0.3)
@@ -560,7 +560,7 @@ async def test_cli_apps_route_supports_installed_only_payload(
         calls.append(installed_only)
         return {"apps": [], "installed_count": 0, "catalog_updated_at": None}
 
-    monkeypatch.setattr("biscuitbot.webui.settings_routes.cli_apps_payload", payload)
+    monkeypatch.setattr("xianaibot.webui.settings_routes.cli_apps_payload", payload)
     channel = _ch(bus, session_manager=_seed_session(tmp_path), port=29936)
     server_task = asyncio.create_task(channel.start())
     await asyncio.sleep(0.3)
@@ -589,7 +589,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.mcp_presets_api.mcp_presets_payload",
+        "xianaibot.webui.mcp_presets_api.mcp_presets_payload",
         lambda: {
             "presets": [
                 {
@@ -640,11 +640,11 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
         }
 
     monkeypatch.setattr(
-        "biscuitbot.webui.mcp_presets_api.mcp_presets_action",
+        "xianaibot.webui.mcp_presets_api.mcp_presets_action",
         _mcp_preset_action,
     )
     monkeypatch.setattr(
-        "biscuitbot.webui.mcp_presets_api.custom_mcp_action",
+        "xianaibot.webui.mcp_presets_api.custom_mcp_action",
         _custom_action,
     )
 
@@ -652,7 +652,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
         return {"ok": True, "message": "MCP config reloaded.", "requires_restart": False}
 
     monkeypatch.setattr(
-        "biscuitbot.webui.settings_routes.request_mcp_reload",
+        "xianaibot.webui.settings_routes.request_mcp_reload",
         _hot_reload,
     )
     channel = _ch(bus, session_manager=_seed_session(tmp_path), port=29913)
@@ -677,7 +677,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
             "http://127.0.0.1:29913/api/settings/mcp-presets/enable?name=browserbase",
             headers={
                 **auth,
-                "X-Biscuitbot-MCP-Values": json.dumps(
+                "X-Xianaibot-MCP-Values": json.dumps(
                     {"browserbase_api_key": "bb_live_secret"}
                 ),
             },
@@ -692,7 +692,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
 
         bad_header = await _http_get(
             "http://127.0.0.1:29913/api/settings/mcp-presets/enable?name=browserbase",
-            headers={**auth, "X-Biscuitbot-MCP-Values": "[]"},
+            headers={**auth, "X-Xianaibot-MCP-Values": "[]"},
         )
         assert bad_header.status_code == 400
 
@@ -700,7 +700,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
             "http://127.0.0.1:29913/api/settings/mcp-presets/custom",
             headers={
                 **auth,
-                "X-Biscuitbot-MCP-Values": json.dumps(
+                "X-Xianaibot-MCP-Values": json.dumps(
                     {"name": "docs", "command": "npx"}
                 ),
             },
@@ -711,7 +711,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
 
         imported = await _http_get(
             "http://127.0.0.1:29913/api/settings/mcp-presets/import",
-            headers={**auth, "X-Biscuitbot-MCP-Values": json.dumps({"config": "{}"})},
+            headers={**auth, "X-Xianaibot-MCP-Values": json.dumps({"config": "{}"})},
         )
         assert imported.status_code == 200
         assert imported.json()["last_action"]["message"] == "import:config MCP config reloaded."
@@ -720,7 +720,7 @@ async def test_mcp_presets_routes_require_token_and_return_payload(
             "http://127.0.0.1:29913/api/settings/mcp-presets/tools",
             headers={
                 **auth,
-                "X-Biscuitbot-MCP-Values": json.dumps(
+                "X-Xianaibot-MCP-Values": json.dumps(
                     {"name": "docs", "enabled_tools": []}
                 ),
             },
@@ -773,7 +773,7 @@ async def test_sessions_list_only_returns_websocket_sessions_by_default(
 async def test_webui_sidebar_state_routes_are_config_dir_scoped(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     sm = _seed_session(tmp_path, key="websocket:sidebar")
     channel = _ch(bus, session_manager=sm, port=29911)
     server_task = asyncio.create_task(channel.start())
@@ -822,9 +822,9 @@ async def test_webui_sidebar_state_routes_are_config_dir_scoped(
 async def test_session_delete_removes_file(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     sm = _seed_session(tmp_path, key="websocket:doomed")
-    from biscuitbot.webui.transcript import append_transcript_object
+    from xianaibot.webui.transcript import append_transcript_object
 
     append_transcript_object("websocket:doomed", {"event": "user", "chat_id": "doomed", "text": "x"})
     channel = _ch(bus, session_manager=sm, port=29903)
@@ -949,7 +949,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id={user_job.id}",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": json.dumps(
+                "X-Xianaibot-Automation-Values": json.dumps(
                     {
                         "name": "Daily quiz",
                         "message": "Ask the daily quiz",
@@ -974,7 +974,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id={user_job.id}",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": quote(
+                "X-Xianaibot-Automation-Values": quote(
                     json.dumps(
                         {
                             "name": "每日测验",
@@ -994,7 +994,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id={user_job.id}",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": json.dumps({"message": ["bad"]}),
+                "X-Xianaibot-Automation-Values": json.dumps({"message": ["bad"]}),
             },
         )
         assert malformed_update.status_code == 400
@@ -1004,7 +1004,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id={user_job.id}",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": json.dumps(
+                "X-Xianaibot-Automation-Values": json.dumps(
                     {"schedule": {"kind": "cron", "expr": "not a cron", "tz": "UTC"}}
                 ),
             },
@@ -1016,7 +1016,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id={past_one_shot_job.id}",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": json.dumps(
+                "X-Xianaibot-Automation-Values": json.dumps(
                     {
                         "message": "Updated one-shot message",
                         "schedule": {"kind": "at", "at_ms": 1},
@@ -1032,7 +1032,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
             f"{base_url}/api/webui/automations/update?id=heartbeat",
             headers={
                 **auth,
-                "X-Biscuitbot-Automation-Values": json.dumps({"name": "bad"}),
+                "X-Xianaibot-Automation-Values": json.dumps({"name": "bad"}),
             },
         )
         assert protected_update.status_code == 403
@@ -1105,7 +1105,7 @@ async def test_webui_automations_route_lists_all_jobs_and_allows_user_actions(
 async def test_session_delete_blocks_when_bound_automation_exists(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     sm = _seed_session(tmp_path, key="websocket:doomed")
     cron = CronService(tmp_path / "cron" / "jobs.json")
     cron.add_job(
@@ -1146,7 +1146,7 @@ async def test_session_delete_blocks_when_bound_automation_exists(
 async def test_session_delete_can_cascade_bound_automations(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     sm = _seed_session(tmp_path, key="websocket:doomed")
     cron = CronService(tmp_path / "cron" / "jobs.json")
     cron.add_job(
@@ -1192,7 +1192,7 @@ async def test_session_delete_can_cascade_bound_automations(
 async def test_session_delete_blocks_origin_automation_when_unified_enabled(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     sm = _seed_session(tmp_path, key="websocket:doomed")
     cron = CronService(tmp_path / "cron" / "jobs.json")
     cron.add_job(
@@ -1274,9 +1274,9 @@ async def test_session_routes_accept_percent_encoded_websocket_keys(
 async def test_webui_thread_resigns_assistant_media_urls(
     bus: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from biscuitbot.webui.transcript import append_transcript_object
+    from xianaibot.webui.transcript import append_transcript_object
 
-    monkeypatch.setattr("biscuitbot.config.paths.get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("xianaibot.config.paths.get_data_dir", lambda: tmp_path)
     media_root = tmp_path / "media"
     websocket_media = media_root / "websocket"
     websocket_media.mkdir(parents=True)
@@ -1286,7 +1286,7 @@ async def test_webui_thread_resigns_assistant_media_urls(
     def fake_media_dir(channel: str | None = None) -> Path:
         return websocket_media if channel == "websocket" else media_root
 
-    monkeypatch.setattr("biscuitbot.channels.websocket.get_media_dir", fake_media_dir)
+    monkeypatch.setattr("xianaibot.channels.websocket.get_media_dir", fake_media_dir)
 
     append_transcript_object(
         "websocket:video-replay",
@@ -1535,7 +1535,7 @@ def test_wildcard_ipv6_without_auth_raises(bus: MagicMock) -> None:
 def test_wildcard_ipv6_with_secret_is_valid(bus: MagicMock) -> None:
     channel = _ch(bus, host="::", tokenIssueSecret="s3cret")
     resp = channel.gateway.http._handle_bootstrap(
-        _REMOTE, _FakeReq({"X-Biscuitbot-Auth": "s3cret"})
+        _REMOTE, _FakeReq({"X-Xianaibot-Auth": "s3cret"})
     )
     assert resp.status_code == 200
 
@@ -1555,11 +1555,11 @@ def test_bootstrap_ws_url_uses_forwarded_https_host(bus: MagicMock) -> None:
     channel = _ch(bus, host="127.0.0.1", port=29931)
     resp = channel.gateway.http._handle_bootstrap(
         _LOCAL,
-        _FakeReq({"Host": "biscuitbot.example", "X-Forwarded-Proto": "https"}),
+        _FakeReq({"Host": "xianaibot.example", "X-Forwarded-Proto": "https"}),
     )
     assert resp.status_code == 200
     body = json.loads(resp.body)
-    assert body["ws_url"] == "wss://biscuitbot.example/"
+    assert body["ws_url"] == "wss://xianaibot.example/"
 
 
 def test_localhost_without_auth_is_valid(bus: MagicMock) -> None:
@@ -1570,7 +1570,7 @@ def test_localhost_without_auth_is_valid(bus: MagicMock) -> None:
 
 def test_bootstrap_prefers_runtime_model_name(bus: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.ws_http._default_model_name_from_config",
+        "xianaibot.webui.ws_http._default_model_name_from_config",
         lambda: "from-disk",
     )
     channel = _ch(bus, host="127.0.0.1", runtime_model_name=lambda: "  live/model  ")
@@ -1582,7 +1582,7 @@ def test_bootstrap_prefers_runtime_model_name(bus: MagicMock, monkeypatch: pytes
 
 def test_bootstrap_falls_back_when_runtime_returns_empty(bus: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.ws_http._default_model_name_from_config",
+        "xianaibot.webui.ws_http._default_model_name_from_config",
         lambda: "from-disk",
     )
     channel = _ch(bus, host="127.0.0.1", runtime_model_name=lambda: "   ")
@@ -1594,7 +1594,7 @@ def test_bootstrap_falls_back_when_runtime_returns_empty(bus: MagicMock, monkeyp
 
 def test_bootstrap_falls_back_when_runtime_raises(bus: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "biscuitbot.webui.ws_http._default_model_name_from_config",
+        "xianaibot.webui.ws_http._default_model_name_from_config",
         lambda: "from-disk",
     )
 
@@ -1626,10 +1626,10 @@ def test_bootstrap_accepts_remote_with_valid_secret(bus: MagicMock) -> None:
     assert body["token"].startswith("nbwt_")
 
 
-def test_bootstrap_accepts_x_biscuitbot_auth_header(bus: MagicMock) -> None:
+def test_bootstrap_accepts_x_xianaibot_auth_header(bus: MagicMock) -> None:
     channel = _ch(bus, host="0.0.0.0", tokenIssueSecret="s3cret")
     resp = channel.gateway.http._handle_bootstrap(
-        _REMOTE, _FakeReq({"X-Biscuitbot-Auth": "s3cret"})
+        _REMOTE, _FakeReq({"X-Xianaibot-Auth": "s3cret"})
     )
     assert resp.status_code == 200
 

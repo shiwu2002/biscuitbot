@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from biscuitbot.config.loader import (
+from xianaibot.config.loader import (
     _resolve_env_vars,
     load_config,
     resolve_config_env_vars,

@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from biscuitbot.config.loader import load_config, save_config
-from biscuitbot.config.schema import Config, ModelPresetConfig
-from biscuitbot.webui.settings_api import (
+from xianaibot.config.loader import load_config, save_config
+from xianaibot.config.schema import Config, ModelPresetConfig
+from xianaibot.webui.settings_api import (
     WebUISettingsError,
     _provider_capabilities,
     _resolve_model_list_provider,
@@ -66,7 +66,7 @@ def test_create_model_configuration_writes_label_and_selects(
     config.agents.defaults.provider = "openai"
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = create_model_configuration(
         {
@@ -104,7 +104,7 @@ def test_create_model_configuration_accepts_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = create_model_configuration(
         {
@@ -134,7 +134,7 @@ def test_create_model_configuration_rejects_dynamic_custom_provider_without_api_
         }
     })
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="provider is not configured"):
         create_model_configuration(
@@ -152,7 +152,7 @@ def test_create_model_configuration_rejects_unconfigured_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="provider is not configured"):
         create_model_configuration(
@@ -177,7 +177,7 @@ def test_update_model_configuration_edits_named_preset_and_selects(
         model="openai/gpt-4.1",
     )
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_model_configuration(
         {
@@ -203,7 +203,7 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(api_base="https://old.example/v1"), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_provider_settings(
         {
@@ -228,7 +228,7 @@ def test_update_provider_settings_persists_capabilities(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_provider_settings(
         {
@@ -253,7 +253,7 @@ def test_provider_capabilities_override_narrows_llm(
     """用户把厂商能力收窄为仅图像时，该厂商应退出 LLM 模型预设下拉。"""
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_provider_settings(
         {
@@ -275,7 +275,7 @@ def test_provider_capabilities_empty_declared_not_auto_detected(
     """用户清空全部能力时，应保留空列表而非回退自动推断。"""
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_provider_settings(
         {
@@ -322,7 +322,7 @@ def test_delete_provider_settings_removes_dynamic_provider_and_resets_refs(
         "transcription": {"provider": DYNAMIC_PROVIDER_NAME},
     }
     save_config(Config.model_validate(raw_config), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     delete_provider_settings({"provider": [DYNAMIC_PROVIDER_NAME]})
 
@@ -344,7 +344,7 @@ def test_delete_provider_settings_hides_registry_capability_provider(
     """未配置的注册表能力厂商（如 groq）删除后应从统一厂商列表隐藏。"""
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     delete_provider_settings({"provider": ["groq"]})
 
@@ -361,7 +361,7 @@ def test_delete_provider_settings_rejects_builtin_provider(
     """固定字段厂商（内置项）不可删除。"""
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError):
         delete_provider_settings({"provider": ["deepseek"]})
@@ -373,7 +373,7 @@ def test_update_image_generation_settings_uses_unified_volcengine_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     # 密钥统一在「模型厂商」页配置（不再是 image_generation 内联维护）
     update_provider_settings(
@@ -404,7 +404,7 @@ def test_update_image_generation_settings_rejects_unconfigured_image_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
     monkeypatch.delenv("ARK_API_KEY", raising=False)
 
     with pytest.raises(
@@ -426,7 +426,7 @@ def test_update_agent_settings_accepts_context_window_options(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_agent_settings({"context_window_tokens": ["262144"]})
 
@@ -441,7 +441,7 @@ def test_update_agent_settings_accepts_workspace(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     workspace = tmp_path / "workspace"
     payload = update_agent_settings({"workspace": [str(workspace)]})
@@ -458,7 +458,7 @@ def test_update_agent_settings_accepts_workspace_alias(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     workspace = tmp_path / "workspace"
     update_agent_settings({"workspacePath": [str(workspace)]})
@@ -473,7 +473,7 @@ def test_update_agent_settings_rejects_blank_workspace(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="workspace is required"):
         update_agent_settings({"workspace": ["   "]})
@@ -494,7 +494,7 @@ def test_update_model_configuration_accepts_context_window_options(
         model="openai/gpt-4.1",
     )
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_model_configuration(
         {
@@ -514,7 +514,7 @@ def test_update_context_window_rejects_unknown_values(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="context_window_tokens must be 65536 or 262144"):
         update_agent_settings({"context_window_tokens": ["128000"]})
@@ -526,7 +526,7 @@ def test_update_model_configuration_rejects_default_preset(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="model configuration is required"):
         update_model_configuration({"name": ["default"], "model": ["openai/gpt-4.1"]})
@@ -538,7 +538,7 @@ def test_settings_payload_includes_dynamic_custom_provider(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(defaults=True), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     providers = {row["name"]: row for row in payload["providers"]}
@@ -563,7 +563,7 @@ def test_settings_payload_marks_dynamic_custom_provider_without_api_base_unconfi
         }
     })
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     providers = {row["name"]: row for row in payload["providers"]}
@@ -582,8 +582,8 @@ def test_settings_payload_includes_network_safety_fields(
     config.tools.webui_allow_local_service_access = False
     config.tools.ssrf_whitelist = ["100.64.0.0/10"]
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = settings_payload()
 
@@ -603,8 +603,8 @@ def test_settings_payload_includes_exec_path_flags(
     config.tools.exec.path_prepend = "/venv/bin"
     config.tools.exec.path_append = "/usr/sbin"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = settings_payload()
 
@@ -622,7 +622,7 @@ def test_settings_payload_includes_effective_transcription_config(
     config.channels.transcription_language = "en"
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
 
@@ -642,7 +642,7 @@ def test_update_transcription_settings_writes_top_level_only(
     config.channels.transcription_provider = "openai"
     config.channels.transcription_language = "en"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_transcription_settings(
         {
@@ -677,7 +677,7 @@ def test_settings_payload_includes_tts_config(
     config.tts.provider = "openai"
     config.providers.openai.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
 
@@ -709,7 +709,7 @@ def test_update_tts_settings_writes_top_level_only(
     config.tts.rate = "-20%"
     config.providers.dashscope.api_key = "ds-test"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_tts_settings(
         {
@@ -737,7 +737,7 @@ def test_update_tts_settings_unknown_provider_rejected(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="TTS provider"):
         update_tts_settings({"provider": ["nope"]})
@@ -749,7 +749,7 @@ def test_update_transcription_settings_validates_language(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="transcription language"):
         update_transcription_settings({"language": ["en-US"]})
@@ -762,10 +762,10 @@ def test_settings_payload_includes_token_usage_summary(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
 
-    from biscuitbot.webui.token_usage import record_token_usage
+    from xianaibot.webui.token_usage import record_token_usage
 
     record_token_usage({"prompt_tokens": 10, "completion_tokens": 5})
 
@@ -787,10 +787,10 @@ def test_settings_usage_payload_returns_lightweight_token_usage(
     config_path = tmp_path / "config.json"
     config = Config()
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.token_usage.get_webui_dir", lambda: tmp_path / "webui")
 
-    from biscuitbot.webui.token_usage import record_token_usage
+    from xianaibot.webui.token_usage import record_token_usage
 
     record_token_usage({"prompt_tokens": 20, "completion_tokens": 2})
 
@@ -807,8 +807,8 @@ def test_update_network_safety_settings_writes_local_service_flag(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings(
         {
@@ -833,8 +833,8 @@ def test_update_network_safety_settings_accepts_legacy_restricted_default_access
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings({"webui_default_access_mode": ["restricted"]})
 
@@ -848,8 +848,8 @@ def test_update_network_safety_settings_default_access_is_webui_only(
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
     before = config_path.read_text(encoding="utf-8")
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
-    monkeypatch.setattr("biscuitbot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.webui.workspaces.get_webui_dir", lambda: tmp_path / "webui")
 
     payload = update_network_safety_settings({"webui_default_access_mode": ["full"]})
 
@@ -868,7 +868,7 @@ def test_provider_models_payload_fetches_openai_compatible_models(
     config = Config()
     config.providers.deepseek.api_key = "sk-test"
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     def fake_get(url: str, **kwargs):
         assert url == "https://api.deepseek.com/models"
@@ -884,7 +884,7 @@ def test_provider_models_payload_fetches_openai_compatible_models(
             request=httpx.Request("GET", url),
         )
 
-    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fake_get)
+    monkeypatch.setattr("xianaibot.webui.settings_api.httpx.get", fake_get)
 
     payload = provider_models_payload({"provider": ["deepseek"]})
 
@@ -901,7 +901,7 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     def fake_get(url: str, **kwargs):
         assert url == f"{DYNAMIC_PROVIDER_API_BASE}/models"
@@ -912,7 +912,7 @@ def test_provider_models_payload_fetches_dynamic_custom_provider_models(
             request=httpx.Request("GET", url),
         )
 
-    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fake_get)
+    monkeypatch.setattr("xianaibot.webui.settings_api.httpx.get", fake_get)
 
     payload = provider_models_payload({"provider": [DYNAMIC_PROVIDER_NAME]})
 
@@ -932,12 +932,12 @@ def test_provider_models_payload_kling_returns_known_list_without_network(
     """
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     def fail_get(url: str, **kwargs):  # pragma: no cover - 不应被调用
         raise AssertionError(f"可灵不应请求 /models：{url}")
 
-    monkeypatch.setattr("biscuitbot.webui.settings_api.httpx.get", fail_get)
+    monkeypatch.setattr("xianaibot.webui.settings_api.httpx.get", fail_get)
 
     payload = provider_models_payload({"provider": ["kling"]})
 
@@ -1025,7 +1025,7 @@ def test_update_provider_settings_writes_volcengine_to_model_extra(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_provider_settings(
         {
@@ -1050,7 +1050,7 @@ def test_settings_payload_includes_system_io_fields(
     config.tools.system_io.enable = True
     config.tools.system_io.allow_actions = ["clipboard_read", "usb_list"]
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = settings_payload()
     assert payload["system_io"]["enabled"] is True
@@ -1068,7 +1068,7 @@ def test_update_system_io_settings_toggles_enable(
     config_path = tmp_path / "config.json"
     config = Config.model_validate({})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_system_io_settings({"enabled": ["true"]})
     saved = load_config(config_path)
@@ -1085,7 +1085,7 @@ def test_update_system_io_settings_writes_allow_actions(
     config = Config.model_validate({})
     config.tools.system_io.enable = True
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_system_io_settings(
         {"allowActions": ["clipboard_read,usb_list,serial_list"]}
@@ -1103,7 +1103,7 @@ def test_update_system_io_settings_clears_allow_actions(
     config = Config.model_validate({})
     config.tools.system_io.allow_actions = ["clipboard_read"]
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_system_io_settings({"allowActions": [""]})
     saved = load_config(config_path)
@@ -1117,7 +1117,7 @@ def test_update_system_io_settings_rejects_unknown_action(
     config_path = tmp_path / "config.json"
     config = Config.model_validate({})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     with pytest.raises(WebUISettingsError, match="unknown system_io action"):
         update_system_io_settings({"allowActions": ["clipboard_read,format_c_drive"]})
@@ -1131,7 +1131,7 @@ def test_channels_payload_reports_allow_all(
     config = Config.model_validate({})
     setattr(config.channels, "feishu", {"enabled": True, "allow_all": True})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = channels_payload()
     feishu_row = next(r for r in payload["channels"] if r["name"] == "feishu")
@@ -1146,7 +1146,7 @@ def test_channels_payload_defaults_allow_all_off(
     config = Config.model_validate({})
     setattr(config.channels, "feishu", {"enabled": True})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = channels_payload()
     feishu_row = next(r for r in payload["channels"] if r["name"] == "feishu")
@@ -1161,7 +1161,7 @@ def test_update_channel_settings_toggles_allow_all(
     config = Config.model_validate({})
     setattr(config.channels, "feishu", {"enabled": True, "allowFrom": ["alice"]})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     payload = update_channel_settings(
         {"channel": ["feishu"], "allow_all": ["true"]}
@@ -1183,7 +1183,7 @@ def test_update_channel_settings_turns_off_allow_all(
     config = Config.model_validate({})
     setattr(config.channels, "feishu", {"enabled": True, "allow_all": True})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_channel_settings({"channel": ["feishu"], "allow_all": ["false"]})
     saved = load_config(config_path)
@@ -1198,7 +1198,7 @@ def test_update_channel_settings_creates_section_for_allow_all(
     config_path = tmp_path / "config.json"
     config = Config.model_validate({})
     save_config(config, config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     update_channel_settings({"channel": ["wecom"], "allow_all": ["true"]})
     saved = load_config(config_path)
@@ -1254,7 +1254,7 @@ def test_update_video_generation_settings_kling_requires_key(
     """provider=kling 时启用校验：无 key 抛错，配 key 后成功。"""
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     # 未配任何密钥 → 启用被拒
     with pytest.raises(WebUISettingsError, match="api key is required"):

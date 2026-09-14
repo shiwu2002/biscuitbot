@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.agent.subagent import SubagentManager, SubagentStatus
-from biscuitbot.agent.tools.search import FindFilesTool, GrepTool
-from biscuitbot.agent.tools.web import WebSearchTool
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.config.schema import WebSearchConfig
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.agent.subagent import SubagentManager, SubagentStatus
+from xianaibot.agent.tools.search import FindFilesTool, GrepTool
+from xianaibot.agent.tools.web import WebSearchTool
+from xianaibot.bus.queue import MessageBus
+from xianaibot.config.schema import WebSearchConfig
 
 
 @pytest.mark.asyncio
@@ -30,7 +30,7 @@ async def test_web_search_tool_refreshes_dynamic_config_loader(monkeypatch) -> N
 
     monkeypatch.setattr(WebSearchTool, "_search_duckduckgo", fake_duckduckgo)
 
-    assert await tool.execute("biscuitbot") == "duckduckgo:biscuitbot:3"
+    assert await tool.execute("xianaibot") == "duckduckgo:xianaibot:3"
 
 
 @pytest.mark.asyncio

@@ -10,14 +10,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from biscuitbot.bus.events import InboundMessage
-from biscuitbot.providers.base import LLMResponse
+from xianaibot.bus.events import InboundMessage
+from xianaibot.providers.base import LLMResponse
 
 
 def _make_loop():
     """Create a minimal AgentLoop with mocked dependencies."""
-    from biscuitbot.agent.loop import AgentLoop
-    from biscuitbot.bus.queue import MessageBus
+    from xianaibot.agent.loop import AgentLoop
+    from xianaibot.bus.queue import MessageBus
 
     bus = MessageBus()
     provider = MagicMock()
@@ -25,9 +25,9 @@ def _make_loop():
     workspace = MagicMock()
     workspace.__truediv__ = MagicMock(return_value=MagicMock())
 
-    with patch("biscuitbot.agent.loop.ContextBuilder"), \
-         patch("biscuitbot.agent.loop.SessionManager"), \
-         patch("biscuitbot.agent.loop.SubagentManager"):
+    with patch("xianaibot.agent.loop.ContextBuilder"), \
+         patch("xianaibot.agent.loop.SessionManager"), \
+         patch("xianaibot.agent.loop.SubagentManager"):
         loop = AgentLoop(bus=bus, provider=provider, workspace=workspace)
     return loop, bus
 
@@ -36,9 +36,9 @@ class TestRestartCommand:
 
     @pytest.mark.asyncio
     async def test_restart_sends_message_and_calls_execv(self):
-        from biscuitbot.command.builtin import cmd_restart
-        from biscuitbot.command.router import CommandContext
-        from biscuitbot.utils.restart import (
+        from xianaibot.command.builtin import cmd_restart
+        from xianaibot.command.router import CommandContext
+        from xianaibot.utils.restart import (
             RESTART_NOTIFY_CHANNEL_ENV,
             RESTART_NOTIFY_CHAT_ID_ENV,
             RESTART_STARTED_AT_ENV,
@@ -64,8 +64,8 @@ class TestRestartCommand:
         )
 
         with patch.dict(os.environ, {}, clear=False), \
-             patch("biscuitbot.command.builtin.asyncio", new=fake_asyncio), \
-             patch("biscuitbot.command.builtin.os.execv") as mock_execv:
+             patch("xianaibot.command.builtin.asyncio", new=fake_asyncio), \
+             patch("xianaibot.command.builtin.os.execv") as mock_execv:
             out = await cmd_restart(ctx)
             assert "Restarting" in out.content
             assert os.environ.get(RESTART_NOTIFY_CHANNEL_ENV) == "cli"
@@ -98,8 +98,8 @@ class TestRestartCommand:
         )
 
         with patch.object(loop, "_dispatch", new_callable=AsyncMock) as mock_dispatch, \
-             patch("biscuitbot.command.builtin.asyncio", new=fake_asyncio), \
-             patch("biscuitbot.command.builtin.os.execv"):
+             patch("xianaibot.command.builtin.asyncio", new=fake_asyncio), \
+             patch("xianaibot.command.builtin.os.execv"):
             await bus.publish_inbound(msg)
 
             loop._running = True
@@ -137,7 +137,7 @@ class TestRestartCommand:
                 pass
 
             mock_dispatch.assert_not_called()
-            assert "biscuitbot" in out.content.lower() or "Model" in out.content
+            assert "xianaibot" in out.content.lower() or "Model" in out.content
 
     @pytest.mark.asyncio
     async def test_run_propagates_external_cancellation(self):
@@ -217,11 +217,11 @@ class TestRestartCommand:
     async def test_run_agent_loop_estimates_usage_when_provider_omits_it(self, monkeypatch):
         loop, _bus = _make_loop()
         monkeypatch.setattr(
-            "biscuitbot.agent.runner.estimate_prompt_tokens_chain",
+            "xianaibot.agent.runner.estimate_prompt_tokens_chain",
             lambda *_args, **_kwargs: (123, "test"),
         )
         monkeypatch.setattr(
-            "biscuitbot.agent.runner.estimate_message_tokens",
+            "xianaibot.agent.runner.estimate_message_tokens",
             lambda _message: 7,
         )
         loop.provider.chat_with_retry = AsyncMock(side_effect=[

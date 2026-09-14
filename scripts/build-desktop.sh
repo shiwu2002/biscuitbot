@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# 构建 biscuitbot 桌面应用（macOS / Linux）。
+# 构建 xianaibot 桌面应用（macOS / Linux）。
 #
 # 产物：
 #   - 应用包 / 镜像  output/mac/*.app + *.dmg（arm64）
 #   - 应用包 / 镜像  output/mac-x86/*.app + *.dmg（--intel）
-#   - sidecar   src-tauri/binaries/biscuitbot-sidecar/（onedir 目录）
+#   - sidecar   src-tauri/binaries/xianaibot-sidecar/（onedir 目录）
 #
 # 前置要求：
 #   - Python 虚拟环境 .venv（含项目依赖）
-#   - 构建 x86_64（--intel）：需 ~/.venvs/biscuitbot-x86 这个 x86_64 Python 环境
+#   - 构建 x86_64（--intel）：需 ~/.venvs/xianaibot-x86 这个 x86_64 Python 环境
 #   - Bun 1.x
 #   - Rust stable + Xcode Command Line Tools（macOS）或对应平台工具链
 #
@@ -37,12 +37,12 @@ while [[ $# -gt 0 ]]; do
       # (aarch64) std，导致 `can't find crate for core/std`。把 rustup 提前。
       export PATH="$HOME/.cargo/bin:$PATH"
       TARGET_TRIPLE="x86_64-apple-darwin"
-      PYTHON="$HOME/.venvs/biscuitbot-x86/bin/python"
+      PYTHON="$HOME/.venvs/xianaibot-x86/bin/python"
       OUTPUT_DIR="$ROOT/output/mac-x86"
       DIST_DIR="$OUTPUT_DIR/dist"
       WORK_DIR="$OUTPUT_DIR/build"
       RELEASE_SUBPATH="x86_64-apple-darwin/release"
-      # 应用名 / identifier 与 arm64 版一致（biscuitbot / com.biscuitbot.desktop），
+      # 应用名 / identifier 与 arm64 版一致（xianaibot / com.xianaibot.desktop），
       # 仅交叉编译目标不同；DMG 文件名按架构区分（_x64 vs _aarch64）。
       TAURI_BUILD_ARGS=(--target "$TARGET_TRIPLE")
       ;;
@@ -72,7 +72,7 @@ else
   echo "    版本 ${BEFORE_VERSION:-未知} 无法自动递增（非 X.Y.Z 纯数字格式），保持不动"
 fi
 
-echo "==> 2/6 构建 WebUI（webui/dist → biscuitbot/web/dist）"
+echo "==> 2/6 构建 WebUI（webui/dist → xianaibot/web/dist）"
 cd "$ROOT/webui"
 bun install --frozen-lockfile || bun install
 bun run build
@@ -89,7 +89,7 @@ echo "==> 4/6 打包 gateway sidecar（PyInstaller onedir，${TARGET_TRIPLE}）"
 # 与 Python 解释器无关的运行时第三方依赖（GUI）被剔除；prompt_toolkit 在
 # cli/commands.py 顶部被导入，必须保留。渠道 SDK（lark_oapi / dingtalk_stream /
 # socketio / botpy 等）不要剔除：渠道模块是动态导入的，需 --collect-submodules
-# biscuitbot.channels 显式收集，并保留其依赖的 SDK。
+# xianaibot.channels 显式收集，并保留其依赖的 SDK。
 EXCLUDES=(
   --exclude-module telegram
   --exclude-module telegram.ext
@@ -107,7 +107,7 @@ EXCLUDES=(
 # 或报「未安装 xxx SDK」。dashscope 用 --collect-all 以连其 tts_v2 子模块与
 # websocket-client 依赖一并收进。
 HIDDEN_IMPORTS=(
-  --hidden-import biscuitbot.providers.tts
+  --hidden-import xianaibot.providers.tts
   --collect-all dashscope
   --collect-all pynput
   --collect-all serial
@@ -120,23 +120,23 @@ HIDDEN_IMPORTS=(
   --distpath "$DIST_DIR" \
   --workpath "$WORK_DIR" \
   --paths "$ROOT" \
-  --collect-submodules biscuitbot.channels \
-  --collect-submodules biscuitbot.agent.tools \
-  --name biscuitbot-sidecar \
-  --add-data "biscuitbot/web/dist:biscuitbot/web/dist" \
-  --add-data "biscuitbot/templates:biscuitbot/templates" \
-  --add-data "biscuitbot/skills:biscuitbot/skills" \
-  --add-data "biscuitbot/agent/tools/docs:biscuitbot/agent/tools/docs" \
-  --add-data "images/bot:biscuitbot/avatars" \
+  --collect-submodules xianaibot.channels \
+  --collect-submodules xianaibot.agent.tools \
+  --name xianaibot-sidecar \
+  --add-data "xianaibot/web/dist:xianaibot/web/dist" \
+  --add-data "xianaibot/templates:xianaibot/templates" \
+  --add-data "xianaibot/skills:xianaibot/skills" \
+  --add-data "xianaibot/agent/tools/docs:xianaibot/agent/tools/docs" \
+  --add-data "images/bot:xianaibot/avatars" \
   "${HIDDEN_IMPORTS[@]}" \
   "${EXCLUDES[@]}" \
   scripts/desktop_sidecar_main.py
 
 mkdir -p "$ROOT/src-tauri/binaries"
 # onedir：整体复制目录（可执行文件 + _internal/），sidecar 启动时按相对路径找依赖
-rm -rf "$ROOT/src-tauri/binaries/biscuitbot-sidecar"
-cp -R "$DIST_DIR/biscuitbot-sidecar" "$ROOT/src-tauri/binaries/biscuitbot-sidecar"
-echo "    sidecar → src-tauri/binaries/biscuitbot-sidecar/"
+rm -rf "$ROOT/src-tauri/binaries/xianaibot-sidecar"
+cp -R "$DIST_DIR/xianaibot-sidecar" "$ROOT/src-tauri/binaries/xianaibot-sidecar"
+echo "    sidecar → src-tauri/binaries/xianaibot-sidecar/"
 
 echo "==> 5/6 准备 Tauri 壳依赖与图标（幂等）"
 cd "$ROOT/src-tauri"
@@ -195,18 +195,18 @@ fi
 # 因 rm 走 rename 优化路径），改用 mv 重命名 + find -depth -delete 才能可靠删除。
 mkdir -p "$OUTPUT_DIR"
 BUNDLE_DIR="$ROOT/src-tauri/target/$RELEASE_SUBPATH/bundle"
-if [ -d "$OUTPUT_DIR/biscuitbot.app" ]; then
-  mv "$OUTPUT_DIR/biscuitbot.app" "$OUTPUT_DIR/biscuitbot.app.old.$$" 2>/dev/null || true
+if [ -d "$OUTPUT_DIR/夏奈儿.app" ]; then
+  mv "$OUTPUT_DIR/夏奈儿.app" "$OUTPUT_DIR/夏奈儿.app.old.$$" 2>/dev/null || true
 fi
 # 用 ditto 复制 .app bundle：保留 metadata/ACL/扩展属性，比 cp -R 更可靠
 # （ditto 是 macOS 专用，Linux 上回退到 cp -R）
 if command -v ditto >/dev/null 2>&1; then
-  ditto "$BUNDLE_DIR/macos/biscuitbot.app" "$OUTPUT_DIR/biscuitbot.app" 2>/dev/null || cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
+  ditto "$BUNDLE_DIR/macos/夏奈儿.app" "$OUTPUT_DIR/夏奈儿.app" 2>/dev/null || cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
 else
   cp -R "$BUNDLE_DIR/macos/"*.app "$OUTPUT_DIR/" 2>/dev/null || true
 fi
 # 清理被替换的旧 .app（find -depth -delete 规避 EXDEV）
-find "$OUTPUT_DIR" -maxdepth 1 -name 'biscuitbot.app.old.*' -depth -delete 2>/dev/null || true
+find "$OUTPUT_DIR" -maxdepth 1 -name '夏奈儿.app.old.*' -depth -delete 2>/dev/null || true
 rm -f "$OUTPUT_DIR/"*.dmg
 if [ -n "$NEW_VERSION" ]; then
   cp -f "$BUNDLE_DIR/dmg/"*"${NEW_VERSION}"*.dmg "$OUTPUT_DIR/" 2>/dev/null || true

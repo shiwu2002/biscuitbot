@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "biscuitbot-desktop-shell",
+      "name": "xianaibot-desktop-shell",
       "devDependencies": {
         "@tauri-apps/cli": "^2.11.4",
       },

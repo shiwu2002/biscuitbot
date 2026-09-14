@@ -63,8 +63,8 @@ describe("ChatList", () => {
         title: "Zeta task",
         updatedAt: "2026-05-20T12:00:00Z",
         workspaceScope: {
-          project_path: "/Users/me/biscuitbot",
-          project_name: "biscuitbot",
+          project_path: "/Users/me/xianaibot",
+          project_name: "xianaibot",
           access_mode: "restricted",
         },
       }),
@@ -73,8 +73,8 @@ describe("ChatList", () => {
         title: "Alpha task",
         updatedAt: "2026-05-20T11:00:00Z",
         workspaceScope: {
-          project_path: "/Users/me/biscuitbot",
-          project_name: "biscuitbot",
+          project_path: "/Users/me/xianaibot",
+          project_name: "xianaibot",
           access_mode: "restricted",
         },
       }),
@@ -83,8 +83,8 @@ describe("ChatList", () => {
         title: "Bench task",
         updatedAt: "2026-05-21T09:00:00Z",
         workspaceScope: {
-          project_path: "/Users/me/biscuitbot-bench",
-          project_name: "biscuitbot-bench",
+          project_path: "/Users/me/xianaibot-bench",
+          project_name: "xianaibot-bench",
           access_mode: "full",
         },
       }),
@@ -105,14 +105,14 @@ describe("ChatList", () => {
       />,
     );
 
-    const biscuitbotSection = screen.getByRole("region", { name: "biscuitbot" });
-    const biscuitbotText = biscuitbotSection.textContent ?? "";
+    const xianaibotSection = screen.getByRole("region", { name: "xianaibot" });
+    const xianaibotText = xianaibotSection.textContent ?? "";
 
-    expect(screen.getByRole("region", { name: "biscuitbot-bench" })).toBeInTheDocument();
-    expect(within(biscuitbotSection).getByText("Alpha task")).toBeInTheDocument();
-    expect(within(biscuitbotSection).getByText("Zeta task")).toBeInTheDocument();
-    expect(biscuitbotText.indexOf("Alpha task")).toBeLessThan(biscuitbotText.indexOf("Zeta task"));
-    expect(within(biscuitbotSection).getByLabelText("Agent 正在运行")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "xianaibot-bench" })).toBeInTheDocument();
+    expect(within(xianaibotSection).getByText("Alpha task")).toBeInTheDocument();
+    expect(within(xianaibotSection).getByText("Zeta task")).toBeInTheDocument();
+    expect(xianaibotText.indexOf("Alpha task")).toBeLessThan(xianaibotText.indexOf("Zeta task"));
+    expect(within(xianaibotSection).getByLabelText("Agent 正在运行")).toBeInTheDocument();
     expect(screen.queryByText("今天")).not.toBeInTheDocument();
   });
 
@@ -123,7 +123,7 @@ describe("ChatList", () => {
         title: "Default workspace chat",
         updatedAt: "2026-05-21T10:00:00Z",
         workspaceScope: {
-          project_path: "/Users/me/.biscuitbot/workspace",
+          project_path: "/Users/me/.xianaibot/workspace",
           project_name: "workspace",
           access_mode: "restricted",
         },
@@ -133,8 +133,8 @@ describe("ChatList", () => {
         title: "Project chat",
         updatedAt: "2026-05-21T11:00:00Z",
         workspaceScope: {
-          project_path: "/Users/me/biscuitbot",
-          project_name: "biscuitbot",
+          project_path: "/Users/me/xianaibot",
+          project_name: "xianaibot",
           access_mode: "restricted",
         },
       }),
@@ -149,13 +149,13 @@ describe("ChatList", () => {
         onTogglePin={vi.fn()}
         onRequestRename={vi.fn()}
         onToggleArchive={vi.fn()}
-        defaultWorkspacePath="/Users/me/.biscuitbot/workspace"
+        defaultWorkspacePath="/Users/me/.xianaibot/workspace"
         showTimestamps
       />,
     );
 
     expect(screen.getByText("项目")).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "biscuitbot" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "xianaibot" })).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "workspace" })).not.toBeInTheDocument();
 
     const chatsSection = screen.getByRole("region", { name: "对话" });
@@ -172,8 +172,8 @@ describe("ChatList", () => {
         chatId: "alpha",
         title: "Alpha task",
         workspaceScope: {
-          project_path: "/Users/me/biscuitbot",
-          project_name: "biscuitbot",
+          project_path: "/Users/me/xianaibot",
+          project_name: "xianaibot",
           access_mode: "restricted",
         },
       }),
@@ -191,21 +191,21 @@ describe("ChatList", () => {
         onToggleGroup={onToggleGroup}
         onRequestRenameProject={onRequestRenameProject}
         onNewChatInProject={onNewChatInProject}
-        projectNameOverrides={{ "/Users/me/biscuitbot": "Photos" }}
-        collapsedGroups={{ "project:/Users/me/biscuitbot": true }}
+        projectNameOverrides={{ "/Users/me/xianaibot": "Photos" }}
+        collapsedGroups={{ "project:/Users/me/xianaibot": true }}
       />,
     );
 
     const projectSection = screen.getByRole("region", { name: "Photos" });
     fireEvent.click(within(projectSection).getByRole("button", { name: "Photos" }));
 
-    expect(onToggleGroup).toHaveBeenCalledWith("project:/Users/me/biscuitbot");
+    expect(onToggleGroup).toHaveBeenCalledWith("project:/Users/me/xianaibot");
     expect(within(projectSection).queryByText("Alpha task")).not.toBeInTheDocument();
 
     fireEvent.click(
       within(projectSection).getByRole("button", { name: "在 Photos 中开始新对话" }),
     );
-    expect(onNewChatInProject).toHaveBeenCalledWith("/Users/me/biscuitbot", "Photos");
+    expect(onNewChatInProject).toHaveBeenCalledWith("/Users/me/xianaibot", "Photos");
     expect(onToggleGroup).toHaveBeenCalledTimes(1);
 
     fireEvent.pointerDown(
@@ -214,7 +214,7 @@ describe("ChatList", () => {
     );
     fireEvent.click(await screen.findByRole("menuitem", { name: "重命名" }));
 
-    expect(onRequestRenameProject).toHaveBeenCalledWith("/Users/me/biscuitbot", "Photos");
+    expect(onRequestRenameProject).toHaveBeenCalledWith("/Users/me/xianaibot", "Photos");
   });
 
   it("hides the updated dot for the active chat", () => {
@@ -254,7 +254,7 @@ describe("ChatList", () => {
         title: `Chat ${index}`,
         updatedAt: `2026-05-21T10:${String(index).padStart(2, "0")}:00Z`,
         workspaceScope: {
-          project_path: "/Users/me/.biscuitbot/workspace",
+          project_path: "/Users/me/.xianaibot/workspace",
           project_name: "workspace",
           access_mode: "restricted",
         },
@@ -270,7 +270,7 @@ describe("ChatList", () => {
       onRequestRename: vi.fn(),
       onToggleArchive: vi.fn(),
       onToggleGroup,
-      defaultWorkspacePath: "/Users/me/.biscuitbot/workspace",
+      defaultWorkspacePath: "/Users/me/.xianaibot/workspace",
     };
 
     const { rerender } = render(<ChatList {...baseProps} />);

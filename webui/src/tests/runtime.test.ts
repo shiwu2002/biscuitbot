@@ -3,27 +3,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getHostApi } from "@/lib/runtime";
 
 /**
- * 验证桌面壳未注入 `window.biscuitbotHost` 时，getHostApi() 会从 `window.__TAURI__`
+ * 验证桌面壳未注入 `window.xianaibotHost` 时，getHostApi() 会从 `window.__TAURI__`
  * 派生出一个仅含 pickFolder 的宿主对象（走系统目录选择框）；浏览器下二者皆无时返回 null。
  */
 describe("getHostApi tauri derivation", () => {
   beforeEach(() => {
-    Reflect.deleteProperty(window, "biscuitbotHost");
+    Reflect.deleteProperty(window, "xianaibotHost");
     Reflect.deleteProperty(window, "__TAURI__");
   });
 
   afterEach(() => {
-    Reflect.deleteProperty(window, "biscuitbotHost");
+    Reflect.deleteProperty(window, "xianaibotHost");
     Reflect.deleteProperty(window, "__TAURI__");
   });
 
-  it("returns null when both biscuitbotHost and __TAURI__ are absent (browser)", () => {
+  it("returns null when both xianaibotHost and __TAURI__ are absent (browser)", () => {
     expect(getHostApi()).toBeNull();
   });
 
-  it("prefers an already-injected window.biscuitbotHost", () => {
+  it("prefers an already-injected window.xianaibotHost", () => {
     const injected = { pickFolder: vi.fn(async () => "/host/path") };
-    Object.defineProperty(window, "biscuitbotHost", { configurable: true, value: injected });
+    Object.defineProperty(window, "xianaibotHost", { configurable: true, value: injected });
     expect(getHostApi()).toBe(injected);
   });
 

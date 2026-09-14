@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 try:
-    from biscuitbot.channels import qq
+    from xianaibot.channels import qq
 
     QQ_AVAILABLE = getattr(qq, "QQ_AVAILABLE", False)
 except ImportError:
@@ -15,9 +15,9 @@ except ImportError:
 if not QQ_AVAILABLE:
     pytest.skip("QQ dependencies not installed (qq-botpy)", allow_module_level=True)
 
-from biscuitbot.bus.events import OutboundMessage
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.qq import (
+from xianaibot.bus.events import OutboundMessage
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.qq import (
     QQ_FILE_TYPE_FILE,
     QQ_FILE_TYPE_IMAGE,
     QQChannel,
@@ -25,7 +25,7 @@ from biscuitbot.channels.qq import (
     _guess_send_file_type,
     _is_image_name,
 )
-from biscuitbot.utils.helpers import safe_filename as _sanitize_filename
+from xianaibot.utils.helpers import safe_filename as _sanitize_filename
 
 
 class _FakeApi:

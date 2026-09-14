@@ -21,7 +21,7 @@ body:
       label: Steps to Reproduce
       description: How can we reproduce this behavior?
       placeholder: |
-        1. Configure biscuitbot with ...
+        1. Configure xianaibot with ...
         2. Send message ...
         3. See error ...
     validations:
@@ -40,15 +40,15 @@ body:
     attributes:
       label: Relevant Logs
       description: |
-        Paste any relevant log output. You can run biscuitbot with `--log-level DEBUG` for more verbose logs.
+        Paste any relevant log output. You can run xianaibot with `--log-level DEBUG` for more verbose logs.
         **Remember to redact any sensitive information (tokens, API keys, passwords, etc.)**
       render: shell
 
   - type: input
     id: version
     attributes:
-      label: biscuitbot Version
-      description: Run `biscuitbot --version` or `pip show biscuitbot-ai`
+      label: xianaibot Version
+      description: Run `xianaibot --version` or `pip show xianaibot-ai`
       placeholder: e.g., 0.2.0
     validations:
       required: true
@@ -125,7 +125,7 @@ body:
     attributes:
       label: Configuration (Optional)
       description: |
-        Relevant parts of your biscuitbot configuration. **Remember to redact any sensitive information.**
+        Relevant parts of your xianaibot configuration. **Remember to redact any sensitive information.**
       render: yaml
 
   - type: textarea

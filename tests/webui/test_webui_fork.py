@@ -12,10 +12,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import biscuitbot.webui.transcript as transcript_mod
-from biscuitbot.session.manager import SessionManager
-from biscuitbot.webui.forking import create_webui_chat_fork
-from biscuitbot.webui.transcript import (
+import xianaibot.webui.transcript as transcript_mod
+from xianaibot.session.manager import SessionManager
+from xianaibot.webui.forking import create_webui_chat_fork
+from xianaibot.webui.transcript import (
     fork_boundary_message_count,
     read_transcript_lines,
     webui_transcript_path,

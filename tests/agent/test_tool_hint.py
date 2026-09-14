@@ -1,7 +1,7 @@
-"""Tests for tool hint formatting (biscuitbot.utils.tool_hints)."""
+"""Tests for tool hint formatting (xianaibot.utils.tool_hints)."""
 
-from biscuitbot.utils.tool_hints import format_tool_hints
-from biscuitbot.providers.base import ToolCallRequest
+from xianaibot.utils.tool_hints import format_tool_hints
+from xianaibot.providers.base import ToolCallRequest
 
 
 def _tc(name: str, args) -> ToolCallRequest:
@@ -21,7 +21,7 @@ class TestToolHintKnownTools:
         assert result == 'read foo.txt'
 
     def test_read_file_long_path(self):
-        result = _hint([_tc("read_file", {"path": "/home/user/.local/share/uv/tools/biscuitbot/agent/loop.py"})])
+        result = _hint([_tc("read_file", {"path": "/home/user/.local/share/uv/tools/xianaibot/agent/loop.py"})])
         assert "loop.py" in result
         assert "read " in result
 
@@ -50,21 +50,21 @@ class TestToolHintKnownTools:
 
     def test_exec_abbreviates_paths_in_command(self):
         """Windows paths in exec commands should be folded, not blindly truncated."""
-        cmd = "cd D:\\Documents\\GitHub\\biscuitbot\\.worktree\\tomain\\biscuitbot && git diff origin/main...pr-2706 --name-only 2>&1"
+        cmd = "cd D:\\Documents\\GitHub\\xianaibot\\.worktree\\tomain\\xianaibot && git diff origin/main...pr-2706 --name-only 2>&1"
         result = _hint([_tc("exec", {"command": cmd})])
         assert "\u2026/" in result  # path should be folded with …/
         assert "worktree" not in result  # middle segments should be collapsed
 
     def test_exec_abbreviates_linux_paths(self):
         """Unix absolute paths in exec commands should be folded."""
-        cmd = "cd /home/user/projects/biscuitbot/.worktree/tomain && make build"
+        cmd = "cd /home/user/projects/xianaibot/.worktree/tomain && make build"
         result = _hint([_tc("exec", {"command": cmd})])
         assert "\u2026/" in result
         assert "projects" not in result
 
     def test_exec_abbreviates_home_paths(self):
         """~/ paths in exec commands should be folded."""
-        cmd = "cd ~/projects/biscuitbot/workspace && pytest tests/"
+        cmd = "cd ~/projects/xianaibot/workspace && pytest tests/"
         result = _hint([_tc("exec", {"command": cmd})])
         assert "\u2026/" in result
 
@@ -288,21 +288,21 @@ class TestToolHintMaxLength:
 
     def test_path_type_respects_max_length(self):
         """Path-type tools (read_file, write_file, etc.) should honor max_length."""
-        long_path = "/home/user/.local/share/uv/tools/biscuitbot/agent/loop.py"
+        long_path = "/home/user/.local/share/uv/tools/xianaibot/agent/loop.py"
         short = _hint([_tc("read_file", {"path": long_path})], max_length=40)
         long = _hint([_tc("read_file", {"path": long_path})], max_length=120)
         assert len(long) > len(short)
 
     def test_edit_path_respects_max_length(self):
         """edit (is_path=True) should honor max_length, not stay hardcoded at 40."""
-        long_path = "/home/user/projects/biscuitbot/src/agent/loop.py"
+        long_path = "/home/user/projects/xianaibot/src/agent/loop.py"
         short = _hint([_tc("edit", {"file_path": long_path})], max_length=40)
         long = _hint([_tc("edit", {"file_path": long_path})], max_length=120)
         assert len(long) > len(short)
 
     def test_list_dir_path_respects_max_length(self):
         """list_dir (is_path=True) should honor max_length."""
-        long_path = "/home/user/.local/share/uv/tools/biscuitbot/"
+        long_path = "/home/user/.local/share/uv/tools/xianaibot/"
         short = _hint([_tc("list_dir", {"path": long_path})], max_length=40)
         long = _hint([_tc("list_dir", {"path": long_path})], max_length=120)
         assert len(long) > len(short)

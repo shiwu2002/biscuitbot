@@ -1,6 +1,6 @@
 """Shared tool-argument parsing policy tests."""
 
-from biscuitbot.providers.base import (
+from xianaibot.providers.base import (
     parse_tool_arguments,
     tool_arguments_json_for_replay,
     tool_arguments_object_for_replay,

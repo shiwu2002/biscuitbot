@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 
-from biscuitbot.agent.memory import _HISTORY_ENTRY_HARD_CAP, MemoryStore
+from xianaibot.agent.memory import _HISTORY_ENTRY_HARD_CAP, MemoryStore
 
 
 @pytest.fixture

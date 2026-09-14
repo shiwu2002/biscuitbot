@@ -1,4 +1,4 @@
-"""Tests for ``biscuitbot.webui.skills_api.delete_workspace_skill``."""
+"""Tests for ``xianaibot.webui.skills_api.delete_workspace_skill``."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.agent import skills as skills_module
-from biscuitbot.agent.skills import SkillsLoader
-from biscuitbot.webui.skills_api import (
+from xianaibot.agent import skills as skills_module
+from xianaibot.agent.skills import SkillsLoader
+from xianaibot.webui.skills_api import (
     SkillDeletionError,
     delete_workspace_skill,
     webui_skills_payload,
@@ -27,7 +27,7 @@ def _write_skill(
     skill_dir.mkdir(parents=True)
     lines = ["---"]
     if metadata_json is not None:
-        payload = json.dumps({"biscuitbot": metadata_json}, separators=(",", ":"))
+        payload = json.dumps({"xianaibot": metadata_json}, separators=(",", ":"))
         lines.append(f"metadata: {payload}")
     lines.extend(["---", "", body])
     path = skill_dir / "SKILL.md"
@@ -135,8 +135,8 @@ def test_delete_workspace_skill_keeps_other_skills(tmp_path: Path) -> None:
 def test_delete_bundled_skill_blocked_while_employee_exists(
     tmp_path: Path, _isolated_builtin_skills: Path
 ) -> None:
-    from biscuitbot.agent.employees import EmployeeStore
-    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+    from xianaibot.agent.employees import EmployeeStore
+    from xianaibot.agent.skill_owners import SkillOwnershipStore
 
     workspace = _workspace_with_skill(tmp_path, "bundled-a")
     store = EmployeeStore(workspace)
@@ -155,8 +155,8 @@ def test_delete_bundled_skill_blocked_while_employee_exists(
 def test_delete_bundled_skill_allowed_for_stale_owner(
     tmp_path: Path, _isolated_builtin_skills: Path
 ) -> None:
-    from biscuitbot.agent.employees import EmployeeStore
-    from biscuitbot.agent.skill_owners import SkillOwnershipStore
+    from xianaibot.agent.employees import EmployeeStore
+    from xianaibot.agent.skill_owners import SkillOwnershipStore
 
     workspace = _workspace_with_skill(tmp_path, "bundled-a")
     store = EmployeeStore(workspace)

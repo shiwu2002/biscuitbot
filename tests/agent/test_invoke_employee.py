@@ -7,11 +7,11 @@ from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from biscuitbot.agent.employees import EmployeeStore
-from biscuitbot.agent.subagent import SubagentManager
-from biscuitbot.agent.tools.employee import InvokeEmployeeTool
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.config.schema import ToolsConfig
+from xianaibot.agent.employees import EmployeeStore
+from xianaibot.agent.subagent import SubagentManager
+from xianaibot.agent.tools.employee import InvokeEmployeeTool
+from xianaibot.bus.queue import MessageBus
+from xianaibot.config.schema import ToolsConfig
 
 
 def _store(tmp_path: Path) -> EmployeeStore:
@@ -121,7 +121,7 @@ class TestInvokeEmployeeTool:
 
     async def test_long_result_persisted_with_pointer(self, tmp_path: Path) -> None:
         """绑定工作区时，超限成果落盘到 tool-results，内联文本保留精华并附路径。"""
-        from biscuitbot.security.workspace_access import (
+        from xianaibot.security.workspace_access import (
             bind_workspace_scope,
             build_workspace_scope,
             reset_workspace_scope,
@@ -137,7 +137,7 @@ class TestInvokeEmployeeTool:
         assert "（成果已截断" in out
         assert "完整成果已保存至" in out
         assert "数字员工" in out
-        saved = list((ws / ".biscuitbot" / "tool-results" / "employees").glob("*.txt"))
+        saved = list((ws / ".xianaibot" / "tool-results" / "employees").glob("*.txt"))
         assert len(saved) == 1
         assert len(saved[0].read_text(encoding="utf-8")) == 30000  # 完整成果未丢
 

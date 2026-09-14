@@ -1,6 +1,6 @@
 """Tests for AnthropicProvider._merge_consecutive."""
 
-from biscuitbot.providers.anthropic_provider import AnthropicProvider
+from xianaibot.providers.anthropic_provider import AnthropicProvider
 
 
 class TestMergeConsecutive:

@@ -1,10 +1,10 @@
-"""Tests for biscuitbot.agent.tools.sandbox."""
+"""Tests for xianaibot.agent.tools.sandbox."""
 
 import shlex
 
 import pytest
 
-from biscuitbot.agent.tools.sandbox import wrap_command
+from xianaibot.agent.tools.sandbox import wrap_command
 
 
 def _parse(cmd: str) -> list[str]:
@@ -108,7 +108,7 @@ class TestBwrapBackend:
         fake_media = tmp_path / "media"
         fake_media.mkdir()
         monkeypatch.setattr(
-            "biscuitbot.agent.tools.sandbox.get_media_dir",
+            "xianaibot.agent.tools.sandbox.get_media_dir",
             lambda: fake_media,
         )
         ws = str(tmp_path / "project")

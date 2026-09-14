@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 
-from biscuitbot.agent.tools.shell import ExecTool
+from xianaibot.agent.tools.shell import ExecTool
 
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="venv bin dir semantics differ on Windows"
@@ -68,15 +68,15 @@ class TestPathComposition:
         tool = ExecTool(guard_level="off", working_dir="/tmp")
         env: dict[str, str] = {}
         command = tool._wrap_path_export("python3 --version", env, VENV_BIN)
-        assert command == 'export PATH="$BISCUITBOT_VENV_BIN:$PATH"; python3 --version'
-        assert env["BISCUITBOT_VENV_BIN"] == VENV_BIN
+        assert command == 'export PATH="$XIANAIBOT_VENV_BIN:$PATH"; python3 --version'
+        assert env["XIANAIBOT_VENV_BIN"] == VENV_BIN
 
     def test_wrap_path_export_without_venv(self) -> None:
         tool = ExecTool(guard_level="off", working_dir="/tmp")
         env: dict[str, str] = {}
         command = tool._wrap_path_export("echo hi", env, None)
         assert command == 'export PATH="$PATH"; echo hi'
-        assert "BISCUITBOT_VENV_BIN" not in env
+        assert "XIANAIBOT_VENV_BIN" not in env
 
 
 class TestPrepareCommand:
@@ -88,9 +88,9 @@ class TestPrepareCommand:
             prepped = _prepared(tool, "python3 --version", str(tmp_path))
         assert (
             prepped.command
-            == 'export PATH="$BISCUITBOT_VENV_BIN:$PATH"; python3 --version'
+            == 'export PATH="$XIANAIBOT_VENV_BIN:$PATH"; python3 --version'
         )
-        assert prepped.env["BISCUITBOT_VENV_BIN"] == VENV_BIN
+        assert prepped.env["XIANAIBOT_VENV_BIN"] == VENV_BIN
         assert prepped.env["VIRTUAL_ENV"] == "/proj/.venv"
 
     def test_no_injection_when_disabled(self, tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ class TestPrepareCommand:
             )
             prepped = _prepared(tool, "echo hi", str(tmp_path))
         assert prepped.command == "echo hi"
-        assert "BISCUITBOT_VENV_BIN" not in prepped.env
+        assert "XIANAIBOT_VENV_BIN" not in prepped.env
         assert "VIRTUAL_ENV" not in prepped.env
 
     def test_no_injection_when_not_in_venv(self, tmp_path: Path) -> None:
@@ -142,14 +142,14 @@ class TestFrozenBundledShims:
             assert tool._prefer_python_bin() == "/frozen/shims"
 
     def test_bundled_bin_generates_shims(self, tmp_path: Path) -> None:
-        fake_exe = tmp_path / "biscuitbot-sidecar"
+        fake_exe = tmp_path / "xianaibot-sidecar"
         fake_exe.write_text("#!/bin/sh\n", encoding="utf-8")
         fake_exe.chmod(0o755)
         with (
             patch.object(sys, "frozen", True, create=True),
             patch.object(sys, "executable", str(fake_exe)),
             patch(
-                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                "xianaibot.agent.tools.shell.tempfile.gettempdir",
                 return_value=str(tmp_path),
             ),
         ):
@@ -161,7 +161,7 @@ class TestFrozenBundledShims:
             assert (d / name).exists(), name
             assert (d / name).stat().st_mode & 0o111, f"{name} not executable"
             content = (d / name).read_text(encoding="utf-8")
-            assert "__biscuitbot_python__" in content, name
+            assert "__xianaibot_python__" in content, name
             assert str(fake_exe) in content, name
         # pip shim 走 -m pip
         assert "-m pip" in (d / "pip3").read_text(encoding="utf-8")
@@ -170,7 +170,7 @@ class TestFrozenBundledShims:
             patch.object(sys, "frozen", True, create=True),
             patch.object(sys, "executable", str(fake_exe)),
             patch(
-                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                "xianaibot.agent.tools.shell.tempfile.gettempdir",
                 return_value=str(tmp_path),
             ),
         ):
@@ -182,7 +182,7 @@ class TestFrozenBundledShims:
             patch.object(sys, "frozen", True, create=True),
             patch.object(sys, "executable", "/no/such/sidecar"),
             patch(
-                "biscuitbot.agent.tools.shell.tempfile.gettempdir",
+                "xianaibot.agent.tools.shell.tempfile.gettempdir",
                 return_value="/tmp",
             ),
         ):

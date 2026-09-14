@@ -22,7 +22,7 @@ vi.mock("@/lib/bootstrap", () => ({
   clearSavedSecret: vi.fn(),
 }));
 
-vi.mock("@/lib/biscuitbot-client", () => {
+vi.mock("@/lib/xianaibot-client", () => {
   class MockClient {
     status = "open" as const;
     defaultChatId: string | null = null;
@@ -45,7 +45,7 @@ vi.mock("@/lib/biscuitbot-client", () => {
     close = vi.fn();
     updateUrl = vi.fn();
   }
-  return { BiscuitbotClient: MockClient };
+  return { XianaibotClient: MockClient };
 });
 
 function jsonResponse(body: unknown): Response {
@@ -73,7 +73,7 @@ function baseSettingsPayload() {
       temperature: 0.1,
       reasoning_effort: null,
       timezone: "UTC",
-      bot_name: "biscuitbot",
+      bot_name: "xianaibot",
       bot_icon: "nb",
       tool_hint_max_length: 40,
     },
@@ -118,8 +118,8 @@ describe("fork navigation", () => {
     newChatSpy.mockReset().mockResolvedValue("chat-new");
     sessionUpdateHandlers.clear();
     window.history.replaceState(null, "", "/");
-    localStorage.removeItem("biscuitbot-webui.sidebar");
-    localStorage.removeItem("biscuitbot-webui.sidebar.session-updates.v1");
+    localStorage.removeItem("xianaibot-webui.sidebar");
+    localStorage.removeItem("xianaibot-webui.sidebar.session-updates.v1");
   });
 
   afterEach(() => {

@@ -1,4 +1,4 @@
-"""Persistence tests for ``biscuitbot.cron.service.CronService``.
+"""Persistence tests for ``xianaibot.cron.service.CronService``.
 
 These tests target the specific failure mode where a corrupt or partially
 written ``jobs.json`` would silently turn into an empty job list on the next
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from biscuitbot.cron.service import CronService
-from biscuitbot.cron.types import CronSchedule
+from xianaibot.cron.service import CronService
+from xianaibot.cron.types import CronSchedule
 
 
 def _seeded_store(tmp_path: Path) -> tuple[CronService, Path]:

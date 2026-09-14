@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from biscuitbot.agent.context import ContextBuilder
-from biscuitbot.utils.document import extract_documents
+from xianaibot.agent.context import ContextBuilder
+from xianaibot.utils.document import extract_documents
 
 
 def _make_builder(tmp_path: Path) -> ContextBuilder:

@@ -5,7 +5,7 @@ __pycache__
 *.egg-info
 dist/
 build/
-biscuitbot/web/dist/
+xianaibot/web/dist/
 .git
 .env
 .assets

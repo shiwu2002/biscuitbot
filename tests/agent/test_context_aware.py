@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from biscuitbot.agent.tools.context import ContextAware, RequestContext
+from xianaibot.agent.tools.context import ContextAware, RequestContext
 
 
 class _ContextTool:

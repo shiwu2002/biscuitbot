@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.channels.napcat import NapcatChannel, NapcatConfig
+from xianaibot.bus.queue import MessageBus
+from xianaibot.channels.napcat import NapcatChannel, NapcatConfig
 
 
 class _FakeWs:
@@ -139,7 +139,7 @@ async def test_download_image_rejects_redirects(tmp_path, monkeypatch) -> None:
     channel._media_root = tmp_path
     channel._http = _FakeHttp(_FakeResponse(status=302))
     monkeypatch.setattr(
-        "biscuitbot.channels.napcat.validate_url_target",
+        "xianaibot.channels.napcat.validate_url_target",
         lambda _url: (True, ""),
     )
 

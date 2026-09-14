@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from biscuitbot.bus.events import InboundMessage, OutboundMessage
-from biscuitbot.cli.commands import app
-from biscuitbot.config.schema import Config
-from biscuitbot.cron.service import CronJobSkippedError
-from biscuitbot.cron.session_turns import CRON_DEFER_UNTIL_IDLE_META, CRON_TRIGGER_META
-from biscuitbot.cron.types import CronJob, CronPayload
-from biscuitbot.cron.webui_metadata import cron_proactive_delivery_metadata
-from biscuitbot.providers.factory import ProviderSnapshot, make_provider
-from biscuitbot.webui.metadata import (
+from xianaibot.bus.events import InboundMessage, OutboundMessage
+from xianaibot.cli.commands import app
+from xianaibot.config.schema import Config
+from xianaibot.cron.service import CronJobSkippedError
+from xianaibot.cron.session_turns import CRON_DEFER_UNTIL_IDLE_META, CRON_TRIGGER_META
+from xianaibot.cron.types import CronJob, CronPayload
+from xianaibot.cron.webui_metadata import cron_proactive_delivery_metadata
+from xianaibot.providers.factory import ProviderSnapshot, make_provider
+from xianaibot.webui.metadata import (
     WEBUI_MESSAGE_SOURCE_METADATA_KEY,
     WEBUI_TURN_METADATA_KEY,
 )
@@ -59,10 +59,10 @@ class _StopGatewayError(RuntimeError):
 @pytest.fixture
 def mock_paths():
     """Mock config/workspace paths for test isolation."""
-    with patch("biscuitbot.config.loader.get_config_path") as mock_cp, \
-         patch("biscuitbot.config.loader.save_config") as mock_sc, \
-         patch("biscuitbot.config.loader.load_config") as mock_lc, \
-         patch("biscuitbot.cli.commands.get_workspace_path") as mock_ws:
+    with patch("xianaibot.config.loader.get_config_path") as mock_cp, \
+         patch("xianaibot.config.loader.save_config") as mock_sc, \
+         patch("xianaibot.config.loader.load_config") as mock_lc, \
+         patch("xianaibot.cli.commands.get_workspace_path") as mock_ws:
         base_dir = Path("./test_onboard_data")
         if base_dir.exists():
             shutil.rmtree(base_dir)
@@ -97,7 +97,7 @@ def test_onboard_fresh_install(mock_paths):
     assert result.exit_code == 0
     assert "配置已创建" in result.stdout
     assert "工作区已创建" in result.stdout
-    assert "biscuitbot 已就绪" in result.stdout
+    assert "夏奈儿 已就绪" in result.stdout
     assert config_file.exists()
     assert (workspace_dir / "AGENTS.md").exists()
     assert (workspace_dir / "memory" / "MEMORY.md").exists()
@@ -168,10 +168,10 @@ def test_onboard_help_shows_workspace_and_config_options():
 def test_onboard_interactive_discard_does_not_save_or_create_workspace(mock_paths, monkeypatch):
     config_file, workspace_dir, _ = mock_paths
 
-    from biscuitbot.cli.onboard import OnboardResult
+    from xianaibot.cli.onboard import OnboardResult
 
     monkeypatch.setattr(
-        "biscuitbot.cli.onboard.run_onboard",
+        "xianaibot.cli.onboard.run_onboard",
         lambda initial_config: OnboardResult(config=initial_config, should_save=False),
     )
 
@@ -187,7 +187,7 @@ def test_onboard_uses_explicit_config_and_workspace_paths(tmp_path, monkeypatch)
     config_path = tmp_path / "instance" / "config.json"
     workspace_path = tmp_path / "workspace"
 
-    monkeypatch.setattr("biscuitbot.channels.registry.discover_all", lambda: {})
+    monkeypatch.setattr("xianaibot.channels.registry.discover_all", lambda: {})
 
     result = runner.invoke(
         app,
@@ -209,13 +209,13 @@ def test_onboard_wizard_preserves_explicit_config_in_next_steps(tmp_path, monkey
     config_path = tmp_path / "instance" / "config.json"
     workspace_path = tmp_path / "workspace"
 
-    from biscuitbot.cli.onboard import OnboardResult
+    from xianaibot.cli.onboard import OnboardResult
 
     monkeypatch.setattr(
-        "biscuitbot.cli.onboard.run_onboard",
+        "xianaibot.cli.onboard.run_onboard",
         lambda initial_config: OnboardResult(config=initial_config, should_save=True),
     )
-    monkeypatch.setattr("biscuitbot.channels.registry.discover_all", lambda: {})
+    monkeypatch.setattr("xianaibot.channels.registry.discover_all", lambda: {})
 
     result = runner.invoke(
         app,
@@ -226,8 +226,8 @@ def test_onboard_wizard_preserves_explicit_config_in_next_steps(tmp_path, monkey
     stripped_output = _strip_ansi(result.stdout)
     compact_output = stripped_output.replace("\n", "")
     resolved_config = str(config_path.resolve())
-    assert f'biscuitbot agent -m "Hello!" --config {resolved_config}' in compact_output
-    assert f"biscuitbot gateway --config {resolved_config}" in compact_output
+    assert f'xianaibot agent -m "Hello!" --config {resolved_config}' in compact_output
+    assert f"xianaibot gateway --config {resolved_config}" in compact_output
 
 
 def test_config_matches_explicit_ollama_prefix_without_api_key():
@@ -276,7 +276,7 @@ def test_make_provider_passes_extra_headers_to_custom_provider():
         }
     )
 
-    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai:
+    with patch("xianaibot.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai:
         provider = make_provider(config)
         asyncio.run(provider._ensure_client())
 
@@ -299,7 +299,7 @@ def test_make_provider_treats_dynamic_custom_provider_as_direct():
         }
     )
 
-    with patch("biscuitbot.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai:
+    with patch("xianaibot.providers.openai_compat_provider.AsyncOpenAI") as mock_async_openai:
         provider = make_provider(config)
         asyncio.run(provider._ensure_client())
 
@@ -452,14 +452,14 @@ def mock_agent_runtime(tmp_path):
     config = Config()
     config.agents.defaults.workspace = str(tmp_path / "default-workspace")
 
-    with patch("biscuitbot.config.loader.load_config", return_value=config) as mock_load_config, \
-         patch("biscuitbot.config.loader.resolve_config_env_vars", side_effect=lambda c: c), \
-         patch("biscuitbot.cli.commands.sync_workspace_templates") as mock_sync_templates, \
-         patch("biscuitbot.providers.factory.make_provider", return_value=_fake_provider()), \
-         patch("biscuitbot.cli.commands._print_agent_response") as mock_print_response, \
-         patch("biscuitbot.bus.queue.MessageBus"), \
-         patch("biscuitbot.cron.service.CronService"), \
-         patch("biscuitbot.cli.commands.AgentLoop.from_config") as mock_from_config:
+    with patch("xianaibot.config.loader.load_config", return_value=config) as mock_load_config, \
+         patch("xianaibot.config.loader.resolve_config_env_vars", side_effect=lambda c: c), \
+         patch("xianaibot.cli.commands.sync_workspace_templates") as mock_sync_templates, \
+         patch("xianaibot.providers.factory.make_provider", return_value=_fake_provider()), \
+         patch("xianaibot.cli.commands._print_agent_response") as mock_print_response, \
+         patch("xianaibot.bus.queue.MessageBus"), \
+         patch("xianaibot.cron.service.CronService"), \
+         patch("xianaibot.cli.commands.AgentLoop.from_config") as mock_from_config:
         agent_loop = MagicMock()
         agent_loop.channels_config = None
         agent_loop.process_direct = AsyncMock(
@@ -524,14 +524,14 @@ def test_agent_config_sets_active_path(monkeypatch, tmp_path: Path) -> None:
     seen: dict[str, Path] = {}
 
     monkeypatch.setattr(
-        "biscuitbot.config.loader.set_config_path",
+        "xianaibot.config.loader.set_config_path",
         lambda path: seen.__setitem__("config_path", path),
     )
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: _fake_provider())
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: object())
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", lambda _store: object())
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: _fake_provider())
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr("xianaibot.cron.service.CronService", lambda _store: object())
 
     class _FakeAgentLoop:
         @classmethod
@@ -546,8 +546,8 @@ def test_agent_config_sets_active_path(monkeypatch, tmp_path: Path) -> None:
         async def close_mcp(self) -> None:
             return None
 
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
 
     result = runner.invoke(app, ["agent", "-m", "hello", "-c", str(config_file)])
 
@@ -564,11 +564,11 @@ def test_agent_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: Pa
     config.agents.defaults.workspace = str(tmp_path / "agent-workspace")
     seen: dict[str, Path] = {}
 
-    monkeypatch.setattr("biscuitbot.config.loader.set_config_path", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: _fake_provider())
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr("xianaibot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: _fake_provider())
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: object())
 
     class _FakeCron:
         def __init__(self, store_path: Path) -> None:
@@ -587,9 +587,9 @@ def test_agent_uses_workspace_directory_for_cron_store(monkeypatch, tmp_path: Pa
         async def close_mcp(self) -> None:
             return None
 
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCron)
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCron)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
 
     result = runner.invoke(app, ["agent", "-m", "hello", "-c", str(config_file)])
 
@@ -613,12 +613,12 @@ def test_agent_workspace_override_does_not_migrate_legacy_cron(
     config = Config()
     seen: dict[str, Path] = {}
 
-    monkeypatch.setattr("biscuitbot.config.loader.set_config_path", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: _fake_provider())
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: object())
-    monkeypatch.setattr("biscuitbot.config.paths.get_cron_dir", lambda: legacy_dir)
+    monkeypatch.setattr("xianaibot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: _fake_provider())
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr("xianaibot.config.paths.get_cron_dir", lambda: legacy_dir)
 
     class _FakeCron:
         def __init__(self, store_path: Path) -> None:
@@ -637,9 +637,9 @@ def test_agent_workspace_override_does_not_migrate_legacy_cron(
         async def close_mcp(self) -> None:
             return None
 
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCron)
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCron)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None)
 
     result = runner.invoke(
         app,
@@ -669,12 +669,12 @@ def test_agent_custom_config_workspace_does_not_migrate_legacy_cron(
     config.agents.defaults.workspace = str(custom_workspace)
     seen: dict[str, Path] = {}
 
-    monkeypatch.setattr("biscuitbot.config.loader.set_config_path", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: _fake_provider())
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: object())
-    monkeypatch.setattr("biscuitbot.config.paths.get_cron_dir", lambda: legacy_dir)
+    monkeypatch.setattr("xianaibot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: _fake_provider())
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: object())
+    monkeypatch.setattr("xianaibot.config.paths.get_cron_dir", lambda: legacy_dir)
 
     class _FakeCron:
         def __init__(self, store_path: Path) -> None:
@@ -693,10 +693,10 @@ def test_agent_custom_config_workspace_does_not_migrate_legacy_cron(
         async def close_mcp(self) -> None:
             return None
 
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCron)
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCron)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
     monkeypatch.setattr(
-        "biscuitbot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None
+        "xianaibot.cli.commands._print_agent_response", lambda *_args, **_kwargs: None
     )
 
     result = runner.invoke(app, ["agent", "-m", "hello", "-c", str(config_file)])
@@ -769,14 +769,14 @@ def test_heartbeat_retains_recent_messages_by_default():
     ],
 )
 def test_heartbeat_has_active_tasks(content, expected):
-    from biscuitbot.cli.commands import _heartbeat_has_active_tasks
+    from xianaibot.cli.commands import _heartbeat_has_active_tasks
 
     assert _heartbeat_has_active_tasks(content) is expected
 
 
 def test_heartbeat_skips_bundled_template():
-    from biscuitbot.cli.commands import _heartbeat_has_active_tasks
-    from biscuitbot.utils.helpers import load_bundled_template
+    from xianaibot.cli.commands import _heartbeat_has_active_tasks
+    from xianaibot.utils.helpers import load_bundled_template
 
     assert _heartbeat_has_active_tasks(load_bundled_template("HEARTBEAT.md")) is False
 
@@ -816,36 +816,36 @@ def _patch_cli_command_runtime(
     provider_factory = make_provider or (lambda _config: _fake_provider())
 
     monkeypatch.setattr(
-        "biscuitbot.config.loader.set_config_path",
+        "xianaibot.config.loader.set_config_path",
         set_config_path or (lambda _path: None),
     )
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.config.loader.resolve_config_env_vars", lambda c: c)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.config.loader.resolve_config_env_vars", lambda c: c)
     monkeypatch.setattr(
-        "biscuitbot.cli.commands.sync_workspace_templates",
+        "xianaibot.cli.commands.sync_workspace_templates",
         sync_templates or (lambda _path: None),
     )
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.make_provider",
+        "xianaibot.providers.factory.make_provider",
         provider_factory,
     )
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.build_provider_snapshot",
+        "xianaibot.providers.factory.build_provider_snapshot",
         lambda _config, **_kwargs: _test_provider_snapshot(provider_factory(_config), _config),
     )
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.load_provider_snapshot",
+        "xianaibot.providers.factory.load_provider_snapshot",
         lambda _config_path=None: _test_provider_snapshot(provider_factory(config), config),
     )
 
     if message_bus is not None:
-        monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", message_bus)
+        monkeypatch.setattr("xianaibot.bus.queue.MessageBus", message_bus)
     if session_manager is not None:
-        monkeypatch.setattr("biscuitbot.session.manager.SessionManager", session_manager)
+        monkeypatch.setattr("xianaibot.session.manager.SessionManager", session_manager)
     if cron_service is not None:
-        monkeypatch.setattr("biscuitbot.cron.service.CronService", cron_service)
+        monkeypatch.setattr("xianaibot.cron.service.CronService", cron_service)
     if get_cron_dir is not None:
-        monkeypatch.setattr("biscuitbot.config.paths.get_cron_dir", get_cron_dir)
+        monkeypatch.setattr("xianaibot.config.paths.get_cron_dir", get_cron_dir)
 
 
 def _patch_serve_runtime(monkeypatch, config: Config, seen: dict[str, object]) -> None:
@@ -886,8 +886,8 @@ def _patch_serve_runtime(monkeypatch, config: Config, seen: dict[str, object]) -
         message_bus=lambda: object(),
         session_manager=lambda _workspace: object(),
     )
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.api.server.create_app", _fake_create_app)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.api.server.create_app", _fake_create_app)
     monkeypatch.setattr("aiohttp.web.run_app", _fake_run_app)
 
 
@@ -975,19 +975,19 @@ def test_gateway_unbound_agent_cron_is_skipped(
     bus.publish_outbound = AsyncMock()
     seen: dict[str, object] = {}
 
-    monkeypatch.setattr("biscuitbot.config.loader.set_config_path", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: provider)
+    monkeypatch.setattr("xianaibot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: provider)
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.build_provider_snapshot",
+        "xianaibot.providers.factory.build_provider_snapshot",
         lambda _config, **_kwargs: _test_provider_snapshot(provider, _config),
     )
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.load_provider_snapshot",
+        "xianaibot.providers.factory.load_provider_snapshot",
         lambda _config_path=None: _test_provider_snapshot(provider, config),
     )
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: bus)
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: bus)
 
     class _FakeSession:
         def __init__(self) -> None:
@@ -1008,7 +1008,7 @@ def test_gateway_unbound_agent_cron_is_skipped(
         def save(self, session: _FakeSession) -> None:
             seen["saved_session"] = session
 
-    monkeypatch.setattr("biscuitbot.session.manager.SessionManager", _FakeSessionManager)
+    monkeypatch.setattr("xianaibot.session.manager.SessionManager", _FakeSessionManager)
 
     class _FakeCron:
         def __init__(self, _store_path: Path) -> None:
@@ -1050,11 +1050,11 @@ def test_gateway_unbound_agent_cron_is_skipped(
     ) -> bool:
         raise AssertionError("unbound cron job must not be evaluated for delivery")
 
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCron)
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.channels.manager.ChannelManager", _StopAfterCronSetup)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCron)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.channels.manager.ChannelManager", _StopAfterCronSetup)
     monkeypatch.setattr(
-        "biscuitbot.cli.commands.evaluate_response",
+        "xianaibot.cli.commands.evaluate_response",
         _capture_evaluate_response,
     )
 
@@ -1101,25 +1101,25 @@ def test_gateway_bound_cron_runs_as_session_turn(
     bus.publish_outbound = AsyncMock()
     seen: dict[str, object] = {"run_records": []}
 
-    monkeypatch.setattr("biscuitbot.config.loader.set_config_path", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.config.loader.load_config", lambda _path=None: config)
-    monkeypatch.setattr("biscuitbot.cli.commands.sync_workspace_templates", lambda _path: None)
-    monkeypatch.setattr("biscuitbot.providers.factory.make_provider", lambda _config: provider)
+    monkeypatch.setattr("xianaibot.config.loader.set_config_path", lambda _path: None)
+    monkeypatch.setattr("xianaibot.config.loader.load_config", lambda _path=None: config)
+    monkeypatch.setattr("xianaibot.cli.commands.sync_workspace_templates", lambda _path: None)
+    monkeypatch.setattr("xianaibot.providers.factory.make_provider", lambda _config: provider)
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.build_provider_snapshot",
+        "xianaibot.providers.factory.build_provider_snapshot",
         lambda _config, **_kwargs: _test_provider_snapshot(provider, _config),
     )
     monkeypatch.setattr(
-        "biscuitbot.providers.factory.load_provider_snapshot",
+        "xianaibot.providers.factory.load_provider_snapshot",
         lambda _config_path=None: _test_provider_snapshot(provider, config),
     )
-    monkeypatch.setattr("biscuitbot.bus.queue.MessageBus", lambda: bus)
+    monkeypatch.setattr("xianaibot.bus.queue.MessageBus", lambda: bus)
 
     class _FakeSessionManager:
         def __init__(self, _workspace: Path) -> None:
             pass
 
-    monkeypatch.setattr("biscuitbot.session.manager.SessionManager", _FakeSessionManager)
+    monkeypatch.setattr("xianaibot.session.manager.SessionManager", _FakeSessionManager)
 
     class _FakeCron:
         def __init__(self, _store_path: Path) -> None:
@@ -1164,10 +1164,10 @@ def test_gateway_bound_cron_runs_as_session_turn(
     async def _unexpected_evaluator(*_args, **_kwargs) -> bool:
         raise AssertionError("bound cron must not use legacy response evaluator")
 
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCron)
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.channels.manager.ChannelManager", _StopAfterCronSetup)
-    monkeypatch.setattr("biscuitbot.cli.commands.evaluate_response", _unexpected_evaluator)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCron)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.channels.manager.ChannelManager", _StopAfterCronSetup)
+    monkeypatch.setattr("xianaibot.cli.commands.evaluate_response", _unexpected_evaluator)
 
     result = runner.invoke(app, ["gateway", "--config", str(config_file)])
     assert isinstance(result.exception, _StopGatewayError)
@@ -1364,7 +1364,7 @@ def test_gateway_custom_config_workspace_does_not_migrate_legacy_cron(
 
 def test_migrate_cron_store_moves_legacy_file(tmp_path: Path) -> None:
     """Legacy global jobs.json is moved into the workspace on first run."""
-    from biscuitbot.cli.commands import _migrate_cron_store
+    from xianaibot.cli.commands import _migrate_cron_store
 
     legacy_dir = tmp_path / "global" / "cron"
     legacy_dir.mkdir(parents=True)
@@ -1375,7 +1375,7 @@ def test_migrate_cron_store_moves_legacy_file(tmp_path: Path) -> None:
     config.agents.defaults.workspace = str(tmp_path / "workspace")
     workspace_cron = config.workspace_path / "cron" / "jobs.json"
 
-    with patch("biscuitbot.config.paths.get_cron_dir", return_value=legacy_dir):
+    with patch("xianaibot.config.paths.get_cron_dir", return_value=legacy_dir):
         _migrate_cron_store(config)
 
     assert workspace_cron.exists()
@@ -1385,7 +1385,7 @@ def test_migrate_cron_store_moves_legacy_file(tmp_path: Path) -> None:
 
 def test_migrate_cron_store_skips_when_workspace_file_exists(tmp_path: Path) -> None:
     """Migration does not overwrite an existing workspace cron store."""
-    from biscuitbot.cli.commands import _migrate_cron_store
+    from xianaibot.cli.commands import _migrate_cron_store
 
     legacy_dir = tmp_path / "global" / "cron"
     legacy_dir.mkdir(parents=True)
@@ -1397,7 +1397,7 @@ def test_migrate_cron_store_skips_when_workspace_file_exists(tmp_path: Path) -> 
     workspace_cron.parent.mkdir(parents=True)
     workspace_cron.write_text('{"new": true}')
 
-    with patch("biscuitbot.config.paths.get_cron_dir", return_value=legacy_dir):
+    with patch("xianaibot.config.paths.get_cron_dir", return_value=legacy_dir):
         _migrate_cron_store(config)
 
     assert workspace_cron.read_text() == '{"new": true}'
@@ -1539,9 +1539,9 @@ def test_gateway_health_endpoint_binds_and_serves_expected_responses(
         message_bus=lambda: object(),
         session_manager=lambda _workspace: object(),
     )
-    monkeypatch.setattr("biscuitbot.cli.commands.AgentLoop", _FakeAgentLoop)
-    monkeypatch.setattr("biscuitbot.channels.manager.ChannelManager", _FakeChannelManager)
-    monkeypatch.setattr("biscuitbot.cron.service.CronService", _FakeCronService)
+    monkeypatch.setattr("xianaibot.cli.commands.AgentLoop", _FakeAgentLoop)
+    monkeypatch.setattr("xianaibot.channels.manager.ChannelManager", _FakeChannelManager)
+    monkeypatch.setattr("xianaibot.cron.service.CronService", _FakeCronService)
     monkeypatch.setattr("asyncio.start_server", _fake_start_server)
 
     result = runner.invoke(app, ["gateway", "--config", str(config_file)])

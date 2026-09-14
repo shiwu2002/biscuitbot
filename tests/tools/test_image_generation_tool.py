@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-from biscuitbot.agent.tools.image_generation import ImageGenerationTool
-from biscuitbot.config.loader import set_config_path
-from biscuitbot.config.schema import ImageGenerationToolConfig, ProviderConfig
-from biscuitbot.providers.image_generation import GeneratedImageResponse
+from xianaibot.agent.tools.image_generation import ImageGenerationTool
+from xianaibot.config.loader import set_config_path
+from xianaibot.config.schema import ImageGenerationToolConfig, ProviderConfig
+from xianaibot.providers.image_generation import GeneratedImageResponse
 
 PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
@@ -50,7 +50,7 @@ async def test_generate_image_tool_stores_artifact_and_source_images(
     set_config_path(tmp_path / "config.json")
     FakeImageClient.instances = []
     monkeypatch.setattr(
-        "biscuitbot.agent.tools.image_generation.get_image_gen_provider",
+        "xianaibot.agent.tools.image_generation.get_image_gen_provider",
         lambda name: FakeImageClient if name == "openai" else None,
     )
     ref = tmp_path / "ref.png"
@@ -109,7 +109,7 @@ async def test_generate_image_tool_selects_aihubmix_provider(
     set_config_path(tmp_path / "config.json")
     FakeImageClient.instances = []
     monkeypatch.setattr(
-        "biscuitbot.agent.tools.image_generation.get_image_gen_provider",
+        "xianaibot.agent.tools.image_generation.get_image_gen_provider",
         lambda name: FakeImageClient if name == "aihubmix" else None,
     )
     tool = ImageGenerationTool(
@@ -157,7 +157,7 @@ async def test_generate_image_tool_allows_ollama_without_api_key(
     set_config_path(tmp_path / "config.json")
     FakeImageClient.instances = []
     monkeypatch.setattr(
-        "biscuitbot.agent.tools.image_generation.get_image_gen_provider",
+        "xianaibot.agent.tools.image_generation.get_image_gen_provider",
         lambda name: FakeImageClient if name == "ollama" else None,
     )
     tool = ImageGenerationTool(

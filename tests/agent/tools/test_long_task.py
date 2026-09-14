@@ -7,18 +7,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.loop import AgentLoop
-from biscuitbot.agent.tools.context import RequestContext
-from biscuitbot.agent.tools.long_task import (
+from xianaibot.agent.loop import AgentLoop
+from xianaibot.agent.tools.context import RequestContext
+from xianaibot.agent.tools.long_task import (
     CompleteGoalTool,
     LongTaskTool,
     UpdateTaskTool,
 )
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.bus.runtime_events import RuntimeEventBus
-from biscuitbot.session.goal_state import GOAL_STATE_KEY, _MAX_TASKS
-from biscuitbot.session.manager import SessionManager
-from biscuitbot.session.webui_turns import WebuiTurnCoordinator
+from xianaibot.bus.queue import MessageBus
+from xianaibot.bus.runtime_events import RuntimeEventBus
+from xianaibot.session.goal_state import GOAL_STATE_KEY, _MAX_TASKS
+from xianaibot.session.manager import SessionManager
+from xianaibot.session.webui_turns import WebuiTurnCoordinator
 
 
 def _tools(sm: SessionManager) -> tuple[LongTaskTool, CompleteGoalTool]:

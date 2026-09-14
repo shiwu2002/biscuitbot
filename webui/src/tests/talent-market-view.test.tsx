@@ -168,7 +168,7 @@ describe("TalentMarketView", () => {
     expect(installCall[0]).toContain("/api/webui/talent-market/install");
     expect(installCall[0]).toContain(`source_url=${encodeURIComponent(CATALOG_URL)}`);
     const header = (installCall[1].headers as Record<string, string>)[
-      "X-Biscuitbot-Employee-Values"
+      "X-Xianaibot-Employee-Values"
     ];
     expect(JSON.parse(decodeURIComponent(header))).toEqual(
       expect.objectContaining({
@@ -376,7 +376,7 @@ describe("TalentMarketView", () => {
     renderMarket();
     await waitFor(() => expect(screen.getByText("人才市场尚未配置")).toBeInTheDocument());
 
-    expect(screen.getByText(/biscuitbot talent-market set/)).toBeInTheDocument();
+    expect(screen.getByText(/xianaibot talent-market set/)).toBeInTheDocument();
     expect(screen.queryByText("文案专员")).not.toBeInTheDocument();
   });
 });

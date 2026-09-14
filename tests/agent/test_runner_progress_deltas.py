@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.agent.runner import AgentRunner, AgentRunSpec
-from biscuitbot.config.schema import AgentDefaults
-from biscuitbot.providers.base import LLMResponse, ToolCallRequest
+from xianaibot.agent.runner import AgentRunner, AgentRunSpec
+from xianaibot.config.schema import AgentDefaults
+from xianaibot.providers.base import LLMResponse, ToolCallRequest
 
 _MAX_TOOL_RESULT_CHARS = AgentDefaults().max_tool_result_chars
 

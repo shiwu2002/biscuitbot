@@ -16,7 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from biscuitbot.agent.tools.kling_video import (
+from xianaibot.agent.tools.kling_video import (
     _DEFAULT_BASE_URL,
     _KLING_DEFAULT_MODEL,
     KlingVideoClient,
@@ -25,7 +25,7 @@ from biscuitbot.agent.tools.kling_video import (
     get_video_gen_provider,
     video_gen_provider_names,
 )
-from biscuitbot.agent.tools.seedance_video import (
+from xianaibot.agent.tools.seedance_video import (
     SeedanceVideoTool,
     SeedanceVideoToolConfig,
 )

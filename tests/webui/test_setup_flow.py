@@ -2,7 +2,7 @@
 
 Two halves are covered:
 
-- :func:`biscuitbot.webui.settings_api.needs_setup` — the pure predicate that
+- :func:`xianaibot.webui.settings_api.needs_setup` — the pure predicate that
   decides whether the app is in the "no configured LLM provider" state (the
   desktop welcome page reads this from bootstrap).
 - ``GET /api/webui/setup/complete`` — the endpoint the welcome page calls to
@@ -18,9 +18,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from biscuitbot.config.loader import load_config, save_config
-from biscuitbot.config.schema import Config
-from biscuitbot.webui.settings_api import needs_setup
+from xianaibot.config.loader import load_config, save_config
+from xianaibot.config.schema import Config
+from xianaibot.webui.settings_api import needs_setup
 
 DYNAMIC_PROVIDER_NAME = "my-company-api"
 DYNAMIC_PROVIDER_API_BASE = "https://example.test/v1"
@@ -98,8 +98,8 @@ def test_needs_setup_is_true_for_unconfigured_dynamic_provider(
 
 def _channel(bus: Any, workspace_path: Path) -> Any:
     """Build a WebSocketChannel whose gateway serves the HTTP routes."""
-    from biscuitbot.channels.websocket import WebSocketChannel, WebSocketConfig
-    from biscuitbot.webui.gateway_services import build_gateway_services
+    from xianaibot.channels.websocket import WebSocketChannel, WebSocketConfig
+    from xianaibot.webui.gateway_services import build_gateway_services
 
     parsed = WebSocketConfig.model_validate(
         {
@@ -146,7 +146,7 @@ def test_setup_complete_persists_provider_key_and_model(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     channel = _channel(bus, tmp_path / "workspace")
     resp = channel.gateway.http._handle_webui_setup_complete(
@@ -168,7 +168,7 @@ def test_setup_complete_accepts_api_base_and_api_key_alias(
 ) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     channel = _channel(bus, tmp_path / "workspace")
     resp = channel.gateway.http._handle_webui_setup_complete(
@@ -189,7 +189,7 @@ def test_setup_complete_accepts_api_base_and_api_key_alias(
 def test_setup_complete_requires_api_key(tmp_path, monkeypatch, bus) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     channel = _channel(bus, tmp_path / "workspace")
     resp = channel.gateway.http._handle_webui_setup_complete(
@@ -201,7 +201,7 @@ def test_setup_complete_requires_api_key(tmp_path, monkeypatch, bus) -> None:
 def test_setup_complete_rejects_unknown_provider(tmp_path, monkeypatch, bus) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     channel = _channel(bus, tmp_path / "workspace")
     resp = channel.gateway.http._handle_webui_setup_complete(
@@ -213,7 +213,7 @@ def test_setup_complete_rejects_unknown_provider(tmp_path, monkeypatch, bus) -> 
 def test_setup_complete_requires_auth(tmp_path, monkeypatch, bus) -> None:
     config_path = tmp_path / "config.json"
     save_config(Config(), config_path)
-    monkeypatch.setattr("biscuitbot.config.loader._current_config_path", config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
     channel = _channel(bus, tmp_path / "workspace")
     request = type("FakeRequest", (), {

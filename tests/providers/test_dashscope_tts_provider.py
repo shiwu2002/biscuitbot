@@ -1,4 +1,4 @@
-"""DashScope TTS Provider（biscuitbot/providers/tts.py）单元测试。"""
+"""DashScope TTS Provider（xianaibot/providers/tts.py）单元测试。"""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from biscuitbot.providers.tts import DashScopeTtsProvider, TtsError
+from xianaibot.providers.tts import DashScopeTtsProvider, TtsError
 
 
 def _install_fake_dashscope(

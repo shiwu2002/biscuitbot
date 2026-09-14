@@ -86,6 +86,6 @@ beforeEach(async () => {
   // 导致断言拿英文比中文而失败。
   await i18n.changeLanguage("zh-CN");
   document.documentElement.lang = "zh-CN";
-  document.title = "biscuitbot";
-  localStorage.setItem("biscuitbot.locale", "zh-CN");
+  document.title = "xianaibot";
+  localStorage.setItem("xianaibot.locale", "zh-CN");
 });

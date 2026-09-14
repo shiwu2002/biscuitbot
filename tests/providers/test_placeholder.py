@@ -11,12 +11,12 @@ import asyncio
 
 import pytest
 
-from biscuitbot.config.schema import Config
-from biscuitbot.providers.factory import (
+from xianaibot.config.schema import Config
+from xianaibot.providers.factory import (
     build_placeholder_snapshot,
     resolve_provider_snapshot,
 )
-from biscuitbot.providers.placeholder import PlaceholderProvider
+from xianaibot.providers.placeholder import PlaceholderProvider
 
 
 def test_build_placeholder_snapshot_uses_default_model() -> None:

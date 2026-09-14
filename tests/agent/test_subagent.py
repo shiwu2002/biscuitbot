@@ -5,11 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from biscuitbot.agent.subagent import SubagentManager
-from biscuitbot.agent.tools.filesystem import FileToolsConfig
-from biscuitbot.bus.queue import MessageBus
-from biscuitbot.config.schema import ToolsConfig
-from biscuitbot.providers.base import LLMProvider
+from xianaibot.agent.subagent import SubagentManager
+from xianaibot.agent.tools.filesystem import FileToolsConfig
+from xianaibot.bus.queue import MessageBus
+from xianaibot.config.schema import ToolsConfig
+from xianaibot.providers.base import LLMProvider
 
 
 @pytest.mark.asyncio

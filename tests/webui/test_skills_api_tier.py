@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from biscuitbot.webui.skills_api import _tier, webui_skills_payload
+from xianaibot.webui.skills_api import _tier, webui_skills_payload
 
 
 class TestTierHelper:

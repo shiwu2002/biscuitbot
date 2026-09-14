@@ -1,13 +1,13 @@
-"""生成 biscuitbot「能力地图」自包含单页 HTML。
+"""生成 xianaibot「能力地图」自包含单页 HTML。
 
-数据来源：``biscuitbot.capabilities.registry.CapabilityRegistry.list()``
+数据来源：``xianaibot.capabilities.registry.CapabilityRegistry.list()``
 （读时聚合技能 / CLI 应用 / MCP 预设为统一能力列表）。
 
 设计对标 output/index.html（灯塔AI 技能地图）：
   英雄区 + 能力类别网格 + 能力分布条形图 + 执行方式词云 + 可搜索/筛选/排序/分页目录。
 
 用法：python scripts/gen_capabilities_map.py
-输出：output/biscuitbot-capabilities-map.html
+输出：output/xianaibot-capabilities-map.html
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "output" / "biscuitbot-capabilities-map.html"
+OUT = ROOT / "output" / "xianaibot-capabilities-map.html"
 
 # runtime → 展示名（第二维度：执行方式）
 RUNTIME_LABEL = {"prompt": "技能", "process": "应用", "mcp": "MCP"}
@@ -182,7 +182,7 @@ a{color:inherit}button,input,select{font:inherit}.shell{max-width:1440px;margin:
 </head>
 <body><main class="shell">
 <section class="hero">
-<div class="kicker">biscuitbot · Capability Map</div>
+<div class="kicker">XiaNaiBot · Capability Map</div>
 <h1>__TITLE__</h1>
 <p>这是一张可搜索、可筛选的能力全景图。它不仅告诉你“有哪些能力”，还回答每一类能力属于什么执行方式（技能 / 应用 / MCP）、来源如何，以及在运行时如何找到并调用。</p>
 <p class="hero-note">数据由 CapabilityRegistry 读时聚合：技能（SkillsLoader）、CLI 应用、MCP 预设。为避免全部说明同时占用上下文，这张地图用于“列表可见、按需显式调用”。</p>
@@ -192,7 +192,7 @@ a{color:inherit}button,input,select{font:inherit}.shell{max-width:1440px;margin:
 <section class="section dashboard"><div class="panel"><div class="section-head"><h2 style="font-size:22px">能力分布</h2><p>按能力数量排序</p></div><div class="bars" id="bars"></div></div><div class="panel"><div class="section-head"><h2 style="font-size:22px">执行方式</h2><p>能力如何被调用</p></div><div class="industry-cloud" id="industryCloud"></div></div></section>
 <section class="section"><div class="section-head"><div><div class="kicker" style="color:var(--gold)">Searchable Catalog</div><h2>全部能力目录</h2></div><p>支持名称、说明、类别、执行方式、来源搜索</p></div>
 <div class="catalog"><div class="toolbar"><input id="search" class="control" placeholder="搜索：视频、财务、自动化、AI、网页……"><select id="category" class="control"><option value="">全部能力类别</option></select><select id="runtime" class="control"><option value="">全部执行方式</option></select><select id="sort" class="control"><option value="id">按编号</option><option value="name">按名称</option><option value="category">按类别</option></select></div><div class="result-meta" id="resultMeta"></div><div class="skills" id="skills"></div><div class="pagination"><button class="btn" id="prev">上一页</button><span id="pageInfo"></span><button class="btn" id="next">下一页</button></div></div></section>
-<footer class="footer"><span>生成时间：__GEN__</span><span>biscuitbot 能力地图 · 可运行 <code>python scripts/gen_capabilities_map.py</code> 重新生成</span></footer>
+<footer class="footer"><span>生成时间：__GEN__</span><span>夏奈儿能力地图 · 可运行 <code>python scripts/gen_capabilities_map.py</code> 重新生成</span></footer>
 </main>
 <script>
 const SKILLS=__SKILLS_JSON__;
@@ -226,8 +226,8 @@ def _js(o: Any) -> str:
 
 
 def main() -> None:
-    from biscuitbot.capabilities.registry import CapabilityRegistry
-    from biscuitbot.config.loader import load_config
+    from xianaibot.capabilities.registry import CapabilityRegistry
+    from xianaibot.config.loader import load_config
 
     cfg = load_config()
     caps = CapabilityRegistry(cfg.workspace_path).list()
@@ -238,7 +238,7 @@ def main() -> None:
     unavailable = sum(1 for c in caps if str(c.get("status")) != "available")
 
     html = (
-        TEMPLATE.replace("__TITLE__", f"biscuitbot {len(caps)}+ 能力地图")
+        TEMPLATE.replace("__TITLE__", f"夏奈儿 {len(caps)}+ 能力地图")
         .replace("__S1__", f"{len(caps):,}")
         .replace("__S2__", f"{len(categories):,}")
         .replace("__S3__", f"{len(runtimes):,}")

@@ -1,12 +1,12 @@
 import pytest
 
-from biscuitbot.pairing import __all__ as pairing_all
-from biscuitbot.pairing import store
+from xianaibot.pairing import __all__ as pairing_all
+from xianaibot.pairing import store
 
 
 def test_all_exports_are_importable():
-    """Every name in __all__ must actually be importable from biscuitbot.pairing."""
-    import biscuitbot.pairing as pkg
+    """Every name in __all__ must actually be importable from xianaibot.pairing."""
+    import xianaibot.pairing as pkg
 
     for name in pairing_all:
         assert hasattr(pkg, name), f"{name} is in __all__ but not exported"
