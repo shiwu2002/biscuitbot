@@ -6,8 +6,9 @@ description: >
   layouts, and requests where one persistent clickable prototype is the primary
   review surface. Owns product reasoning, requirement structure, business rules,
   feature depth, and prototype-content correspondence. HTML structure, visual
-  styling, responsive behavior, and interaction templates are provided by the
-  html-report skill.
+  styling, responsive behavior, and interaction templates are the agent's own
+  responsibility per the parent skill's self-contained HTML rule — no reference
+  file provides them.
 ---
 
 # Interactive PRD Document
@@ -30,7 +31,7 @@ This file does not own:
 
 - split-screen HTML shell, phone/browser frame markup, CSS variables, theme palettes, typography, responsive layout, mode-switching JavaScript, tab-switching JavaScript, data-link event implementation, resize-handle behavior, or accessibility implementation details.
 
-For those structure and style requirements, invoke the `html-report` skill. Do not read `html-report` internal reference files directly from this content skill; `html-report` is responsible for loading its own scenario references.
+For those structure and style requirements, build them yourself following the parent skill's self-contained HTML rule (§2.3): one `.html` file, inline CSS, no external assets or network dependencies. No reference file in this skill covers them, so do not go looking for one.
 
 ## When to Use This Reference
 
@@ -164,7 +165,7 @@ This applies especially to payments, refunds, approvals, publishing, deletion, a
 
 ## Product Blueprint Before Rendering
 
-Before asking `html-report` to render the interactive PRD, derive a compact blueprint from the request:
+Before writing any HTML, derive a compact blueprint from the request:
 
 | Blueprint Item | Required Decision |
 |---|---|
@@ -177,7 +178,7 @@ Before asking `html-report` to render the interactive PRD, derive a compact blue
 | Critical states | Default, loading, empty, success, error, disabled, or permission-limited as relevant |
 | P0 scope | Features required to complete and recover the core journey |
 | Requirement modules | Stable feature IDs used by both prototype and document |
-| Visual direction context | Product domain, user context, density, and brand cues passed to `html-report`; do not define CSS here |
+| Visual direction context | Product domain, user context, density, and brand cues that will drive the HTML build; this content reference does not define CSS |
 
 Do not expose this blueprint as a generic planning chapter. Use it to keep the prototype, copy, and requirements internally consistent.
 
@@ -190,7 +191,7 @@ The final deliverable should follow the prototype-centered PRD paradigm:
 - Document mode: a long-form PRD view for reading and review outside the split layout.
 - Linkage: stable feature IDs connect prototype elements and requirement sections.
 
-The exact HTML shell, frame markup, CSS, JavaScript, responsive behavior, and visual polish are owned by the `html-report` skill.
+The exact HTML shell, frame markup, CSS, JavaScript, responsive behavior, and visual polish are yours to build per the parent skill's self-contained HTML rule (§2.3).
 
 ## Right-Side PRD Content
 
@@ -388,7 +389,7 @@ Reject and rewrite the following:
 5. Build the product blueprint and stable feature IDs.
 6. Design the happy path plus meaningful blocked, alternate, and recovery states.
 7. Write adaptive document tabs and implementation-ready feature details.
-8. Pass visual direction context to the `html-report` skill without defining CSS in this file.
+8. Build the single-file HTML artifact, applying the visual direction decided above; keep CSS out of this content reference.
 9. Verify prototype-content mapping and cross-module consistency by reviewing code structure.
 10. Revise contradictions before final delivery. Do not open the HTML in a browser for validation.
 
@@ -415,4 +416,5 @@ All checks below are **static content reviews** performed by reading the generat
 |---|---|
 | `prd-document` | Alternative route for conventional document-first PRDs; do not blend by default |
 | `doc-writing-guide` | Root parent; provides intent interpretation, routing, and writing constraints |
-| `html-report` | Must be invoked for split-screen structure, frame templates, CSS variables, visual system, mode switching, responsive behavior, and accessibility for this PRD paradigm |
+
+No separate skill renders the HTML. Split-screen structure, frame templates, CSS variables, visual system, mode switching, responsive behavior, and accessibility all belong to the artifact you build yourself per §2.3.

@@ -93,7 +93,7 @@ When removing: prefer deleting individual items over entire sections.
 Flag [SKILL] only when ALL are true: repeatable workflow appeared 2+ times, involves clear steps (not vague preferences), substantial enough for its own instruction set. Check existing skills to avoid redundancy.
 
 For [SKILL] entries:
-- Create `skills/<name>/SKILL.md`; reference `{{ skill_creator_path }}` for format
+- Create `skills/<name>/SKILL.md` in the format below
 - YAML frontmatter (name, description), under 2000 words: when to use, steps, output format, example
 - Do NOT overwrite existing skills — if overlapping, merge delta into the existing skill
 - Skills are instruction sets with concrete values, commands, and examples. MEMORY.md keeps strategic context and high-level facts only.

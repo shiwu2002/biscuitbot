@@ -49,12 +49,15 @@ class TestBuildDreamPrompt:
         _, c2 = r2
         assert c2 > c1
 
-    def test_prompt_includes_skill_creator_path(self, store):
+    def test_prompt_includes_skill_format_guidance(self, store):
         store.append_history("test")
         result = store.build_dream_prompt()
         assert result is not None
         prompt, _ = result
-        assert "skill-creator" in prompt
+        assert "skills/<name>/SKILL.md" in prompt
+        assert "YAML frontmatter (name, description)" in prompt
+        # 不应再引用任何外部「技能格式参考文件」路径
+        assert "skill-creator" not in prompt
 
     def test_truncates_long_entries(self, store):
         long_content = "x" * 2000
@@ -103,11 +106,7 @@ class TestBuildDreamPrompt:
         assert "usable memory" in prompt
 
     def test_dream_prompt_consumes_consolidator_attribute_tags(self):
-        prompt = render_template(
-            "agent/dream.md",
-            strip=True,
-            skill_creator_path="skills/skill-creator/SKILL.md",
-        )
+        prompt = render_template("agent/dream.md", strip=True)
 
         assert "History attribute tags" in prompt
         assert "[skip]: audit-only" in prompt

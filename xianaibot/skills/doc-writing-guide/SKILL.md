@@ -2,13 +2,16 @@
 name: doc-writing-guide
 tier: user
 description: >
-  Primary skill for document and content writing. Triggers on PRD, product
-  requirements, MVP spec, feature spec, tech proposal, research report,
-  competitive analysis, manuals, and any structured written deliverable.
-  Governs intent interpretation, genre & format selection, writing-style
-  calibration, content structuring, visual generation guidance, and
-  sub-scenario routing to specialized references (e.g., PRD routes to
-  references/prd-document.md).
+  Primary skill for document, content writing, and research & analysis.
+  Triggers on PRD, product requirements, MVP spec, feature spec, tech
+  proposal, research report, competitive analysis, searching, looking up
+  facts, investigating, comparing products or technologies, manuals, and
+  any structured written or evidence-based deliverable. Governs intent
+  interpretation, genre & format selection, writing-style calibration,
+  content structuring, research methodology (source hierarchy,
+  cross-validation), visual generation guidance, and sub-scenario routing
+  to specialized references (e.g., PRD routes to references/prd-document.md,
+  research reports route to references/research-report.md).
 ---
 
 ## 1. Interpret Intent Before Writing
@@ -72,11 +75,11 @@ Examples:
 
 **Default artifact rule for report-type tasks** (research reports, whitepapers, PRDs, proposals, competitive analyses, feasibility studies, technical documents, and any structured written deliverable):
 
-> **Default → `html-report` skill.** Unless the user **explicitly** states that the final deliverable must be a `.docx` or `.pdf` file, route the artifact production to the `html-report` skill (which produces a self-contained HTML report). Keywords that trigger format-specific routing:
+> **Default → self-contained HTML report.** Unless the user **explicitly** states that the final deliverable must be a `.docx` or `.pdf` file, produce the deliverable yourself as a single self-contained `.html` file — inline CSS, no external assets, no network dependencies. Keywords that trigger format-specific routing:
 > - `.docx` / Word / DOCX → route to `docx` skill
 > - `.pdf` / PDF → route to `pdf` skill
 >
-> Vague requests like "write a report", "draft a PRD", "do a research report" **without** mentioning a specific file format → always use the `html-report` skill as the artifact format.
+> Vague requests like "write a report", "draft a PRD", "do a research report" **without** mentioning a specific file format → default to that self-contained HTML artifact.
 
 When the output format **is** explicitly specified (PDF, DOCX, Lark doc, Markdown, webpage), adapt formatting conventions accordingly and delegate format-specific rendering to the appropriate sub-Skill or tool Skill (e.g., `pdf`, `docx`, `pptx`).
 
@@ -234,20 +237,68 @@ When writing `lark.md` documents, reference the `Lark/Feishu Markdown Writing St
 
 ---
 
-## 6. Sub-Scenario Routing
+## 6. Research & Evidence Methodology
+
+研究/调研类任务（搜索、查证、对比、竞品分析、研究报告）在进入写作前，先按本节方法收集与验证证据。
+
+### 6.1 Source Hierarchy
+
+| Priority | Type                                                                          |
+| -------- | ----------------------------------------------------------------------------- |
+| P0       | Primary / Official — earnings reports, gov stats, original papers, API docs   |
+| P1       | Authoritative secondary — top-tier media, white papers, peer-reviewed reviews |
+| P2       | Professional community — tech blogs with code/data, analyst reports           |
+| P3       | General reference — encyclopedias, forums, unverified self-media              |
+
+### 6.2 Hard Constraints
+
+- Quantitative claims must trace to P0/P1; otherwise tag `[unverified]`.
+- Synthetic/simulated data is **prohibited**. Declare gaps instead.
+- Single-source claims cannot anchor conclusions alone.
+- Same tool + same arguments must not be invoked twice. On failure, change approach.
+
+### 6.3 Strategy Selection
+
+Assess subject traits before searching, then match strategy:
+
+- **Independent sub-questions** → parallel fan-out, one thread per sub-question.
+- **Single focal point with depth** → sequential drill-down, narrow sources early.
+- **Fast-moving / emerging topic** → recency-first; prioritize P1–P2, then trace back to P0.
+- **Low domain maturity** → cast wide (P2–P3), prune, then verify survivors at P0.
+- Reassess after Round 1 — pivot strategy if signal is low.
+
+### 6.4 Search Paradigm
+
+- Multi-round: broad sweep → refine keywords → synonyms → adjacent topics.
+- Adversarial: actively seek counter-evidence for every key finding.
+- Trace-back: follow secondary citations to their original publisher.
+
+### 6.5 Cross-Validation & Conflict Resolution
+
+- ≥3 independent sources per core claim (mutual citations ≠ independence).
+- Tag each claim: `[CONFIRMED]` / `[MAJORITY]` / `[DISPUTED]` / `[SINGLE-SOURCE]`.
+- Sources agree → synthesize with confidence annotation.
+- Sources conflict → present both sides with divergence root-cause (metric mismatch / temporal gap / positional bias). Do NOT pick arbitrarily.
+- Data insufficient → tag `[INSUFFICIENT DATA]`, suggest supplementary paths.
+
+***
+
+## 7. Sub-Scenario Routing
 
 Route to the matched reference based on the writing task's genre, purpose, and deliverable type. Each reference inherits all constraints from this parent and adds domain-specific templates, structures, quality gates, and workflow steps.
 
 > **Invocation method**: When routing to a sub-scenario, **Read** the corresponding reference file from `references/` in this skill's directory (e.g., `references/prd-document.md`) and follow the instructions within. Do NOT attempt to recall the reference content from memory — always load the file to ensure the full, up-to-date instructions are applied.
 
-### 6.1 Routing Table
+### 7.1 Routing Table
 
 | Reference | File | Route When |
 |-----------|------|------------|
-| `interact-prd-document` | `references/interact-prd-document.md` | User asks for the prototype-centered interactive PRD paradigm: a persistent clickable prototype as the primary review surface, paired with linked requirement text. Evaluate explicit signals for this row first. This reference owns content logic; for HTML structure, visual system, and interaction templates, invoke the `html-report` skill rather than reading its internal reference files directly. |
+| `interact-prd-document` | `references/interact-prd-document.md` | User asks for the prototype-centered interactive PRD paradigm: a persistent clickable prototype as the primary review surface, paired with linked requirement text. Evaluate explicit signals for this row first. This reference owns content logic; HTML structure, visual system, and interaction templates are yours to build per §2.3's self-contained HTML rule, and are not covered by any other reference file. |
 | `prd-document` | `references/prd-document.md` | User asks for a conventional chapter-based PRD. HTML output may and usually should contain interactive prototype demos embedded inside functional requirement sections. |
+| `research-report` | `references/research-report.md` | Any research task producing a standalone document — market research, technology evaluation, industry deep-dive, literature review, policy analysis, feasibility study, or general research output that does not specifically require comparison analysis. **Default route for research deliverables.** |
+| `comparison-analysis` | `references/comparison-analysis.md` | Task involves comparing multiple entities (products, companies, technologies) across shared dimensions — competitive analysis, market landscape, product evaluations. |
 
-### 6.2 Routing Decision Rules
+### 7.2 Routing Decision Rules
 
 Apply these rules in order. Stop at the first matching rule.
 
@@ -262,10 +313,12 @@ Apply these rules in order. Stop at the first matching rule.
 5. **Generic PRD → conventional PRD.** If the prompt only says PRD/需求文档/产品需求/功能说明, route to `prd-document.md`. Its default HTML output can still contain interactive prototypes; “interactive” is not exclusive to the prototype-centered reference.
 6. **Format constraints.** Explicit text-only Markdown, DOCX, or PDF routes to `prd-document.md` unless the user also requests a separate interactive HTML companion.
 7. **Tie-break by document architecture.** Ask which architecture the user wants only when both are equally plausible and the choice would materially change the deliverable. Otherwise, use explicit wording; if none exists, default to the conventional chapter-based PRD.
-8. **Fall through to this skill.** If no reference matches, handle the task directly using §1–§5.
-9. **Compound tasks.** Route each distinct deliverable independently.
+8. **Comparison across entities → comparison-analysis.** Route to `comparison-analysis.md` when the task explicitly requires comparing multiple entities (products, companies, technologies) across shared dimensions.
+9. **Research deliverable → research-report.** Any other research task producing a standalone document (market research, deep dives, evaluations, feasibility studies) routes to `research-report.md`. Lightweight fact-finding queries (quick lookup, single factual answer) do NOT route — handle directly with §6 methodology.
+10. **Fall through to this skill.** If no reference matches, handle the task directly using §1–§6.
+11. **Compound tasks.** Route each distinct deliverable independently.
 
-### 6.3 Routing Examples
+### 7.3 Routing Examples
 
 | User Request | Route | Reason |
 |---|---|---|
@@ -275,3 +328,5 @@ Apply these rules in order. Stop at the first matching rule.
 | “给客服工作台做左右分屏 PRD，点击页面定位对应规则” | `interact-prd-document` | Persistent prototype and linked document |
 | “输出客服工作台 PRD，纯文字 Markdown，不要原型” | `prd-document` | Explicit static override |
 | “用 HTML 写完整 PRD，在需求详情中嵌入高保真原型” | `prd-document` | Embedded prototype inside conventional PRD |
+| “调研一下 Agent 框架市场的竞争格局” | `comparison-analysis` | Comparing multiple entities across shared dimensions |
+| “写一份新能源车行业研究报告” | `research-report` | Standalone research deliverable, no comparison focus |

@@ -23,10 +23,10 @@ Key: read the real content in full before planning (for long docs / many files, 
 | **High → low fidelity** | Remove real copy/images/brand color, keep the layout skeleton and icon shapes; express structure with grayscale blocks, placeholders, wireframe style ("icons/shapes only, no text"). |
 | **Low → high fidelity** | Per design-spec, add tokens, real copy, component states, interactions, and mock. |
 | **Device mockup** | Composite a high-fidelity page screenshot/image onto a given device frame (phone/browser); use the base image capability, output to `assets/`. |
-| **Prototype → PRD** | Reverse-engineer from the prototype: product positioning, feature list, page flows, field descriptions, interaction notes; output in the user's requested format (html/word/md), reusing html-report / docx for long docs. |
+| **Prototype → PRD** | Reverse-engineer from the prototype: product positioning, feature list, page flows, field descriptions, interaction notes; output in the user's requested format (html/word/md), reusing this skill's own HTML output for the HTML case or the `docx` skill for long docs. |
 | **Prototype / mockup → dev doc** | Reverse-engineer: feature modules, front/back-end API contracts (based on the stub shapes), data model, page-to-API mapping; write the backend part in a "to-be-implemented" tone, noting the current prototype is mock. |
 
 ## C. Integration with Document Deliverables
 
-- When a formal **long doc/report** is needed (PRD, dev doc, requirement analysis), content planning belongs to this skill, but **rendering/layout reuses `html-report` (HTML) or `docx` (when the user wants Word)** — don't rebuild document layout inside this skill.
+- When a formal **long doc/report** is needed (PRD, dev doc, requirement analysis), content planning belongs to this skill, but **rendering/layout reuses this skill's own HTML output, or the `docx` skill when the user wants Word** — don't rebuild document layout inside this skill.
 - Composite needs like "first show a demo as HTML, and also give a doc": produce the interactive HTML prototype first (this skill's main line), then generate the doc from the prototype (switch to the doc capability in C).

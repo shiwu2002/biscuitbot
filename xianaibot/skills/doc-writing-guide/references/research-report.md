@@ -8,20 +8,20 @@ description: >
   specifically require competitive/comparison analysis. This is the preferred
   fallback: if no other sub-Skill (e.g. comparison-analysis) explicitly matches,
   route to research-report. Inherits source-hierarchy, citation, and
-  cross-validation rules from research-guide; adds report structure, writing
-  principles, length calibration, domain templates, and quality gates.
+  cross-validation rules from doc-writing-guide §6; adds report structure,
+  writing principles, length calibration, domain templates, and quality gates.
 ---
 
 # Research Report
 
 ## 0. Relationship to Parent
 
-This Skill inherits **all** constraints from `research-guide`:
+This Skill inherits **all** constraints from `doc-writing-guide`:
 
-- Source hierarchy (§3.1), hard constraints (§3.2), strategy selection (§3.3), search paradigm (§3.4), and cross-validation (§3.5).
-- Citation format: `[cite:N]` inline (numbered from 1 per response); append a "Sources" section where each entry starts with `[cite:N]` followed by title and URL. When writing to file, use HTML anchors per §5 File output rule.
+- Research methodology: source hierarchy (§6.1), hard constraints (§6.2), strategy selection (§6.3), search paradigm (§6.4), and cross-validation (§6.5).
+- Citation format: `[cite:N]` inline (numbered from 1 per response); append a "Sources" section where each entry starts with `[cite:N]` followed by title and URL. When the deliverable is written to an HTML file, give each Sources entry an `id` (e.g. `id="cite-1"`) and make the inline `[cite:N]` markers link to it as anchors.
 - Conflict resolution: present both sides; never pick arbitrarily.
-- Visual generation: follows `research-guide` §4.
+- Visual generation: follows `doc-writing-guide` §5.
 
 Anything defined below **extends** the parent; it never overrides.
 
@@ -269,7 +269,7 @@ The report is NOT ready for delivery until every item below is verified:
 - [ ] No first-person pronouns.
 - [ ] Report is standalone — comprehensible without chat context.
 - [ ] Report structure appropriate for topic and purpose.
-- [ ] Appropriate length — matches query complexity per §7.
+- [ ] Appropriate length — matches query complexity.
 - [ ] No TODOs or placeholders — all sections fully written.
 - [ ] Real data only — never fabricate citations or data.
 - [ ] Direct answer in chat, detailed analysis in report.

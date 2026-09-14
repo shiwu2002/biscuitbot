@@ -99,7 +99,7 @@ class TestSkillBelongsToEmployee:
         prompt = cb.build_system_prompt()
         # 主会话（未绑定员工）：摘要包含多个不同技能的目录名
 
-        for skill in ("ip-positioning", "secretary", "design"):
+        for skill in ("ip-positioning", "secretary", "media-generation-craft"):
             assert skill in prompt, skill
 
     def test_employee_session_scopes_to_own_skills(self, tmp_path: Path) -> None:

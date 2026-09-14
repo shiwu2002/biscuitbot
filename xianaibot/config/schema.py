@@ -176,7 +176,7 @@ class AgentDefaults(Base):
     bot_name: str = "夏奈"  # CLI 提示中显示的名称（如 "{name} is thinking..."）
     bot_icon: str = "🍪"  # CLI 中显示在名称旁的短图标（emoji 或文本），"" 表示省略
     unified_session: bool = False  # 跨所有渠道共享同一会话（单用户多设备）
-    disabled_skills: list[str] = Field(default_factory=list)  # 排除加载的技能名（如 ["summarize", "skill-creator"]）
+    disabled_skills: list[str] = Field(default_factory=list)  # 排除加载的技能名（如 ["douyin-publish", "system-io"]）
     session_ttl_minutes: int = Field(
         default=15,
         ge=0,

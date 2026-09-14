@@ -546,8 +546,6 @@ class MemoryStore:
 
         Returns ``(prompt, last_cursor)`` or ``None`` if nothing to process.
         """
-        from xianaibot.agent.skills import BUILTIN_SKILLS_DIR
-
         last_cursor = self.get_last_dream_cursor()
         entries = self.read_unprocessed_history(since_cursor=last_cursor)
         if not entries:
@@ -558,10 +556,7 @@ class MemoryStore:
             f"[{e['timestamp']}] {truncate_text(e['content'], 500)}"
             for e in batch
         )
-        skill_creator_path = str(BUILTIN_SKILLS_DIR / "skill-creator" / "SKILL.md")
-        template = render_template(
-            "agent/dream.md", strip=True, skill_creator_path=skill_creator_path,
-        )
+        template = render_template("agent/dream.md", strip=True)
         prompt = f"{template}\n\n## Conversation History\n{history_text}"
         return (prompt, batch[-1]["cursor"])
 

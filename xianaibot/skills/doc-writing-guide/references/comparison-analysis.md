@@ -6,17 +6,18 @@ description: >
   Covers feature matrices, financial benchmarking, SWOT, Porter's Five Forces,
   competitive positioning, strategy projection, and differentiation playbooks.
   Inherits source-hierarchy, citation, and cross-validation rules from
-  research-guide; adds domain-specific frameworks, templates, and quality gates.
+  doc-writing-guide §6; adds domain-specific frameworks, templates, and
+  quality gates.
 ---
 
 # Competitive & Product Analysis
 
 ## 0. Relationship to Parent
 
-This Skill inherits **all** constraints from `research-guide`:
+This Skill inherits **all** constraints from `doc-writing-guide`:
 
-- Source hierarchy (§3.1), hard constraints (§3.2), strategy selection (§3.3), search paradigm (§3.4), and cross-validation (§3.5).
-- Citation format: `[cite:N]` inline (numbered from 1 per response); append a "Sources" section where each entry starts with `[cite:N]` followed by title and URL. When writing to file, use HTML anchors per §5 File output rule.
+- Research methodology: source hierarchy (§6.1), hard constraints (§6.2), strategy selection (§6.3), search paradigm (§6.4), and cross-validation (§6.5).
+- Citation format: `[cite:N]` inline (numbered from 1 per response); append a "Sources" section where each entry starts with `[cite:N]` followed by title and URL. When the deliverable is written to an HTML file, give each Sources entry an `id` (e.g. `id="cite-1"`) and make the inline `[cite:N]` markers link to it as anchors.
 - Conflict resolution: present both sides; never pick arbitrarily.
 
 Anything defined below **extends** the parent; it never overrides.
@@ -55,7 +56,7 @@ Before data collection, identify the **3–5 metrics that best differentiate pla
 
 ## 2. Step 2 — Information Gathering
 
-Follows `research-guide` §3 in full. This section adds **domain-specific checklists and credibility grading**.
+Follows `doc-writing-guide` §6 in full. This section adds **domain-specific checklists and credibility grading**.
 
 ### 2.1 Credibility Grading
 
@@ -82,7 +83,7 @@ Every piece of competitor data must carry a temporal tag, e.g., `(as of 2026-Q1 
 
 ### 2.4 Parallel vs. Sequential
 
-Apply `research-guide` §3.3 strategy selection:
+Apply `doc-writing-guide` §6.3 strategy selection:
 
 - **Multiple independent competitors** → parallel fan-out, one search thread per competitor.
 - **Deep-dive on a single rival** → sequential drill-down.
@@ -285,7 +286,7 @@ Probabilities must sum to ~100%. Every driver must be cited.
 - Default: Markdown. Adapt if user requests `.pptx` or `.docx`.
 - All tables use consistent column-width alignment.
 - All headings must be descriptive and neutral — never rhetorical, persuasive, or argumentative.
-- Charts follow `research-guide` §4 (Visual Generation Guide).
+- Charts follow `doc-writing-guide` §5 (Visual Generation Guide).
 
 ---
 

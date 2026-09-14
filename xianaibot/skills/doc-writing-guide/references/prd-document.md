@@ -15,7 +15,7 @@ This Skill inherits all constraints from `doc-writing-guide` (intent interpretat
 
 ## Default Output Format
 
-- No format specified → use `html-report` skill to produce HTML deliverable.
+- No format specified → produce the deliverable as a single self-contained `.html` file (inline CSS, no external assets or network dependencies).
 - User explicitly requests `.docx` / `.pdf` / `.md` → route to corresponding format skill.
 
 ## Page Color Scheme (applies to HTML output)
@@ -376,5 +376,6 @@ After generation, internally check the following 3 items. If any fail, revise un
 
 | Skill | Relationship |
 |-------|-------------|
-| `html-report` | PRD's default output format, handles HTML rendering and interaction |
 | `/comparison-analysis` | Can be called first for reference data during competitive research |
+
+No separate skill renders the HTML — the self-contained HTML artifact is produced directly, per §2.3 of the parent skill.

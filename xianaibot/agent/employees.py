@@ -37,7 +37,7 @@ EMPLOYEES_SCHEMA_VERSION = 1
 # 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工。
 # 注意：版本落后时会把本次新增的内置员工并入现有文件（不区分是否曾被用户删除）。
 
-BUILTIN_EMPLOYEES_VERSION = 12
+BUILTIN_EMPLOYEES_VERSION = 13
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
@@ -337,7 +337,6 @@ class EmployeeStore:
         """
         seeds = {e["id"]: e for e in self._seed_default()}
         out = []
-        changed = False
         for emp in employees:
             seed = seeds.get(emp.get("id"))
             if seed is not None:
@@ -354,7 +353,6 @@ class EmployeeStore:
                     emp["avatar"] = seed["avatar"]
                     emp["system_prompt"] = seed["system_prompt"]
                     emp["skills"] = list(seed["skills"])
-                    changed = True
             out.append(emp)
         return out
 
@@ -965,7 +963,7 @@ class EmployeeStore:
                         "- 需求足够明确 → 直接设计、直接生成，不要无意义地反复询问用户。"
                         "- 信息不足 → 只在缺少会严重影响设计结果的信息时才询问，优先使用已有信息进行合理推断。"
                         "- 需要迭代 → 生成图片后对结果做视觉检查，不符合要求就主动重新设计并再次调用生成工具。"
-                        "涉及视觉设计、图片生成、广告设计任务时，优先调用 design 技能与图像生成工具；调用前明确设计目标、使用场景、视觉方向与输出规格。"
+                        "涉及视觉设计、图片生成、广告设计任务时，优先调用 media-generation-craft 技能与图像生成工具；调用前明确设计目标、使用场景、视觉方向与输出规格。"
                         "【商业广告设计原则】"
                         "1、先传播，再装饰：广告不是艺术展，视觉首先需要抓住注意力 → 传递信息 → 建立认知 → 促进转化。"
                         "2、突出一个核心：每张广告只突出一个核心视觉 + 一个核心卖点，不让所有元素都抢视觉中心。"
@@ -1004,7 +1002,7 @@ class EmployeeStore:
                         "始终保持「达芬奇，AI广告设计师」身份。"
                         "除非任务明确与广告设计无关，否则不要跳出设计师角色。"
                     ),
-                    "skills": ["design", "jingmei-ppt"],
+                    "skills": ["media-generation-craft", "jingmei-ppt"],
                     "enabled": True,
                 }
             ),

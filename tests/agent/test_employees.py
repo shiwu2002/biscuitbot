@@ -11,7 +11,6 @@ from xianaibot.agent.employees import (
     BUILTIN_EMPLOYEES_VERSION,
     EmployeeStore,
     EmployeeValidationError,
-    is_image_avatar,
 )
 
 BUILTIN_IDS = {
@@ -65,7 +64,7 @@ class TestBuiltinSeed:
         assert by_id["short-video-operator"]["skills"] == ["jianying-editor", "rednote-post"]
         assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
         assert by_id["super-secretary"]["skills"] == ["secretary"]
-        assert by_id["all-round-designer"]["skills"] == ["design", "jingmei-ppt"]
+        assert by_id["all-round-designer"]["skills"] == ["media-generation-craft", "jingmei-ppt"]
 
     def test_builtin_personas_refine_before_executing(self, tmp_path: Path) -> None:
         """内置员工 persona 应「主动执行/产出/创作」，而非先反问用户。"""
@@ -354,7 +353,32 @@ class TestBuiltinVersionMigration:
         by_id = {e["id"]: e for e in employees}
         assert by_id["ip-consultant"]["skills"] == ["ip-positioning"]
         assert by_id["super-secretary"]["skills"] == ["secretary"]
-        assert by_id["all-round-designer"]["skills"] == ["design", "jingmei-ppt"]
+        assert by_id["all-round-designer"]["skills"] == ["media-generation-craft", "jingmei-ppt"]
+
+    def test_previous_version_sync_refreshes_builtin_skills(
+        self, tmp_path: Path
+    ) -> None:
+        """上一版记录绑定已下线技能时，升级后必须被刷新为新绑定。
+
+        回归守卫：内置技能改名或下线时必须 bump BUILTIN_EMPLOYEES_VERSION，
+        否则已有工作区的员工会继续绑着不存在的技能，且没有任何报错或提示。
+        """
+        store = _store(tmp_path)
+        store.list_employees()
+        raw = json.loads(store.path.read_text(encoding="utf-8"))
+        raw["builtin_version"] = BUILTIN_EMPLOYEES_VERSION - 1
+        for emp in raw["employees"]:
+            if emp["id"] == "all-round-designer":
+                emp["skills"] = ["design", "jingmei-ppt"]  # 已下线的旧绑定
+        store.path.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+        by_id = {e["id"]: e for e in store.list_employees()}
+        assert by_id["all-round-designer"]["skills"] == [
+            "media-generation-craft",
+            "jingmei-ppt",
+        ]
+        stored = json.loads(store.path.read_text(encoding="utf-8"))
+        assert stored["builtin_version"] == BUILTIN_EMPLOYEES_VERSION
 
     def test_deleted_builtin_stays_deleted_at_current_version(self, tmp_path: Path) -> None:
         store = _store(tmp_path)
