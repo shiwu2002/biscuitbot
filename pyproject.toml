@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
     {name = "Xubin Ren"},
-    {name = "the biscuitbot contributors"}
+    {name = "the 夏奈儿 contributors"}
 ]
 keywords = ["ai", "agent", "chatbot"]
 classifiers = [
