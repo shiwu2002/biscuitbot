@@ -1,4 +1,4 @@
-# 构建 xianaibot 桌面应用（Windows）。
+﻿# 构建 xianaibot 桌面应用（Windows）。
 #
 # 产物：
 #   - 安装包     output\windows\*.exe
@@ -36,13 +36,16 @@ New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 Write-Info "==> 1/6 自动递增版本号（patch）"
 $TauriConfPath = Join-Path $Root "src-tauri\tauri.conf.json"
 $CargoTomlPath = Join-Path $Root "src-tauri\Cargo.toml"
-$BeforeVersion = [string]((Get-Content $TauriConfPath -Raw | ConvertFrom-Json).version)
+# 读配置必须显式 -Encoding UTF8：Windows PowerShell 5.1 的 Get-Content 默认按
+# ANSI(GBK) 解码，会把 UTF-8 的中文（productName="夏奈儿"）读成乱码并吞掉结尾引号，
+# 导致 ConvertFrom-Json 失败。写回用 UTF8NoBom 保持原编码。本脚本自身也依赖 UTF-8 BOM。
+$BeforeVersion = [string]((Get-Content $TauriConfPath -Raw -Encoding UTF8 | ConvertFrom-Json).version)
 if ($BeforeVersion -match '^\d+\.\d+\.\d+$') {
     $v = $BeforeVersion -split '\.'
     $NewVersion = "{0}.{1}.{2}" -f $v[0], $v[1], ([int]$v[2] + 1)
     $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    [System.IO.File]::WriteAllText($TauriConfPath, ((Get-Content $TauriConfPath -Raw) -replace '(?m)^(\s*"version"\s*:\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
-    [System.IO.File]::WriteAllText($CargoTomlPath, ((Get-Content $CargoTomlPath -Raw) -replace '(?m)^(\s*version\s*=\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
+    [System.IO.File]::WriteAllText($TauriConfPath, ((Get-Content $TauriConfPath -Raw -Encoding UTF8) -replace '(?m)^(\s*"version"\s*:\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
+    [System.IO.File]::WriteAllText($CargoTomlPath, ((Get-Content $CargoTomlPath -Raw -Encoding UTF8) -replace '(?m)^(\s*version\s*=\s*")[^"]*(")', "`${1}$NewVersion`${2}"), $Utf8NoBom)
     Write-Info "    版本 $BeforeVersion → $NewVersion"
 }
 else {
@@ -153,7 +156,7 @@ Set-Location $Root
 # 用 `*.exe` 通配会把已被删除的老版本又复制回 output\windows\（"老版本复活"问题）。
 # 复制前先把输出目录里的历史 .exe 清掉，让 output\windows\ 始终只保留最新一版。
 $NsisDir = Join-Path $Root "src-tauri\target\release\bundle\nsis"
-$BuildVersion = [string]((Get-Content $TauriConfPath -Raw | ConvertFrom-Json).version)
+$BuildVersion = [string]((Get-Content $TauriConfPath -Raw -Encoding UTF8 | ConvertFrom-Json).version)
 $CurrentInstaller = Join-Path $NsisDir "夏奈儿_${BuildVersion}_x64-setup.exe"
 if (-not (Test-Path $CurrentInstaller)) {
     throw "找不到当前版本安装包：$CurrentInstaller"
