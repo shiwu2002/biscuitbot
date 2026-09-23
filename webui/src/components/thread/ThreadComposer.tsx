@@ -39,6 +39,7 @@ import {
   Square,
   SquarePen,
   Target,
+  Terminal,
   Trash2,
   Undo2,
   X,
@@ -76,6 +77,8 @@ import type {
   McpPresetInfo,
   OutboundCliAppMention,
   OutboundMcpPresetMention,
+  OutboundSkillMention,
+  SkillSummary,
   SlashCommand,
   WorkspaceScopePayload,
   WorkspacesPayload,
@@ -162,6 +165,8 @@ interface ThreadComposerProps {
   slashCommands?: SlashCommand[];
   cliApps?: CliAppInfo[];
   mcpPresets?: McpPresetInfo[];
+  /** 可用于本轮对话的技能（斜杠菜单「技能」组：选中即强制本轮使用该技能）。 */
+  skills?: SkillSummary[];
   onStop?: () => void;
   onTranscribeAudio?: (dataUrl: string, options?: { durationMs?: number }) => Promise<string>;
   /** Unix seconds from server; turn elapsed timer above input while set. */
@@ -282,8 +287,48 @@ interface SlashPaletteCommand extends SlashCommand {
   recent: boolean;
 }
 
+/** 斜杠菜单分组：命令按原样插入文本；技能挂成本轮强制 chip；工具插入 `@name` 提及。 */
+type SlashPaletteGroup = "command" | "skill" | "tool";
+
+interface SlashPaletteEntry {
+  key: string;
+  group: SlashPaletteGroup;
+  title: string;
+  detail: string;
+  badge?: string;
+  hint?: string;
+  icon: LucideIcon;
+  command?: SlashPaletteCommand;
+  skill?: SkillSummary;
+  app?: CliAppInfo;
+}
+
+/** 本轮强制使用的技能 chip（提交时随 ``SendOptions.skills`` 发给后端）。 */
+interface AttachedSkill {
+  name: string;
+  display_name?: string;
+  description?: string;
+}
+
+const MAX_ATTACHED_SKILLS = 8;
+const SLASH_PALETTE_SKILL_LIMIT = 6;
+const SLASH_PALETTE_TOOL_LIMIT = 6;
+
+function attachedSkillsPayload(skills: AttachedSkill[]): OutboundSkillMention[] {
+  return skills.map((skill) => ({
+    name: skill.name,
+    ...(skill.display_name ? { display_name: skill.display_name } : {}),
+    ...(skill.description ? { description: skill.description } : {}),
+  }));
+}
+
 function slashCommandI18nKey(command: string): string {
   return command.replace(/^\//, "").replace(/-/g, "_");
+}
+
+/** 后端把每个可用技能作为 ``/skill <name>`` 文本命令塞进命令表；技能改由「技能」组承载。 */
+function isSkillSlashCommand(command: string): boolean {
+  return /^\/skill\s+/i.test(command);
 }
 
 function readSlashRecents(): string[] {
@@ -856,6 +901,7 @@ export function ThreadComposer({
   slashCommands = [],
   cliApps = [],
   mcpPresets = [],
+  skills = [],
   onStop,
   onTranscribeAudio,
   runStartedAt = null,
@@ -882,6 +928,7 @@ export function ThreadComposer({
   const [selectedCliAppIndex, setSelectedCliAppIndex] = useState(0);
   const [cursorPosition, setCursorPosition] = useState(0);
   const [recentSlashCommands, setRecentSlashCommands] = useState<string[]>(() => readSlashRecents());
+  const [attachedSkills, setAttachedSkills] = useState<AttachedSkill[]>([]);
   const [queuedPrompts, setQueuedPrompts] = useState<QueuedPrompt[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -998,7 +1045,12 @@ export function ThreadComposer({
   }, [disabled, slashMenuDismissed, value]);
 
   const visibleSlashCommands = useMemo(() => {
-    const baseCommands = slashCommands.filter((command) => command.command !== "/stop");
+    // 每个可用技能在 /api/commands 里也有一条 `/skill <name>` 文本命令。技能现在由
+    // 菜单的「技能」组统一呈现（选中即挂载本轮 chip），这里剔除，避免同一技能出现两份。
+    // 后端命令本身保留：手打 `/skill foo` 仍能预览技能详情。
+    const baseCommands = slashCommands.filter(
+      (command) => command.command !== "/stop" && !isSkillSlashCommand(command.command),
+    );
     if (!(isStreaming && onStop)) return baseCommands;
     const stopCommand = slashCommands.find((command) => command.command === "/stop") ?? {
       command: "/stop",
@@ -1012,74 +1064,168 @@ export function ThreadComposer({
     ];
   }, [isStreaming, onStop, slashCommands]);
 
-  const filteredSlashCommands = useMemo<SlashPaletteCommand[]>(() => {
-    if (slashQuery === null) return [];
-    const withDetails = visibleSlashCommands
-      .filter((command) => {
-        const commandKey = slashCommandI18nKey(command.command);
-        const title = t(`thread.composer.slash.commands.${commandKey}.title`, {
-          defaultValue: command.title,
-        });
-        const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
-          defaultValue: command.description,
-        });
-        const haystack = [
-          command.command,
-          command.title,
-          command.description,
-          command.argHint ?? "",
-          title,
-          description,
-        ].join(" ").toLowerCase();
-        return haystack.includes(slashQuery);
-      })
-      .map((command) => {
-        const commandKey = slashCommandI18nKey(command.command);
-        const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
-          defaultValue: command.description,
-        });
-        let detail = description;
-        let badge: string | undefined;
-        if (command.command === "/model" && modelLabel) {
-          detail = modelLabel;
-          badge = t("thread.composer.slash.badges.current");
-        } else if (command.command === "/goal") {
-          detail = goalState?.active
-            ? t("thread.composer.slash.details.goalActive")
-            : t("thread.composer.slash.details.goalReady");
-        } else if (command.command === "/stop" && isStreaming) {
-          detail = t("thread.composer.slash.details.stopRunning");
-        } else if (command.command === "/history") {
-          detail = t("thread.composer.slash.details.history");
-        }
-        return {
-          ...command,
-          detail,
-          badge,
-          recent: recentSlashCommands.includes(command.command),
-        };
-      })
-      .sort((a, b) => {
-        if (isStreaming) {
-          if (a.command === "/stop") return -1;
-          if (b.command === "/stop") return 1;
-        }
-        if (slashQuery !== "") return 0;
-        const aRecent = recentSlashCommands.indexOf(a.command);
-        const bRecent = recentSlashCommands.indexOf(b.command);
-        if (aRecent !== -1 || bRecent !== -1) {
-          if (aRecent === -1) return 1;
-          if (bRecent === -1) return -1;
-          return aRecent - bRecent;
-        }
-        return 0;
-      });
+  /** `/skill <关键词>` 二级过滤态：菜单切到纯技能列表，回车挂载高亮项。 */
+  const skillPaletteQuery = useMemo(() => {
+    if (disabled || slashMenuDismissed) return null;
+    const match = /^\/skill\s+(\S*)$/i.exec(value);
+    return match ? match[1].toLowerCase() : null;
+  }, [disabled, slashMenuDismissed, value]);
+  const inSkillPaletteMode = skillPaletteQuery !== null;
 
-    return withDetails
-      .slice(0, 8);
-  }, [goalState?.active, isStreaming, modelLabel, recentSlashCommands, slashQuery, t, visibleSlashCommands]);
+  const availableSkills = useMemo(
+    () => skills.filter((skill) => skill.available),
+    [skills],
+  );
 
-  const showSlashMenu = filteredSlashCommands.length > 0;
+  const slashPaletteEntries = useMemo<SlashPaletteEntry[]>(() => {
+    if (slashQuery === null && !inSkillPaletteMode) return [];
+    const query = (inSkillPaletteMode ? skillPaletteQuery : slashQuery) ?? "";
+
+    const commandEntries = inSkillPaletteMode
+      ? []
+      : (() => {
+          const withDetails = visibleSlashCommands
+            .filter((command) => {
+              const commandKey = slashCommandI18nKey(command.command);
+              const title = t(`thread.composer.slash.commands.${commandKey}.title`, {
+                defaultValue: command.title,
+              });
+              const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
+                defaultValue: command.description,
+              });
+              const haystack = [
+                command.command,
+                command.title,
+                command.description,
+                command.argHint ?? "",
+                title,
+                description,
+              ].join(" ").toLowerCase();
+              return haystack.includes(query);
+            })
+            .map((command) => {
+              const commandKey = slashCommandI18nKey(command.command);
+              const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
+                defaultValue: command.description,
+              });
+              let detail = description;
+              let badge: string | undefined;
+              if (command.command === "/model" && modelLabel) {
+                detail = modelLabel;
+                badge = t("thread.composer.slash.badges.current");
+              } else if (command.command === "/goal") {
+                detail = goalState?.active
+                  ? t("thread.composer.slash.details.goalActive")
+                  : t("thread.composer.slash.details.goalReady");
+              } else if (command.command === "/stop" && isStreaming) {
+                detail = t("thread.composer.slash.details.stopRunning");
+              } else if (command.command === "/history") {
+                detail = t("thread.composer.slash.details.history");
+              }
+              return {
+                ...command,
+                detail,
+                badge,
+                recent: recentSlashCommands.includes(command.command),
+              };
+            })
+            .sort((a, b) => {
+              if (isStreaming) {
+                if (a.command === "/stop") return -1;
+                if (b.command === "/stop") return 1;
+              }
+              if (query !== "") return 0;
+              const aRecent = recentSlashCommands.indexOf(a.command);
+              const bRecent = recentSlashCommands.indexOf(b.command);
+              if (aRecent !== -1 || bRecent !== -1) {
+                if (aRecent === -1) return 1;
+                if (bRecent === -1) return -1;
+                return aRecent - bRecent;
+              }
+              return 0;
+            });
+
+          return withDetails.slice(0, 8).map(
+            (command): SlashPaletteEntry => ({
+              key: `command-${command.command}`,
+              group: "command",
+              title: t(`thread.composer.slash.commands.${slashCommandI18nKey(command.command)}.title`, {
+                defaultValue: command.title,
+              }),
+              detail: command.detail,
+              badge: command.badge,
+              hint: command.argHint ? `${command.command} ${command.argHint}` : command.command,
+              icon: COMMAND_ICONS[command.icon] ?? CircleHelp,
+              command,
+            }),
+          );
+        })();
+
+    const matchingSkills = availableSkills.filter((skill) => {
+      const haystack = [skill.name, skill.description, skill.source].join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+    const skillEntries = (inSkillPaletteMode
+      ? matchingSkills
+      : matchingSkills.slice(0, SLASH_PALETTE_SKILL_LIMIT)
+    ).map(
+      (skill): SlashPaletteEntry => ({
+        key: `skill-${skill.name}`,
+        group: "skill",
+        title: skill.name,
+        detail: skill.description,
+        badge: attachedSkills.some((item) => item.name === skill.name)
+          ? t("thread.composer.slash.badges.attached")
+          : undefined,
+        icon: Sparkles,
+        skill,
+      }),
+    );
+
+    const toolEntries = inSkillPaletteMode
+      ? []
+      : cliApps
+          .filter((app) => app.installed)
+          .filter((app) => {
+            const haystack = [
+              app.name,
+              app.display_name,
+              app.category,
+              app.description,
+              app.entry_point,
+            ].join(" ").toLowerCase();
+            return haystack.includes(query);
+          })
+          .slice(0, SLASH_PALETTE_TOOL_LIMIT)
+          .map(
+            (app): SlashPaletteEntry => ({
+              key: `tool-${app.name}`,
+              group: "tool",
+              title: app.display_name || app.name,
+              detail: app.description,
+              hint: `@${app.name}`,
+              icon: Terminal,
+              app,
+            }),
+          );
+
+    return [...commandEntries, ...skillEntries, ...toolEntries];
+  }, [
+    attachedSkills,
+    availableSkills,
+    cliApps,
+    goalState?.active,
+    inSkillPaletteMode,
+    isStreaming,
+    modelLabel,
+    recentSlashCommands,
+    skillPaletteQuery,
+    slashQuery,
+    t,
+    visibleSlashCommands,
+  ]);
+
+  const showSlashMenu = slashPaletteEntries.length > 0;
   const cliAppMention = useMemo<CliAppMentionQuery | null>(() => {
     if (disabled || cliAppMenuDismissed) return null;
     const caret = Math.min(Math.max(cursorPosition, 0), value.length);
@@ -1164,10 +1310,10 @@ export function ThreadComposer({
   }, [cliAppMention?.query]);
 
   useEffect(() => {
-    if (selectedCommandIndex >= filteredSlashCommands.length) {
+    if (selectedCommandIndex >= slashPaletteEntries.length) {
       setSelectedCommandIndex(0);
     }
-  }, [filteredSlashCommands.length, selectedCommandIndex]);
+  }, [slashPaletteEntries.length, selectedCommandIndex]);
 
   useEffect(() => {
     if (selectedCliAppIndex >= filteredMentionCandidates.length) {
@@ -1229,7 +1375,7 @@ export function ThreadComposer({
       window.removeEventListener("resize", updateLayout);
       document.removeEventListener("scroll", updateLayout, true);
     };
-  }, [filteredMentionCandidates.length, filteredSlashCommands.length, showAnyPalette]);
+  }, [filteredMentionCandidates.length, slashPaletteEntries.length, showAnyPalette]);
 
   const resizeTextarea = useCallback(() => {
     requestAnimationFrame(() => {
@@ -1369,12 +1515,67 @@ export function ThreadComposer({
     [cliAppMention, resizeTextarea, value],
   );
 
+  const attachSkill = useCallback((skill: SkillSummary) => {
+    setAttachedSkills((items) =>
+      items.some((item) => item.name === skill.name)
+        ? items
+        : [...items, {
+            name: skill.name,
+            ...(skill.description ? { description: skill.description } : {}),
+          }].slice(0, MAX_ATTACHED_SKILLS),
+    );
+    setInlineError(null);
+  }, []);
+
+  const removeAttachedSkill = useCallback((name: string) => {
+    setAttachedSkills((items) => items.filter((item) => item.name !== name));
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, []);
+
+  /** 斜杠菜单选中：命令插文本、技能挂 chip、工具插 `@name` 提及。 */
+  const chooseSlashEntry = useCallback(
+    (entry: SlashPaletteEntry) => {
+      if (entry.command) {
+        chooseSlashCommand(entry.command);
+        return;
+      }
+      if (entry.skill) {
+        attachSkill(entry.skill);
+        // `/skill foo` 只是选择途径，落地成 chip 后就不该把命令残留在输入框里。
+        setValue("");
+        setCursorPosition(0);
+        setSlashMenuDismissed(true);
+        resizeTextarea();
+        requestAnimationFrame(() => textareaRef.current?.focus());
+        return;
+      }
+      if (entry.app) {
+        const mention = `@${entry.app.name} `;
+        setValue(mention);
+        setCursorPosition(mention.length);
+        setSlashMenuDismissed(true);
+        setCliAppMenuDismissed(false);
+        setInlineError(null);
+        resizeTextarea();
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(mention.length, mention.length);
+        });
+      }
+    },
+    [attachSkill, chooseSlashCommand, resizeTextarea],
+  );
+
   const clearComposerText = useCallback(() => {
     setValue("");
     setInlineError(null);
     setSlashMenuDismissed(false);
     setCliAppMenuDismissed(false);
     setCursorPosition(0);
+    // 技能是「本轮」的：输入框清空即视为本轮结束。
+    setAttachedSkills([]);
     resizeTextarea();
   }, [resizeTextarea]);
 
@@ -1504,11 +1705,15 @@ export function ThreadComposer({
         : undefined;
     const attachedCliApps = activeCliMentionApps.map(cliAppMentionPayload);
     const attachedMcpPresets = activeMcpPresetMentions.map(mcpPresetMentionPayload);
+    const attachedSkillMentions = attachedSkillsPayload(attachedSkills);
     const options: SendOptions | undefined =
-      attachedCliApps.length > 0 || attachedMcpPresets.length > 0
+      attachedCliApps.length > 0
+      || attachedMcpPresets.length > 0
+      || attachedSkillMentions.length > 0
         ? {
             ...(attachedCliApps.length > 0 ? { cliApps: attachedCliApps } : {}),
             ...(attachedMcpPresets.length > 0 ? { mcpPresets: attachedMcpPresets } : {}),
+            ...(attachedSkillMentions.length > 0 ? { skills: attachedSkillMentions } : {}),
           }
         : undefined;
     onSend(content, payload, options);
@@ -1520,6 +1725,7 @@ export function ThreadComposer({
   }, [
     activeCliMentionApps,
     activeMcpPresetMentions,
+    attachedSkills,
     canSend,
     clear,
     clearComposerText,
@@ -1558,19 +1764,19 @@ export function ThreadComposer({
     if (showSlashMenu) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setSelectedCommandIndex((idx) => (idx + 1) % filteredSlashCommands.length);
+        setSelectedCommandIndex((idx) => (idx + 1) % slashPaletteEntries.length);
         return;
       }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setSelectedCommandIndex(
-          (idx) => (idx - 1 + filteredSlashCommands.length) % filteredSlashCommands.length,
+          (idx) => (idx - 1 + slashPaletteEntries.length) % slashPaletteEntries.length,
         );
         return;
       }
       if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
         e.preventDefault();
-        chooseSlashCommand(filteredSlashCommands[selectedCommandIndex]);
+        chooseSlashEntry(slashPaletteEntries[selectedCommandIndex]);
         return;
       }
       if (e.key === "Escape") {
@@ -1677,12 +1883,12 @@ export function ThreadComposer({
     >
       {showSlashMenu ? (
         <SlashCommandPalette
-          commands={filteredSlashCommands}
+          entries={slashPaletteEntries}
           selectedIndex={selectedCommandIndex}
           layout={slashPaletteLayout}
           isHero={isHero}
           onHover={setSelectedCommandIndex}
-          onChoose={chooseSlashCommand}
+          onChoose={chooseSlashEntry}
         />
       ) : null}
       {showCliAppMenu ? (
@@ -1759,6 +1965,32 @@ export function ThreadComposer({
                   else chipRefs.current.delete(img.id);
                 }}
               />
+            ))}
+          </div>
+        ) : null}
+        {attachedSkills.length > 0 ? (
+          <div
+            className="flex flex-wrap gap-1.5 px-3 pt-3"
+            aria-label={t("thread.composer.skills.ariaLabel")}
+          >
+            {attachedSkills.map((skill) => (
+              <span
+                key={skill.name}
+                className="flex items-center gap-1.5 rounded-full border border-[hsl(var(--cyber-violet)/0.45)] bg-[linear-gradient(135deg,hsl(var(--cyber-violet)/0.16),hsl(var(--cyber-glow)/0.14))] py-1 pl-2.5 pr-1.5 text-[12px] font-medium text-foreground"
+                title={skill.description}
+                data-testid={`composer-skill-chip-${skill.name}`}
+              >
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-[hsl(var(--cyber-violet))]" />
+                <span className="max-w-[14rem] truncate">{skill.name}</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachedSkill(skill.name)}
+                  aria-label={t("thread.composer.skills.remove", { name: skill.name })}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
             ))}
           </div>
         ) : null}
@@ -2286,13 +2518,18 @@ function ComposerCliMentionOverlay({
   );
 }
 interface SlashCommandPaletteProps {
-  commands: SlashPaletteCommand[];
+  entries: SlashPaletteEntry[];
   selectedIndex: number;
   layout: SlashPaletteLayout;
   isHero: boolean;
   onHover: (index: number) => void;
-  onChoose: (command: SlashPaletteCommand) => void;
+  onChoose: (entry: SlashPaletteEntry) => void;
 }
+
+/** 菜单行：分组标题不可选（不参与键盘索引），选项行带自己的 entry 下标。 */
+type SlashPaletteRow =
+  | { kind: "header"; key: string; label: string }
+  | { kind: "entry"; key: string; entry: SlashPaletteEntry; index: number };
 
 interface CliAppMentionPaletteProps {
   candidates: MentionCandidate[];
@@ -2457,7 +2694,7 @@ function MentionCandidateLogo({
 }
 
 function SlashCommandPalette({
-  commands,
+  entries,
   selectedIndex,
   layout,
   isHero,
@@ -2470,6 +2707,24 @@ function SlashCommandPalette({
     layout.maxHeight - SLASH_PALETTE_CHROME_PX,
   );
   const listRef = useSelectedOptionScroll(selectedIndex);
+  // 分组标题只在菜单真的跨组时出现：菜单里只有命令时保持原有单列表形态。
+  const rows = useMemo<SlashPaletteRow[]>(() => {
+    const grouped = new Set(entries.map((entry) => entry.group)).size > 1;
+    const out: SlashPaletteRow[] = [];
+    let currentGroup: SlashPaletteGroup | null = null;
+    entries.forEach((entry, index) => {
+      if (grouped && entry.group !== currentGroup) {
+        currentGroup = entry.group;
+        out.push({
+          kind: "header",
+          key: `header-${entry.group}`,
+          label: t(`thread.composer.slash.groups.${entry.group}`),
+        });
+      }
+      out.push({ kind: "entry", key: entry.key, entry, index });
+    });
+    return out;
+  }, [entries, t]);
   return (
     <div
       role="listbox"
@@ -2484,27 +2739,31 @@ function SlashCommandPalette({
       )}
     >
       <div ref={listRef} className="overflow-y-auto pr-0.5" style={{ maxHeight: listMaxHeight }}>
-        {commands.map((command, index) => {
-          const Icon = COMMAND_ICONS[command.icon] ?? CircleHelp;
-          const selected = index === selectedIndex;
-          const commandKey = slashCommandI18nKey(command.command);
-          const title = t(`thread.composer.slash.commands.${commandKey}.title`, {
-            defaultValue: command.title,
-          });
-          const description = t(`thread.composer.slash.commands.${commandKey}.description`, {
-            defaultValue: command.description,
-          });
+        {rows.map((row) => {
+          if (row.kind === "header") {
+            return (
+              <div
+                key={row.key}
+                className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70"
+              >
+                {row.label}
+              </div>
+            );
+          }
+          const { entry } = row;
+          const Icon = entry.icon;
+          const selected = row.index === selectedIndex;
           return (
             <button
-              key={command.command}
+              key={row.key}
               type="button"
               role="option"
-              data-palette-index={index}
+              data-palette-index={row.index}
               aria-selected={selected}
-              onMouseEnter={() => onHover(index)}
+              onMouseEnter={() => onHover(row.index)}
               onMouseDown={(e) => {
                 e.preventDefault();
-                onChoose(command);
+                onChoose(entry);
               }}
               className={cn(
                 "flex min-h-[44px] w-full items-center gap-3 rounded-[13px] px-3 py-2 text-left transition-colors",
@@ -2523,21 +2782,23 @@ function SlashCommandPalette({
               </span>
               <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
                 <span className="min-w-0 truncate text-[13.5px] font-semibold tracking-normal text-foreground">
-                  {title}
+                  {entry.title}
                 </span>
                 <span className="min-w-0 truncate text-[13px] text-muted-foreground">
-                  {command.detail || description}
+                  {entry.detail}
                 </span>
               </span>
               <span className="ml-2 flex max-w-[42%] shrink-0 items-center gap-1.5 sm:max-w-none">
-                {command.badge || command.recent ? (
+                {entry.badge || entry.command?.recent ? (
                   <span className="hidden rounded-full bg-foreground/[0.055] px-2 py-1 text-[11px] font-medium text-muted-foreground sm:inline-flex">
-                    {command.badge ?? t("thread.composer.slash.badges.recent")}
+                    {entry.badge ?? t("thread.composer.slash.badges.recent")}
                   </span>
                 ) : null}
-                <span className="font-mono text-[12px] text-muted-foreground/60">
-                  {command.argHint ? `${command.command} ${command.argHint}` : command.command}
-                </span>
+                {entry.hint ? (
+                  <span className="font-mono text-[12px] text-muted-foreground/60">
+                    {entry.hint}
+                  </span>
+                ) : null}
               </span>
             </button>
           );

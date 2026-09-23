@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
+import tarfile
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -968,3 +970,284 @@ def test_check_updates_without_cli_returns_empty_summary(tmp_path: Path) -> None
     assert payload["upgradable"] == 0
     assert payload["details"] == []
     assert "CLI" in payload["summary"]
+
+
+# --------------------------------------------------------------------------- #
+# 内置 CLI：解析顺序
+# --------------------------------------------------------------------------- #
+
+
+def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """把 ``Path.home()`` 挪进临时目录，隔离本机可能存在的 ``~/.skillhub``。"""
+    home = tmp_path / "home"
+    home.mkdir(exist_ok=True)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+    return home
+
+
+def test_resolve_cli_falls_back_to_bundled_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """没装 CLI 时定位到随包内置的副本（顺带看守 vendor 目录没被打包漏掉）。"""
+    _isolate_home(monkeypatch, tmp_path)
+    cfg = SkillHubConfig()
+
+    resolved = skill_hub.resolve_cli(cfg)
+
+    assert resolved is not None
+    path, source = resolved
+    assert source == "bundled"
+    assert path.name == "skills_store_cli.py"
+    assert path.parent.name == "skillhub"
+    assert path.is_file()
+    # CLI 按固定文件名读版本戳与端点清单，缺了会静默退回内置默认值。
+    assert (path.parent / "version.json").is_file()
+    assert (path.parent / "metadata.json").is_file()
+    assert (path.parent / "skills_upgrade.py").is_file()
+
+    status = skill_hub.skillhub_status(cfg, workspace=tmp_path / "ws")
+    assert status["mode"] == "cli"
+    assert status["cli_source"] == "bundled"
+    assert status["version"]
+
+
+def test_resolve_cli_prefers_user_install_over_bundled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """用户按官方文档自装的版本可能比内置副本新，优先用它。"""
+    home = _isolate_home(monkeypatch, tmp_path)
+    user_cli = home / ".skillhub" / "skills_store_cli.py"
+    user_cli.parent.mkdir(parents=True)
+    user_cli.write_text("# user cli\n", encoding="utf-8")
+
+    assert skill_hub.resolve_cli(SkillHubConfig()) == (user_cli, "user")
+
+
+def test_status_reports_configured_cli_source(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path)
+
+    status = skill_hub.skillhub_status(cfg, workspace=tmp_path / "ws")
+
+    assert status["cli_source"] == "config"
+    assert status["cli_path"] == cfg.cli_path
+
+
+def test_configured_cli_path_that_is_missing_never_falls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """显式配置指向不存在的文件：判定不可用，既不用内置副本顶替也不去下载。
+
+    配置写错时应当看得见，而不是被内置副本悄悄接管，或者触发一次网络下载。
+    """
+    _isolate_home(monkeypatch, tmp_path)
+    cfg = SkillHubConfig(cli_path=str(tmp_path / "nope" / "skills_store_cli.py"))
+    downloads: list[str] = []
+    monkeypatch.setattr(skill_hub, "_download_cli_kit", lambda: downloads.append("called"))
+
+    assert skill_hub.resolve_cli(cfg) is None
+    assert skill_hub.ensure_cli_available(cfg) is None
+    assert downloads == []
+    assert skill_hub.skillhub_status(cfg, workspace=tmp_path / "ws")["mode"] == "http"
+
+
+# --------------------------------------------------------------------------- #
+# 内置 CLI：调用方式
+# --------------------------------------------------------------------------- #
+
+
+def _capture_run(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    """替换 ``subprocess.run``，记下 argv 与 env。"""
+    seen: dict[str, Any] = {}
+
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["argv"] = list(argv)
+        seen["env"] = dict(kwargs.get("env") or {})
+        return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(skill_hub.subprocess, "run", fake_run)
+    return seen
+
+
+def test_run_cli_disables_self_upgrade_and_workspace_skills(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """跑内置副本时必须关掉自我升级与 workspace 技能注入。
+
+    自我升级会往可能只读的安装目录写、并就地换上未审阅的版本；workspace 技能
+    注入会把商店自带的 SKILL.md 塞进用户工作区。
+    """
+    cfg = _cfg(tmp_path)
+    seen = _capture_run(monkeypatch)
+
+    skill_hub._run_cli(["skill", "list"], cfg=cfg, cli=Path(cfg.cli_path))
+
+    assert seen["argv"][1] == cfg.cli_path
+    assert seen["argv"][2] == "--skip-self-upgrade"
+    assert seen["argv"][3:] == ["skill", "list"]
+    assert seen["env"]["SKILLHUB_SKIP_SELF_UPGRADE"] == "1"
+    assert seen["env"]["SKILLHUB_SKIP_WORKSPACE_SKILLS"] == "1"
+    assert seen["env"]["PYTHONIOENCODING"] == "utf-8"
+    # 子进程环境是在父环境上叠加，不能把 PATH 之类丢掉。
+    assert seen["env"].get("PATH") == os.environ.get("PATH")
+
+
+def test_run_cli_in_frozen_app_uses_bundled_interpreter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """桌面端（PyInstaller 冻结）没有独立 python，改用 sidecar 的解释器模式。
+
+    ``sys.executable`` 此时是宿主程序本身，直接拿去跑脚本会失败。
+    """
+    cfg = _cfg(tmp_path)  # 未指定 python_path
+    seen = _capture_run(monkeypatch)
+    monkeypatch.setattr(skill_hub.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(
+        skill_hub,
+        "bundled_interpreter_prefix",
+        lambda: [r"C:\app\sidecar.exe", "__xianaibot_python__"],
+    )
+    monkeypatch.setattr(skill_hub.shutil, "which", lambda _name: None)
+
+    skill_hub._run_cli(["skill", "list"], cfg=cfg, cli=Path(cfg.cli_path))
+
+    assert seen["argv"][:2] == [r"C:\app\sidecar.exe", "__xianaibot_python__"]
+    assert seen["argv"][2] == cfg.cli_path
+
+
+# --------------------------------------------------------------------------- #
+# 内置 CLI：兜底下载
+# --------------------------------------------------------------------------- #
+
+_KIT_FILES = {
+    "cli/skills_store_cli.py": "# cli\n",
+    "cli/skills_upgrade.py": "# upgrade\n",
+    "cli/version.json": '{"version": "2026.8.5"}',
+    "cli/metadata.json": '{"skills_search_url": "https://example.invalid"}',
+}
+
+
+def _kit_tar_bytes(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, text in files.items():
+            payload = text.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
+
+
+def _hide_bundled_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """模拟「打包漏带了内置副本」——否则仓库里那份永远命中，走不到下载。"""
+    monkeypatch.setattr(
+        skill_hub, "_bundled_cli_path", lambda: tmp_path / "no-bundle" / "skills_store_cli.py"
+    )
+
+
+def _stub_kit_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, files: dict[str, str]
+) -> Path:
+    """让兜底下载返回预置工具包，并把 CLI 安装目录挪进临时目录。
+
+    真实实现落在实例数据目录里，测试不能往那儿写。
+    """
+    install_dir = tmp_path / "data" / "skillhub" / "cli"
+    monkeypatch.setattr(skill_hub, "cli_install_dir", lambda: install_dir)
+    _hide_bundled_cli(tmp_path, monkeypatch)
+    _stub_store_http(monkeypatch, {"/install/latest.tar.gz": _kit_tar_bytes(files)})
+    return install_dir
+
+
+def test_ensure_cli_available_downloads_official_kit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """内置副本缺失时按需下载官方工具包，只取白名单内的四个文件。"""
+    _isolate_home(monkeypatch, tmp_path)
+    install_dir = _stub_kit_download(
+        tmp_path,
+        monkeypatch,
+        {
+            **_KIT_FILES,
+            "cli/install.sh": "#!/bin/sh\n",  # 脚本
+            "cli/skill/SKILL.md": "# 商店自带技能\n",  # 不该落进用户工作区
+            "cli/plugin/index.ts": "export {};\n",  # 编辑器插件
+        },
+    )
+
+    resolved = skill_hub.ensure_cli_available(SkillHubConfig())
+
+    assert resolved is not None
+    path, source = resolved
+    assert source == "downloaded"
+    assert path == install_dir / "skills_store_cli.py"
+    assert sorted(item.name for item in install_dir.iterdir()) == [
+        "metadata.json",
+        "skills_store_cli.py",
+        "skills_upgrade.py",
+        "version.json",
+    ]
+    # 再次解析时走同一个副本，不再重复下载。
+    assert skill_hub.resolve_cli(SkillHubConfig()) == (path, "downloaded")
+
+
+def test_ensure_cli_available_rejects_incomplete_kit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """工具包缺文件时不落位（避免半份安装被当成可用 CLI），并优雅退场。"""
+    _isolate_home(monkeypatch, tmp_path)
+    incomplete = dict(_KIT_FILES)
+    incomplete.pop("cli/skills_upgrade.py")
+    install_dir = _stub_kit_download(tmp_path, monkeypatch, incomplete)
+
+    assert skill_hub.ensure_cli_available(SkillHubConfig()) is None
+    assert not install_dir.exists()
+    assert not [item for item in install_dir.parent.iterdir() if item.name.endswith(".installing")]
+
+
+def test_ensure_cli_available_survives_download_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """下载失败不抛错：退化为商店 HTTP 直连（调用方看 None 即可）。"""
+    _isolate_home(monkeypatch, tmp_path)
+    _hide_bundled_cli(tmp_path, monkeypatch)
+    monkeypatch.setattr(skill_hub, "cli_install_dir", lambda: tmp_path / "data" / "cli")
+
+    def _boom(*_args: Any, **_kwargs: Any) -> Any:
+        raise skill_hub.httpx.ConnectError("offline")
+
+    monkeypatch.setattr(skill_hub.httpx, "get", _boom)
+
+    assert skill_hub.ensure_cli_available(SkillHubConfig()) is None
+
+
+def test_download_cli_kit_rejects_oversized_kit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """工具包异常大时直接拒绝（正常仅 64KB）。"""
+    _isolate_home(monkeypatch, tmp_path)
+    monkeypatch.setattr(skill_hub, "cli_install_dir", lambda: tmp_path / "data" / "cli")
+    monkeypatch.setattr(skill_hub, "_CLI_KIT_MAX_BYTES", 8)
+    _stub_store_http(monkeypatch, {"/install/latest.tar.gz": _kit_tar_bytes(_KIT_FILES)})
+
+    with pytest.raises(skill_hub.SkillHubError):
+        skill_hub._download_cli_kit()
+
+
+def test_install_prefers_downloaded_cli_over_store_http(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """兜底下载成功后，安装应走官方 CLI 路径而不是商店直连。"""
+    _isolate_home(monkeypatch, tmp_path)
+    _stub_kit_download(tmp_path, monkeypatch, _KIT_FILES)
+    cfg = SkillHubConfig()
+    calls: list[list[str]] = []
+    _stub_subprocess(monkeypatch, stdout='{"success": true}', capture=calls)
+
+    payload = skill_hub.install_skill("calendar", "alice", workspace=tmp_path / "ws", cfg=cfg)
+
+    assert payload["mode"] == "cli"
+    argv = calls[0]
+    assert argv[argv.index("install") + 1] == "calendar"
+    assert argv[argv.index("--namespace") + 1] == "alice"
+    # 走的是下载下来的那份副本，不是内置的（内置在这条用例里被模拟成缺失）。
+    assert argv[1] == str(skill_hub.cli_install_dir() / "skills_store_cli.py")

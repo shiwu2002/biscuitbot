@@ -666,6 +666,7 @@ class WebUITranscriptRecorder:
         media_paths: list[str] | None = None,
         cli_apps: list[dict[str, Any]] | None = None,
         mcp_presets: list[dict[str, Any]] | None = None,
+        skills: list[dict[str, Any]] | None = None,
     ) -> None:
         if text.strip() == "/stop" and not media_paths:
             return
@@ -675,6 +676,7 @@ class WebUITranscriptRecorder:
             media_paths=media_paths,
             cli_apps=cli_apps,
             mcp_presets=mcp_presets,
+            skills=skills,
         )
         if payload is None:
             return
@@ -849,6 +851,7 @@ def build_user_transcript_event(
     media_paths: list[Any] | None = None,
     cli_apps: list[Any] | None = None,
     mcp_presets: list[Any] | None = None,
+    skills: list[Any] | None = None,
 ) -> dict[str, Any] | None:
     paths = [str(path) for path in (media_paths or []) if path]
     if not text and not paths:
@@ -866,6 +869,10 @@ def build_user_transcript_event(
     presets = [dict(preset) for preset in (mcp_presets or []) if isinstance(preset, Mapping)]
     if presets:
         event["mcp_presets"] = presets
+    # 本轮显式指定的技能：回显时重画输入框上方的技能 chip。
+    attached = [dict(skill) for skill in (skills or []) if isinstance(skill, Mapping)]
+    if attached:
+        event["skills"] = attached
     return event
 
 
@@ -882,6 +889,7 @@ def _session_user_event(
     media = message.get("media")
     cli_apps = message.get("cli_apps")
     mcp_presets = message.get("mcp_presets")
+    skills = message.get("skills")
     chat_id = session_key.split(":", 1)[1] if ":" in session_key else session_key
     return build_user_transcript_event(
         chat_id,
@@ -889,6 +897,7 @@ def _session_user_event(
         media_paths=media if isinstance(media, list) else None,
         cli_apps=cli_apps if isinstance(cli_apps, list) else None,
         mcp_presets=mcp_presets if isinstance(mcp_presets, list) else None,
+        skills=skills if isinstance(skills, list) else None,
     )
 
 

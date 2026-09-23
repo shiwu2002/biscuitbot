@@ -16,6 +16,7 @@ import type {
   OutboundImageGeneration,
   OutboundMcpPresetMention,
   OutboundMedia,
+  OutboundSkillMention,
   GoalStateWsPayload,
   ToolProgressEvent,
   UIImage,
@@ -424,6 +425,8 @@ export interface SendOptions {
   imageGeneration?: OutboundImageGeneration;
   cliApps?: OutboundCliAppMention[];
   mcpPresets?: OutboundMcpPresetMention[];
+  /** 本轮强制使用的技能（用户显式选择）：后端加载技能正文并要求智能体按它执行。 */
+  skills?: OutboundSkillMention[];
   workspaceScope?: WorkspaceScopePayload | null;
 }
 

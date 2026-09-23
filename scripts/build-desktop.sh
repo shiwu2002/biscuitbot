@@ -126,6 +126,7 @@ HIDDEN_IMPORTS=(
   --add-data "xianaibot/web/dist:xianaibot/web/dist" \
   --add-data "xianaibot/templates:xianaibot/templates" \
   --add-data "xianaibot/skills:xianaibot/skills" \
+  --add-data "xianaibot/vendor/skillhub:xianaibot/vendor/skillhub" \
   --add-data "xianaibot/agent/tools/docs:xianaibot/agent/tools/docs" \
   --add-data "images/bot:xianaibot/avatars" \
   "${HIDDEN_IMPORTS[@]}" \

@@ -645,6 +645,33 @@ describe("XianaibotClient", () => {
     );
   });
 
+  it("includes per-turn skill attachments in outbound messages", () => {
+    const client = new XianaibotClient({
+      url: "ws://test",
+      reconnect: false,
+      socketFactory: (url) => new FakeSocket(url) as unknown as WebSocket,
+    });
+    client.connect();
+    lastSocket().fakeOpen();
+
+    client.sendMessage(
+      "chat-skill",
+      "统计一下今天的出勤",
+      undefined,
+      { skills: [{ name: "word-data", description: "课堂数据统计" }] },
+    );
+
+    expect(lastSocket().sent).toContain(
+      JSON.stringify({
+        type: "message",
+        chat_id: "chat-skill",
+        content: "统计一下今天的出勤",
+        skills: [{ name: "word-data", description: "课堂数据统计" }],
+        webui: true,
+      }),
+    );
+  });
+
   it("re-attaches known chats after a reconnect", async () => {
     const client = new XianaibotClient({
       url: "ws://test",

@@ -156,6 +156,45 @@ async def test_message_forwards_normalized_cli_app_attachments() -> None:
 
 
 @pytest.mark.asyncio
+async def test_message_forwards_normalized_skill_attachments() -> None:
+    """对话界面选中的技能随 envelope 进来后落到 metadata（非法名字被清洗掉）。"""
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "帮我做一版活动方案",
+        "webui": True,
+        "skills": [
+            {"name": "Demo-Skill", "display_name": "演示技能", "source": "workspace"},
+            {"name": "bad name"},
+            {"name": "../../etc/passwd"},
+            {"name": "demo-skill"},  # 与首条重复（大小写不同），只留一个
+        ],
+    }
+
+    await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_awaited_once()
+    metadata = channel._handle_message.call_args.kwargs["metadata"]
+    assert metadata["skills"] == [
+        {"name": "demo-skill", "display_name": "演示技能", "source": "workspace"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_message_without_skills_leaves_metadata_clean() -> None:
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {"type": "message", "chat_id": "abc123", "content": "hello", "webui": True}
+
+    await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    metadata = channel._handle_message.call_args.kwargs["metadata"]
+    assert "skills" not in metadata
+
+
+@pytest.mark.asyncio
 async def test_message_with_single_image_forwards_saved_path(tmp_path) -> None:
     channel = _make_channel()
     mock_conn = AsyncMock()

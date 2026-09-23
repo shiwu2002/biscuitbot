@@ -222,6 +222,21 @@ class Session:
                 if cli_lines:
                     breadcrumbs = "\n".join(cli_lines)
                     content = f"{content}\n{breadcrumbs}" if content else breadcrumbs
+            # 本轮由用户在对话界面显式指定的技能：正文只在本轮注入，回放时用一行
+            # 面包屑说明「这一轮挂过哪个技能」，不再重复整段正文（省上下文）。
+            skills = message.get("skills")
+            if role == "user" and isinstance(skills, list) and skills and isinstance(content, str):
+                skill_lines: list[str] = []
+                for item in skills[:8]:
+                    if not isinstance(item, dict):
+                        continue
+                    name = str(item.get("name") or "").strip().lower()
+                    if not name:
+                        continue
+                    skill_lines.append(f"[Skill Attachment: {name}; user-selected; mandatory]")
+                if skill_lines:
+                    breadcrumbs = "\n".join(skill_lines)
+                    content = f"{content}\n{breadcrumbs}" if content else breadcrumbs
             mcp_presets = message.get("mcp_presets")
             if (
                 role == "user"

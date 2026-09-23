@@ -19,13 +19,10 @@
 from __future__ import annotations
 
 import asyncio  # 异步 IO，用于子进程管理
-import hashlib  # sha256 生成冻结环境 shim 目录指纹
 import os  # 操作系统接口
 import re  # 正则表达式，用于 deny-list 匹配
-import shlex  # shim 内容里的路径安全引用
 import shutil  # shell 工具查找（which）
 import sys  # 系统相关（平台判断 / 冻结环境检测）
-import tempfile  # 冻结环境 shim 目录
 from contextlib import suppress  # 上下文管理器，忽略异常
 from dataclasses import dataclass  # 数据类装饰器
 from pathlib import Path  # 路径处理
@@ -60,6 +57,7 @@ from xianaibot.security.workspace_access import (  # 工作区访问控制
     current_tool_workspace,
 )
 from xianaibot.security.workspace_policy import is_path_within  # 路径在工作区内判断
+from xianaibot.utils.python_shim import bundled_python_bin_dir  # 冻结环境解释器 shim
 
 _IS_WINDOWS = sys.platform == "win32"  # 是否为 Windows 平台
 
@@ -675,54 +673,12 @@ class ExecTool(Tool):
         return self._venv_bin_dir() or self._bundled_python_bin()
 
     def _bundled_python_bin(self) -> str | None:
-        """PyInstaller 冻结（桌面 sidecar）：生成指向 sidecar 解释器模式的 shim。
+        """PyInstaller 冻结（桌面 sidecar）：shim 目录（复用 bundle 内解释器）。
 
-        bundle 内没有独立 python 可执行文件（唯一可执行是 sidecar 本体，跑网关
-        主程序），因此在临时目录生成 python/python3/pip/pip3 shim，exec 时以
-        ``<sidecar> __xianaibot_python__ ...`` 把请求转给 sidecar 的「解释器
-        模式」（``xianaibot.desktop.sidecar``），复用打包进 bundle 的标准库与
-        第三方依赖。目录以可执行路径指纹命名，sidecar 重装后自动失效重建。
+        逻辑见 :func:`xianaibot.utils.python_shim.bundled_python_bin_dir`——技能商店
+        CLI 也要用同一条通道跑 Python 脚本，故抽到公共模块，这里只做转发。
         """
-        if not getattr(sys, "frozen", False):
-            return None
-        exe = Path(sys.executable).resolve()
-        if not exe.is_file():
-            return None
-        key = hashlib.sha256(str(exe).encode()).hexdigest()[:12]
-        bindir = Path(tempfile.gettempdir()) / f"xianaibot-py-{key}"
-        if bindir.is_dir() and (bindir / "python3").exists():
-            return str(bindir)
-        try:
-            bindir.mkdir(parents=True, exist_ok=True)
-            if _IS_WINDOWS:
-                for name in ("python.cmd", "python3.cmd"):
-                    (bindir / name).write_text(
-                        f'@echo off\r\n"{exe}" __xianaibot_python__ %*\r\n',
-                        encoding="utf-8",
-                    )
-                for name in ("pip.cmd", "pip3.cmd"):
-                    (bindir / name).write_text(
-                        f'@echo off\r\n"{exe}" __xianaibot_python__ -m pip %*\r\n',
-                        encoding="utf-8",
-                    )
-            else:
-                exe_q = shlex.quote(str(exe))
-                for name in ("python", "python3"):
-                    (bindir / name).write_text(
-                        f'#!/bin/sh\nexec {exe_q} __xianaibot_python__ "$@"\n',
-                        encoding="utf-8",
-                    )
-                for name in ("pip", "pip3"):
-                    (bindir / name).write_text(
-                        f'#!/bin/sh\nexec {exe_q} __xianaibot_python__ -m pip "$@"\n',
-                        encoding="utf-8",
-                    )
-            for shim in bindir.iterdir():
-                shim.chmod(0o755)
-        except OSError:
-            logger.warning("无法创建 bundled python shim 目录：{}", bindir)
-            return None
-        return str(bindir)
+        return bundled_python_bin_dir()
 
     def _inject_venv_env(self, env: dict[str, str]) -> None:
         """开启 prefer_venv_python 且运行在 venv 时，注入 VIRTUAL_ENV 指向 venv 根。"""

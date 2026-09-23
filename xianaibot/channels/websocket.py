@@ -73,6 +73,7 @@ from xianaibot.webui.http_utils import (
 )
 from xianaibot.webui.knowledge_ws import webui_knowledge_upload_event  # 知识库上传 WebSocket 事件
 from xianaibot.webui.mcp_presets_api import normalize_mcp_preset_mentions  # MCP 预设提及归一化
+from xianaibot.webui.skills_api import normalize_skill_mentions  # 本轮指定技能归一化
 from xianaibot.webui.transcription_ws import webui_transcription_event  # 转录 WebSocket 事件
 from xianaibot.webui.websocket_logging import websockets_server_logger  # WebSocket 服务端日志器
 
@@ -846,6 +847,9 @@ class WebSocketChannel(BaseChannel):
             cli_apps = normalize_cli_app_mentions(envelope.get("cli_apps"))
             if cli_apps:
                 metadata["cli_apps"] = cli_apps
+            skills = normalize_skill_mentions(envelope.get("skills"))
+            if skills:
+                metadata["skills"] = skills
             mcp_presets = normalize_mcp_preset_mentions(envelope.get("mcp_presets"))
             if mcp_presets:
                 metadata["mcp_presets"] = mcp_presets
@@ -866,6 +870,7 @@ class WebSocketChannel(BaseChannel):
                     media_paths=media_paths or None,
                     cli_apps=cli_apps or None,
                     mcp_presets=mcp_presets or None,
+                    skills=skills or None,
                 )
             await self._handle_message(
                 sender_id=client_id,

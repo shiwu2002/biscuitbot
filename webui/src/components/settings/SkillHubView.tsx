@@ -408,6 +408,10 @@ export function SkillHubView({
                       defaultValue: "CLI {{version}}",
                     })}`
                   : null}
+                {/* 内置 / 兜底下载的 CLI 说明来源，免得用户以为要自己装 */}
+                {!search && status?.available && status.cli_source === "bundled"
+                  ? `（${tx("skillHub.cliBundled", "随应用内置")}）`
+                  : null}
               </p>
 
               {loading && !hasList ? (

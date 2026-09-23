@@ -1089,6 +1089,11 @@
         "navigateHint": "↑↓ 選擇",
         "selectHint": "Enter/Tab 填入",
         "closeHint": "Esc 關閉",
+        "groups": {
+          "command": "命令",
+          "skill": "技能",
+          "tool": "工具"
+        },
         "commands": {
           "new": {
             "title": "新增對話",
@@ -1140,6 +1145,7 @@
           }
         },
         "badges": {
+          "attached": "本輪已用",
           "current": "目前",
           "recent": "最近"
         },
@@ -1170,6 +1176,10 @@
         "mcpBadge": "MCP",
         "cliDescription": "使用 @{{name}} 呼叫本機 CLI",
         "mcpDescription": "使用 @{{name}} 呼叫 MCP 服務"
+      },
+      "skills": {
+        "ariaLabel": "本輪使用的技能",
+        "remove": "移除技能 {{name}}"
       },
       "workspace": {
         "accessAria": "工作區存取權限",

@@ -317,6 +317,11 @@ export interface SkillHubStatus {
   /** 商店是否在配置中启用；为 false 时同样走安装引导分支。 */
   enabled: boolean;
   cli_path: string;
+  /**
+   * CLI 来源：`config` 配置指定 / `user` 用户自装 / `bundled` 随包内置 /
+   * `downloaded` 兜底下载。空串表示没有可用的 CLI。
+   */
+  cli_source?: "" | "config" | "user" | "bundled" | "downloaded";
   version: string;
   /** 技能安装根目录（工作区下的 skills/）。 */
   skills_dir: string;
@@ -1298,6 +1303,14 @@ export interface OutboundMcpPresetMention {
   brand_color?: string | null;
 }
 
+/** 本轮对话里由用户显式选中的技能；后端据此强制加载技能正文并声明本轮必须使用。 */
+export interface OutboundSkillMention {
+  name: string;
+  display_name?: string;
+  source?: string;
+  description?: string;
+}
+
 /** Response shape for ``GET .../webui-thread`` (server-built transcript replay). */
 export interface WebuiThreadPagePayload {
   before_cursor?: string | null;
@@ -1354,6 +1367,7 @@ export type Outbound =
       image_generation?: OutboundImageGeneration;
       cli_apps?: OutboundCliAppMention[];
       mcp_presets?: OutboundMcpPresetMention[];
+      skills?: OutboundSkillMention[];
       workspace_scope?: WorkspaceScopePayload;
       turn_id?: string;
       /** Marks messages sent by the embedded WebUI, without changing the

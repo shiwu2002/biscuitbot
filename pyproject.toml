@@ -131,6 +131,8 @@ include = [
     "xianaibot/skills/**/*.xml",
     "xianaibot/skills/**/*.html",
     "xianaibot/skills/**/*.mjs",
+    "xianaibot/vendor/skillhub/*.json",
+    "xianaibot/vendor/skillhub/*.md",
     "xianaibot/web/dist/**/*",
 ]
 # xianaibot/web/dist/ is produced by `cd webui && bun run build` and is
@@ -163,6 +165,9 @@ include = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# vendor/skillhub 是官方 SkillHub CLI 的原样副本（见该目录 README 的 provenance），
+# 必须与上游逐字节一致，因此不参与 lint。
+extend-exclude = ["xianaibot/vendor"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]

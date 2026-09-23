@@ -1,6 +1,7 @@
 """Tests for ContextBuilder — system prompt and message assembly."""
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -428,6 +429,59 @@ class TestBuildMessages:
         assert "CLI App Attachment: @zoom" in user_msg
         assert "tool=run_cli_app" in user_msg
         assert "entry_point=cli-anything-zoom" in user_msg
+
+    def test_attached_skill_body_goes_into_user_message_not_system_prompt(self, tmp_path):
+        """对话界面选中的技能：正文进用户消息尾部的运行时块，且不动 system prompt。
+
+        进 system prompt 会让每轮的系统提示都不同，直接打掉提示缓存；这条用例把
+        边界钉死。
+        """
+        skill_dir = tmp_path / "skills" / "demo-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: demo-skill\ndescription: 演示\n---\n\n# 演示技能\n\n先做需求补充。\n",
+            encoding="utf-8",
+        )
+        inbound = SimpleNamespace(
+            content="帮我做一版活动方案",
+            metadata={"skills": [{"name": "demo-skill"}]},
+        )
+        state = SimpleNamespace(_mcp_servers={}, _mcp_stacks={})
+        builder = _builder(tmp_path)
+
+        messages = builder.build_messages(
+            [],
+            "帮我做一版活动方案",
+            runtime_state=state,
+            inbound_message=inbound,
+        )
+
+        user_msg = str(messages[-1]["content"])
+        assert "Skill Attachment: demo-skill" in user_msg
+        assert "MANDATORY" in user_msg
+        assert "先做需求补充。" in user_msg
+        assert "Skill Attachment" not in str(messages[0]["content"])
+
+    def test_system_prompt_unchanged_when_skill_attached(self, tmp_path):
+        skill_dir = tmp_path / "skills" / "demo-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: demo-skill\ndescription: 演示\n---\n\n正文\n", encoding="utf-8"
+        )
+        state = SimpleNamespace(_mcp_servers={}, _mcp_stacks={})
+        builder = _builder(tmp_path)
+
+        def _system_prompt(metadata: dict) -> str:
+            return str(
+                builder.build_messages(
+                    [],
+                    "hi",
+                    runtime_state=state,
+                    inbound_message=SimpleNamespace(content="hi", metadata=metadata),
+                )[0]["content"]
+            )
+
+        assert _system_prompt({}) == _system_prompt({"skills": [{"name": "demo-skill"}]})
 
     def test_consecutive_same_role_merged(self, tmp_path):
         builder = _builder(tmp_path)

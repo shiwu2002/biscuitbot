@@ -7,6 +7,7 @@ import type {
   OutboundImageGeneration,
   OutboundMcpPresetMention,
   OutboundMedia,
+  OutboundSkillMention,
   GoalStateWsPayload,
   WorkspaceScopePayload,
 } from "./types";
@@ -424,6 +425,7 @@ export class XianaibotClient {
       imageGeneration?: OutboundImageGeneration;
       cliApps?: OutboundCliAppMention[];
       mcpPresets?: OutboundMcpPresetMention[];
+      skills?: OutboundSkillMention[];
       workspaceScope?: WorkspaceScopePayload | null;
       turnId?: string;
     },
@@ -437,6 +439,7 @@ export class XianaibotClient {
       ...(options?.imageGeneration ? { image_generation: options.imageGeneration } : {}),
       ...(options?.cliApps?.length ? { cli_apps: options.cliApps } : {}),
       ...(options?.mcpPresets?.length ? { mcp_presets: options.mcpPresets } : {}),
+      ...(options?.skills?.length ? { skills: options.skills } : {}),
       ...(options?.workspaceScope ? { workspace_scope: options.workspaceScope } : {}),
       ...(options?.turnId ? { turn_id: options.turnId } : {}),
       webui: true,

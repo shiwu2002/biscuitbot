@@ -1156,6 +1156,76 @@ describe("ThreadShell", () => {
     expect(screen.getByRole("option", { name: /\/history/i })).toBeInTheDocument();
   });
 
+  it("surfaces skills in the slash palette instead of the API's /skill text commands", async () => {
+    const client = makeClient();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/commands")) {
+          return httpJson({
+            commands: [
+              {
+                command: "/history",
+                title: "Show conversation history",
+                description: "Print the last N persisted messages.",
+                icon: "history",
+                arg_hint: "[n]",
+              },
+              {
+                command: "/skill word-data",
+                title: "word-data",
+                description: "课堂数据统计",
+                icon: "wrench",
+                arg_hint: "",
+              },
+            ],
+          });
+        }
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+        };
+      }),
+    );
+
+    render(
+      wrap(
+        client,
+        <ThreadShell
+          session={null}
+          title="xianaibot"
+          onToggleSidebar={() => {}}
+          onNewChat={() => {}}
+          skills={[{
+            name: "word-data",
+            description: "课堂数据统计",
+            source: "workspace",
+            tier: "user",
+            available: true,
+          }]}
+        />,
+      ),
+    );
+
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(
+      "/api/commands",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+      }),
+    ));
+
+    fireEvent.change(screen.getByLabelText("消息输入框"), {
+      target: { value: "/" },
+    });
+
+    const palette = screen.getByRole("listbox", { name: "斜杠命令" });
+    expect(within(palette).getByText("技能")).toBeInTheDocument();
+    expect(within(palette).getByRole("option", { name: /word-data/ })).toBeInTheDocument();
+    expect(palette.textContent).not.toContain("/skill word-data");
+  });
+
   it("does not bring back welcome cards when image mode is enabled", async () => {
     const client = makeClient();
     const settings = modelSettings("deepseek-v4-pro", "deepseek");

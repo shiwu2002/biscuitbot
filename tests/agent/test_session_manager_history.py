@@ -401,6 +401,32 @@ def test_get_history_synthesizes_breadcrumb_for_image_only_turn():
     assert history[0] == {"role": "user", "content": "[image: /m/pic.png]"}
 
 
+def test_get_history_synthesizes_skill_attachment_breadcrumb():
+    """对话界面选中的技能：回放时只留一行面包屑，不再重复整段正文（省上下文）。"""
+    session = Session(key="test:skill")
+    session.messages.append(
+        {
+            "role": "user",
+            "content": "帮我做一版活动方案",
+            "skills": [
+                {"name": "demo-skill", "display_name": "演示技能"},
+                {"name": "another-skill"},
+            ],
+        }
+    )
+
+    history = session.get_history(max_messages=500)
+
+    assert history == [{
+        "role": "user",
+        "content": (
+            "帮我做一版活动方案\n"
+            "[Skill Attachment: demo-skill; user-selected; mandatory]\n"
+            "[Skill Attachment: another-skill; user-selected; mandatory]"
+        ),
+    }]
+
+
 def test_get_history_synthesizes_cli_app_attachment_breadcrumb():
     session = Session(key="test:cli-app")
     session.messages.append(

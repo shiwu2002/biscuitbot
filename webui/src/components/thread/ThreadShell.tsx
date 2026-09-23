@@ -35,6 +35,7 @@ import type {
   ChatSummary,
   Employee,
   SettingsPayload,
+  SkillSummary,
   SlashCommand,
   UIMessage,
   WorkspaceScopePayload,
@@ -91,6 +92,8 @@ export interface ThreadShellProps {
   ) => Promise<string | null>;
   /** 数字人员工列表与 hero 态预选状态（hero 选择员工后新会话绑定该员工）。 */
   employees?: Employee[];
+  /** 可用技能列表（斜杠菜单「技能」组：本轮强制使用）。 */
+  skills?: SkillSummary[];
   draftEmployee?: Employee | null;
   onSelectEmployee?: (employee: Employee | null) => void;
   /** 只读员工徽标点击：跳转到该员工的专属对话页（查看员工，不切换绑定）。 */
@@ -251,6 +254,7 @@ export function ThreadShell({
   onForkChat,
   onTurnEnd,
   employees = [],
+  skills = [],
   draftEmployee = null,
   onSelectEmployee,
   onOpenEmployee,
@@ -708,6 +712,7 @@ export function ThreadShell({
           slashCommands={slashCommands}
           cliApps={cliApps}
           mcpPresets={mcpPresets}
+          skills={skills}
           onStop={stop}
           onTranscribeAudio={transcribeAudio}
           runStartedAt={runStartedAt}
@@ -744,6 +749,7 @@ export function ThreadShell({
           slashCommands={slashCommands}
           cliApps={cliApps}
           mcpPresets={mcpPresets}
+          skills={skills}
           runStartedAt={runStartedAt}
           onTranscribeAudio={transcribeAudio}
           goalState={goalState}

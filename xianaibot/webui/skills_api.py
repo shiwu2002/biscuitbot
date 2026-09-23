@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,51 @@ def webui_skill_detail_payload(
         "requirements": loader.get_skill_requirements(name),
         "raw_markdown": loader.load_skill(name) or "",
     }
+
+
+_SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$", re.IGNORECASE)
+# 只保留这几项：前端把选中的技能随消息发回来，其余字段一律不带进会话元数据。
+_SKILL_ATTACHMENT_KEYS = ("name", "display_name", "source", "description")
+# 与 agent/skill_attachment 的注入上限一致：一轮最多强制注入 8 个技能正文。
+_MAX_SKILL_ATTACHMENTS = 8
+
+
+def _clip_ws_string(value: Any, limit: int = 160) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text[:limit] or None
+
+
+def normalize_skill_mentions(raw: Any) -> list[dict[str, str]]:
+    """Sanitize structured skill attachments sent by the WebUI.
+
+    与 ``normalize_cli_app_mentions`` 同一套路：只做**语法**层面的清洗（类型、长度、
+    字符集、去重、条数上限）。「这个名字是否真是现有技能」交给注入端
+    （``agent/skill_attachment.py``）按 ``SkillsLoader`` 的真实技能表核对——那里才有
+    工作目录，而且越界名字必须在那里被丢掉才能保证不会按名字拼路径去读文件。
+    """
+    if not isinstance(raw, list):
+        return []
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw[:_MAX_SKILL_ATTACHMENTS]:
+        if not isinstance(item, dict):
+            continue
+        name = _clip_ws_string(item.get("name"), 64)
+        if not name or _SKILL_NAME_RE.match(name) is None:
+            continue
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        row: dict[str, str] = {"name": key}
+        for field in _SKILL_ATTACHMENT_KEYS[1:]:
+            value = _clip_ws_string(item.get(field))
+            if value:
+                row[field] = value
+        out.append(row)
+    return out
 
 
 def _skill_payload(loader: SkillsLoader, entry: dict[str, str]) -> dict[str, Any]:

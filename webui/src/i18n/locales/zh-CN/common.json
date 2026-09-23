@@ -1089,8 +1089,14 @@
         "selectHint": "Enter/Tab 填入",
         "closeHint": "Esc 关闭",
         "badges": {
+          "attached": "本轮已用",
           "current": "当前",
           "recent": "最近"
+        },
+        "groups": {
+          "command": "命令",
+          "skill": "技能",
+          "tool": "工具"
         },
         "details": {
           "goalActive": "目标正在运行",
@@ -1158,6 +1164,10 @@
         "mcpBadge": "MCP",
         "cliDescription": "使用 @{{name}} 调用本地 CLI",
         "mcpDescription": "使用 @{{name}} 调用 MCP 服务"
+      },
+      "skills": {
+        "ariaLabel": "本轮使用的技能",
+        "remove": "移除技能 {{name}}"
       },
       "encoding": "处理中…",
       "remove": "移除附件",

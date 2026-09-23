@@ -4,11 +4,12 @@
 ===================
 本文件位于 ``xianaibot/webui`` 目录，负责把外部技能商店 SkillHub 接入 WebUI：
 
-- **浏览/搜索/安装默认走商店的公开 HTTP 接口**（``api.skillhub.cn``，与官方 CLI
-  用的是同一组端点、免认证），因此没有装 CLI 也能看到全部商店技能；
-- 本机装了 CLI（``~/.skillhub/skills_store_cli.py``）时，安装/升级/校验优先交给
-  CLI，复用官方的签名校验与 ``.skills_store_lock.json``；CLI 缺失时安装退化为
-  我们自己下载 zip、按同样的锁文件结构登记；
+- **浏览/搜索默认走商店的公开 HTTP 接口**（``api.skillhub.cn``，与官方 CLI 用的
+  是同一组端点、免认证），因此没有装 CLI 也能看到全部商店技能；
+- 安装/升级/校验优先交给官方 CLI，复用官方的签名校验与 ``.skills_store_lock.json``。
+  CLI 按「配置 → ``~/.skillhub`` → 内置副本」三段定位，内置副本随包分发，所以
+  开箱即走官方路径；三者都不可用时再兜底下载官方工具包，下载也失败才退化为我们
+  自己按商店 HTTP 直连下载 zip、按同构锁文件登记（此时没有签名校验）；
 - 技能装入 ``<workspace>/skills/``，由 SkillHub 自己维持 ``@<handle>/<slug>/``
   命名空间布局（``SkillsLoader`` 已识别该布局并按扁平名暴露技能）；
 - 对外提供 status / catalog / search / installed / install / updates / verify。
@@ -28,6 +29,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import os
@@ -35,6 +37,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import threading
 import zipfile
 from pathlib import Path
@@ -44,15 +47,35 @@ from urllib.parse import urlencode
 import httpx
 from loguru import logger
 
+from xianaibot.config.paths import get_config_path
 from xianaibot.config.schema import SkillHubConfig
 from xianaibot.utils.helpers import atomic_write_json
+from xianaibot.utils.python_shim import bundled_interpreter_prefix
 
 # SkillHub CLI 默认安装位置（官方 install.sh 的 INSTALL_BASE / CLI_TARGET）
 _DEFAULT_CLI_DIR_NAME = ".skillhub"
 _CLI_SCRIPT_NAME = "skills_store_cli.py"
+_UPGRADE_SCRIPT_NAME = "skills_upgrade.py"
 _VERSION_FILE_NAME = "version.json"
+_METADATA_FILE_NAME = "metadata.json"
 # 技能商店在技能根下维护的锁文件（记录已安装技能的 slug / version / installDir）
 _LOCKFILE_NAME = ".skills_store_lock.json"
+
+# 随包分发的官方 CLI 副本（相对本文件：webui/ -> xianaibot/ -> vendor/skillhub/）
+_BUNDLED_CLI_RELATIVE = ("vendor", "skillhub", _CLI_SCRIPT_NAME)
+
+# 官方 CLI 工具包：内置副本缺失时按需兜底下载。主机是常量、不取自用户输入。
+_CLI_KIT_URL = "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/latest.tar.gz"
+# 工具包内允许落盘的文件（白名单）。包里另有 install.sh 与商店自带的
+# skill/、plugin/ 注入物，我们只要运行必需的四件，其余一律忽略。
+_CLI_KIT_MEMBERS = {
+    f"cli/{_CLI_SCRIPT_NAME}": _CLI_SCRIPT_NAME,
+    f"cli/{_UPGRADE_SCRIPT_NAME}": _UPGRADE_SCRIPT_NAME,
+    f"cli/{_VERSION_FILE_NAME}": _VERSION_FILE_NAME,
+    f"cli/{_METADATA_FILE_NAME}": _METADATA_FILE_NAME,
+}
+# 实测工具包 64KB，留足余量同时挡住超大响应体。
+_CLI_KIT_MAX_BYTES = 8 * 1024 * 1024
 
 # 商店公开 HTTP 接口（与官方 CLI 的 metadata.json 指向同一组端点，免认证）。
 # 主机是常量、不取自用户输入 —— 想换自建镜像改这里即可。
@@ -99,18 +122,56 @@ def _truncate(text: str, limit: int = _MAX_OUTPUT_CHARS) -> str:
     return text[:limit] + f"\n\n... truncated {omitted} characters ..."
 
 
-def resolve_cli_path(cfg: SkillHubConfig) -> Path | None:
-    """定位 SkillHub CLI 脚本；未安装时返回 None。"""
-    configured = (cfg.cli_path or "").strip()
-    candidate = (
-        Path(configured).expanduser()
-        if configured
-        else Path.home() / _DEFAULT_CLI_DIR_NAME / _CLI_SCRIPT_NAME
-    )
+def _is_file(path: Path) -> bool:
+    """``Path.is_file`` 的容错版本（权限/编码等 OSError 一律当作不存在）。"""
     try:
-        return candidate if candidate.is_file() else None
+        return path.is_file()
     except OSError:
-        return None
+        return False
+
+
+def _bundled_cli_path() -> Path:
+    """随包分发的 CLI 副本路径（不保证存在，由打包配置决定）。"""
+    return Path(__file__).resolve().parent.parent.joinpath(*_BUNDLED_CLI_RELATIVE)
+
+
+def cli_install_dir() -> Path:
+    """兜底下载的 CLI 安装目录（实例数据目录下，可写；此处不创建）。"""
+    return Path(get_config_path()).parent / "skillhub" / "cli"
+
+
+def resolve_cli(cfg: SkillHubConfig) -> tuple[Path, str] | None:
+    """定位 SkillHub CLI 脚本，返回 ``(路径, 来源标记)``；均不可用时 None。
+
+    来源标记用于状态展示与排查：``config`` / ``user`` / ``bundled`` / ``downloaded``。
+    定位顺序即优先级：
+
+    1. ``gateway.skillHub.cliPath``：用户显式指定。**指定了但文件不存在就直接判定
+       不可用**，不再往后兜底——配置写错时要看得见，不能被内置副本悄悄接管；
+    2. ``~/.skillhub/skills_store_cli.py``：用户按官方文档自己装的，可能比内置副本新；
+    3. 内置副本（随包分发）；
+    4. 之前兜底下载到实例数据目录的副本（见 :func:`ensure_cli_available`）。
+    """
+    configured = (cfg.cli_path or "").strip()
+    if configured:
+        candidate = Path(configured).expanduser()
+        return (candidate, "config") if _is_file(candidate) else None
+    user = Path.home() / _DEFAULT_CLI_DIR_NAME / _CLI_SCRIPT_NAME
+    if _is_file(user):
+        return user, "user"
+    bundled = _bundled_cli_path()
+    if _is_file(bundled):
+        return bundled, "bundled"
+    downloaded = cli_install_dir() / _CLI_SCRIPT_NAME
+    if _is_file(downloaded):
+        return downloaded, "downloaded"
+    return None
+
+
+def resolve_cli_path(cfg: SkillHubConfig) -> Path | None:
+    """定位 SkillHub CLI 脚本；不可用时返回 None。"""
+    resolved = resolve_cli(cfg)
+    return resolved[0] if resolved is not None else None
 
 
 def _is_usable_python(candidate: str) -> bool:
@@ -133,21 +194,26 @@ def _is_usable_python(candidate: str) -> bool:
     return probe.returncode == 0 and (probe.stdout or "").strip().startswith("3")
 
 
-def _resolve_python(cfg: SkillHubConfig) -> str:
-    """定位用于运行 CLI 的解释器。
+def _interpreter_argv(cfg: SkillHubConfig) -> list[str]:
+    """定位运行 CLI 的解释器，返回 argv 前缀（可能是多段命令）。
 
     桌面端由 PyInstaller 打包，此时 ``sys.executable`` 是冻结的宿主程序而非
-    Python 解释器，直接拿它去跑脚本会失败，因此改为在 PATH 上探找可用的解释器。
+    Python 解释器，直接拿它跑脚本会失败；所以优先把请求转给 sidecar 的「解释器
+    模式」（``xianaibot.utils.python_shim``，与 shell 工具的 python shim 共用同一条
+    通道），拿不到时才退回在 PATH 上探找 python3/python。
     """
     configured = (cfg.python_path or "").strip()
     if configured:
-        return configured
+        return [configured]
     if not getattr(sys, "frozen", False):
-        return sys.executable
+        return [sys.executable]
+    prefix = bundled_interpreter_prefix()
+    if prefix is not None:
+        return prefix
     for name in ("python3", "python"):
         found = shutil.which(name)
         if found and _is_usable_python(found):
-            return found
+            return [found]
     raise SkillHubError(
         "找不到可用的 Python 解释器来运行 SkillHub CLI"
         "（可在配置 gateway.skillHub.pythonPath 指定）",
@@ -175,13 +241,16 @@ def skillhub_status(cfg: SkillHubConfig, *, workspace: Path) -> dict[str, Any]:
     直连，因此只要没被配置禁用就是可用的。``mode`` 表示安装/校验将走哪条路径
     （``cli`` = 官方 CLI 含签名校验，``http`` = 商店直连下载）。
     """
-    cli = resolve_cli_path(cfg)
+    resolved = resolve_cli(cfg)
+    cli = resolved[0] if resolved is not None else None
     root = skills_root_of(workspace)
     return {
         "available": bool(cfg.enable),
         "enabled": cfg.enable,
         "mode": "cli" if cli is not None else "http",
         "cli_available": cli is not None,
+        # 来源：config（配置指定）/ user（用户自装）/ bundled（随包内置）/ downloaded（兜底下载）
+        "cli_source": resolved[1] if resolved is not None else "",
         "cli_path": str(cli) if cli is not None else "",
         "version": _read_cli_version(cli.parent / _VERSION_FILE_NAME) if cli is not None else "",
         "skills_dir": str(root),
@@ -189,16 +258,101 @@ def skillhub_status(cfg: SkillHubConfig, *, workspace: Path) -> dict[str, Any]:
     }
 
 
+def _download_cli_kit() -> tuple[Path, str]:
+    """下载官方 CLI 工具包，按白名单取运行必需的文件，落到实例数据目录。
+
+    工具包与官方 ``install.sh`` 用的是同一个地址（常量，不取自用户输入）。包里除
+    运行必需的四件外还有 ``install.sh`` 与商店自带的 ``skill/``、``plugin/``，一律
+    不落盘——只把白名单内的文件解到暂存目录，确认齐全后整体落位，避免半份安装
+    被后续当成可用 CLI。
+    """
+    try:
+        response = httpx.get(
+            _CLI_KIT_URL, timeout=_HTTP_DOWNLOAD_TIMEOUT, follow_redirects=True
+        )
+    except httpx.TimeoutException as exc:
+        raise SkillHubError("下载 SkillHub CLI 工具包超时", status=504) from exc
+    except httpx.HTTPError as exc:
+        raise SkillHubError(f"下载 SkillHub CLI 工具包失败：{exc}", status=502) from exc
+    if response.status_code >= 400:
+        raise SkillHubError(
+            f"SkillHub CLI 工具包返回 HTTP {response.status_code}", status=502
+        )
+    data = response.content
+    if not data:
+        raise SkillHubError("SkillHub CLI 工具包为空", status=502)
+    if len(data) > _CLI_KIT_MAX_BYTES:
+        raise SkillHubError(f"SkillHub CLI 工具包过大（{len(data)} 字节）", status=502)
+
+    target = cli_install_dir()
+    staging = target.parent / f".{target.name}.{os.getpid()}.installing"
+    shutil.rmtree(staging, ignore_errors=True)
+    try:
+        staging.mkdir(parents=True)
+        written = 0
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            for member in archive.getmembers():
+                target_name = _CLI_KIT_MEMBERS.get(member.name.lstrip("./"))
+                if target_name is None or not member.isfile():
+                    continue
+                payload = archive.extractfile(member)
+                if payload is None:
+                    continue
+                (staging / target_name).write_bytes(payload.read())
+                written += 1
+        if written != len(_CLI_KIT_MEMBERS):
+            raise SkillHubError(
+                f"SkillHub CLI 工具包内容不完整（应取 {len(_CLI_KIT_MEMBERS)} 个文件，"
+                f"实取 {written} 个）",
+                status=502,
+            )
+        shutil.rmtree(target, ignore_errors=True)
+        staging.replace(target)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    version = _read_cli_version(target / _VERSION_FILE_NAME)
+    logger.info(
+        "已按需下载 SkillHub CLI {}（{} 字节，sha256={}）到 {}",
+        version or "未知版本",
+        len(data),
+        hashlib.sha256(data).hexdigest()[:16],
+        target,
+    )
+    return target / _CLI_SCRIPT_NAME, "downloaded"
+
+
+def ensure_cli_available(cfg: SkillHubConfig) -> tuple[Path, str] | None:
+    """确保有一个可用的 SkillHub CLI；内置副本缺失时按需下载官方工具包。
+
+    正常安装包已内置副本，走不到下载；只有打包漏带或被裁掉时才会触发。**失败不
+    抛错**——浏览/搜索仍可走商店 HTTP 直连，只记日志并返回 None，让调用方按
+    「无 CLI」处理。
+    """
+    resolved = resolve_cli(cfg)
+    if resolved is not None:
+        return resolved
+    if (cfg.cli_path or "").strip():
+        # 显式配置指向不存在的文件：这是配置问题，不该拿下载的副本悄悄顶替。
+        return None
+    try:
+        return _download_cli_kit()
+    except SkillHubError as exc:
+        logger.warning("SkillHub CLI 按需下载失败，退回商店 HTTP 直连：{}", exc)
+        return None
+
+
 def _require_cli(cfg: SkillHubConfig) -> Path:
     if not cfg.enable:
         raise SkillHubError("SkillHub 已在配置中禁用", status=403)
-    cli = resolve_cli_path(cfg)
-    if cli is None:
+    resolved = ensure_cli_available(cfg)
+    if resolved is None:
         raise SkillHubError(
-            "未检测到 SkillHub CLI，请先按官方文档安装（~/.skillhub/skills_store_cli.py）",
+            "未检测到 SkillHub CLI（随包内置副本缺失，且未能按需下载；"
+            "也可按官方文档安装到 ~/.skillhub/skills_store_cli.py）",
             status=503,
         )
-    return cli
+    return resolved[0]
 
 
 def _validate_arg(value: str, field: str, *, required: bool = True) -> str:
@@ -223,7 +377,7 @@ def _run_cli(
     check: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     """以 argv 列表运行 SkillHub CLI（不经过 shell）。"""
-    argv = [_resolve_python(cfg), str(cli), "--skip-self-upgrade", *args]
+    argv = [*_interpreter_argv(cfg), str(cli), "--skip-self-upgrade", *args]
     effective_timeout = timeout or cfg.timeout
     try:
         result = subprocess.run(
@@ -233,7 +387,15 @@ def _run_cli(
             encoding="utf-8",
             errors="replace",
             timeout=effective_timeout,
-            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            env={
+                **os.environ,
+                "PYTHONIOENCODING": "utf-8",
+                # 我们跑的是随包副本，不该自我升级（会往可能只读的安装目录写，
+                # 也会把未审阅的版本就地换上）；也不该把商店自带的 workspace
+                # 技能塞进用户工作区。两个开关都对应 CLI 的官方常量。
+                "SKILLHUB_SKIP_SELF_UPGRADE": "1",
+                "SKILLHUB_SKIP_WORKSPACE_SKILLS": "1",
+            },
         )
     except subprocess.TimeoutExpired as exc:
         raise SkillHubError(f"SkillHub CLI 超时（{effective_timeout}s）", status=504) from exc
@@ -400,7 +562,9 @@ def search_skills(query: str, *, cfg: SkillHubConfig, limit: int | None = None) 
     try:
         return _http_search(text, limit=count)
     except SkillHubError:
-        if not cfg.enable or resolve_cli_path(cfg) is None:
+        # 直连挂了才去要 CLI（含按需下载内置副本）——这正是「首次失败再下载」的
+        # 落点；两者都拿不到就把直连的原始错误抛出去。
+        if not cfg.enable or ensure_cli_available(cfg) is None:
             raise
         logger.debug("skill-hub: 商店直连搜索失败，回落到 CLI")
     return _cli_search(text, cfg=cfg, count=count)
@@ -450,7 +614,8 @@ def skill_rankings(*, cfg: SkillHubConfig, ranking_type: str | None = None) -> l
     try:
         return _http_rankings(kind)
     except SkillHubError:
-        if not cfg.enable or resolve_cli_path(cfg) is None:
+        # 同 search_skills：直连失败后才去要 CLI，拿不到就让原始错误上抛。
+        if not cfg.enable or ensure_cli_available(cfg) is None:
             raise
         logger.debug("skill-hub: 商店直连榜单失败，回落到 CLI")
     return _cli_rankings(kind, cfg=cfg)
@@ -736,15 +901,15 @@ def install_skill(
 ) -> dict[str, Any]:
     """安装一个商店技能到 ``<workspace>/skills/``。
 
-    装了 CLI 就交给 CLI（官方路径，含签名校验与锁文件写入）；没装则走商店
-    HTTP 直连下载，并按同样的锁文件结构登记。
+    有 CLI（内置副本也算）就交给 CLI——官方路径，含签名校验与锁文件写入；取不到
+    CLI 时走商店 HTTP 直连下载，并按同样的锁文件结构登记。
     """
     if not cfg.enable:
         raise SkillHubError("SkillHub 已在配置中禁用", status=403)
     clean_slug = _validate_arg(slug, "slug")
     clean_namespace = _validate_arg(namespace, "namespace", required=False)
     skills_root = skills_root_of(workspace)
-    if resolve_cli_path(cfg) is not None:
+    if ensure_cli_available(cfg) is not None:
         return _cli_install(
             clean_slug, clean_namespace, skills_root=skills_root, cfg=cfg, force=force
         )
@@ -775,7 +940,7 @@ def check_updates(*, workspace: Path, cfg: SkillHubConfig) -> dict[str, Any]:
         return _empty_updates("尚未安装任何商店技能")
     # 升级检查只有 CLI 能做（要读每个技能的 config.json 更新清单）。缺 CLI 时
     # 返回空结果而不是报错：商店浏览与安装不受影响。
-    if resolve_cli_path(cfg) is None:
+    if ensure_cli_available(cfg) is None:
         return _empty_updates(
             "未检测到 SkillHub CLI，无法检查升级（技能仍可通过商店直连安装或覆盖重装）"
         )

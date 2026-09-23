@@ -243,8 +243,47 @@ class TestPythonInterpreterMode:
         assert sidecar._run_python_interpreter([str(script)]) == 0
         assert capsys.readouterr().out.strip() == "script-ok"
 
+    def test_script_sibling_import(self, tmp_path, capsys) -> None:
+        """脚本所在目录进 sys.path[0]：官方 SkillHub CLI 靠同目录 import 运行。"""
+        (tmp_path / "helper_mod.py").write_text("VALUE = 'sibling-ok'\n", encoding="utf-8")
+        script = tmp_path / "t.py"
+        script.write_text("from helper_mod import VALUE\nprint(VALUE)\n", encoding="utf-8")
+        assert sidecar._run_python_interpreter([str(script)]) == 0
+        assert capsys.readouterr().out.strip() == "sibling-ok"
+
     def test_missing_script_returns_1(self, capsys) -> None:
         assert sidecar._run_python_interpreter(["/no/such/file.py"]) == 1
+
+    def test_force_utf8_streams(self, monkeypatch) -> None:
+        """冻结解释器不认 PYTHONIOENCODING，只能自己把标准流切成 UTF-8。"""
+
+        class _Stream:
+            def __init__(self) -> None:
+                self.calls: list[dict] = []
+
+            def reconfigure(self, **kwargs) -> None:
+                self.calls.append(kwargs)
+
+        out, err = _Stream(), _Stream()
+        monkeypatch.setattr(sidecar.sys, "stdout", out)
+        monkeypatch.setattr(sidecar.sys, "stderr", err)
+        sidecar._force_utf8_streams()
+        for stream in (out, err):
+            assert stream.calls == [{"encoding": "utf-8", "errors": "replace"}]
+
+    def test_force_utf8_streams_tolerates_plain_streams(self, monkeypatch) -> None:
+        """没有 reconfigure（或流已关闭）的流必须被跳过而不是报错。"""
+
+        class _Plain:
+            pass
+
+        class _Closed:
+            def reconfigure(self, **kwargs) -> None:
+                raise ValueError("I/O operation on closed file")
+
+        monkeypatch.setattr(sidecar.sys, "stdout", _Plain())
+        monkeypatch.setattr(sidecar.sys, "stderr", _Closed())
+        sidecar._force_utf8_streams()  # 不抛异常即通过
 
     def test_marker_intercepts_before_gateway(self, monkeypatch, capsys) -> None:
         """main() 命中魔术标记时直接解释执行，不启动网关。"""

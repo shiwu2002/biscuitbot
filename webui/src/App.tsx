@@ -1681,6 +1681,7 @@ function Shell({
       draftEmployee,
       onSelectEmployee,
       onOpenEmployee,
+      skills,
     }),
     [
       toggleSidebar,
@@ -1704,6 +1705,7 @@ function Shell({
       draftEmployee,
       onSelectEmployee,
       onOpenEmployee,
+      skills,
     ],
   );
   const showHostSidebarPreview =

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
-import type { CliAppInfo, McpPresetInfo, SlashCommand } from "@/lib/types";
+import type { CliAppInfo, McpPresetInfo, SkillSummary, SlashCommand } from "@/lib/types";
 
 vi.mock("@/lib/imageEncode", () => ({
   encodeImage: vi.fn(async (file: File) => ({
@@ -120,6 +120,31 @@ const MCP_PRESETS: McpPresetInfo[] = [
     connection_summary: "",
   },
 ];
+const SKILLS: SkillSummary[] = [
+  {
+    name: "word-data",
+    description: "课堂数据统计",
+    source: "workspace",
+    tier: "user",
+    available: true,
+  },
+  {
+    name: "media-generation-craft",
+    description: "媒体生成工艺",
+    source: "builtin",
+    tier: "user",
+    available: true,
+  },
+  {
+    name: "broken-skill",
+    description: "缺少依赖",
+    source: "workspace",
+    tier: "user",
+    available: false,
+    unavailable_reason: "missing bins",
+  },
+];
+
 const ORIGINAL_INNER_HEIGHT = window.innerHeight;
 const ORIGINAL_MEDIA_DEVICES = navigator.mediaDevices;
 
@@ -1631,6 +1656,146 @@ describe("ThreadComposer", () => {
     );
     await waitFor(() => {
       expect(screen.queryByText("remember this edited follow-up")).not.toBeInTheDocument();
+    });
+  });
+
+  it("groups slash palette entries and drops the API's per-skill text commands", () => {
+    render(
+      <ThreadComposer
+        onSend={vi.fn()}
+        placeholder="Type your message..."
+        slashCommands={[
+          ...COMMANDS,
+          {
+            command: "/skill word-data",
+            title: "word-data",
+            description: "课堂数据统计",
+            icon: "wrench",
+          },
+        ]}
+        skills={SKILLS}
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入框");
+    fireEvent.change(input, { target: { value: "/" } });
+
+    const palette = screen.getByRole("listbox", { name: "斜杠命令" });
+    expect(within(palette).getByText("命令")).toBeInTheDocument();
+    expect(within(palette).getByText("技能")).toBeInTheDocument();
+    // 技能以「技能」组条目出现，`/skill <name>` 文本命令不再重复渲染。
+    expect(within(palette).getByRole("option", { name: /word-data/ })).toBeInTheDocument();
+    expect(palette.textContent).not.toContain("/skill word-data");
+    // 不可用技能不进菜单。
+    expect(within(palette).queryByRole("option", { name: /broken-skill/ })).not.toBeInTheDocument();
+  });
+
+  it("attaches a skill from the slash palette as a per-turn chip", () => {
+    const onSend = vi.fn();
+    render(
+      <ThreadComposer
+        onSend={onSend}
+        placeholder="Type your message..."
+        slashCommands={COMMANDS}
+        skills={SKILLS}
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入框");
+    fireEvent.change(input, { target: { value: "/" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /word-data/ }));
+
+    expect(screen.getByTestId("composer-skill-chip-word-data")).toBeInTheDocument();
+    // 选中技能只是挂 chip，不该把命令残留在输入框里。
+    expect(input).toHaveValue("");
+    expect(screen.queryByRole("listbox", { name: "斜杠命令" })).not.toBeInTheDocument();
+
+    fireEvent.change(input, { target: { value: "统计一下今天的出勤" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+
+    expect(onSend).toHaveBeenCalledWith("统计一下今天的出勤", undefined, {
+      skills: [{ name: "word-data", description: "课堂数据统计" }],
+    });
+    // 技能是「本轮」的：发送后 chip 随输入框一起清空。
+    expect(screen.queryByTestId("composer-skill-chip-word-data")).not.toBeInTheDocument();
+  });
+
+  it("filters the palette down to skills after /skill and attaches the highlighted one", () => {
+    render(
+      <ThreadComposer
+        onSend={vi.fn()}
+        placeholder="Type your message..."
+        slashCommands={COMMANDS}
+        skills={SKILLS}
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入框");
+    fireEvent.change(input, { target: { value: "/skill med" } });
+
+    const palette = screen.getByRole("listbox", { name: "斜杠命令" });
+    expect(within(palette).getByRole("option", { name: /media-generation-craft/ })).toBeInTheDocument();
+    expect(within(palette).queryByRole("option", { name: /word-data/ })).not.toBeInTheDocument();
+    // 技能过滤态只列技能，不再掺命令。
+    expect(within(palette).queryByRole("option", { name: /\/history/ })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(screen.getByTestId("composer-skill-chip-media-generation-craft")).toBeInTheDocument();
+    expect(input).toHaveValue("");
+  });
+
+  it("removes an attached skill chip", () => {
+    render(
+      <ThreadComposer
+        onSend={vi.fn()}
+        placeholder="Type your message..."
+        slashCommands={COMMANDS}
+        skills={SKILLS}
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入框");
+    fireEvent.change(input, { target: { value: "/" } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /word-data/ }));
+    expect(screen.getByTestId("composer-skill-chip-word-data")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "移除技能 word-data" }));
+    expect(screen.queryByTestId("composer-skill-chip-word-data")).not.toBeInTheDocument();
+  });
+
+  it("inserts an installed CLI app from the slash palette tool group", () => {
+    const onSend = vi.fn();
+    render(
+      <ThreadComposer
+        onSend={onSend}
+        placeholder="Type your message..."
+        slashCommands={COMMANDS}
+        cliApps={CLI_APPS}
+      />,
+    );
+
+    const input = screen.getByLabelText("消息输入框");
+    fireEvent.change(input, { target: { value: "/" } });
+
+    const palette = screen.getByRole("listbox", { name: "斜杠命令" });
+    expect(within(palette).getByText("工具")).toBeInTheDocument();
+    // 未安装的 CLI 应用不进菜单。
+    expect(within(palette).queryByRole("option", { name: /@krita/ })).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(within(palette).getByRole("option", { name: /@blender/ }));
+    expect(input).toHaveValue("@blender ");
+
+    fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
+    expect(onSend).toHaveBeenCalledWith("@blender", undefined, {
+      cliApps: [{
+        name: "blender",
+        display_name: "Blender",
+        category: "3d",
+        entry_point: "cli-anything-blender",
+        logo_url: null,
+        brand_color: "#E87D0D",
+      }],
     });
   });
 

@@ -24,6 +24,10 @@ from xianaibot.agent.employees import (  # 数字人员工目录存储，按会�
     is_image_avatar,
 )
 from xianaibot.agent.memory import MemoryStore  # 记忆存储，提供长期记忆与历史读取
+from xianaibot.agent.skill_attachment import (  # 本轮指定技能的附加与正文注入
+    runtime_lines as skill_attachment_runtime_lines,
+    session_extra as skill_attachment_session_extra,
+)
 from xianaibot.agent.skills import SkillsLoader  # 技能加载器，提供技能内容与摘要
 from xianaibot.agent.tools import mcp as mcp_tools  # MCP 工具相关运行时能力桥接
 from xianaibot.agent.tools.registry import ToolRegistry  # 工具注册表，管理可用工具
@@ -43,10 +47,14 @@ from xianaibot.utils.prompt_templates import render_template  # 模板渲染
 def session_extra(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     """返回与轮次附加能力相关的持久化参数。
 
-    合并 CLI 应用层与 MCP 工具层各自从会话元数据中提取的附加参数，
+    合并 CLI 应用层、本轮指定技能与 MCP 工具层各自从会话元数据中提取的附加参数，
     供后续运行时注解与连接恢复使用。
     """
-    return cli_app_utils.session_extra(metadata) | mcp_tools.session_extra(metadata)
+    return (
+        cli_app_utils.session_extra(metadata)
+        | skill_attachment_session_extra(metadata)
+        | mcp_tools.session_extra(metadata)
+    )
 
 
 def runtime_lines(state: Any, msg: Any, workspace: Path, *, skip: bool = False) -> list[str]:
@@ -63,6 +71,7 @@ def runtime_lines(state: Any, msg: Any, workspace: Path, *, skip: bool = False) 
     """
     return [
         *cli_app_utils.runtime_lines(msg, workspace, skip=skip),
+        *skill_attachment_runtime_lines(msg, workspace, skip=skip),
         *mcp_tools.runtime_lines(
             msg,
             configured_server_names=set(state._mcp_servers),
