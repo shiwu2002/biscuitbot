@@ -12,6 +12,7 @@ import {
   Play,
   RotateCcw,
   Search,
+  Store,
   Terminal,
   Trash2,
   X,
@@ -59,16 +60,23 @@ const KIND_FILTERS: Array<{ key: KindFilter; runtime?: string }> = [
 
 type TierFilter = "all" | "system" | "agent" | "user";
 type AvailabilityFilter = "all" | "available" | "unavailable";
-type SourceFilter = "all" | "builtin" | "workspace" | "cli-anything" | "mcp-preset" | "custom";
+type SourceFilter = "all" | "builtin" | "workspace" | "skillhub" | "cli-anything" | "mcp-preset" | "custom";
 
 const TIER_FILTERS: TierFilter[] = ["all", "system", "agent", "user"];
 const AVAILABILITY_FILTERS: AvailabilityFilter[] = ["all", "available", "unavailable"];
-const SOURCE_FILTERS: SourceFilter[] = ["all", "builtin", "workspace", "cli-anything", "mcp-preset", "custom"];
+const SOURCE_FILTERS: SourceFilter[] = ["all", "builtin", "workspace", "skillhub", "cli-anything", "mcp-preset", "custom"];
 
 /** 已知来源集合，用于「自定义来源」兜底匹配（其余来源名落到 custom）。 */
-const KNOWN_SOURCES = new Set(["builtin", "workspace", "cli-anything", "mcp-preset"]);
+const KNOWN_SOURCES = new Set(["builtin", "workspace", "skillhub", "cli-anything", "mcp-preset"]);
 
-export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => void }) {
+export function CapabilitiesView({
+  onSkillsDeleted,
+  onOpenSkillHub,
+}: {
+  onSkillsDeleted?: () => void;
+  /** 进入技能商店（外部商店的技能浏览与安装）。 */
+  onOpenSkillHub?: () => void;
+}) {
   const { t } = useTranslation();
   const { token } = useClient();
   const [kind, setKind] = useState<KindFilter>("all");
@@ -180,13 +188,25 @@ export function CapabilitiesView({ onSkillsDeleted }: { onSkillsDeleted?: () => 
               "A unified catalog of everything this agent can do — instruction skills, CLI applications, and MCP servers.",
           })}
         </p>
-        <span className="text-[12px] font-medium text-muted-foreground">
-          {t("settings.capabilities.caption", {
-            installed: installedCount,
-            total: capabilities.length,
-            defaultValue: "{{installed}} installed · {{total}} total",
-          })}
-        </span>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+          <span className="text-[12px] font-medium text-muted-foreground">
+            {t("settings.capabilities.caption", {
+              installed: installedCount,
+              total: capabilities.length,
+              defaultValue: "{{installed}} installed · {{total}} total",
+            })}
+          </span>
+          {onOpenSkillHub ? (
+            <button
+              type="button"
+              onClick={onOpenSkillHub}
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border/60 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            >
+              <Store className="h-3.5 w-3.5" aria-hidden />
+              {t("settings.capabilities.skillHub", { defaultValue: "技能商店" })}
+            </button>
+          ) : null}
+        </div>
       </section>
 
       <section className="flex flex-wrap items-center gap-1.5">
@@ -349,7 +369,9 @@ function CapabilityRow({
 }) {
   const { t } = useTranslation();
   const StatusIcon = cap.available ? Check : CircleAlert;
-  const canDelete = cap.runtime === "prompt" && cap.source === "workspace";
+  // 商店技能与工作区技能一样可删（后端 skills_api 已放行），否则会「看得见、删不掉」
+  const canDelete =
+    cap.runtime === "prompt" && (cap.source === "workspace" || cap.source === "skillhub");
   const canInstallProcess = cap.runtime === "process" && cap.install_supported && !cap.installed;
   const canRunProcess = cap.runtime === "process" && cap.installed;
   const canEnableMcp = cap.runtime === "mcp" && !cap.installed;
@@ -882,6 +904,9 @@ function sourceLabel(source: string, t: TFunction): string {
   if (source === "builtin") {
     return t("settings.capabilities.sourceBuiltin", { defaultValue: "Built-in" });
   }
+  if (source === "skillhub") {
+    return t("settings.capabilities.sourceSkillHub", { defaultValue: "技能商店" });
+  }
   if (source === "cli-anything" || source === "harness") {
     return t("settings.capabilities.sourceCliAnything", { defaultValue: "CLI-Anything" });
   }
@@ -917,6 +942,8 @@ function sourceFilterLabel(value: SourceFilter, t: TFunction): string {
       return t("settings.capabilities.sourceBuiltin", { defaultValue: "内置" });
     case "workspace":
       return t("settings.capabilities.sourceWorkspace", { defaultValue: "自定义" });
+    case "skillhub":
+      return t("settings.capabilities.sourceSkillHub", { defaultValue: "技能商店" });
     case "cli-anything":
       return t("settings.capabilities.sourceCliAnything", { defaultValue: "CLI-Anything" });
     case "mcp-preset":

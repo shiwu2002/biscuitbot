@@ -90,6 +90,16 @@ from xianaibot.webui.sidebar_state import (
     read_webui_sidebar_state,
     write_webui_sidebar_state,
 )
+from xianaibot.webui.skill_hub import (
+    SkillHubError,
+    check_updates,
+    install_skill,
+    installed_skills,
+    search_skills,
+    skill_rankings,
+    skillhub_status,
+    verify_skill,
+)
 from xianaibot.webui.skills_api import (
     SkillDeletionError,
     delete_workspace_skill,
@@ -109,6 +119,7 @@ from xianaibot.webui.workspaces import WebUIWorkspaceController
 _SLOW_WEBUI_HTTP_LOG_MS = 1_000
 _AUTOMATION_VALUES_HEADER = "X-Xianaibot-Automation-Values"
 _EMPLOYEE_VALUES_HEADER = "X-Xianaibot-Employee-Values"
+_SKILL_HUB_VALUES_HEADER = "X-Xianaibot-SkillHub-Values"
 
 if TYPE_CHECKING:
     from xianaibot.bus.queue import MessageBus
@@ -768,6 +779,23 @@ class GatewayHTTPHandler:
             return await self._handle_webui_talent_catalog(request)
         if got == "/api/webui/talent-market/install":
             return self._handle_webui_talent_install(request)
+        # 技能商店（SkillHub）：handler 自身是 async 并在内部用 asyncio.to_thread
+        # 卸载阻塞的子进程调用，故此处直接 await，不可再套一层 to_thread
+        # （那会让 await 拿到的是未被 await 的协程而非 Response）。
+        if got == "/api/webui/skill-hub/status":
+            return await self._handle_webui_skill_hub_status(request)
+        if got == "/api/webui/skill-hub/catalog":
+            return await self._handle_webui_skill_hub_catalog(request)
+        if got == "/api/webui/skill-hub/search":
+            return await self._handle_webui_skill_hub_search(request)
+        if got == "/api/webui/skill-hub/installed":
+            return await self._handle_webui_skill_hub_installed(request)
+        if got == "/api/webui/skill-hub/updates":
+            return await self._handle_webui_skill_hub_updates(request)
+        if got == "/api/webui/skill-hub/install":
+            return await self._handle_webui_skill_hub_install(request)
+        if got == "/api/webui/skill-hub/verify":
+            return await self._handle_webui_skill_hub_verify(request)
         if got == "/api/webui/sidebar-state":
             return self._handle_webui_sidebar_state(request)
         if got == "/api/webui/sidebar-state/update":
@@ -916,7 +944,29 @@ class GatewayHTTPHandler:
     def _handle_commands(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):
             return _http_error(401, "Unauthorized")
-        return _http_json_response({"commands": builtin_command_palette()})
+        commands = builtin_command_palette()
+        # Merge installed skills so they appear in the slash command menu.
+        try:
+            skills_payload = webui_skills_payload(
+                self.skills_workspace_path,
+                disabled_skills=self.disabled_skills,
+            )
+            for skill in skills_payload.get("skills", []):
+                if not skill.get("available", True):
+                    continue
+                name = skill["name"]
+                commands.append(
+                    {
+                        "command": f"/skill {name}",
+                        "title": name,
+                        "description": skill.get("description", ""),
+                        "icon": "wrench",
+                        "arg_hint": "",
+                    }
+                )
+        except Exception:
+            pass  # Skills loading failed; still return built-in commands
+        return _http_json_response({"commands": commands})
 
     def _handle_workspaces(self, connection: Any, request: WsRequest) -> Response:
         if not self.check_api_token(request):
@@ -1142,6 +1192,166 @@ class GatewayHTTPHandler:
             logger.exception("failed to install talent employee")
             return _http_error(500, "failed to install talent employee")
 
+    def _skill_hub_config(self) -> Any:
+        """读取技能商店配置。
+
+        CLI 路径等只从配置文件读取，**不接受 HTTP 传入**——与人才市场对
+        注册表 URL 的策略一致，打包应用因此无法借 WebUI 改掉被执行的程序。
+        """
+        from xianaibot.config.loader import load_config
+
+        return load_config().gateway.skill_hub
+
+    def _skill_hub_unavailable(self, cfg: Any) -> Response | None:
+        """CLI 未安装或商店被禁用时返回 200 空态，让前端渲染安装引导。"""
+        status = skillhub_status(cfg, workspace=self.skills_workspace_path)
+        if status["available"] and status["enabled"]:
+            return None
+        return _http_json_response({**status, "skills": []})
+
+    async def _handle_webui_skill_hub_status(self, request: WsRequest) -> Response:
+        """技能商店可用性快照：CLI 路径、CLI 版本、技能安装根目录。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        cfg = self._skill_hub_config()
+        return _http_json_response(skillhub_status(cfg, workspace=self.skills_workspace_path))
+
+    async def _handle_webui_skill_hub_catalog(self, request: WsRequest) -> Response:
+        """商店首页：拉取排行榜作为浏览数据源（SkillHub 无「列全部」接口）。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        cfg = self._skill_hub_config()
+        unavailable = self._skill_hub_unavailable(cfg)
+        if unavailable is not None:
+            return unavailable
+        ranking_type = _query_first(_parse_query(request.path), "type")
+        try:
+            skills = await asyncio.to_thread(skill_rankings, cfg=cfg, ranking_type=ranking_type)
+        except SkillHubError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to load skill hub catalog")
+            return _http_error(500, "failed to load skill hub catalog")
+        return _http_json_response(
+            {
+                "available": True,
+                "enabled": cfg.enable,
+                "ranking_type": (ranking_type or cfg.rankings_type),
+                "skills": skills,
+                "total": len(skills),
+            }
+        )
+
+    async def _handle_webui_skill_hub_search(self, request: WsRequest) -> Response:
+        """按关键词检索商店技能。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        cfg = self._skill_hub_config()
+        unavailable = self._skill_hub_unavailable(cfg)
+        if unavailable is not None:
+            return unavailable
+        query = _parse_query(request.path)
+        keyword = (_query_first(query, "q") or "").strip()
+        if not keyword:
+            return _http_error(400, "invalid q")
+        raw_limit = _query_first(query, "limit")
+        limit: int | None = None
+        if raw_limit is not None and raw_limit.strip():
+            try:
+                limit = int(raw_limit)
+            except ValueError:
+                return _http_error(400, "invalid limit")
+        try:
+            skills = await asyncio.to_thread(search_skills, keyword, cfg=cfg, limit=limit)
+        except SkillHubError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to search skill hub")
+            return _http_error(500, "failed to search skill hub")
+        return _http_json_response(
+            {"available": True, "query": keyword, "skills": skills, "total": len(skills)}
+        )
+
+    async def _handle_webui_skill_hub_installed(self, request: WsRequest) -> Response:
+        """已由商店安装的技能（以 SkillHub 锁文件为准）。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        # 读锁文件是纯本地文件操作，不依赖 CLI，故不做可用性拦截。
+        skills = await asyncio.to_thread(
+            installed_skills, workspace=self.skills_workspace_path
+        )
+        return _http_json_response({"skills": skills, "total": len(skills)})
+
+    async def _handle_webui_skill_hub_updates(self, request: WsRequest) -> Response:
+        """检查已安装技能的可用升级。
+
+        SkillHub 的 upgrade 只覆盖自带 config.json 的技能，多数社区技能会被
+        skip，因此 skipped 偏高属正常，前端不应据此宣称「始终最新」。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        cfg = self._skill_hub_config()
+        unavailable = self._skill_hub_unavailable(cfg)
+        if unavailable is not None:
+            return unavailable
+        try:
+            payload = await asyncio.to_thread(
+                check_updates, workspace=self.skills_workspace_path, cfg=cfg
+            )
+        except SkillHubError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to check skill hub updates")
+            return _http_error(500, "failed to check skill hub updates")
+        return _http_json_response(payload)
+
+    async def _handle_webui_skill_hub_install(self, request: WsRequest) -> Response:
+        """安装一个商店技能到工作区技能目录。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        values = _skill_hub_values_from_request(request)
+        if not values:
+            return _http_error(400, "invalid skill hub values")
+        cfg = self._skill_hub_config()
+        try:
+            payload = await asyncio.to_thread(
+                install_skill,
+                str(values.get("slug") or ""),
+                str(values.get("namespace") or ""),
+                workspace=self.skills_workspace_path,
+                cfg=cfg,
+                force=bool(values.get("force")),
+            )
+        except SkillHubError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to install skill hub skill")
+            return _http_error(500, "failed to install skill hub skill")
+        return _http_json_response(payload)
+
+    async def _handle_webui_skill_hub_verify(self, request: WsRequest) -> Response:
+        """校验已安装技能的签名与平台记录是否一致。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        values = _skill_hub_values_from_request(request)
+        if not values:
+            return _http_error(400, "invalid skill hub values")
+        cfg = self._skill_hub_config()
+        try:
+            payload = await asyncio.to_thread(
+                verify_skill,
+                str(values.get("slug") or ""),
+                str(values.get("namespace") or ""),
+                workspace=self.skills_workspace_path,
+                cfg=cfg,
+            )
+        except SkillHubError as e:
+            return _http_error(e.status, e.message)
+        except Exception:
+            logger.exception("failed to verify skill hub skill")
+            return _http_error(500, "failed to verify skill hub skill")
+        return _http_json_response(payload)
+
     def _handle_webui_setup_complete(self, request: WsRequest) -> Response:
         """首次引导「欢迎设置」保存：provider + api_key(+ base) + 可选 model。
 
@@ -1321,9 +1531,9 @@ def _automation_values_from_request(request: WsRequest) -> dict[str, Any] | None
     return values if isinstance(values, dict) else None
 
 
-def _employee_values_from_request(request: WsRequest) -> dict[str, Any] | None:
-    """解析 ``X-Xianaibot-Employee-Values`` 头中的员工字段（前端 encodeURIComponent 编码）。"""
-    raw = _case_insensitive_header(request.headers, _EMPLOYEE_VALUES_HEADER)
+def _values_from_header(request: WsRequest, header_name: str) -> dict[str, Any] | None:
+    """解析 ``X-Xianaibot-*-Values`` 头中的 JSON 字段（前端 encodeURIComponent 编码）。"""
+    raw = _case_insensitive_header(request.headers, header_name)
     if not raw:
         return None
     try:
@@ -1334,6 +1544,16 @@ def _employee_values_from_request(request: WsRequest) -> dict[str, Any] | None:
         except Exception:
             return None
     return values if isinstance(values, dict) else None
+
+
+def _employee_values_from_request(request: WsRequest) -> dict[str, Any] | None:
+    """解析 ``X-Xianaibot-Employee-Values`` 头中的员工字段。"""
+    return _values_from_header(request, _EMPLOYEE_VALUES_HEADER)
+
+
+def _skill_hub_values_from_request(request: WsRequest) -> dict[str, Any] | None:
+    """解析 ``X-Xianaibot-SkillHub-Values`` 头中的商店操作参数（slug/namespace/force）。"""
+    return _values_from_header(request, _SKILL_HUB_VALUES_HEADER)
 
 
 def _parse_automation_update(

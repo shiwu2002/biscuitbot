@@ -725,17 +725,37 @@ async def cmd_pairing(ctx: CommandContext) -> OutboundMessage:
 
 
 async def cmd_skill(ctx: CommandContext) -> OutboundMessage:
-    """List all enabled skills (name and description only)."""
+    """List all enabled skills, or show details for a specific skill."""
     loop = ctx.loop
-    skills = loop.context.skills.list_skills(filter_unavailable=False)
-    if not skills:
-        content = "No skills available."
-    else:
-        lines = [f"Available skills ({len(skills)}):", ""]
-        for entry in skills:
+    arg = ctx.args.strip() if ctx.args else ""
+    if arg:
+        # Show details for the specific skill
+        skills = loop.context.skills.list_skills(filter_unavailable=False)
+        entry = next((s for s in skills if s["name"] == arg), None)
+        if entry is None:
+            content = f"Skill '{arg}' not found."
+        else:
             desc = loop.context.skills._get_skill_description(entry["name"])
-            lines.append(f"- **{entry['name']}** — {desc}")
-        content = "\n".join(lines)
+            raw_md = loop.context.skills.load_skill(arg) or ""
+            lines = [f"**{entry['name']}**", "", desc]
+            if raw_md:
+                # Show first 500 chars of the skill markdown for a quick preview
+                preview = raw_md[:500]
+                if len(raw_md) > 500:
+                    preview += "\n…"
+                lines += ["", "```markdown", preview, "```"]
+            content = "\n".join(lines)
+    else:
+        # List all skills
+        skills = loop.context.skills.list_skills(filter_unavailable=False)
+        if not skills:
+            content = "No skills available."
+        else:
+            lines = [f"Available skills ({len(skills)}):", ""]
+            for entry in skills:
+                desc = loop.context.skills._get_skill_description(entry["name"])
+                lines.append(f"- **{entry['name']}** — {desc}")
+            content = "\n".join(lines)
     return OutboundMessage(
         channel=ctx.msg.channel,
         chat_id=ctx.msg.chat_id,
@@ -783,6 +803,7 @@ def register_builtin_commands(router: CommandRouter) -> None:
     router.exact("/dream-restore", cmd_dream_restore)
     router.prefix("/dream-restore ", cmd_dream_restore)
     router.exact("/skill", cmd_skill)
+    router.prefix("/skill ", cmd_skill)
     router.exact("/help", cmd_help)
     router.exact("/pairing", cmd_pairing)
     router.prefix("/pairing ", cmd_pairing)

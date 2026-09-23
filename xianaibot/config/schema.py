@@ -305,12 +305,48 @@ class ApiConfig(Base):
     timeout: float = 120.0  # 单请求超时（秒）
 
 
+class SkillHubConfig(Base):
+    """SkillHub 技能商店配置（外部商店，与人才市场并列）。
+
+    商店通过子进程调用本机已安装的 SkillHub CLI 工作。``cli_path`` /
+    ``python_path`` 留空时走默认解析（``~/.skillhub/skills_store_cli.py`` 与当前
+    解释器），仅在 CLI 装在别处或桌面端（PyInstaller 冻结进程）需要显式指定。
+    这两个路径只从配置文件读取，WebUI 不允许更改。
+    """
+
+    enable: bool = True  # 是否启用技能商店
+    cli_path: str = Field(
+        default="",
+        validation_alias=AliasChoices("cliPath", "cli_path"),
+    )  # SkillHub CLI 脚本路径；空 → ~/.skillhub/skills_store_cli.py
+    python_path: str = Field(
+        default="",
+        validation_alias=AliasChoices("pythonPath", "python_path"),
+    )  # 运行 CLI 的解释器；空 → sys.executable（冻结进程下查 PATH）
+    timeout: int = Field(default=60, ge=5, le=600)  # 单次 CLI 调用超时（秒）
+    search_limit: int = Field(
+        default=20,
+        ge=1,
+        le=50,
+        validation_alias=AliasChoices("searchLimit", "search_limit"),
+    )  # 搜索返回条数上限
+    rankings_type: str = Field(
+        default="hot",
+        validation_alias=AliasChoices("rankingsType", "rankings_type"),
+    )  # 商店首页排行榜类型：all|hot|featured|newest|recommended|trending|paid
+
+
 class GatewayConfig(Base):
     """网关/服务器配置。"""
 
     host: str = "127.0.0.1"  # 更安全的默认值：仅本地绑定
     port: int = 18790
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
+    # 技能商店（SkillHub）：配置只能改配置文件，WebUI 只读
+    skill_hub: SkillHubConfig = Field(
+        default_factory=SkillHubConfig,
+        validation_alias=AliasChoices("skillHub", "skill_hub"),
+    )
     # 人才市场注册表 URL：后台写死在配置文件里，只能通过 CLI 修改
     # （`xianaibot talent-market add/set <url>`），WebUI/桌面应用不允许更改。
     talent_market_registry_url: str = Field(

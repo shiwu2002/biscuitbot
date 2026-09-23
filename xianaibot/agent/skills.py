@@ -32,6 +32,19 @@ _STRIP_SKILL_FRONTMATTER = re.compile(  # 匹配开头 ---、YAML 正文（分�
     re.DOTALL,
 )
 
+# 技能商店（SkillHub）的命名空间目录：``@<handle>/<slug>/SKILL.md``。
+# 这类目录比普通技能深一层，需要单独下钻识别。
+_NAMESPACE_DIR_RE = re.compile(r"^@[A-Za-z0-9._-]+$")
+
+# 技能名允许的字符集。与 ``webui/skills_api.delete_workspace_skill`` 的校验
+# 保持一致：技能名会进入 URL 路径与目录名，必须扁平且文件系统安全。
+_SAFE_SKILL_NAME_RE = re.compile(r"[^A-Za-z0-9_-]+")
+
+
+def _flatten_skill_name(value: str) -> str:
+    """把命名空间下的原始标识压成可安全用作目录名/URL 段的扁平技能名。"""
+    return _SAFE_SKILL_NAME_RE.sub("-", value).strip("-")
+
 
 class SkillsLoader:
     """
@@ -58,6 +71,68 @@ class SkillsLoader:
         self.builtin_skills = builtin_skills_dir or BUILTIN_SKILLS_DIR  # 内置技能目录
         self.disabled_skills = disabled_skills or set()  # 被禁用的技能名集合
 
+    def _iter_skill_dirs(self, base: Path) -> list[tuple[str, Path, bool]]:
+        """枚举一个技能根下的 ``(扁平技能名, SKILL.md 路径, 是否来自命名空间)``。
+
+        支持两种布局：
+        - 普通技能：``<base>/<name>/SKILL.md``，技能名取目录名；
+        - 技能商店（SkillHub）命名空间：``<base>/@<handle>/<slug>/SKILL.md``，
+          技能名取 slug；slug 被占用时退化为 ``<handle>--<slug>``。
+
+        技能名会被压成 ``[A-Za-z0-9_-]``（见 ``_flatten_skill_name``），因为后续
+        会用作目录名与 WebUI 路由路径段。普通技能优先于命名空间技能，保证工作区
+        手写技能不会被商店安装的同名技能顶掉。
+        """
+        if not base.is_dir():
+            return []
+        plain: list[tuple[str, Path]] = []
+        namespaced: list[tuple[str, str, Path]] = []
+        for child in sorted(base.iterdir(), key=lambda path: path.name.lower()):
+            if not child.is_dir():
+                continue
+            skill_file = child / "SKILL.md"
+            if skill_file.is_file():
+                plain.append((child.name, skill_file))
+                continue
+            if not _NAMESPACE_DIR_RE.match(child.name):
+                continue
+            handle = _flatten_skill_name(child.name.lstrip("@"))
+            if not handle:
+                continue
+            for grandchild in sorted(child.iterdir(), key=lambda path: path.name.lower()):
+                if not grandchild.is_dir():
+                    continue
+                nested_file = grandchild / "SKILL.md"
+                if nested_file.is_file():
+                    namespaced.append((handle, grandchild.name, nested_file))
+
+        entries: list[tuple[str, Path, bool]] = []
+        used: set[str] = set()
+        for name, path in plain:
+            if name in used:
+                continue
+            used.add(name)
+            entries.append((name, path, False))
+        for handle, slug, path in namespaced:
+            # 别名恒定带 handle 前缀，即 (handle, slug) 的纯函数。
+            # 技能名是**持久化标识**（会写进 employees.json 的 skills、skill_owners
+            # 的 owners 键与 WebUI 路由路径段）：若改成「裸 slug 优先、占用才加前缀」，
+            # 卸载 @a/calendar 会让名字 "calendar" 悄悄改指 @b/calendar，已有的员工
+            # 引用与删除链接会被静默替换。代价只是目录名长一点，显示名取自
+            # frontmatter 的 name，不受影响。
+            flat = _flatten_skill_name(slug)
+            name = _flatten_skill_name(f"{handle}-{flat}") if flat else _flatten_skill_name(handle)
+            if not name:
+                continue
+            if name in used:
+                # 退化一次；仍冲突则放弃该技能，不静默改名到第三个名字。
+                name = _flatten_skill_name(f"{handle}--{flat}")
+            if not name or name in used:
+                continue
+            used.add(name)
+            entries.append((name, path, True))
+        return entries
+
     def _skill_entries_from_dir(self, base: Path, source: str, *, skip_names: set[str] | None = None) -> list[dict[str, str]]:
         """从指定目录扫描技能条目（含 SKILL.md 的子目录）。
 
@@ -67,21 +142,20 @@ class SkillsLoader:
             skip_names: 需跳过的技能名集合（用于内置技能被工作区覆盖时）。
 
         返回:
-            技能条目字典列表（含 name/path/source）。
+            技能条目字典列表（含 name/path/source）。技能商店安装的技能
+            （位于 ``@<handle>/`` 命名空间下）来源标记为 ``skillhub``。
         """
-        if not base.exists():
-            return []
         entries: list[dict[str, str]] = []
-        for skill_dir in base.iterdir():
-            if not skill_dir.is_dir():
-                continue
-            skill_file = skill_dir / "SKILL.md"
-            if not skill_file.exists():
-                continue
-            name = skill_dir.name
+        for name, path, namespaced in self._iter_skill_dirs(base):
             if skip_names is not None and name in skip_names:  # 跳过已被工作区覆盖的同名技能
                 continue
-            entries.append({"name": name, "path": str(skill_file), "source": source})
+            entries.append(
+                {
+                    "name": name,
+                    "path": str(path),
+                    "source": "skillhub" if namespaced else source,
+                }
+            )
         return entries
 
     def list_skills(self, filter_unavailable: bool = True) -> list[dict[str, str]]:
@@ -129,7 +203,7 @@ class SkillsLoader:
         按名称加载技能内容。
 
         参数:
-            name: 技能名（目录名）。
+            name: 技能名（普通技能为目录名；技能商店技能为压平后的扁平名）。
 
         返回:
             SKILL.md 的文本内容；未找到时返回 None。
@@ -141,6 +215,13 @@ class SkillsLoader:
             path = root / name / "SKILL.md"
             if path.exists():
                 return path.read_text(encoding="utf-8")
+        # 回退：技能商店的 @<handle>/<slug> 布局，扁平名不等于目录名。
+        # 只在直连路径落空时才枚举，普通技能零额外开销；不进缓存，
+        # 保持「文件系统即真相、落盘即生效」的既有性质。
+        for root in roots:
+            for flat_name, path, _namespaced in self._iter_skill_dirs(root):
+                if flat_name == name:
+                    return path.read_text(encoding="utf-8")
         return None
 
     def load_skills_for_context(self, skill_names: list[str]) -> str:
@@ -286,11 +367,11 @@ class SkillsLoader:
         return content
 
     def _parse_xianaibot_metadata(self, raw: object) -> dict:
-        """Extract xianaibot/openclaw metadata from a frontmatter field.
+        """Extract xianaibot/openclaw/clawdbot metadata from a frontmatter field.
 
         ``raw`` may be a dict (already parsed by yaml.safe_load) or a JSON str.
         """
-        """从 frontmatter 的 metadata 字段提取 xianaibot/openclaw 元数据。
+        """从 frontmatter 的 metadata 字段提取 xianaibot/openclaw/clawdbot 元数据。
 
         ``raw`` 可以是 dict（已被 yaml.safe_load 解析）或 JSON 字符串。
 
@@ -311,7 +392,12 @@ class SkillsLoader:
             return {}
         if not isinstance(data, dict):
             return {}
-        payload = data.get("xianaibot", data.get("openclaw", {}))  # 兼容 xianaibot/openclaw 两种键名
+        # 键名按序回退：xianaibot（本仓）→ openclaw → clawdbot（技能商店
+        # SkillHub 的技能用后者声明 emoji 与 requires，不识别会导致依赖校验
+        # 被整体跳过，依赖缺失的技能也被判为「可用」）。
+        payload = (
+            data.get("xianaibot") or data.get("openclaw") or data.get("clawdbot") or {}
+        )
         return payload if isinstance(payload, dict) else {}
 
     def _check_requirements(self, skill_meta: dict) -> bool:
@@ -335,10 +421,14 @@ class SkillsLoader:
         """获取标记为 always=true 且依赖满足的技能名列表。
 
         这些技能会被始终注入 Agent 上下文，无需 Agent 主动发现。
+
+        技能商店（SkillHub）来源的技能被排除：其 SKILL.md 是第三方内容，
+        不允许靠 frontmatter 里的 ``always: true`` 把自己常驻注入 Agent 上下文。
         """
         return [
             entry["name"]
             for entry in self.list_skills(filter_unavailable=True)
+            if entry.get("source") != "skillhub"
             if (meta := self.get_skill_metadata(entry["name"]) or {})
             and (
                 self._parse_xianaibot_metadata(meta.get("metadata")).get("always")

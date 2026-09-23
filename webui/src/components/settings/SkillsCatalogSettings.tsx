@@ -134,7 +134,8 @@ function SkillCatalogRow({
   const statusLabel = skill.available
     ? t("settings.skills.statusAvailable", { defaultValue: "Available" })
     : t("settings.skills.statusUnavailable", { defaultValue: "Unavailable" });
-  const canDelete = skill.source === "workspace";
+  // 商店技能（skillhub）与工作区技能一样可删，否则会「看得见、删不掉」
+  const canDelete = skill.source === "workspace" || skill.source === "skillhub";
 
   return (
     <div
@@ -509,6 +510,9 @@ function skillSourceLabel(source: string, t: TFunction): string {
   }
   if (source === "builtin") {
     return t("settings.skills.sourceBuiltin", { defaultValue: "Built-in" });
+  }
+  if (source === "skillhub") {
+    return t("settings.skills.sourceSkillHub", { defaultValue: "技能商店" });
   }
   return source;
 }

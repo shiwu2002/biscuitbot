@@ -284,6 +284,115 @@ export interface TalentCatalogPayload {
   sources?: TalentCatalogSource[];
 }
 
+/** 技能商店（SkillHub）排行榜/搜索结果条目。
+ *
+ * 商店由外部提供，技能下载后安装到工作区技能目录。注意 ``slug`` 是**完整形态**
+ * （如 ``@clawhub_x/calendar``），``handle`` 是该技能的命名空间（如 ``clawhub_x``），
+ * 安装时两个都要传给后端。
+ */
+export interface SkillHubSkill {
+  slug: string;
+  canonical_name: string;
+  name: string;
+  description: string;
+  version: string;
+  category: string;
+  /** 技能图标 URL，商店可能不给（为空字符串时前端回退占位）。 */
+  icon_url: string;
+  homepage: string;
+  /** 命名空间 handle，安装时作为 ``--namespace`` 传入。 */
+  handle: string;
+  /** 命名空间展示名（如「ClawHub 精选」），与 ``handle`` 不同。 */
+  namespace: string;
+  downloads: number;
+  stars: number;
+  /** 平台标记的「已验证」技能。 */
+  verified: boolean;
+  source: string;
+}
+
+/** 技能商店可用性快照（CLI 未安装时 ``available=false``，前端渲染安装引导）。 */
+export interface SkillHubStatus {
+  available: boolean;
+  /** 商店是否在配置中启用；为 false 时同样走安装引导分支。 */
+  enabled: boolean;
+  cli_path: string;
+  version: string;
+  /** 技能安装根目录（工作区下的 skills/）。 */
+  skills_dir: string;
+  /** 不可用原因（CLI 缺失 / 已禁用），用于引导文案。 */
+  reason: string;
+}
+
+/** 商店排行榜响应（浏览数据源；商店没有「列出全部」接口）。 */
+export interface SkillHubCatalogPayload {
+  available: boolean;
+  enabled?: boolean;
+  /** 后端实际使用的排行榜类型（请求未指定时回落到配置默认值）。 */
+  ranking_type?: string;
+  skills: SkillHubSkill[];
+  total: number;
+  /** 商店不可用时的原因（``available=false`` 时才有值）。 */
+  reason?: string;
+}
+
+/** 商店关键词检索响应。 */
+export interface SkillHubSearchPayload {
+  available: boolean;
+  query?: string;
+  skills: SkillHubSkill[];
+  total: number;
+  reason?: string;
+}
+
+/** 已由商店安装的技能（以 SkillHub 锁文件为准，比 CLI list 信息更全）。 */
+export interface SkillHubInstalledSkill {
+  /** ``@handle/slug`` 形态的完整名（锁文件键）。 */
+  canonical_name: string;
+  slug: string;
+  handle: string;
+  name: string;
+  version: string;
+  source: string;
+  install_dir: string;
+}
+
+export interface SkillHubInstalledPayload {
+  skills: SkillHubInstalledSkill[];
+  total: number;
+}
+
+/** 升级检查结果。
+ *
+ * ``skipped`` 是**跳过**的技能数：商店的升级只覆盖自带更新清单（``config.json``）
+ * 的技能，多数社区技能会被跳过，因此该值偏高属正常，不代表出错，也不能据此
+ * 宣称「已是最新」。
+ */
+export interface SkillHubUpdatesPayload {
+  checked: number;
+  upgradable: number;
+  skipped: number;
+  failed: number;
+  /** 逐条明细（CLI 输出中以 ``[`` 开头的行）。 */
+  details: string[];
+  summary: string;
+}
+
+/** 安装结果（技能已存在时后端返回 HTTP 409，由前端提示覆盖安装）。 */
+export interface SkillHubInstallPayload {
+  installed: boolean;
+  slug: string;
+  namespace: string;
+  output: string;
+}
+
+/** 校验结果：商店 CLI ``verify`` 的原始 JSON，外加统一的 ``ok`` 与退出码。 */
+export interface SkillHubVerifyPayload {
+  ok: boolean;
+  exit_code: number;
+  [key: string]: unknown;
+}
+
 /** Structured UI blob on ``progress`` WS frames; channels may add more ``kind`` values later. */
 export interface AgentUIBlob {
   kind: string;

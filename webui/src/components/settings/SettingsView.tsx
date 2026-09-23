@@ -275,6 +275,8 @@ interface SettingsViewProps {
   onSettingsChange?: (payload: SettingsPayload) => void;
   skills?: SkillSummary[];
   onSkillsDeleted?: () => void;
+  /** 进入技能商店（能力目录右上角入口）。 */
+  onOpenSkillHub?: () => void;
   onWorkspaceSettingsChange?: () => void | Promise<void>;
   onSectionChange?: (section: SettingsSectionKey) => void;
   onLogout?: () => void;
@@ -596,6 +598,7 @@ export function SettingsView({
   onSettingsChange,
   skills = [],
   onSkillsDeleted,
+  onOpenSkillHub,
   onWorkspaceSettingsChange,
   onSectionChange,
   onLogout,
@@ -1610,7 +1613,12 @@ export function SettingsView({
       case "skills":
         return <SkillsCatalogSettings skills={skills} onDeleted={onSkillsDeleted} />;
       case "capabilities":
-        return <CapabilitiesView onSkillsDeleted={onSkillsDeleted} />;
+        return (
+          <CapabilitiesView
+            onSkillsDeleted={onSkillsDeleted}
+            onOpenSkillHub={onOpenSkillHub}
+          />
+        );
       case "channels":
         return (
           <ChannelsSettings

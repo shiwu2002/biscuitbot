@@ -49,50 +49,11 @@ _CATALOG_SOURCES = (
     CatalogSource("harness", CLI_ANYTHING_REGISTRY_URL, CLI_ANYTHING_RAW_BASE, True),
 )
 
-# 本地内置 CLI 工具表（与远程目录并列维护的「本地表」）。
-# 随包分发、无需网络拉取；只要目录能加载（含命中远程缓存后离线），本地表就
-# 参与聚合，可安装、可运行。每条字段与 CLI-Anything 目录条目对齐
-# （name / display_name / description / category / package_manager /
-# npm_package / install_cmd / entry_point / requires）。
-_BUILTIN_CLI_APPS: tuple[dict[str, str], ...] = (
-    {
-        "name": "officecli",
-        "display_name": "OfficeCLI",
-        "description": (
-            "AI 时代的 Office 文档处理 CLI：用一行命令读写、转换、生成 Word/Excel/PPT "
-            "文档并校验质量，无需打开桌面办公软件（iOfficeAI 开源项目）。"
-        ),
-        "category": "office",
-        "package_manager": "npm",
-        "npm_package": "@officecli/officecli",
-        "install_cmd": "npm install -g @officecli/officecli",
-        "entry_point": "officecli",
-        "requires": "Node.js >= 18；macOS / Linux / Windows",
-        "skill_md": "https://officecli.ai/SKILL.md",
-    },
-    {
-        "name": "wecom-cli",
-        "display_name": "WeCom CLI",
-        "description": (
-            "企业微信开放平台命令行工具：让人类和 AI Agent 都能在终端中操作企业微信"
-            "（通讯录、消息、客户、群聊等），WeComTeam 官方开源。"
-        ),
-        "category": "communication",
-        "package_manager": "npm",
-        "npm_package": "@wecom/cli",
-        "install_cmd": "npm install -g @wecom/cli",
-        "entry_point": "wecom-cli",
-        "requires": "Node.js >= 18；macOS / Linux / Windows",
-    },
-)
-
 # 允许作为技能源（skill_md）直接抓取的受信任域名白名单——这是技能抓取的
 # SSRF / 供应链边界：域名固定、不取自用户输入，白名单之外的一律拒绝。
-# 除 CLI-Anything 的 raw.githubusercontent.com 外，内置工具可声明官方技能
-# 地址（如 OfficeCLI 的 officecli.ai）。
+# 只保留远程目录实际引用到的域名；新增来源须在此显式登记。
 _TRUSTED_SKILL_HOSTS: frozenset[str] = frozenset({
     "raw.githubusercontent.com",
-    "officecli.ai",
 })
 
 _MAX_TOOL_OUTPUT_CHARS = 12_000
@@ -436,7 +397,8 @@ def _skill_content_url(skill_md: str, *, raw_base: str = CLI_ANYTHING_RAW_BASE) 
             return None
         suffix = skill_md.removeprefix(raw_prefix)
         return skill_md if _safe_skill_path(suffix) else None
-    # 其他受信任域名（如内置工具的官方技能页 officecli.ai）直接放行。
+    # 其他受信任域名直接放行（当前白名单仅 raw.githubusercontent.com，
+    # 该分支留给后续登记的官方技能页）。
     return skill_md
 
 
@@ -571,9 +533,6 @@ class CliAppManager:
                     raise
                 continue
             registries.append((source, raw_base, registry))
-        # 本地内置表：随包分发、无需网络拉取，随目录一同聚合。
-        # 与远程条目同名时在合并循环中以后来源字段覆盖 + 来源名合并。
-        registries.append(("builtin", "", {"clis": list(_BUILTIN_CLI_APPS)}))
         apps_by_name: dict[str, dict[str, Any]] = {}
         updated_values: list[str] = []
         for source, raw_base, registry in registries:
@@ -603,6 +562,8 @@ class CliAppManager:
         if source == "extensions":
             return "xianaibot-extension"
         if source == "builtin":
+            # 遗留兼容：本地内置表已移除，但历史 installed.json 里的条目仍记为
+            # builtin，installed_payload() 会回放该来源，故不能合并到 cli-anything。
             return "xianaibot-builtin"
         return f"cli-anything:{source}"
 
@@ -611,6 +572,7 @@ class CliAppManager:
         if source == "extensions":
             return "xianaibot-extension"
         if source == "builtin":
+            # 同上：仅为历史安装记录保留，新目录条目不会再产生该来源。
             return "xianaibot-builtin"
         return "cli-anything"
 

@@ -28,6 +28,13 @@ import type {
   SetupValues,
   SidebarStatePayload,
   SkillDetail,
+  SkillHubCatalogPayload,
+  SkillHubInstallPayload,
+  SkillHubInstalledPayload,
+  SkillHubSearchPayload,
+  SkillHubStatus,
+  SkillHubUpdatesPayload,
+  SkillHubVerifyPayload,
   SkillsPayload,
   SlashCommand,
   TalentCatalogPayload,
@@ -120,6 +127,20 @@ export interface EmployeeValues {
 
 function employeeValuesHeader(values: EmployeeValues): HeadersInit {
   return { "X-Xianaibot-Employee-Values": encodeURIComponent(JSON.stringify(values)) };
+}
+
+/** 技能商店写操作参数（安装/校验）；后端从请求头读取，不放 URL。 */
+export interface SkillHubActionValues {
+  /** 完整 slug（如 ``@clawhub_x/calendar``）。 */
+  slug: string;
+  /** 命名空间 handle（如 ``clawhub_x``）。 */
+  namespace: string;
+  /** 覆盖安装（目标已存在时强制更新）。 */
+  force?: boolean;
+}
+
+function skillHubValuesHeader(values: SkillHubActionValues): HeadersInit {
+  return { "X-Xianaibot-SkillHub-Values": encodeURIComponent(JSON.stringify(values)) };
 }
 
 function splitKey(key: string): { channel: string; chatId: string } {
@@ -417,6 +438,110 @@ export async function installTalentEmployee(
     token,
     { headers: employeeValuesHeader(values) },
     API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 技能商店（SkillHub）里的安装/升级会真的下载文件，给足超时（后端 CLI 侧允许 180s）。 */
+const SKILL_HUB_CLI_TIMEOUT_MS = 180_000;
+
+/** 技能商店可用性快照；CLI 未安装时后端返回 200 + ``available: false``（非错误）。 */
+export async function fetchSkillHubStatus(
+  token: string,
+  base: string = "",
+): Promise<SkillHubStatus> {
+  return request<SkillHubStatus>(
+    `${base}/api/webui/skill-hub/status`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 拉取技能商店排行榜（首页浏览数据源；商店没有「列出全部」接口）。 */
+export async function fetchSkillHubCatalog(
+  token: string,
+  rankingType: string = "",
+  base: string = "",
+): Promise<SkillHubCatalogPayload> {
+  const query = new URLSearchParams();
+  if (rankingType) query.set("type", rankingType);
+  return request<SkillHubCatalogPayload>(
+    `${base}/api/webui/skill-hub/catalog?${query.toString()}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 按关键词检索商店技能（``limit`` 后端会归一到 1-50）。 */
+export async function searchSkillHub(
+  token: string,
+  keyword: string,
+  limit?: number,
+  base: string = "",
+): Promise<SkillHubSearchPayload> {
+  const query = new URLSearchParams();
+  query.set("q", keyword);
+  if (typeof limit === "number" && limit > 0) query.set("limit", String(limit));
+  return request<SkillHubSearchPayload>(
+    `${base}/api/webui/skill-hub/search?${query.toString()}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 已由商店安装的技能（读本地锁文件，CLI 未安装时也可用）。 */
+export async function fetchSkillHubInstalled(
+  token: string,
+  base: string = "",
+): Promise<SkillHubInstalledPayload> {
+  return request<SkillHubInstalledPayload>(
+    `${base}/api/webui/skill-hub/installed`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 检查已安装技能的可用升级；``skipped`` 为「无自带更新清单」被跳过的数量。 */
+export async function fetchSkillHubUpdates(
+  token: string,
+  base: string = "",
+): Promise<SkillHubUpdatesPayload> {
+  return request<SkillHubUpdatesPayload>(
+    `${base}/api/webui/skill-hub/updates`,
+    token,
+    undefined,
+    SKILL_HUB_CLI_TIMEOUT_MS,
+  );
+}
+
+/** 安装一个商店技能到工作区技能目录；目标已存在时后端返回 409（可带 ``force`` 覆盖）。 */
+export async function installSkillHubSkill(
+  token: string,
+  values: SkillHubActionValues,
+  base: string = "",
+): Promise<SkillHubInstallPayload> {
+  return request<SkillHubInstallPayload>(
+    `${base}/api/webui/skill-hub/install`,
+    token,
+    { headers: skillHubValuesHeader(values) },
+    SKILL_HUB_CLI_TIMEOUT_MS,
+  );
+}
+
+/** 校验已安装技能的签名与平台记录是否一致（``ok`` 为 false 属业务结果，非请求失败）。 */
+export async function verifySkillHubSkill(
+  token: string,
+  values: SkillHubActionValues,
+  base: string = "",
+): Promise<SkillHubVerifyPayload> {
+  return request<SkillHubVerifyPayload>(
+    `${base}/api/webui/skill-hub/verify`,
+    token,
+    { headers: skillHubValuesHeader(values) },
+    SKILL_HUB_CLI_TIMEOUT_MS,
   );
 }
 

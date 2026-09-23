@@ -231,31 +231,18 @@ def test_payload_merges_catalog_and_marks_unsupported_installs(tmp_path: Path) -
 
     assert payload["catalog_updated_at"] == "2026-04-16"
     apps = {app["name"]: app for app in payload["apps"]}
+    # 目录只来自远程来源；本地内置表已移除，不再往目录里注入条目。
     assert set(apps) == {
         "clibrowser",
         "dify-workflow",
         "feishu",
         "gimp",
         "jimeng",
-        "officecli",
         "shopify",
         "suno",
-        "wecom-cli",
     }
     assert apps["gimp"]["install_supported"] is True
     assert apps["gimp"]["source"] == "harness"
-    # 本地内置表随目录合并，来源标记为 builtin，manifest 来源为 xianaibot-builtin
-    assert apps["officecli"]["source"] == "builtin"
-    assert apps["officecli"]["entry_point"] == "officecli"
-    assert apps["officecli"]["install_supported"] is True
-    assert apps["officecli"]["manifest"]["source"] == "xianaibot-builtin"
-    assert apps["officecli"]["manifest"]["execution"]["entry_point"] == "officecli"
-    assert apps["officecli"]["manifest"]["provisioning"]["strategy"] == "npm"
-    assert apps["wecom-cli"]["source"] == "builtin"
-    assert apps["wecom-cli"]["entry_point"] == "wecom-cli"
-    assert apps["wecom-cli"]["logo_url"] == (
-        "https://cdn.simpleicons.org/wechat/07C160"
-    )
     assert apps["gimp"]["description"] == "Image editing"
     assert apps["feishu"]["description"] == "Lark CLI"
     assert apps["feishu"]["manifest"]["description"] == "Lark CLI"
@@ -308,11 +295,11 @@ def test_payload_uses_anygen_official_domain_for_logo(tmp_path: Path) -> None:
     assert app["logo_url"] == "https://www.google.com/s2/favicons?domain=anygen.io&sz=64"
 
 
-def test_builtin_local_table_install_uses_npm(
+def test_catalog_npm_entry_install_uses_npm(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """本地内置表条目随目录聚合，走 npm 安装策略并记录 builtin 来源。"""
+    """目录里的 npm 条目走 npm 安装策略，并写入对应技能文件。"""
     manager = _manager(tmp_path)
     _seed_catalog(manager)
     calls: list[list[str]] = []
@@ -326,33 +313,35 @@ def test_builtin_local_table_install_uses_npm(
         "xianaibot.apps.cli.service.shutil.which",
         lambda command: "/usr/bin/npm" if command == "npm" else None,
     )
-    # 官方 skill_md 走 _fetch_skill_content，测试里不联网，注入固定内容
+    # 技能正文走 _fetch_skill_content，测试里不联网，注入固定内容
     monkeypatch.setattr(
         manager,
         "_fetch_skill_content",
-        lambda app: "---\nname: cli-app-officecli\ndescription: OfficeCLI\n---\n# OfficeCLI\n",
+        lambda app: "---\nname: cli-app-feishu\ndescription: Lark CLI\n---\n# Lark CLI\n",
     )
 
-    payload = manager.install("officecli")
+    payload = manager.install("feishu")
 
-    assert calls == [["/usr/bin/npm", "install", "-g", "@officecli/officecli"]]
+    assert calls == [["/usr/bin/npm", "install", "-g", "@larksuite/cli"]]
     assert payload["last_action"]["ok"] is True
     installed = json.loads(manager.installed_path.read_text(encoding="utf-8"))["apps"]
-    assert installed["officecli"]["strategy"] == "npm"
-    assert installed["officecli"]["source"] == "builtin"
-    # 安装时写入官方技能（含 run_cli_app 执行注记），供 agent 以 @officecli 引用
-    skill = manager.workspace / "skills" / "cli-app-officecli" / "SKILL.md"
+    assert installed["feishu"]["strategy"] == "npm"
+    assert installed["feishu"]["source"] == "harness"
+    # 安装时写入技能（含 run_cli_app 执行注记），供 agent 以 @feishu 引用
+    skill = manager.workspace / "skills" / "cli-app-feishu" / "SKILL.md"
     assert skill.is_file()
-    assert "OfficeCLI" in skill.read_text(encoding="utf-8")
-    assert 'run_cli_app` tool with `name="officecli"' in skill.read_text(encoding="utf-8")
+    assert "Lark CLI" in skill.read_text(encoding="utf-8")
+    assert 'run_cli_app` tool with `name="feishu"' in skill.read_text(encoding="utf-8")
 
 
-def test_skill_content_url_allows_trusted_builtin_host() -> None:
-    """技能源白名单：officecli.ai（内置工具官方技能）放行，未知域名拒绝。"""
+def test_skill_content_url_only_allows_whitelisted_hosts() -> None:
+    """技能源白名单：仅登记过的域名放行，其余一律拒绝。"""
     from xianaibot.apps.cli.service import _skill_content_url
 
-    assert _skill_content_url("https://officecli.ai/SKILL.md") == "https://officecli.ai/SKILL.md"
+    # officecli.ai 曾因本地内置表而入白名单，内置表移除后必须拒绝。
+    assert _skill_content_url("https://officecli.ai/SKILL.md") is None
     assert _skill_content_url("https://example.com/SKILL.md") is None
+    assert _skill_content_url("http://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md") is None
     # raw.githubusercontent.com 仍须落在 raw_base 前缀内
     assert (
         _skill_content_url("https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md")

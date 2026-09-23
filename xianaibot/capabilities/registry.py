@@ -45,6 +45,14 @@ _BUILTIN_PROCESS_SKILLS = {
     "xlsx": "bundled",
 }
 
+# 技能来源 → manifest 的 trust.review_status。
+# skillhub 是第三方商店内容，既不随包分发也非用户手写，需与两者区分开。
+_REVIEW_STATUS = {
+    "builtin": "bundled",
+    "workspace": "workspace",
+    "skillhub": "third_party",
+}
+
 
 def normalize_kind(kind: str | None) -> str | None:
     """把前端 kind（技能/应用/MCP 及其别名）归一化为 runtime；未知返回 None。"""
@@ -130,6 +138,20 @@ class CapabilityRegistry:
 
     # ---- 技能来源 ---------------------------------------------------------
 
+    def _skill_md_path(self, entry: dict[str, Any], name: str) -> str:
+        """技能的 SKILL.md 相对工作区路径。
+
+        不能按 ``skills/<name>/SKILL.md`` 硬拼：技能商店安装的技能落在
+        ``skills/@<handle>/<slug>/``，扁平技能名与目录名并不相同。
+        """
+        raw = str(entry.get("path") or "")
+        if raw:
+            try:
+                return Path(raw).relative_to(self._skills.workspace).as_posix()
+            except ValueError:
+                return raw
+        return f"skills/{name}/SKILL.md"
+
     def _skill_capabilities(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for entry in self._skills.list_skills(filter_unavailable=False):
@@ -146,7 +168,7 @@ class CapabilityRegistry:
 
             instructions = {
                 "source": "skill_md",
-                "path": f"skills/{name}/SKILL.md",
+                "path": self._skill_md_path(entry, name),
                 "available": True,
             }
             provisioning = self._normalize_provisioning(cap["provisioning"], runtime)
@@ -164,11 +186,12 @@ class CapabilityRegistry:
                 requirements=reqs,
                 provisioning=provisioning,
                 install={"supported": False, "strategy": "none"},
-                remove={"supported": source == "workspace", "strategy": "none"},
+                # 商店技能与工作区技能一样由用户在 WebUI 删除（skills_api 已放行）。
+                remove={"supported": source in {"workspace", "skillhub"}, "strategy": "none"},
                 trust={
-                    "registry": "xianaibot-skills",
+                    "registry": "skill-hub" if source == "skillhub" else "xianaibot-skills",
                     "level": source,
-                    "review_status": "bundled" if source == "builtin" else "workspace",
+                    "review_status": _REVIEW_STATUS.get(source, "workspace"),
                 },
                 icon=cap.get("icon"),
             )

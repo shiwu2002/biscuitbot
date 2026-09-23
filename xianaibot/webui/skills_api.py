@@ -142,10 +142,12 @@ def delete_workspace_skill(
     entry = next((item for item in entries if item["name"] == name), None)
     if entry is None:
         raise SkillDeletionError(404, "skill not found")
-    if entry.get("source") != "workspace":
+    if entry.get("source") not in {"workspace", "skillhub"}:
         raise SkillDeletionError(403, "built-in skills cannot be deleted")
 
-    skill_dir = workspace_path / "skills" / name
+    # 目录取自扫描结果的真实路径：技能商店安装的技能落在
+    # ``skills/@<handle>/<slug>/``，不能按 ``skills/<name>`` 硬拼。
+    skill_dir = Path(str(entry.get("path") or "")).parent
     # Resolve to avoid symlink/traversal tricks.
     try:
         resolved = skill_dir.resolve(strict=True)
@@ -158,4 +160,17 @@ def delete_workspace_skill(
         raise SkillDeletionError(403, "skill directory is outside workspace")
 
     shutil.rmtree(resolved)
+    # 与 SkillHub 锁文件保持一致（CLI 没有 uninstall 子命令，锁文件不会自行收敛）。
+    # 判据取「该技能是否在锁文件里」，而不是「目录是否位于 @handle 命名空间」——
+    # CLI 也支持不带 --namespace 的安装，那种技能落在 skills/<slug>、source 是
+    # workspace，同样会留下指向已删目录的幽灵条目。条目不存在时该调用即空操作。
+    skills_root = workspace_path / "skills"
+    try:
+        canonical = resolved.relative_to(skills_root.resolve(strict=False)).as_posix()
+    except ValueError:
+        canonical = ""
+    if canonical:
+        from xianaibot.webui.skill_hub import drop_lockfile_entry
+
+        drop_lockfile_entry(skills_root, canonical)
     return {"deleted": True, "name": name}

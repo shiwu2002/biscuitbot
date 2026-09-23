@@ -15,6 +15,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { SessionSearchDialog } from "@/components/SessionSearchDialog";
 import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { TalentMarketView } from "@/components/settings/TalentMarketView";
+import { SkillHubView } from "@/components/settings/SkillHubView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
@@ -84,7 +85,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "knowledge";
+type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "skill-hub" | "knowledge";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -187,6 +188,9 @@ function readShellRoute(): ShellRoute {
   }
   if (path === "/talent-market") {
     return { view: "talent-market", activeKey, settingsSection: "overview" };
+  }
+  if (path === "/skill-hub") {
+    return { view: "skill-hub", activeKey, settingsSection: "overview" };
   }
   if (path.startsWith("/chat/")) {
     const encoded = path.slice("/chat/".length);
@@ -1359,6 +1363,13 @@ function Shell({
     setMobileSidebarOpen(false);
   }, [activeKey, navigate]);
 
+  /** 从能力目录进入技能商店（外部商店的技能浏览与安装）。 */
+  const onOpenSkillHub = useCallback(() => {
+    setSessionSearchOpen(false);
+    navigate({ view: "skill-hub", activeKey, settingsSection: "overview" });
+    setMobileSidebarOpen(false);
+  }, [activeKey, navigate]);
+
   /** 从侧边栏「数字人员工」tab 进入员工视图（卡面展示与管理）。 */
   const onOpenEmployees = useCallback(() => {
     setSessionSearchOpen(false);
@@ -1570,6 +1581,12 @@ function Shell({
     if (view === "talent-market") {
       document.title = t("app.documentTitle.chat", {
         title: t("talentMarket.title", { defaultValue: "人才市场" }),
+      });
+      return;
+    }
+    if (view === "skill-hub") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("skillHub.title", { defaultValue: "技能商店" }),
       });
       return;
     }
@@ -1881,6 +1898,14 @@ function Shell({
                   hostChromeInset={showHostChrome}
                 />
               </div>
+            ) : view === "skill-hub" ? (
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
+                <SkillHubView
+                  onInstalled={reloadSkills}
+                  onBackToChat={onBackToChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
             ) : view === "dashboard" ? (
               <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <AnalyticsDashboardView
@@ -1912,6 +1937,7 @@ function Shell({
                   onSettingsChange={setSettingsSnapshot}
                   skills={skills}
                   onSkillsDeleted={reloadSkills}
+                  onOpenSkillHub={onOpenSkillHub}
                   onWorkspaceSettingsChange={refreshWorkspaces}
                   onSectionChange={onSettingsSectionChange}
                   onLogout={onLogout}

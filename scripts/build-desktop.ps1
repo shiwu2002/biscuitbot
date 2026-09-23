@@ -1,4 +1,4 @@
-﻿# 构建 xianaibot 桌面应用（Windows）。
+﻿﻿﻿﻿﻿# 构建 xianaibot 桌面应用（Windows）。
 #
 # 产物：
 #   - 安装包     output\windows\*.exe

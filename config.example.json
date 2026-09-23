@@ -274,6 +274,14 @@
     "port": 18790,
     "openBrowser": false,
     "talentMarketRegistryUrls": [],
+    "skillHub": {
+      "enable": true,
+      "cliPath": "",
+      "pythonPath": "",
+      "timeout": 60,
+      "searchLimit": 20,
+      "rankingsType": "hot"
+    },
     "heartbeat": {
       "enabled": false,
       "intervalS": 300,
