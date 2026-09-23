@@ -34,6 +34,19 @@ CLI_ANYTHING_REGISTRY_URL = "https://hkuds.github.io/CLI-Anything/registry.json"
 # 例如: {RAW_BASE}/skills/obsidian/SKILL.md
 CLI_ANYTHING_RAW_BASE = "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main"
 
+# raw.githubusercontent.com 在国内网络通常直连失败（实测 SSL 证书校验失败 /
+# 连接重置），而技能文件只有这一个来源。下面这些是同一仓库内容的镜像与代理，
+# 作为下载回退：jsDelivr 的两个 CDN 节点（主域名常被重置，备用节点实测可达）
+# 与两个 GitHub 反代。顺序即尝试顺序，命中即止。
+CLI_ANYTHING_MIRROR_BASES: tuple[str, ...] = (
+    "https://cdn.jsdelivr.net/gh",
+    "https://gcore.jsdelivr.net/gh",
+)
+_SKILL_PROXY_PREFIXES: tuple[str, ...] = (
+    "https://ghproxy.net/",
+    "https://gh-proxy.com/",
+)
+
 
 @dataclass(frozen=True, slots=True)
 class CatalogSource:
@@ -54,6 +67,7 @@ _CATALOG_SOURCES = (
 # 只保留远程目录实际引用到的域名；新增来源须在此显式登记。
 _TRUSTED_SKILL_HOSTS: frozenset[str] = frozenset({
     "raw.githubusercontent.com",
+    "cdn.jsdelivr.net",
 })
 
 _MAX_TOOL_OUTPUT_CHARS = 12_000
@@ -397,9 +411,41 @@ def _skill_content_url(skill_md: str, *, raw_base: str = CLI_ANYTHING_RAW_BASE) 
             return None
         suffix = skill_md.removeprefix(raw_prefix)
         return skill_md if _safe_skill_path(suffix) else None
-    # 其他受信任域名直接放行（当前白名单仅 raw.githubusercontent.com，
-    # 该分支留给后续登记的官方技能页）。
+    # 其他受信任域名直接放行（当前白名单含 raw.githubusercontent.com 与
+    # jsDelivr 镜像域，该分支留给后续登记的官方技能页）。
     return skill_md
+
+
+def _skill_mirror_urls(url: str) -> list[str]:
+    """把 raw.githubusercontent.com 的地址映射成镜像/代理候选地址。
+
+    ``https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>``
+      → ``https://cdn.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>``
+      → ``https://gcore.jsdelivr.net/gh/<owner>/<repo>@<ref>/<path>``
+      → ``https://ghproxy.net/https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>``
+      → ``https://gh-proxy.com/https://raw.githubusercontent.com/...``
+
+    只处理这一个域；其余地址返回空列表（调用方跳过）。映射是纯函数、主机名写死，
+    因此不扩大 ``_TRUSTED_SKILL_HOSTS`` 划定的抓取边界。
+    """
+    parsed = urlparse(url)
+    if parsed.netloc != "raw.githubusercontent.com":
+        return []
+    segments = parsed.path.strip("/").split("/", 3)
+    if len(segments) < 4:
+        return []
+    owner, repo, ref, path = segments
+    if not (owner and repo and ref and path):
+        return []
+    gh_path = f"{owner}/{repo}@{ref}/{path}"
+    mirrors = [f"{base}/{gh_path}" for base in CLI_ANYTHING_MIRROR_BASES]
+    mirrors += [f"{prefix}{url}" for prefix in _SKILL_PROXY_PREFIXES]
+    return mirrors
+
+
+def _skill_source_candidates(url: str) -> list[str]:
+    """抓取某个技能文件时的候选地址：主源在前，镜像随后。"""
+    return [url, *_skill_mirror_urls(url)]
 
 
 def _truncate(text: str, limit: int = _MAX_TOOL_OUTPUT_CHARS) -> str:
@@ -994,15 +1040,19 @@ class CliAppManager:
         url = _skill_content_url(skill_md, raw_base=str(app.get("_raw_base") or CLI_ANYTHING_RAW_BASE))
         if not url:
             return None
-        try:
-            response = httpx.get(url, timeout=15.0, follow_redirects=True)
-            response.raise_for_status()
-            text = response.text
-        except Exception:
-            return None
-        if "SKILL.md" not in url and not text.lstrip().startswith("---"):
-            return None
-        return text if len(text) < 250_000 else None
+        # 主源是 raw.githubusercontent.com，国内常直连不通，故逐个候选地址重试
+        # （镜像/代理指向同一仓库内容）。命中即止，全挂才返回 None。
+        for candidate in _skill_source_candidates(url):
+            try:
+                response = httpx.get(candidate, timeout=15.0, follow_redirects=True)
+                response.raise_for_status()
+                text = response.text
+            except Exception:
+                continue
+            if "SKILL.md" not in candidate and not text.lstrip().startswith("---"):
+                continue
+            return text if len(text) < 250_000 else None
+        return None
 
     def _fallback_skill(self, app: dict[str, Any]) -> str:
         name = str(app.get("name") or "unknown")

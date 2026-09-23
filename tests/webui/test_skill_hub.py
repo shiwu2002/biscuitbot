@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import subprocess
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +17,20 @@ import pytest
 
 from xianaibot.config.schema import SkillHubConfig
 from xianaibot.webui import skill_hub
+
+
+@pytest.fixture(autouse=True)
+def _offline_store(monkeypatch: pytest.MonkeyPatch) -> None:
+    """默认让「商店 HTTP 直连」不可达。
+
+    不这样做的话，所有走 CLI 的既有用例都会先去连真实商店。需要验证直连的用例
+    自行 monkeypatch ``skill_hub.httpx.get`` 覆盖本桩。
+    """
+
+    def _offline(*_args: Any, **_kwargs: Any) -> Any:
+        raise skill_hub.httpx.ConnectError("offline store")
+
+    monkeypatch.setattr(skill_hub.httpx, "get", _offline)
 
 
 def _cfg(tmp_path: Path, **overrides: Any) -> SkillHubConfig:
@@ -50,14 +66,27 @@ def _stub_subprocess(
 # --------------------------------------------------------------------------- #
 
 
-def test_status_reports_missing_cli(tmp_path: Path) -> None:
+def test_status_stays_available_without_cli(tmp_path: Path) -> None:
+    """没装 CLI 也仍然可用：浏览/搜索/安装退化为商店 HTTP 直连。"""
     cfg = SkillHubConfig(cli_path=str(tmp_path / "nope" / "skills_store_cli.py"))
     status = skill_hub.skillhub_status(cfg, workspace=tmp_path / "ws")
 
-    assert status["available"] is False
+    assert status["available"] is True
+    assert status["enabled"] is True
+    assert status["mode"] == "http"
+    assert status["cli_available"] is False
     assert status["cli_path"] == ""
-    assert status["reason"]
+    assert status["reason"] == ""
     assert status["skills_dir"] == str(tmp_path / "ws" / "skills")
+
+
+def test_status_reports_disabled_store(tmp_path: Path) -> None:
+    cfg = _cfg(tmp_path, enable=False)
+
+    status = skill_hub.skillhub_status(cfg, workspace=tmp_path / "ws")
+
+    assert status["available"] is False
+    assert status["reason"]
 
 
 def test_status_reads_version_file(tmp_path: Path) -> None:
@@ -573,3 +602,369 @@ def test_verify_raises_when_no_output(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_verify_requires_slug(tmp_path: Path) -> None:
     with pytest.raises(skill_hub.SkillHubError):
         skill_hub.verify_skill("", "clawhub_x", workspace=tmp_path / "ws", cfg=_cfg(tmp_path))
+
+
+# --------------------------------------------------------------------------- #
+# 商店 HTTP 直连（没装 CLI 时的浏览 / 搜索 / 安装通道）
+# --------------------------------------------------------------------------- #
+
+_SHOWCASE_ROW: dict[str, Any] = {
+    "slug": "dev-expert",
+    "name": "编程专家",
+    "description_zh": "全栈编程助手",
+    "version": "1.21.9",
+    "category": "dev-programming",
+    "iconUrl": "https://example.invalid/i.png",
+    "downloads": 1317277,
+    "stars": 12,
+    "verified": True,
+    "source": "community",
+    "namespace": {
+        "canonicalName": "@indiv-ebandao/dev-expert",
+        "displayName": "智慧半岛",
+        "handle": "indiv-ebandao",
+        "publicSlug": "dev-expert",
+    },
+}
+
+_RANKING_SECTIONS = ("featured", "hot", "newest", "paid", "recommended", "trending")
+
+
+class _FakeResponse:
+    """最小 httpx 响应替身（只用到 json / content / status_code）。"""
+
+    def __init__(self, payload: Any, *, status_code: int = 200) -> None:
+        self._payload = payload
+        self.status_code = status_code
+        self.content = payload if isinstance(payload, bytes) else b""
+        self.text = payload.decode("utf-8", "replace") if isinstance(payload, bytes) else ""
+
+    def json(self) -> Any:
+        return self._payload
+
+
+def _stub_store_http(
+    monkeypatch: pytest.MonkeyPatch,
+    routes: dict[str, Any],
+    capture: list[tuple[str, dict[str, Any]]] | None = None,
+) -> None:
+    """按 URL 后缀匹配返回预置响应；未登记的 URL 直接失败，免得测试偷偷联网。"""
+
+    def fake_get(url: str, *, params: Any = None, **_kwargs: Any) -> _FakeResponse:
+        if capture is not None:
+            capture.append((url, dict(params or {})))
+        for suffix, payload in routes.items():
+            if url.endswith(suffix):
+                return _FakeResponse(payload)
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(skill_hub.httpx, "get", fake_get)
+
+
+def _showcase_routes(**overrides: Any) -> dict[str, Any]:
+    """六个榜单端点全部登记（默认空），再按需覆盖其中几个。"""
+    routes = {f"/api/v1/showcase/{kind}": {"skills": []} for kind in _RANKING_SECTIONS}
+    routes.update({f"/api/v1/showcase/{kind}": value for kind, value in overrides.items()})
+    return routes
+
+
+def _no_cli_cfg(tmp_path: Path) -> SkillHubConfig:
+    """模拟「装了客户端但没装商店 CLI」：CLI 路径指向不存在的文件。"""
+    return SkillHubConfig(cli_path=str(tmp_path / "nope" / "skills_store_cli.py"))
+
+
+def _zip_bytes(files: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, text in files.items():
+            archive.writestr(name, text)
+    return buffer.getvalue()
+
+
+def _staging_leftovers(skills_root: Path) -> list[Path]:
+    """解压暂存目录（``.<slug>.<pid>.installing``）不该留在技能根下。"""
+    if not skills_root.is_dir():
+        return []
+    return [item for item in skills_root.iterdir() if item.name.endswith(".installing")]
+
+
+def test_rankings_via_store_http_without_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """没有 CLI 时排行榜直接读商店公开接口。"""
+    capture: list[tuple[str, dict[str, Any]]] = []
+    _stub_store_http(
+        monkeypatch,
+        _showcase_routes(hot={"section": "hot_downloads", "skills": [_SHOWCASE_ROW], "total": 1}),
+        capture,
+    )
+
+    rows = skill_hub.skill_rankings(cfg=_no_cli_cfg(tmp_path))
+
+    assert capture[0][0] == "https://api.skillhub.cn/api/v1/showcase/hot"
+    assert rows == [
+        {
+            "slug": "dev-expert",
+            "canonical_name": "@indiv-ebandao/dev-expert",
+            "name": "编程专家",
+            "description": "全栈编程助手",
+            "version": "1.21.9",
+            "category": "dev-programming",
+            "icon_url": "https://example.invalid/i.png",
+            "homepage": "",
+            "handle": "indiv-ebandao",
+            "namespace": "智慧半岛",
+            "downloads": 1317277,
+            "stars": 12,
+            "verified": True,
+            "source": "community",
+        }
+    ]
+
+
+def test_rankings_all_merges_sections_and_dedupes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``all`` 榜单：合并各分节并按技能去重（对齐 CLI 的 ``--type all``）。"""
+    other = {
+        **_SHOWCASE_ROW,
+        "slug": "other",
+        "name": "另一个",
+        "namespace": {
+            **_SHOWCASE_ROW["namespace"],
+            "canonicalName": "@x/other",
+            "publicSlug": "other",
+        },
+    }
+    _stub_store_http(
+        monkeypatch,
+        _showcase_routes(
+            hot={"skills": [_SHOWCASE_ROW]},
+            newest={"skills": [dict(_SHOWCASE_ROW), other]},
+        ),
+    )
+
+    rows = skill_hub.skill_rankings(cfg=_no_cli_cfg(tmp_path), ranking_type="all")
+
+    assert [row["slug"] for row in rows] == ["dev-expert", "other"]
+
+
+def test_search_via_store_http_maps_search_row_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """搜索接口的字段名与榜单不同：名字在 ``displayName``，图标在 ``icon_url``。"""
+    capture: list[tuple[str, dict[str, Any]]] = []
+    _stub_store_http(
+        monkeypatch,
+        {
+            "/api/v1/search": {
+                "results": [
+                    {
+                        "slug": "meeting-notes",
+                        "displayName": "会议纪要",
+                        "description_zh": "把会议内容整理成结构化纪要",
+                        "version": "1.0.0",
+                        "icon_url": "https://example.invalid/n.png",
+                        "owner_name": "user_2c08c7ce",
+                        "source": "community",
+                        "namespace": {
+                            "canonicalName": "@user_2c08c7ce/meeting-notes",
+                            "handle": "user_2c08c7ce",
+                        },
+                    }
+                ]
+            }
+        },
+        capture,
+    )
+
+    rows = skill_hub.search_skills("会议", cfg=_no_cli_cfg(tmp_path), limit=7)
+
+    assert capture[0] == (
+        "https://api.skillhub.cn/api/v1/search",
+        {"q": "会议", "limit": 7},
+    )
+    assert rows[0]["name"] == "会议纪要"
+    assert rows[0]["canonical_name"] == "@user_2c08c7ce/meeting-notes"
+    assert rows[0]["icon_url"] == "https://example.invalid/n.png"
+    assert rows[0]["handle"] == "user_2c08c7ce"
+    assert rows[0]["namespace"] == "user_2c08c7ce"
+
+
+def test_search_falls_back_to_cli_when_store_unreachable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """直连不通时回落到 CLI（``httpx`` 由 autouse 夹具置为离线）。"""
+    cfg = _cfg(tmp_path)
+    calls: list[list[str]] = []
+    _stub_subprocess(
+        monkeypatch,
+        stdout=json.dumps({"results": [{"slug": "a", "name": "A"}]}),
+        capture=calls,
+    )
+
+    rows = skill_hub.search_skills("a", cfg=cfg)
+
+    assert [row["slug"] for row in rows] == ["a"]
+    assert calls[0][3] == "search"
+
+
+def test_search_http_failure_without_cli_surfaces_error(tmp_path: Path) -> None:
+    """没有 CLI 兜底时，直连失败必须如实报错，不能静默返回空列表。"""
+    with pytest.raises(skill_hub.SkillHubError) as excinfo:
+        skill_hub.search_skills("a", cfg=_no_cli_cfg(tmp_path))
+    assert excinfo.value.status == 502
+
+
+def test_install_via_store_http_extracts_and_registers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """直连安装：解压到 ``skills/@handle/slug`` 并登记进 CLI 的锁文件。"""
+    workspace = tmp_path / "ws"
+    capture: list[tuple[str, dict[str, Any]]] = []
+    _stub_store_http(
+        monkeypatch,
+        {
+            "/api/v1/download": _zip_bytes(
+                {"SKILL.md": "---\nname: dev-expert\n---\n", "hooks/x.py": "print(1)\n"}
+            ),
+            "/api/v1/search": {"results": [dict(_SHOWCASE_ROW)]},
+        },
+        capture,
+    )
+
+    payload = skill_hub.install_skill(
+        "dev-expert", "indiv-ebandao", workspace=workspace, cfg=_no_cli_cfg(tmp_path)
+    )
+
+    target = workspace / "skills" / "@indiv-ebandao" / "dev-expert"
+    assert payload["installed"] is True
+    assert payload["mode"] == "http"
+    assert payload["files"] == 2
+    assert (target / "SKILL.md").is_file()
+    assert (target / "hooks" / "x.py").is_file()
+    # 下载走商店的 primary download 端点，参数与官方 CLI 一致
+    assert capture[0] == (
+        "https://api.skillhub.cn/api/v1/download",
+        {"slug": "dev-expert", "namespace": "indiv-ebandao"},
+    )
+    lock = json.loads(
+        (workspace / "skills" / ".skills_store_lock.json").read_text(encoding="utf-8")
+    )
+    entry = lock["skills"]["@indiv-ebandao/dev-expert"]
+    assert entry["name"] == "编程专家"
+    assert entry["version"] == "1.21.9"
+    assert entry["installDir"] == str(target)
+    # 登记后「已安装」列表能认出它，说明锁文件结构与 CLI 兼容
+    assert skill_hub.installed_skills(workspace=workspace)[0]["canonical_name"] == (
+        "@indiv-ebandao/dev-expert"
+    )
+    assert _staging_leftovers(workspace / "skills") == []
+
+
+def test_install_via_store_http_rejects_zip_slip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """压缩包里带 ``..`` 的成员必须被丢弃，不能写出目标目录之外。"""
+    workspace = tmp_path / "ws"
+    _stub_store_http(
+        monkeypatch,
+        {
+            "/api/v1/download": _zip_bytes(
+                {"../evil.md": "pwned\n", "SKILL.md": "---\nname: x\n---\n"}
+            ),
+            "/api/v1/search": {"results": []},
+        },
+    )
+
+    payload = skill_hub.install_skill(
+        "dev-expert", "indiv-ebandao", workspace=workspace, cfg=_no_cli_cfg(tmp_path)
+    )
+
+    assert payload["files"] == 1
+    assert not (workspace / "skills" / "@indiv-ebandao" / "evil.md").exists()
+    assert not (workspace / "skills" / "evil.md").exists()
+
+
+def test_install_via_store_http_conflicts_without_force(tmp_path: Path) -> None:
+    """目标目录已存在且没给 force：报 409，且不发起下载。"""
+    workspace = tmp_path / "ws"
+    (workspace / "skills" / "@indiv-ebandao" / "dev-expert").mkdir(parents=True)
+
+    with pytest.raises(skill_hub.SkillHubError) as excinfo:
+        skill_hub.install_skill(
+            "dev-expert", "indiv-ebandao", workspace=workspace, cfg=_no_cli_cfg(tmp_path)
+        )
+    assert excinfo.value.status == 409
+
+
+def test_install_via_store_http_maps_non_zip_body_to_404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """slug 不存在时下载端点回 JSON 错误体而非 zip，应报「没有下载包」。"""
+    _stub_store_http(monkeypatch, {"/api/v1/download": b'{"message":"skill not found"}'})
+
+    with pytest.raises(skill_hub.SkillHubError) as excinfo:
+        skill_hub.install_skill(
+            "nope", "indiv-ebandao", workspace=tmp_path / "ws", cfg=_no_cli_cfg(tmp_path)
+        )
+    assert excinfo.value.status == 404
+    assert "下载包" in excinfo.value.message
+
+
+def test_install_via_store_http_rejects_empty_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """空压缩包按失败处理，并且不留半个技能目录。"""
+    workspace = tmp_path / "ws"
+    _stub_store_http(monkeypatch, {"/api/v1/download": _zip_bytes({})})
+
+    with pytest.raises(skill_hub.SkillHubError):
+        skill_hub.install_skill(
+            "dev-expert", "indiv-ebandao", workspace=workspace, cfg=_no_cli_cfg(tmp_path)
+        )
+    assert not (workspace / "skills" / "@indiv-ebandao" / "dev-expert").exists()
+    assert _staging_leftovers(workspace / "skills") == []
+
+
+def test_install_prefers_cli_when_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """装了 CLI 就走官方路径（含签名校验），完全不碰商店直连。"""
+    calls: list[list[str]] = []
+    _stub_subprocess(monkeypatch, stdout=json.dumps({"success": True}), capture=calls)
+
+    payload = skill_hub.install_skill(
+        "calendar", "clawhub_x", workspace=tmp_path / "ws", cfg=_cfg(tmp_path)
+    )
+
+    assert payload["mode"] == "cli"
+    assert calls[0][3] == "install"
+
+
+def test_install_disabled_store_raises_403(tmp_path: Path) -> None:
+    with pytest.raises(skill_hub.SkillHubError) as excinfo:
+        skill_hub.install_skill(
+            "calendar",
+            "clawhub_x",
+            workspace=tmp_path / "ws",
+            cfg=_cfg(tmp_path, enable=False),
+        )
+    assert excinfo.value.status == 403
+
+
+def test_check_updates_without_cli_returns_empty_summary(tmp_path: Path) -> None:
+    """缺 CLI 时升级检查给空结果 + 说明，而不是报错（浏览/安装不受影响）。"""
+    workspace = tmp_path / "ws"
+    skills_root = workspace / "skills"
+    skills_root.mkdir(parents=True)
+    (skills_root / ".skills_store_lock.json").write_text(
+        json.dumps({"version": 1, "skills": {"@x/a": {"name": "A"}}}), encoding="utf-8"
+    )
+
+    payload = skill_hub.check_updates(workspace=workspace, cfg=_no_cli_cfg(tmp_path))
+
+    assert payload["checked"] == 0
+    assert payload["upgradable"] == 0
+    assert payload["details"] == []
+    assert "CLI" in payload["summary"]

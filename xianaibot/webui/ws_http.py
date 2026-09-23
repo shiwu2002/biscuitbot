@@ -1203,9 +1203,13 @@ class GatewayHTTPHandler:
         return load_config().gateway.skill_hub
 
     def _skill_hub_unavailable(self, cfg: Any) -> Response | None:
-        """CLI 未安装或商店被禁用时返回 200 空态，让前端渲染安装引导。"""
+        """商店被禁用时返回 200 空态，让前端渲染引导。
+
+        CLI 未安装**不再**是拦截条件：浏览、搜索、安装都会退化为商店 HTTP
+        直连（见 ``webui/skill_hub.py``），所以这里只挡「配置里禁用」。
+        """
         status = skillhub_status(cfg, workspace=self.skills_workspace_path)
-        if status["available"] and status["enabled"]:
+        if status["enabled"]:
             return None
         return _http_json_response({**status, "skills": []})
 
@@ -1291,9 +1295,8 @@ class GatewayHTTPHandler:
         if not self.check_api_token(request):
             return _http_error(401, "Unauthorized")
         cfg = self._skill_hub_config()
-        unavailable = self._skill_hub_unavailable(cfg)
-        if unavailable is not None:
-            return unavailable
+        # 升级检查只有 CLI 能做，但缺 CLI 时 check_updates 会返回空结果 + 说明，
+        # 不是错误，所以这里不做可用性拦截（商店浏览/安装不受影响）。
         try:
             payload = await asyncio.to_thread(
                 check_updates, workspace=self.skills_workspace_path, cfg=cfg

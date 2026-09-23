@@ -585,6 +585,82 @@ def test_fetch_skill_content_allows_cli_anything_raw_skill_url(
     ]
 
 
+def test_skill_mirror_urls_map_raw_github_to_mirrors() -> None:
+    """raw.githubusercontent.com → jsDelivr 两个节点 + 两个反代；其余地址不映射。"""
+    from xianaibot.apps.cli.service import _skill_mirror_urls, _skill_source_candidates
+
+    raw = "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md"
+
+    assert _skill_mirror_urls(raw) == [
+        "https://cdn.jsdelivr.net/gh/HKUDS/CLI-Anything@main/skills/gimp/SKILL.md",
+        "https://gcore.jsdelivr.net/gh/HKUDS/CLI-Anything@main/skills/gimp/SKILL.md",
+        f"https://ghproxy.net/{raw}",
+        f"https://gh-proxy.com/{raw}",
+    ]
+    # 主源永远排在候选列表最前
+    assert _skill_source_candidates(raw)[0] == raw
+    # 非 raw 主机的地址不生成镜像候选
+    assert _skill_mirror_urls("https://cdn.jsdelivr.net/gh/a/b@main/SKILL.md") == []
+    assert _skill_mirror_urls("https://example.com/SKILL.md") == []
+    # 路径段不足（缺 ref 或 path）时不生成
+    assert _skill_mirror_urls("https://raw.githubusercontent.com/HKUDS/CLI-Anything") == []
+
+
+def test_fetch_skill_content_falls_back_through_mirrors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """主源不通、jsDelivr 主域名被重置时，继续往后试到可用节点为止。"""
+    manager = _manager(tmp_path)
+    seen: list[str] = []
+    raw_url = (
+        "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/cli-anything-gimp/SKILL.md"
+    )
+    working = "https://gcore.jsdelivr.net/gh/HKUDS/CLI-Anything@main/skills/cli-anything-gimp/SKILL.md"
+
+    class Response:
+        text = "---\nname: cli-app-gimp\ndescription: GIMP\n---\n# GIMP\n"
+
+        @staticmethod
+        def raise_for_status() -> None:
+            return None
+
+    def fake_get(url: str, **kwargs):
+        seen.append(url)
+        if url == working:
+            return Response()
+        raise OSError("connection reset")
+
+    monkeypatch.setattr("xianaibot.apps.cli.service.httpx.get", fake_get)
+
+    content = manager._fetch_skill_content({"name": "gimp", "skill_md": raw_url})
+
+    assert content and "# GIMP" in content
+    assert seen == [
+        raw_url,
+        "https://cdn.jsdelivr.net/gh/HKUDS/CLI-Anything@main/skills/cli-anything-gimp/SKILL.md",
+        working,
+    ]
+
+
+def test_fetch_skill_content_returns_none_when_both_sources_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """主源与镜像都不通时返回 None（调用方会退回生成的兜底技能）。"""
+    manager = _manager(tmp_path)
+
+    def fake_get(url: str, **kwargs):
+        raise OSError("no network")
+
+    monkeypatch.setattr("xianaibot.apps.cli.service.httpx.get", fake_get)
+
+    assert manager._fetch_skill_content({
+        "name": "gimp",
+        "skill_md": "https://raw.githubusercontent.com/HKUDS/CLI-Anything/main/skills/gimp/SKILL.md",
+    }) is None
+
+
 def test_uninstall_removes_installed_state_and_generated_skill(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

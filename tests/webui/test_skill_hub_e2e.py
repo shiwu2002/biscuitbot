@@ -11,8 +11,11 @@
 
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -172,3 +175,85 @@ def test_end_to_end_flattened_names_keep_working_after_upgrade_check(tmp_path: P
     assert [row["canonical_name"] for row in skill_hub.installed_skills(workspace=workspace)] == [
         "@alice/calendar"
     ]
+
+
+def test_end_to_end_http_install_discover_delete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """没装 CLI 时走商店直连：落盘布局与加载器识别必须和 CLI 路径完全一致。
+
+    只桩掉 HTTP 层（下载 zip + 元信息查询），其余全是真代码：真解压、真锁文件、
+    真 ``SkillsLoader`` 发现、真删除。
+    """
+    cfg = SkillHubConfig(cli_path=str(tmp_path / "missing" / "skills_store_cli.py"))
+    workspace = tmp_path / "ws"
+    (workspace / "skills").mkdir(parents=True)
+
+    bundle = io.BytesIO()
+    with zipfile.ZipFile(bundle, "w") as archive:
+        archive.writestr(
+            "SKILL.md", "---\nname: calendar\ndescription: fake skill\n---\n\n# calendar\n"
+        )
+        archive.writestr("_meta.json", json.dumps({"slug": "calendar", "version": "2.3.0"}))
+
+    class Response:
+        def __init__(self, payload: Any) -> None:
+            self._payload = payload
+            self.status_code = 200
+            self.content = payload if isinstance(payload, bytes) else b""
+            self.text = ""
+
+        def json(self) -> Any:
+            return self._payload
+
+    def fake_get(url: str, **_kwargs: Any) -> Response:
+        if url.endswith("/api/v1/download"):
+            return Response(bundle.getvalue())
+        return Response(
+            {
+                "results": [
+                    {
+                        "slug": "calendar",
+                        "displayName": "日历",
+                        "version": "2.3.0",
+                        "namespace": {"canonicalName": "@alice/calendar", "handle": "alice"},
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(skill_hub.httpx, "get", fake_get)
+
+    payload = skill_hub.install_skill("calendar", "alice", workspace=workspace, cfg=cfg)
+    assert payload == {
+        "installed": True,
+        "slug": "calendar",
+        "namespace": "alice",
+        "mode": "http",
+        "files": 2,
+        "output": payload["output"],
+    }
+
+    # 1) 落盘遵循 SkillHub 原生命名空间布局
+    skill_dir = workspace / "skills" / "@alice" / "calendar"
+    assert (skill_dir / "SKILL.md").is_file()
+    assert "@alice/calendar" in json.loads(
+        (workspace / "skills" / ".skills_store_lock.json").read_text(encoding="utf-8")
+    )["skills"]
+
+    # 2) 真实加载器能发现它（与 CLI 安装同样是扁平名 + skillhub 来源）
+    loader = SkillsLoader(workspace, builtin_skills_dir=tmp_path / "builtin")
+    entries = loader.list_skills(filter_unavailable=False)
+    assert [(entry["name"], entry["source"]) for entry in entries] == [
+        ("alice-calendar", "skillhub")
+    ]
+    assert "fake skill" in (loader.load_skill("alice-calendar") or "")
+
+    # 3) 商店视图与删除路径都认得它
+    assert [row["canonical_name"] for row in skill_hub.installed_skills(workspace=workspace)] == [
+        "@alice/calendar"
+    ]
+    assert delete_workspace_skill(workspace, "alice-calendar")["deleted"] is True
+    assert not skill_dir.exists()
+    assert skill_hub.installed_skills(workspace=workspace) == []
+    assert loader.list_skills(filter_unavailable=False) == []
