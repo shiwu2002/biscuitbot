@@ -76,12 +76,13 @@ function rankingTypeLabel(type: RankingType, t: (key: string, fallback: string) 
 
 export function SkillHubView({
   onInstalled,
-  onBackToChat,
+  onBackToCapabilities,
   hostChromeInset,
 }: {
   /** 安装成功后回调（用于刷新能力/技能列表）。 */
   onInstalled?: () => void;
-  onBackToChat: () => void;
+  /** 返回能力目录（技能商店的入口页）。 */
+  onBackToCapabilities: () => void;
   hostChromeInset?: boolean;
 }) {
   const { t } = useTranslation();
@@ -308,13 +309,16 @@ export function SkillHubView({
         )}
       >
         <div className="mb-7">
+          {/* 商店是整屏页面，lg 及以上侧边栏虽然在，但返回入口仍要常驻：
+              之前沿用「窄屏才显示」的写法，桌面宽度下没有任何返回按钮。 */}
           <button
             type="button"
-            onClick={onBackToChat}
-            className="mb-4 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground lg:hidden"
+            onClick={onBackToCapabilities}
+            data-testid="skill-hub-back"
+            className="mb-4 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
           >
             <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-            {t("settings.backToChat")}
+            {tx("skillHub.backToCapabilities", "返回能力目录")}
           </button>
           <h1 className="text-[24px] font-normal leading-tight tracking-tight text-foreground sm:text-[28px]">
             {tx("skillHub.title", "技能商店")}

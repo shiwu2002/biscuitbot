@@ -1904,7 +1904,7 @@ function Shell({
               <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <SkillHubView
                   onInstalled={reloadSkills}
-                  onBackToChat={onBackToChat}
+                  onBackToCapabilities={onOpenCapabilities}
                   hostChromeInset={showHostChrome}
                 />
               </div>

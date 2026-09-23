@@ -151,15 +151,17 @@ function stubFetch(overrides: Array<[string, unknown]> = []) {
   return fetchMock;
 }
 
-function renderSkillHub(overrides: { onInstalled?: () => void; onBackToChat?: () => void } = {}) {
+function renderSkillHub(
+  overrides: { onInstalled?: () => void; onBackToCapabilities?: () => void } = {},
+) {
   return {
     onInstalled: overrides.onInstalled ?? vi.fn(),
-    onBackToChat: overrides.onBackToChat ?? vi.fn(),
+    onBackToCapabilities: overrides.onBackToCapabilities ?? vi.fn(),
     ...render(
       <ClientProvider client={{} as never} token="tok">
         <SkillHubView
           onInstalled={overrides.onInstalled ?? vi.fn()}
-          onBackToChat={overrides.onBackToChat ?? vi.fn()}
+          onBackToCapabilities={overrides.onBackToCapabilities ?? vi.fn()}
         />
       </ClientProvider>,
     ),
@@ -191,6 +193,21 @@ describe("SkillHubView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
+  });
+
+  it("keeps a back-to-capabilities button at every width", async () => {
+    stubFetch([["/api/webui/skill-hub/installed", INSTALLED_WITH_CALENDAR]]);
+    const onBackToCapabilities = vi.fn();
+
+    renderSkillHub({ onBackToCapabilities });
+    const back = await screen.findByTestId("skill-hub-back");
+
+    expect(back).toHaveTextContent("返回能力目录");
+    // jsdom 不套用 CSS，只能这样守住回归：按钮曾经带 lg:hidden，桌面宽度下整块消失。
+    expect(back.className).not.toContain("lg:hidden");
+
+    fireEvent.click(back);
+    expect(onBackToCapabilities).toHaveBeenCalledTimes(1);
   });
 
   it("renders the CLI install guide when the store is unavailable", async () => {
