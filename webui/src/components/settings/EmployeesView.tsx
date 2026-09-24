@@ -165,7 +165,7 @@ export function EmployeesView({
                   name: employee.name,
                 })}
                 className={cn(
-                  "cyber-glass-panel group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-2xl p-4 transition-colors group-hover:border-cyan-400/40 sm:aspect-square",
+                  "cyber-glass-panel group flex min-w-0 cursor-pointer flex-col overflow-hidden rounded-2xl p-4 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-0.5 hover:border-[hsl(var(--cyber-glow)/0.45)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3),0_0_24px_hsl(var(--cyber-glow)/0.2),0_12px_36px_-12px_hsl(var(--cyber-glow-soft)/0.4)] sm:aspect-square",
                   !employee.enabled && "opacity-70",
                 )}
               >
@@ -173,7 +173,7 @@ export function EmployeesView({
                   <EmployeeAvatar
                     avatar={employee.avatar}
                     alt={employee.name}
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-[22px] leading-none"
+                    className="cyber-kpi-icon flex h-11 w-11 shrink-0 items-center justify-center rounded-[14px] text-[22px] leading-none transition-shadow duration-300 group-hover:shadow-[0_0_18px_hsl(var(--cyber-glow)/0.5),inset_0_1px_0_hsl(var(--background)/0.5)]"
                     imgClassName="h-11 w-11"
                   />
                   <div className="min-w-0 flex-1">

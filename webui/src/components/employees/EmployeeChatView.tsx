@@ -37,14 +37,18 @@ function HistoryItemButton({
       onClick={() => onSelect(session.key)}
       aria-current={active ? "true" : undefined}
       className={cn(
-        "flex min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-colors",
-        active ? "bg-muted/60" : "hover:bg-muted/40",
+        "flex min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-2.5 text-left transition-[background-color,box-shadow] duration-200",
+        active
+          ? "bg-[hsl(var(--cyber-glow)/0.1)] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.32)]"
+          : "hover:bg-[hsl(var(--cyber-glow)/0.07)]",
       )}
     >
       <span
         className={cn(
           "shrink-0 text-[11px] leading-none",
-          active ? "text-sky-600 dark:text-sky-400" : "text-transparent",
+          active
+            ? "text-[hsl(var(--cyber-glow-soft))] drop-shadow-[0_0_4px_hsl(var(--cyber-glow)/0.7)]"
+            : "text-transparent",
         )}
         aria-hidden
       >
@@ -347,10 +351,10 @@ export function EmployeeChatView({
                       onClick={handleStartNewChat}
                       aria-current={selectedKey === null ? "true" : undefined}
                       className={cn(
-                        "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] font-medium transition-colors",
+                        "flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[12.5px] font-medium transition-[color,background-color,box-shadow] duration-200",
                         selectedKey === null
-                          ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                          : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                          ? "bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]"
+                          : "text-muted-foreground hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground",
                       )}
                     >
                       <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden />
@@ -438,7 +442,7 @@ export function EmployeeChatView({
                 <span
                   key={pill.name}
                   title={pill.description || pill.name}
-                  className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/50 px-2.5 py-1 text-[12px] font-medium text-foreground/85"
+                  className="inline-flex items-center gap-1 rounded-full border border-[hsl(var(--cyber-violet)/0.4)] bg-[hsl(var(--cyber-violet)/0.08)] px-2.5 py-1 text-[12px] font-medium text-foreground/85"
                 >
                   <span className="text-[11px] leading-none" aria-hidden>
                     🧩
@@ -464,10 +468,10 @@ export function EmployeeChatView({
               onClick={handleStartNewChat}
               aria-current={selectedKey === null ? "true" : undefined}
               className={cn(
-                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium transition-colors",
+                "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11.5px] font-medium transition-[color,background-color,box-shadow] duration-200",
                 selectedKey === null
-                  ? "bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  ? "bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]"
+                  : "text-muted-foreground hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground",
               )}
             >
               <Plus className="h-3 w-3" aria-hidden />

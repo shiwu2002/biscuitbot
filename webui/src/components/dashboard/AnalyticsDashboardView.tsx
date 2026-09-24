@@ -54,11 +54,11 @@ function KpiCard({
   hint?: string;
 }) {
   return (
-    <div className="cyber-glass-panel group relative overflow-hidden rounded-xl p-4 transition-transform duration-200 hover:-translate-y-0.5">
-      <div className="cyber-kpi-icon mb-3 flex h-9 w-9 items-center justify-center rounded-full text-primary">
+    <div className="cyber-glass-panel group relative overflow-hidden rounded-xl p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.38),0_0_24px_hsl(var(--cyber-glow)/0.22),0_10px_36px_-10px_hsl(var(--cyber-glow-soft)/0.35)]">
+      <div className="cyber-kpi-icon mb-3 flex h-9 w-9 items-center justify-center rounded-full text-primary transition-[color,box-shadow] duration-300 group-hover:text-[hsl(var(--cyber-glow))] group-hover:shadow-[0_0_20px_hsl(var(--cyber-glow)/0.55),inset_0_1px_0_hsl(var(--background)/0.5)]">
         {icon}
       </div>
-      <p className="text-[24px] font-semibold leading-none tracking-tight text-foreground tabular-nums sm:text-[28px]">
+      <p className="text-[24px] font-semibold leading-none tracking-tight text-foreground tabular-nums transition-[filter] duration-300 group-hover:drop-shadow-[0_0_10px_hsl(var(--cyber-glow)/0.35)] sm:text-[28px]">
         {value}
       </p>
       <p className="cyber-mono-label mt-1.5 text-muted-foreground">{label}</p>
@@ -313,7 +313,7 @@ export function AnalyticsDashboardView({
                 return (
                   <div
                     key={e.id}
-                    className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-muted/40"
+                    className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-[hsl(var(--cyber-glow)/0.07)]"
                   >
                     <span
                       className={cn(
@@ -352,7 +352,7 @@ export function AnalyticsDashboardView({
                   key={s.key}
                   type="button"
                   onClick={() => onSelectSession?.(s.key)}
-                  className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left hover:bg-muted/40"
+                  className="group flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 text-left transition-colors hover:bg-[hsl(var(--cyber-glow)/0.07)]"
                 >
                   <span
                     className={cn(

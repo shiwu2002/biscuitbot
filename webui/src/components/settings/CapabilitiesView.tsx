@@ -202,7 +202,7 @@ export function CapabilitiesView({
             <button
               type="button"
               onClick={onOpenSkillHub}
-              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-border/60 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[hsl(var(--cyber-panel-border)/0.4)] px-3 text-[12px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3),0_0_12px_hsl(var(--cyber-glow-soft)/0.2)]"
             >
               <Store className="h-3.5 w-3.5" aria-hidden />
               {t("settings.capabilities.skillHub", { defaultValue: "技能商店" })}
@@ -218,10 +218,10 @@ export function CapabilitiesView({
             type="button"
             onClick={() => setKind(filter.key)}
             className={cn(
-              "rounded-full px-3 py-1.5 text-[12px] font-medium transition-colors",
+              "rounded-full px-3 py-1.5 text-[12px] font-medium transition-[color,background-color,box-shadow] duration-200",
               kind === filter.key
-                ? "bg-foreground text-background"
-                : "bg-muted text-muted-foreground hover:bg-muted/70",
+                ? "bg-[hsl(var(--cyber-glow)/0.14)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.45),0_0_12px_hsl(var(--cyber-glow-soft)/0.28)]"
+                : "bg-muted text-muted-foreground hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground",
             )}
           >
             {kindFilterLabel(filter.key, t)}
@@ -281,7 +281,7 @@ export function CapabilitiesView({
           <button
             type="button"
             onClick={resetFilters}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-border/60 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-[hsl(var(--cyber-panel-border)/0.4)] px-3 text-[12px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3),0_0_12px_hsl(var(--cyber-glow-soft)/0.2)]"
           >
             <RotateCcw className="h-3.5 w-3.5" aria-hidden />
             {t("settings.capabilities.resetFilters", { defaultValue: "重置筛选" })}
@@ -383,8 +383,8 @@ function CapabilityRow({
   return (
     <div
       className={cn(
-        "group flex min-w-0 items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-colors",
-        "hover:bg-muted/45",
+        "group flex min-w-0 items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-[background-color,box-shadow] duration-200",
+        "hover:bg-[hsl(var(--cyber-glow)/0.06)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.22)]",
         !cap.available && "opacity-65",
       )}
     >
@@ -397,7 +397,7 @@ function CapabilityRow({
         onClick={() => onSelect(cap)}
         className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[16px]"
       >
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-muted-foreground">
+        <div className="cyber-kpi-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] text-primary transition-shadow duration-300 group-hover:shadow-[0_0_18px_hsl(var(--cyber-glow)/0.5),inset_0_1px_0_hsl(var(--background)/0.5)]">
           <CapabilityIcon cap={cap} />
         </div>
         <div className="min-w-0 flex-1">
@@ -534,7 +534,7 @@ function ActionIconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-[hsl(var(--cyber-glow)/0.12)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     >
       {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : children}
     </button>

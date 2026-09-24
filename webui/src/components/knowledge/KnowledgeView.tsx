@@ -195,10 +195,10 @@ export function KnowledgeView({
               aria-current={tab === item.key ? "page" : undefined}
               onClick={() => setTab(item.key)}
               className={cn(
-                "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
+                "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-[color,background-color,box-shadow] duration-200",
                 tab === item.key
-                  ? "bg-foreground/8 text-foreground"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  ? "bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.42),0_0_14px_hsl(var(--cyber-glow-soft)/0.25)]"
+                  : "text-muted-foreground hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground",
               )}
             >
               {tx(item.labelKey, item.fallback)}

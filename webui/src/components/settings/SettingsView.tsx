@@ -1839,13 +1839,20 @@ function SettingsSidebar({
               aria-current={active ? "page" : undefined}
               onClick={() => onSelectSection(key)}
               className={cn(
-                "flex h-9 w-auto shrink-0 items-center gap-2 rounded-full px-3 text-left text-[13px] font-medium transition-colors md:w-full md:rounded-[10px] md:px-2.5",
+                "flex h-9 w-auto shrink-0 items-center gap-2 rounded-full px-3 text-left text-[13px] font-medium transition-[color,background-color,box-shadow] duration-200 md:w-full md:rounded-[10px] md:px-2.5",
                 active
-                  ? "bg-muted/90 text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.025)]"
-                  : "text-muted-foreground/78 hover:bg-muted/45 hover:text-foreground",
+                  ? "md:cyber-rail-active bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.42),0_0_16px_hsl(var(--cyber-glow-soft)/0.28)]"
+                  : "text-muted-foreground/78 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.2)]",
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" strokeWidth={2} aria-hidden />
+              <Icon
+                className={cn(
+                  "h-4 w-4 shrink-0",
+                  active && "text-[hsl(var(--cyber-glow-soft))] drop-shadow-[0_0_5px_hsl(var(--cyber-glow)/0.7)]",
+                )}
+                strokeWidth={2}
+                aria-hidden
+              />
               <span className="truncate">{t(`settings.nav.${key}`, { defaultValue: fallback })}</span>
             </button>
           );
@@ -1894,10 +1901,10 @@ function SettingsSubTabs({
             aria-current={selected ? "true" : undefined}
             onClick={() => onSelect(tab.key)}
             className={cn(
-              "flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-colors",
+              "flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-[color,background-color,box-shadow] duration-200",
               selected
-                ? "bg-muted/90 text-foreground shadow-[inset_0_0_0_1px_rgba(0,0,0,0.025)]"
-                : "text-muted-foreground/78 hover:bg-muted/45 hover:text-foreground",
+                ? "bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.42),0_0_14px_hsl(var(--cyber-glow-soft)/0.25)]"
+                : "text-muted-foreground/78 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.2)]",
             )}
           >
             {t(tab.labelKey, { defaultValue: tab.fallback })}
@@ -7197,7 +7204,11 @@ function ChannelConfigForm({
 
 function SettingsSectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h2 className="mb-2 px-1 text-[13px] font-semibold tracking-[-0.01em] text-foreground/85">
+    <h2 className="mb-2 flex items-center gap-1.5 px-1 text-[13px] font-semibold tracking-[0.04em] text-foreground/85">
+      <span
+        aria-hidden
+        className="h-1 w-1 rounded-full bg-[hsl(var(--cyber-glow)/0.85)] shadow-[0_0_6px_hsl(var(--cyber-glow)/0.7)]"
+      />
       {children}
     </h2>
   );

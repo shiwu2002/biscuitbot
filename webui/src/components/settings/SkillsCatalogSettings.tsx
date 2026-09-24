@@ -140,8 +140,8 @@ function SkillCatalogRow({
   return (
     <div
       className={cn(
-        "group flex min-w-0 items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-colors",
-        "hover:bg-muted/45",
+        "group flex min-w-0 items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-[background-color,box-shadow] duration-200",
+        "hover:bg-[hsl(var(--cyber-glow)/0.06)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.22)]",
         !skill.available && "opacity-65",
       )}
     >
@@ -154,7 +154,7 @@ function SkillCatalogRow({
         onClick={() => onSelect(skill)}
         className="flex min-w-0 flex-1 items-center gap-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-[16px]"
       >
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] bg-muted/70 text-muted-foreground">
+        <div className="cyber-kpi-icon flex h-12 w-12 shrink-0 items-center justify-center rounded-[14px] text-primary transition-shadow duration-300 group-hover:shadow-[0_0_18px_hsl(var(--cyber-glow)/0.5),inset_0_1px_0_hsl(var(--background)/0.5)]">
           <Brain className="h-5 w-5" strokeWidth={1.8} aria-hidden />
         </div>
         <div className="min-w-0 flex-1">

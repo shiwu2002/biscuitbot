@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,13 +10,14 @@ export function formatCompactTokens(tokens: number): string {
 
 type SeriesPoint = { label: string; value: number };
 
+/* 霓虹配色：围绕 cyber-glow 青蓝展开，辅以电光紫/品红，明暗主题下均有足够对比。 */
 const CHART_COLORS = [
-  "hsl(204 82% 46%)",
-  "hsl(199 90% 55%)",
-  "hsl(214 85% 58%)",
-  "hsl(188 78% 48%)",
-  "hsl(232 68% 62%)",
-  "hsl(168 62% 45%)",
+  "hsl(192 92% 48%)",
+  "hsl(260 85% 64%)",
+  "hsl(204 88% 52%)",
+  "hsl(285 85% 62%)",
+  "hsl(172 72% 42%)",
+  "hsl(220 85% 62%)",
 ];
 
 export function UsageLineChart({
@@ -30,6 +31,7 @@ export function UsageLineChart({
   valueFormatter?: (value: number) => string;
   className?: string;
 }) {
+  const gradientId = useId();
   const { points, areaPath, linePath, max } = useMemo(() => {
     const width = 100;
     const height = 56;
@@ -68,19 +70,22 @@ export function UsageLineChart({
         aria-label={ariaLabel}
       >
         <defs>
-          <linearGradient id="usage-line-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="hsl(204 82% 46% / 0.35)" />
-            <stop offset="100%" stopColor="hsl(204 82% 46% / 0.02)" />
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style={{ stopColor: "hsl(var(--cyber-glow-soft))", stopOpacity: 0.38 }} />
+            <stop offset="100%" style={{ stopColor: "hsl(var(--cyber-glow-soft))", stopOpacity: 0.02 }} />
           </linearGradient>
         </defs>
-        <path d={areaPath} fill="url(#usage-line-fill)" />
+        <path d={areaPath} fill={`url(#${gradientId})`} />
         <path
           d={linePath}
           fill="none"
-          stroke="hsl(204 82% 46%)"
           strokeWidth="1.5"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
+          style={{
+            stroke: "hsl(var(--cyber-glow-soft))",
+            filter: "drop-shadow(0 0 2.5px hsl(var(--cyber-glow) / 0.65))",
+          }}
         />
         {points.map((point) => (
           <circle
@@ -88,8 +93,8 @@ export function UsageLineChart({
             cx={point.x}
             cy={point.y}
             r="1.8"
-            fill="hsl(199 90% 58%)"
             vectorEffect="non-scaling-stroke"
+            style={{ fill: "hsl(var(--cyber-glow))" }}
           />
         ))}
       </svg>
@@ -133,12 +138,16 @@ export function UsageDistributionBars({
           <li key={item.key}>
             <div className="mb-1 flex items-center justify-between gap-2 text-[12.5px]">
               <span className="truncate font-medium text-foreground">{label}</span>
-              <span className="shrink-0 text-muted-foreground">{valueFormatter(item.value)}</span>
+              <span className="shrink-0 text-muted-foreground tabular-nums">{valueFormatter(item.value)}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-muted/70">
               <div
                 className="h-full rounded-full"
-                style={{ width, background: `linear-gradient(90deg, ${color}, hsl(199 90% 58%))` }}
+                style={{
+                  width,
+                  background: `linear-gradient(90deg, ${color}, hsl(var(--cyber-glow)))`,
+                  boxShadow: `0 0 10px ${color.replace(")", " / 0.45)")}`,
+                }}
               />
             </div>
           </li>

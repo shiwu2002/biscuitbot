@@ -254,7 +254,7 @@ export function TalentMarketView({
                 return (
                   <article
                     key={entry.id}
-                    className="group flex min-w-0 items-center gap-3 rounded-none px-4 py-3 transition-colors hover:bg-muted/45"
+                    className="group flex min-w-0 items-center gap-3 rounded-none px-4 py-3 transition-colors hover:bg-[hsl(var(--cyber-glow)/0.07)]"
                   >
                     <EmployeeAvatar
                       avatar={entry.avatar}

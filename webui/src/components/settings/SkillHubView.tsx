@@ -374,10 +374,10 @@ export function SkillHubView({
                         onClick={() => setRankingType(type)}
                         aria-pressed={type === rankingType}
                         className={cn(
-                          "flex h-8 items-center rounded-full border px-3 text-[12px] font-medium transition-colors",
+                          "flex h-8 items-center rounded-full border px-3 text-[12px] font-medium transition-[color,background-color,box-shadow,border-color] duration-200",
                           type === rankingType
-                            ? "border-foreground/35 bg-foreground/[0.04] text-foreground"
-                            : "border-border/60 text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                            ? "border-[hsl(var(--cyber-glow)/0.5)] bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_12px_hsl(var(--cyber-glow-soft)/0.25)]"
+                            : "border-border/60 text-muted-foreground hover:border-[hsl(var(--cyber-glow)/0.35)] hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground",
                         )}
                       >
                         {rankingTypeLabel(type, tx)}
@@ -444,7 +444,7 @@ export function SkillHubView({
                     return (
                       <article
                         key={key}
-                        className="group flex min-w-0 items-center gap-3 rounded-none px-4 py-3 transition-colors hover:bg-muted/45"
+                        className="group flex min-w-0 items-center gap-3 rounded-none px-4 py-3 transition-colors hover:bg-[hsl(var(--cyber-glow)/0.07)]"
                       >
                         <EmployeeAvatar
                           avatar={isImageAvatar(entry.icon_url) ? entry.icon_url : undefined}
