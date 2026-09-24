@@ -6,7 +6,8 @@
 - 产物3：src-tauri/icons/         —— Tauri 各平台图标（由 tauri icon 生成，delegate）
 
 用法：python scripts/regen_icons.py     （默认重生成 codex_icon.png 与 brand）
-      python scripts/regen_icons.py --tauri   （额外调用 tauri icon）
+      python scripts/regen_icons.py --tauri        （额外调用 tauri icon）
+      python scripts/regen_icons.py --splash-only  （只重生成桌面闪屏图）
 """
 from __future__ import annotations
 
@@ -17,12 +18,13 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-# 源图名含中文，Windows 下按字节匹配前缀可避免编码问题（中文部分不参与匹配）
-SOURCE = next((ROOT / "images").glob("Codex*"), None)
-if SOURCE is None:
-    raise SystemExit("找不到源图 images/Codex*（机器人图）")
-assert SOURCE is not None  # 上方已抛错兜底，这里仅供类型收窄
 ROBOT = ROOT / "images" / "codex_icon.png"
+# 源图名含中文，Windows 下按字节匹配前缀可避免编码问题（中文部分不参与匹配）。
+# 必须显式排除 ROBOT 自身：原始源图一旦缺失，Windows 的 Path.glob 大小写不敏感，
+# `Codex*` 会命中本脚本的产物 codex_icon.png —— 于是脚本拿自己的成品当源，
+# 裁边 + 重采样后再覆盖回去，每跑一次降质一层（不可逆，与配置文件反复被
+# 错编码损坏是同一类失效）。
+SOURCE = next((p for p in (ROOT / "images").glob("Codex*") if p.name != ROBOT.name), None)
 BRAND = ROOT / "webui" / "public" / "brand"
 TAURI_ICONS = ROOT / "src-tauri" / "icons"
 
@@ -36,12 +38,25 @@ APPLE = 180          # xianaibot_apple_touch.png
 FAV32 = 32           # xianaibot_favicon_32.png
 ICO_SIZES = [16, 24, 32, 48, 64]
 
+# 桌面启动闪屏（src-tauri/window/index.html）里的 logo
+SPLASH = ROOT / "src-tauri" / "window"
+SPLASH_PX = 256  # 闪屏里以 76px CSS 显示，256 足够覆盖 HiDPI
+
 
 def framed_robot() -> Image.Image:
-    """从非方形源生成带透明留白的 1024 方形机器人图。"""
-    src = SOURCE
-    assert src is not None  # 模块顶部已检查过，供此函数内类型收窄
-    im = Image.open(src).convert("RGBA")
+    """从非方形源生成带透明留白的 1024 方形机器人图。
+
+    原始源图缺失时**拒绝执行**：此时 glob 能匹配到的 `Codex*` 只剩下本脚本
+    自己的产物，拿它当源会把成品反复裁边 + 重采样再覆盖回去，属于静默且
+    不可逆的降质。宁可直接报错，也不要损坏图标。
+    """
+    if SOURCE is None:
+        raise SystemExit(
+            "找不到原始源图 images/Codex*（机器人图），已中止。\n"
+            f"注意：images/{ROBOT.name} 是本脚本的产物，不能当源（会被逐次降质）。\n"
+            "请先恢复原始源图再运行；若只需重生成桌面闪屏图，用 --splash-only。"
+        )
+    im = Image.open(SOURCE).convert("RGBA")
     alpha = im.getchannel("A")
     bbox = alpha.getbbox()
     if bbox:
@@ -106,6 +121,23 @@ def regen_brand(robot: Image.Image) -> None:
     print(f"  brand/favicon.ico  ← {ICO_SIZES}")
 
 
+def regen_splash() -> None:
+    """桌面启动闪屏（src-tauri/window/index.html）用的机器人图。
+
+    直接取 images/codex_icon.png —— 它本身就是「已裁边 + 4.5% 留白」的 1024
+    方形成品，所以不需要（也不应该）再走 framed_robot()：那既要求原始源图存在，
+    又会把成品重新框选 + 重采样。
+    """
+    if not ROBOT.exists():
+        raise SystemExit(f"找不到 {ROBOT}（机器人母版），无法生成闪屏图。")
+    SPLASH.mkdir(parents=True, exist_ok=True)
+    robot = Image.open(ROBOT).convert("RGBA")
+    robot.resize((SPLASH_PX, SPLASH_PX), Image.Resampling.LANCZOS).save(
+        SPLASH / "robot.png", optimize=True
+    )
+    print(f"  src-tauri/window/robot.png  ← {SPLASH_PX}x{SPLASH_PX}")
+
+
 def regen_tauri() -> None:
     if not (ROOT / "src-tauri" / "package.json").exists():
         print("  ! 未找到 src-tauri/package.json，跳过 tauri icon")
@@ -123,8 +155,19 @@ def regen_tauri() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--tauri", action="store_true", help="同时重生成 Tauri 平台图标")
+    parser.add_argument(
+        "--splash-only",
+        action="store_true",
+        help="只重生成桌面闪屏图（不依赖原始源图）",
+    )
     args = parser.parse_args()
 
+    if args.splash_only:
+        regen_splash()
+        return
+
+    # 以下都需要原始源图。源图缺失时 framed_robot() 会在任何写入之前中止，
+    # 避免留下半更新的图标集。
     robot = framed_robot()
     ROBOT.parent.mkdir(parents=True, exist_ok=True)
     robot.save(ROBOT)
@@ -132,6 +175,7 @@ def main() -> None:
 
     regen_masters(robot)
     regen_brand(robot)
+    regen_splash()
 
     if args.tauri:
         regen_tauri()

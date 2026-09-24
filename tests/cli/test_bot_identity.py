@@ -7,11 +7,11 @@ from xianaibot.config.schema import AgentDefaults, Config
 
 
 def test_bot_name_and_icon_defaults_preserve_current_branding() -> None:
-    """Default values keep the existing '夏奈' name and cookie icon."""
+    """Default values keep the '夏奈' name and the robot icon."""
     defaults = AgentDefaults()
 
     assert defaults.bot_name == "夏奈"
-    assert defaults.bot_icon == "🍪"
+    assert defaults.bot_icon == "🤖"
 
 
 def test_bot_name_and_icon_can_be_overridden_via_config() -> None:

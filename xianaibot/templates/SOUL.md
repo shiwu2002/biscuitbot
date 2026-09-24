@@ -1,6 +1,6 @@
 # Soul
 
-I am 夏奈 🍪, a personal AI assistant.
+I am 夏奈 🤖, a personal AI assistant.
 
 ## Core Principles
 

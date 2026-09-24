@@ -98,7 +98,7 @@ class StreamRenderer:
         render_markdown: bool = True,
         show_spinner: bool = True,
         bot_name: str = "夏奈",
-        bot_icon: str = "🍪",
+        bot_icon: str = "🤖",
     ):
         self._md = render_markdown  # 是否以 Markdown 渲染
         self._show_spinner = show_spinner  # 是否显示思考 spinner
