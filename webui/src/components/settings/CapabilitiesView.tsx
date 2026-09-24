@@ -114,6 +114,8 @@ export function CapabilitiesView({
 
   const query = search.trim().toLowerCase();
   const filtered = capabilities.filter((cap) => {
+    // 能力目录只展示已安装/已可用的能力，未安装的请到技能商店查看
+    if (!cap.installed && !cap.skill_installed) return false;
     if (tier !== "all" && (cap.tier ?? "user") !== tier) return false;
     if (availability === "available" && !cap.available) return false;
     if (availability === "unavailable" && cap.available) return false;
@@ -128,7 +130,7 @@ export function CapabilitiesView({
     return true;
   });
   const hasActiveFilters = query !== "" || tier !== "all" || availability !== "all" || source !== "all";
-  const installedCount = filtered.filter((cap) => cap.installed).length;
+  const installedCount = filtered.length;
 
   const resetFilters = () => {
     setSearch("");

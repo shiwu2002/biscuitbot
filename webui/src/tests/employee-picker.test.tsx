@@ -36,25 +36,25 @@ const DISABLED: Employee = {
 describe("EmployeePicker", () => {
   it("renders the picker entry when no employee is selected", () => {
     render(
-      <EmployeePicker employees={[CLIP_MASTER]} selected={null} onChange={vi.fn()} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER]} selected={null} onChange={vi.fn()} />,
     );
     expect(screen.getByText("数字人员工")).toBeInTheDocument();
   });
 
   it("renders nothing when no employees are available", () => {
-    render(<EmployeePicker employees={[]} selected={null} onChange={vi.fn()} />);
+    render(<EmployeePicker mode="select" employees={[]} selected={null} onChange={vi.fn()} />);
     expect(screen.queryByText("数字人员工")).not.toBeInTheDocument();
   });
 
   it("renders nothing without an onChange handler", () => {
-    render(<EmployeePicker employees={[CLIP_MASTER]} selected={null} />);
+    render(<EmployeePicker mode="select" employees={[CLIP_MASTER]} selected={null} />);
     expect(screen.queryByText("数字人员工")).not.toBeInTheDocument();
   });
 
   it("selects an employee from the dropdown", async () => {
     const onChange = vi.fn();
     render(
-      <EmployeePicker employees={[CLIP_MASTER, WRITER]} selected={null} onChange={onChange} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER, WRITER]} selected={null} onChange={onChange} />,
     );
     fireEvent.pointerDown(screen.getByText("数字人员工"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "文案写手" }));
@@ -64,7 +64,7 @@ describe("EmployeePicker", () => {
   it("offers the plain main-agent option from the dropdown", async () => {
     const onChange = vi.fn();
     render(
-      <EmployeePicker employees={[CLIP_MASTER]} selected={null} onChange={onChange} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER]} selected={null} onChange={onChange} />,
     );
     fireEvent.pointerDown(screen.getByText("数字人员工"));
     fireEvent.click(await screen.findByRole("menuitem", { name: "主智能体（不绑定员工）" }));
@@ -73,7 +73,7 @@ describe("EmployeePicker", () => {
 
   it("hides disabled employees from the dropdown", async () => {
     render(
-      <EmployeePicker employees={[CLIP_MASTER, DISABLED]} selected={null} onChange={vi.fn()} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER, DISABLED]} selected={null} onChange={vi.fn()} />,
     );
     fireEvent.pointerDown(screen.getByText("数字人员工"));
     expect(await screen.findByRole("menuitem", { name: "剪辑高手" })).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("EmployeePicker", () => {
   it("shows the talking-with chip once an employee is selected", () => {
     const onChange = vi.fn();
     render(
-      <EmployeePicker employees={[CLIP_MASTER]} selected={CLIP_MASTER} onChange={onChange} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER]} selected={CLIP_MASTER} onChange={onChange} />,
     );
     expect(screen.getByText("正在与 🎬 剪辑高手 对话")).toBeInTheDocument();
     expect(screen.queryByText("数字人员工")).not.toBeInTheDocument();
@@ -92,7 +92,7 @@ describe("EmployeePicker", () => {
   it("clears the employee back to the main agent", () => {
     const onChange = vi.fn();
     render(
-      <EmployeePicker employees={[CLIP_MASTER]} selected={CLIP_MASTER} onChange={onChange} />,
+      <EmployeePicker mode="select" employees={[CLIP_MASTER]} selected={CLIP_MASTER} onChange={onChange} />,
     );
     fireEvent.click(screen.getByText("正在与 🎬 剪辑高手 对话"));
     expect(onChange).toHaveBeenCalledWith(null);

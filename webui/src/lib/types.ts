@@ -1144,7 +1144,7 @@ export type InboundEvent =
       text: string;
       reply_to?: string;
       media?: string[];
-      media_urls?: Array<{ url: string; name?: string }>;
+      media_urls?: Array<{ url: string; name?: string; kind?: UIMediaKind }>;
       tool_events?: ToolProgressEvent[];
       /** Present when the frame is an agent breadcrumb (e.g. tool hint,
        * generic progress line) rather than a conversational reply. */

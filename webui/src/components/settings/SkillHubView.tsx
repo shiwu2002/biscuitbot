@@ -297,7 +297,12 @@ export function SkillHubView({
   })();
 
   const available = unavailableReason === null;
-  const rows = search ? search.skills : (ranking?.skills ?? []);
+  const allRows = search ? search.skills : (ranking?.skills ?? []);
+  // 技能商店只展示尚未安装的技能，已安装的请到能力目录查看
+  const rows = allRows.filter((entry) => {
+    const key = skillKey(entry);
+    return !installedKeys.has(key) && !installedKeys.has(entry.slug);
+  });
   const hasList = search !== null || ranking !== null;
 
   return (
@@ -399,12 +404,12 @@ export function SkillHubView({
                 {search
                   ? t("skillHub.searchSummary", {
                       keyword: search.query ?? "",
-                      count: search.total,
-                      defaultValue: "「{{keyword}}」共 {{count}} 个技能",
+                      count: rows.length,
+                      defaultValue: "「{{keyword}}」共 {{count}} 个可安装技能",
                     })
                   : t("skillHub.summary", {
                       count: rows.length,
-                      defaultValue: "共 {{count}} 个技能 · 每 30 分钟自动刷新",
+                      defaultValue: "共 {{count}} 个可安装技能 · 每 30 分钟自动刷新",
                     })}
                 {!search && status?.available && status.version
                   ? ` · ${t("skillHub.cliVersion", {

@@ -239,22 +239,24 @@ describe("SkillHubView", () => {
     await awaitCatalogLoaded();
 
     expect(screen.getByRole("heading", { name: "技能商店" })).toBeInTheDocument();
-    expect(screen.getByText("读取与创建日程")).toBeInTheDocument();
+    // 商店只展示尚未安装的技能：未装的「天气查询」在列表，已装的日历助手被过滤
+    expect(screen.getByText("天气查询")).toBeInTheDocument();
+    expect(screen.getByText("查询实时天气")).toBeInTheDocument();
+    expect(screen.queryByText("读取与创建日程")).not.toBeInTheDocument();
     // 分类 / 命名空间 / 来源 chip 与版本
-    expect(screen.getByText("productivity")).toBeInTheDocument();
+    expect(screen.getByText("life")).toBeInTheDocument();
     // 命名空间 chip 用 handle（与 slug 前缀一致），展示名挂在 title 上
-    expect(screen.getByText("clawhub_x")).toHaveAttribute("title", "ClawHub 精选");
-    expect(within(skillRow("日历助手")).getByText("clawhub")).toBeInTheDocument();
-    expect(within(skillRow("日历助手")).getByText("v1.2.0")).toBeInTheDocument();
-    // 已验证徽标只出现在 verified 条目上
-    expect(screen.getByText("已验证")).toBeInTheDocument();
+    expect(screen.getByText("acme")).toHaveAttribute("title", "Acme");
+    const row = skillRow("天气查询");
+    expect(within(row).getByText("clawhub")).toBeInTheDocument();
+    expect(within(row).getByText("v0.3.1")).toBeInTheDocument();
+    // 已验证徽标只出现在 verified 条目上；唯一 verified 的日历助手已安装被过滤
+    expect(screen.queryByText("已验证")).not.toBeInTheDocument();
     // 已安装区域（标题 + 条目）
     expect(screen.getByRole("heading", { name: "已安装" })).toBeInTheDocument();
     expect(screen.getByText("@clawhub_x/calendar")).toBeInTheDocument();
-    // 已在锁文件里的技能直接显示「已安装」，不再给安装按钮
-    const row = skillRow("日历助手");
-    expect(within(row).getByText("已安装")).toBeInTheDocument();
-    expect(within(row).queryByText("安装")).not.toBeInTheDocument();
+    // 未安装的技能正常给出安装按钮
+    expect(within(row).getByText("安装")).toBeInTheDocument();
   });
 
   it("replaces the ranking with search results", async () => {
@@ -270,7 +272,7 @@ describe("SkillHubView", () => {
 
     await waitFor(() => expect(screen.getByText("天气查询")).toBeInTheDocument());
     expect(screen.queryByText("日历助手")).not.toBeInTheDocument();
-    expect(screen.getByText(/「天气」共 1 个技能/)).toBeInTheDocument();
+    expect(screen.getByText(/「天气」共 1 个可安装技能/)).toBeInTheDocument();
 
     const searchCall = fetchMock.mock.calls.find(([url]) =>
       String(url).includes("/api/webui/skill-hub/search"),
@@ -324,7 +326,10 @@ describe("SkillHubView", () => {
       namespace: "clawhub_x",
       force: false,
     });
-    await waitFor(() => expect(within(row).getByText("已安装")).toBeInTheDocument());
+    // 安装成功：给出成功提示，技能从可安装列表移除，并出现在已安装区域
+    await waitFor(() => expect(screen.getByText("已安装「日历助手」")).toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("读取与创建日程")).not.toBeInTheDocument());
+    expect(screen.getByText("@clawhub_x/calendar")).toBeInTheDocument();
   });
 
   it("offers a force reinstall after a 409 conflict", async () => {

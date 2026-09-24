@@ -139,7 +139,11 @@ describe("XianaibotClient", () => {
 
     client.connect();
     await Promise.resolve();
-    socketEventHandler?.({ id: "host-socket-1", type: "open" });
+    // TS 会把闭包内赋值的变量窄化为 null，调用处需显式还原回调类型
+    (socketEventHandler as ((event: { id: string; type: "open" | "close" | "error"; message?: string }) => void) | null)?.({
+      id: "host-socket-1",
+      type: "open",
+    });
 
     expect(openSocket).toHaveBeenCalledWith("xianaibot-host://engine/");
     expect(status).toHaveBeenLastCalledWith("open");

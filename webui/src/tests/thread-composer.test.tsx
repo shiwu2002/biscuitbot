@@ -329,9 +329,11 @@ describe("ThreadComposer", () => {
     expect(input.className).toContain("min-h-[50px]");
     expect(input.parentElement?.parentElement?.className).toContain("max-w-[49.5rem]");
     expect(input.parentElement?.parentElement?.className).toContain("rounded-[22px]");
-    expect(input.parentElement?.parentElement?.className).toContain("shadow-[0_12px_30px_rgba(15,23,42,0.07)]");
-    expect(screen.getByRole("button", { name: "添加图片" }).className).toContain("bg-card");
-    expect(screen.getByRole("button", { name: "发送消息" }).className).toContain("bg-foreground");
+    // 与 hero 同款的赛博玻璃面板：悬停/聚焦时泛出霓虹光晕
+    expect(input.parentElement?.parentElement?.className).toContain("cyber-glass-panel");
+    expect(input.parentElement?.parentElement?.className).toContain("focus-within:shadow-");
+    expect(screen.getByRole("button", { name: "添加图片" }).className).toContain("cyber-btn-glow");
+    expect(screen.getByRole("button", { name: "发送消息" }).className).toContain("!bg-gradient-to-br");
     expect(screen.queryByText(/Enter to send/)).not.toBeInTheDocument();
   });
 
@@ -364,7 +366,7 @@ describe("ThreadComposer", () => {
     const { getUserMedia, stopTrack } = mockVoiceRecorder();
     let resolveStream: ((stream: MediaStream) => void) | undefined;
     getUserMedia.mockImplementation(() => new Promise((resolve) => {
-      resolveStream = resolve as (stream: MediaStream) => void;
+      resolveStream = resolve as unknown as (stream: MediaStream) => void;
     }));
     const onTranscribeAudio = vi.fn(async () => "one recording");
     render(

@@ -95,7 +95,9 @@ Desktop.ini
 
 # Editors & IDEs (local workspace / user settings)
 .vscode/
+.workbuddy/
 .cursor/
+.trae/
 .idea/
 .fleet/
 *.code-workspace

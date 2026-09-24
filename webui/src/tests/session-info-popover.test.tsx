@@ -31,7 +31,7 @@ function automationsResponse(jobs: unknown[]) {
 
 describe("SessionInfoPopover", () => {
   beforeEach(async () => {
-    await setAppLanguage("en");
+    await setAppLanguage("zh-CN");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(automationsResponse([automationJob()])),
