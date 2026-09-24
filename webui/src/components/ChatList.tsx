@@ -207,7 +207,11 @@ export const ChatList = memo(function ChatList({
           return (
             <section key={group.id} aria-label={group.label}>
               {index === firstProjectGroupIndex ? (
-                <div className="px-2 pb-1 text-[12px] font-medium text-muted-foreground/65">
+                <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium tracking-[0.08em] text-muted-foreground/65">
+                  <span
+                    aria-hidden
+                    className="h-1 w-1 rounded-full bg-[hsl(var(--cyber-glow)/0.8)] shadow-[0_0_6px_hsl(var(--cyber-glow)/0.7)]"
+                  />
                   {labels.projects}
                 </div>
               ) : null}
@@ -501,7 +505,11 @@ function ProjectGroupHeader({
 
 function ChatsGroupHeader({ label }: { label: string }) {
   return (
-    <div className="px-2 pb-1 text-[12px] font-medium text-muted-foreground/65">
+    <div className="flex items-center gap-1.5 px-2 pb-1 text-[12px] font-medium tracking-[0.08em] text-muted-foreground/65">
+      <span
+        aria-hidden
+        className="h-1 w-1 rounded-full bg-[hsl(var(--cyber-glow)/0.8)] shadow-[0_0_6px_hsl(var(--cyber-glow)/0.7)]"
+      />
       {label}
     </div>
   );

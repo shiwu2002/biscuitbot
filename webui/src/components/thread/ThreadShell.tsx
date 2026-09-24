@@ -775,7 +775,7 @@ export function ThreadShell({
     </div>
   ) : (
     <div className="flex w-full flex-col items-center text-center animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
-      <h1 className="max-w-[30rem] text-balance text-[34px] font-normal leading-[1.08] tracking-normal text-foreground sm:text-[48px] sm:leading-tight">
+      <h1 className="max-w-[30rem] text-balance bg-[linear-gradient(100deg,hsl(var(--cyber-glow-soft))_0%,hsl(var(--cyber-glow))_48%,hsl(var(--cyber-violet))_100%)] bg-clip-text text-[34px] font-medium leading-[1.08] tracking-normal text-transparent drop-shadow-[0_0_22px_hsl(var(--cyber-glow)/0.28)] sm:text-[48px] sm:leading-tight">
         {t(heroGreetingKey)}
       </h1>
     </div>

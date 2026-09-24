@@ -139,6 +139,7 @@ export function Sidebar(props: SidebarProps) {
           collapsed={collapsed}
           label={t("sidebar.newChat")}
           onClick={props.onNewChat}
+          emphasis="primary"
           icon={<SquarePen className="h-4 w-4" />}
           shortcut={newChatShortcut}
           ariaKeyShortcuts="Meta+Shift+O Control+Shift+O"
@@ -264,6 +265,7 @@ function SidebarActionButton({
   icon,
   onClick,
   active = false,
+  emphasis,
   className,
   shortcut,
   ariaKeyShortcuts,
@@ -273,13 +275,15 @@ function SidebarActionButton({
   icon: ReactNode;
   onClick: () => void;
   active?: boolean;
+  /** "primary" 用于主操作（新建对话）：默认安静克制，悬停时才展开霓虹效果。 */
+  emphasis?: "primary";
   className?: string;
   shortcut?: string;
   ariaKeyShortcuts?: string;
 }) {
   const title = shortcut ? `${label} (${shortcut})` : collapsed ? label : undefined;
 
-  const isNewChat = label.includes("新") || label.includes("新建") || label.toLowerCase().includes("new");
+  const emphasized = emphasis === "primary" && !active;
   return (
     <Button
       type="button"
@@ -290,19 +294,22 @@ function SidebarActionButton({
       title={title}
       onClick={() => onClick()}
       className={cn(
-        "group relative h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground cyber-btn-glow",
+        "group relative h-8 min-w-0 gap-2 overflow-hidden rounded-full font-medium text-sidebar-foreground/85 hover:bg-sidebar-accent/75 hover:text-sidebar-foreground",
+        !emphasized && "cyber-btn-glow",
         "transition-[width,padding,border-radius,color,background-color,box-shadow,transform] duration-300 ease-out",
         collapsed
           ? "w-9 justify-center gap-0 rounded-xl px-0"
           : "w-full justify-start gap-2 px-3 text-[12.5px]",
         active && "cyber-nav-active",
         !active
-          && !isNewChat
+          && !emphasized
           && "hover:bg-[hsl(var(--cyber-glow)/0.10)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35),0_0_14px_hsl(var(--cyber-glow-soft)/0.25)]",
-        // "新建对话"按钮：霓虹渐变背景 + 环绕光晕 + 悬浮抬升
-        isNewChat
-          && !active
-          && "!bg-gradient-to-r !from-[hsl(var(--cyber-violet)/0.22)] !via-[hsl(var(--cyber-glow)/0.28)] !to-[hsl(var(--cyber-violet)/0.22)] !border !border-[hsl(var(--cyber-glow)/0.45)] !text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.25),0_0_18px_hsl(var(--cyber-glow)/0.25),0_0_30px_hsl(var(--cyber-violet)/0.18)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.55),0_0_22px_hsl(var(--cyber-glow)/0.38),0_0_40px_hsl(var(--cyber-violet)/0.28)] hover:-translate-y-px",
+        // 主操作（新建对话）：默认仅一缕描边微光提示主操作身份，不呈现"命中"态；
+        // 悬停时才展开霓虹渐变 + 环绕光晕 + 轻微抬升。
+        emphasized
+          && "border border-[hsl(var(--cyber-glow)/0.32)] bg-[hsl(var(--cyber-glow)/0.05)] text-foreground/90 shadow-none",
+        emphasized
+          && "hover:!bg-transparent hover:!bg-gradient-to-r hover:!from-[hsl(var(--cyber-violet)/0.24)] hover:!via-[hsl(var(--cyber-glow)/0.30)] hover:!to-[hsl(var(--cyber-violet)/0.24)] hover:border-[hsl(var(--cyber-glow)/0.6)] hover:!text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.5),0_0_20px_hsl(var(--cyber-glow)/0.36),0_0_38px_hsl(var(--cyber-violet)/0.26)] hover:-translate-y-px",
         className,
       )}
     >
@@ -314,8 +321,10 @@ function SidebarActionButton({
       ) : null}
       <span
         className={cn(
-          "flex w-4 shrink-0 items-center justify-center transition-transform duration-300 ease-out",
+          "flex w-4 shrink-0 items-center justify-center transition-[transform,color,filter] duration-300 ease-out",
           active && "drop-shadow-[0_0_5px_hsl(var(--cyber-glow-soft)/0.85)]",
+          emphasized
+            && "text-[hsl(var(--cyber-glow-soft))] group-hover:text-foreground group-hover:drop-shadow-[0_0_6px_hsl(var(--cyber-glow)/0.8)]",
           collapsed ? "translate-x-0" : "translate-x-0",
         )}
         aria-hidden
