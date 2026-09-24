@@ -85,7 +85,7 @@ class CronTool(Tool, ContextAware):
     )
     _usage_md = "docs/cron.md"  # 工具使用说明文档路径
 
-    def __init__(self, cron_service: CronService, default_timezone: str = "UTC"):
+    def __init__(self, cron_service: CronService, default_timezone: str = "Asia/Shanghai"):
         """初始化 cron 工具。
 
         参数:

@@ -183,7 +183,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     }
   });
 
-  it("模型 tab 二级切换条可在 LLM/文生图/文生视频/视图理解/ASR 间切换", async () => {
+  it("模型 tab 二级切换条可在 LLM/文生图/文生视频/视觉理解/语音识别 间切换", async () => {
     renderSettingsView({ initialSection: "models", initialSettings: settingsPayload() });
     const subtabs = within(screen.getByTestId("settings-subtabs"));
     expect(subtabs.getByRole("button", { name: "LLM" })).toHaveAttribute("aria-current", "true");
@@ -207,15 +207,15 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(screen.getByText("保存目录")).toBeInTheDocument();
     expect(screen.getByText("密钥状态")).toBeInTheDocument();
 
-    fireEvent.click(subtabs.getByRole("button", { name: "视图理解" }));
-    expect(subtabs.getByRole("button", { name: "视图理解" })).toHaveAttribute(
+    fireEvent.click(subtabs.getByRole("button", { name: "视觉理解" }));
+    expect(subtabs.getByRole("button", { name: "视觉理解" })).toHaveAttribute(
       "aria-current",
       "true",
     );
     expect(await screen.findByRole("switch", { name: "截图" })).toBeInTheDocument();
 
-    fireEvent.click(subtabs.getByRole("button", { name: "ASR" }));
-    expect(subtabs.getByRole("button", { name: "ASR" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(subtabs.getByRole("button", { name: "语音识别" }));
+    expect(subtabs.getByRole("button", { name: "语音识别" })).toHaveAttribute("aria-current", "true");
     expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
   });
 
@@ -240,7 +240,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     });
     expect(screen.getByRole("button", { name: "模型" })).toHaveAttribute("aria-current", "page");
     expect(
-      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "ASR" }),
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "语音识别" }),
     ).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("heading", { name: "语音识别" })).toBeInTheDocument();
   });

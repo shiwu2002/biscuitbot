@@ -52,7 +52,7 @@ describe("AttachmentTile document preview", () => {
     const fetchMock = stubFetch(new ArrayBuffer(16));
     render(<AttachmentTile attachment={pptxAttachment} />);
 
-    expect(screen.getByLabelText("File attachment")).toHaveTextContent("deck.pptx");
+    expect(screen.getByLabelText("文件附件")).toHaveTextContent("deck.pptx");
     expect(screen.getByRole("button", { name: "预览" })).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
 

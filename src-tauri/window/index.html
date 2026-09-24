@@ -14,6 +14,7 @@
         --cyber-glow-soft: 200 90% 58%;
         --cyber-violet: 260 90% 68%;
         --cyber-magenta: 285 95% 66%;
+        --cyber-danger: 4 90% 64%;
       }
       * {
         box-sizing: border-box;
@@ -48,9 +49,46 @@
         background-attachment: fixed;
         color: #e2e8f0;
         overflow: hidden;
+        user-select: none;
+        cursor: default;
+      }
+      /* 无边框窗口的拖拽层：铺在整个视口底层，内容卡片与按钮盖在其上。
+         加载/错误页没有 WebUI 的自定义标题栏，没有它窗口完全无法拖动。 */
+      .drag-bg {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+      }
+      /* 右上角退出按钮：无边框窗口没有原生 X，加载卡死/出错时用户需要退路。
+         走 process.exit → RunEvent::ExitRequested → 壳杀掉 sidecar，不留孤儿进程。 */
+      .win-close {
+        position: fixed;
+        top: 0;
+        right: 0;
+        z-index: 3;
+        width: 40px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        color: #475569;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        transition: color 0.15s, background 0.15s;
+      }
+      .win-close:hover {
+        color: #fff;
+        background: rgb(239 68 68 / 0.85);
+      }
+      .win-close svg {
+        width: 12px;
+        height: 12px;
       }
       .app {
         position: relative;
+        z-index: 1;
         text-align: center;
         padding: 2rem;
       }
@@ -171,11 +209,66 @@
           transform: translateX(350%);
         }
       }
+      /* 错误态：光环变红并停转，隐藏加载条，露出重试/退出按钮 */
       .error .loader {
         display: none;
       }
       .error p {
         color: #fca5a5;
+      }
+      .error .logo {
+        animation: none;
+        filter: grayscale(0.35) drop-shadow(0 0 12px hsl(var(--cyber-danger) / 0.45));
+      }
+      .error .ring-1 {
+        border-color: hsl(var(--cyber-danger) / 0.5);
+        animation: none;
+      }
+      .error .ring-1::before {
+        background: hsl(var(--cyber-danger));
+        box-shadow: 0 0 8px hsl(var(--cyber-danger) / 0.9);
+      }
+      .error .ring-2 {
+        border-color: hsl(var(--cyber-danger) / 0.3);
+        animation: none;
+      }
+      .error-actions {
+        display: flex;
+        gap: 0.75rem;
+        justify-content: center;
+        margin-top: 1.5rem;
+      }
+      .error-actions[hidden] {
+        display: none;
+      }
+      .btn {
+        padding: 0.45rem 1.4rem;
+        font-size: 0.8rem;
+        font-family: inherit;
+        letter-spacing: 0.08em;
+        color: hsl(var(--cyber-glow));
+        background: hsl(var(--cyber-glow) / 0.08);
+        border: 1px solid hsl(var(--cyber-glow) / 0.35);
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.15s, box-shadow 0.15s;
+      }
+      .btn:hover {
+        background: hsl(var(--cyber-glow) / 0.16);
+        box-shadow: 0 0 12px hsl(var(--cyber-glow) / 0.35);
+      }
+      .btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .btn-secondary {
+        color: #94a3b8;
+        background: transparent;
+        border-color: rgb(148 163 184 / 0.3);
+      }
+      .btn-secondary:hover {
+        background: rgb(148 163 184 / 0.1);
+        box-shadow: none;
       }
       @media (prefers-reduced-motion: reduce) {
         .logo,
@@ -188,6 +281,12 @@
     </style>
   </head>
   <body>
+    <div class="drag-bg" data-tauri-drag-region></div>
+    <button class="win-close" id="close-btn" title="退出" aria-label="退出">
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M1 1l10 10M11 1L1 11" />
+      </svg>
+    </button>
     <div class="app" id="app">
       <div class="orb-wrap">
         <div class="ring ring-1"></div>
@@ -197,18 +296,39 @@
       <h1>夏奈儿</h1>
       <p id="status">正在启动…</p>
       <div class="loader"></div>
+      <div class="error-actions" id="error-actions" hidden>
+        <button class="btn" id="retry-btn" type="button">重试</button>
+        <button class="btn btn-secondary" id="quit-btn" type="button">退出</button>
+      </div>
     </div>
     <script>
       const params = new URLSearchParams(window.location.search);
       const status = document.getElementById("status");
-      if (params.has("gateway_error")) {
+      const actions = document.getElementById("error-actions");
+      const isError = params.has("gateway_error") || params.has("gateway_stopped");
+      if (isError) {
         document.body.classList.add("error");
-        status.textContent =
-          "启动失败，无法连接智能体服务。请关闭应用后重试。";
-      } else if (params.has("gateway_stopped")) {
-        document.body.classList.add("error");
-        status.textContent = "服务已停止，请关闭应用后重新打开。";
+        status.textContent = params.has("gateway_error")
+          ? "启动失败，无法连接智能体服务。"
+          : "服务已停止，请重试或退出。";
+        actions.hidden = false;
       }
+
+      // 浏览器直接打开此文件时 __TAURI__ 不存在，全部做可空调用兜底。
+      const tauri = window.__TAURI__;
+      const quit = () => tauri?.process?.exit(0);
+
+      document.getElementById("close-btn").addEventListener("click", quit);
+      document.getElementById("quit-btn").addEventListener("click", quit);
+      document.getElementById("retry-btn").addEventListener("click", async (e) => {
+        // 防连点：Rust 侧把窗口导航回加载页（整页刷新），失败后才会走到 catch。
+        e.currentTarget.disabled = true;
+        try {
+          await tauri?.core?.invoke("retry_gateway");
+        } catch {
+          e.currentTarget.disabled = false;
+        }
+      });
     </script>
   </body>
 </html>

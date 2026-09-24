@@ -141,9 +141,9 @@
         "providers": "模型厂商",
         "image": "文生图",
         "video": "文生视频",
-        "vision": "视图理解",
-        "asr": "ASR",
-        "tts": "TTS"
+        "vision": "视觉理解",
+        "asr": "语音识别",
+        "tts": "语音合成"
       },
       "system": {
         "runtime": "运行",
@@ -175,6 +175,7 @@
       "nativeHost": "原生宿主",
       "hostSafety": "应用安全",
       "voiceInput": "语音识别",
+      "tts": "语音合成",
       "systemIo": "系统 IO",
       "systemIoActions": "操作",
       "channels": "渠道"
@@ -278,6 +279,12 @@
       "transcriptionProviderStatus": "提供商状态",
       "transcriptionModel": "模型",
       "transcriptionLanguage": "语言",
+      "tts": "语音合成",
+      "ttsProvider": "提供商",
+      "ttsProviderStatus": "提供商状态",
+      "ttsModel": "模型",
+      "ttsVoice": "音色",
+      "ttsRate": "语速",
       "voiceLimits": "限制"
     },
     "help": {
@@ -286,6 +293,7 @@
       "provider": "选择处理新模型请求的提供商。",
       "model": "设置 夏奈儿 默认使用的模型名称。",
       "configPath": "当前网关正在使用的配置文件。",
+      "workspacePath": "文件工具与生成产物使用的工作区目录。",
       "currentModel": "用于新的回复。",
       "selectedModelProvider": "由选中的模型决定。",
       "selectedModelValue": "由选中的模型决定。",
@@ -343,7 +351,13 @@
       "transcriptionProvider": "使用「提供商」中对应提供商的凭据。",
       "transcriptionProviderStatus": "API Key 仍保存在 providers 里，不写进 transcription 设置。",
       "transcriptionModel": "除非提供商需要自定义模型 ID，否则保持解析后的默认值即可。",
-      "transcriptionLanguage": "可选 ISO-639 语言提示，例如 en、zh、ja 或 ko。"
+      "transcriptionLanguage": "可选 ISO-639 语言提示，例如 en、zh、ja 或 ko。",
+      "tts": "用 text_to_speech 工具把文本合成为语音音频。",
+      "ttsProvider": "使用「模型厂商」中对应提供商的凭据。",
+      "ttsProviderStatus": "API Key 仍保存在 providers 里，不写进 TTS 设置。edge-tts 无需密钥。",
+      "ttsModel": "除非提供商需要自定义模型 ID，否则保持解析后的默认值即可。",
+      "ttsVoice": "该提供商的默认音色，例如 alloy、longxiaochun 或 zh-CN-XiaoxiaoNeural。",
+      "ttsRate": "可选语速，例如 +10%（更快）或 -20%（更慢）。"
     },
     "timezone": {
       "select": "选择时区",
@@ -485,7 +499,9 @@
       "logsOpened": "已打开日志文件夹。",
       "logsOpenFailed": "无法打开日志文件夹。",
       "diagnosticsExported": "诊断已导出到 {{path}}。",
-      "diagnosticsExportFailed": "无法导出诊断。"
+      "diagnosticsExportFailed": "无法导出诊断。",
+      "unsavedTts": "保存更改后立即生效，无需重启。",
+      "savedTts": "已保存。"
     },
     "actions": {
       "save": "保存",
@@ -495,7 +511,9 @@
       "open": "打开",
       "export": "导出",
       "opening": "正在打开...",
-      "exporting": "正在导出..."
+      "exporting": "正在导出...",
+      "chooseFolder": "选择",
+      "picking": "选择中..."
     },
     "byok": {
       "description": "自带服务商密钥。夏奈儿 会从当前 config 读取这些值，只有已配置的服务商才能在通用设置里选择。",
@@ -777,7 +795,14 @@
       "unavailableReasonLabel": "不可用原因",
       "rawInstructions": "原始 SKILL.md",
       "rawInstructionsEmpty": "没有原始说明。",
-      "detailDescription": "{{name}} 的详情。"
+      "detailDescription": "{{name}} 的详情。",
+      "delete": "删除技能 {{name}}",
+      "deleteTitle": "删除技能",
+      "deleteConfirm": "确定要删除技能「{{name}}」吗？此操作不可撤销。",
+      "deleteDescription": "该技能目录将从工作区中移除。",
+      "deleteCancel": "取消",
+      "deleteConfirmButton": "删除",
+      "deleting": "删除中..."
     },
     "capabilities": {
       "description": "统一能力目录：查看此 agent 可加载的指令技能、CLI 应用与 MCP 服务器。",
@@ -1229,6 +1254,14 @@
     "cliRunRan": "已使用",
     "cliRunFailed": "失败",
     "imageAttachment": "图片附件",
+    "fileAttachment": "文件附件",
+    "videoAttachment": "视频附件",
+    "attachmentUnavailable": "附件不可用",
+    "fileActivityPreparing": "正在准备编辑…",
+    "fileEditPreparing": "正在准备文件编辑…",
+    "fileEditFailedFallback": "文件改动未应用。",
+    "agentActivityFilesOnly": "文件改动",
+    "agentActivityLiveFilesOnly": "进行中…",
     "automationSourceFallback": "自动化",
     "automationTriggered": "自动触发",
     "forkFromHere": "分叉",
@@ -1272,7 +1305,8 @@
     "copied": "已复制"
   },
   "common": {
-    "dismiss": "关闭"
+    "dismiss": "关闭",
+    "current": "当前"
   },
   "errors": {
     "messageTooBig": {

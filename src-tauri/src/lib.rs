@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, Url};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
@@ -27,11 +27,15 @@ const READY_PREFIX: &str = "XIANAIBOT_GATEWAY_READY";
 const ERROR_PREFIX: &str = "XIANAIBOT_GATEWAY_ERROR";
 /// 启动失败/网关意外退出时窗口回退到的内嵌错误页
 const ERROR_PAGE: &str = "tauri://localhost/index.html?gateway_error=1";
+/// 内嵌加载页（手动重试时先导航回这里显示加载动画）
+const LOADING_PAGE: &str = "tauri://localhost/index.html";
 
 /// 保存 sidecar 子进程句柄与退出标记，便于退出时清理、退出后自动重启。
 struct SidecarState {
     child: Mutex<Option<CommandChild>>,
     exiting: AtomicBool,
+    /// 防止 respawn 循环与手动重试并发拉起多个 sidecar 的重入锁。
+    respawning: AtomicBool,
 }
 
 /// 单次 sidecar 生命周期结束后的去向。
@@ -67,6 +71,17 @@ fn reveal_main_window(app: &AppHandle) {
     }
 }
 
+/// 确保 SidecarState 已注册（只注册一次，重复 manage 会丢失子进程句柄）。
+fn ensure_sidecar_state(app: &AppHandle) {
+    if app.try_state::<SidecarState>().is_none() {
+        app.manage(SidecarState {
+            child: Mutex::new(None),
+            exiting: AtomicBool::new(false),
+            respawning: AtomicBool::new(false),
+        });
+    }
+}
+
 /// 启动 sidecar 并在就绪后把主窗口导航到 WebUI；退出后按需重新拉起。
 fn spawn_sidecar(app: &AppHandle) {
     // 开发模式旁路：设置 XIANAIBOT_DEV_GATEWAY_URL 时直接导航，不启动 sidecar。
@@ -79,17 +94,31 @@ fn spawn_sidecar(app: &AppHandle) {
         }
     }
 
-    app.manage(SidecarState {
-        child: Mutex::new(None),
-        exiting: AtomicBool::new(false),
-    });
+    ensure_sidecar_state(app);
+    spawn_sidecar_loop(app);
+}
+
+/// sidecar 生命周期循环：respawning 重入锁保证同一时刻只有一个循环在跑
+/// （自动 respawn 退避期间与手动重试不会并发拉起第二个 sidecar）。
+fn spawn_sidecar_loop(app: &AppHandle) {
+    if is_exiting(app) {
+        return;
+    }
+    {
+        let Some(state) = app.try_state::<SidecarState>() else {
+            return;
+        };
+        if state.respawning.swap(true, Ordering::SeqCst) {
+            return; // 已有循环在跑（含退避睡眠中）
+        }
+    }
 
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let mut respawn_count: u32 = 0;
         loop {
             if is_exiting(&app) {
-                return;
+                break;
             }
             match run_sidecar_once(&app).await {
                 SidecarOutcome::Respawn => {
@@ -108,10 +137,39 @@ fn spawn_sidecar(app: &AppHandle) {
                     tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
                     continue;
                 }
-                SidecarOutcome::StartupFailed | SidecarOutcome::Stopped => return,
+                SidecarOutcome::StartupFailed | SidecarOutcome::Stopped => break,
             }
         }
+        if let Some(state) = app.try_state::<SidecarState>() {
+            state.respawning.store(false, Ordering::SeqCst);
+        }
     });
+}
+
+/// 错误页「重试」按钮：把窗口切回加载页并重新拉起 sidecar。
+/// sidecar 仍在运行、respawn 流程进行中（引擎重启退避）或应用正在退出时不动作。
+#[tauri::command]
+fn retry_gateway(app: AppHandle) {
+    // 开发模式旁路同 spawn_sidecar：直接导航回手动启动的网关。
+    if let Ok(url) = std::env::var("XIANAIBOT_DEV_GATEWAY_URL") {
+        let url = url.trim();
+        if !url.is_empty() {
+            navigate_to(&app, url);
+            return;
+        }
+    }
+    if is_exiting(&app) {
+        return;
+    }
+    if let Some(state) = app.try_state::<SidecarState>() {
+        if state.child.lock().unwrap().is_some()
+            || state.respawning.load(Ordering::SeqCst)
+        {
+            return;
+        }
+    }
+    navigate_to(&app, LOADING_PAGE);
+    spawn_sidecar_loop(&app);
 }
 
 async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
@@ -226,7 +284,19 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .icon(icon)
         .tooltip("夏奈儿")
         .menu(&menu)
-        .show_menu_on_left_click(true)
+        // 左键 = 打开主窗口（Windows 惯例），右键 = 菜单；显式设为 false，
+        // 避免 macOS 默认值不同导致两端行为不一致。
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                reveal_main_window(tray.app_handle());
+            }
+        })
         .on_menu_event(|app, event| match event.id().as_ref() {
             TRAY_SHOW => reveal_main_window(app),
             TRAY_QUIT => app.exit(0),
@@ -250,6 +320,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![retry_gateway])
         .setup(|app| {
             spawn_sidecar(app.handle());
 

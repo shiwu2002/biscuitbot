@@ -1,6 +1,6 @@
 [package]
 name = "xianaibot"
-version = "0.3.43"
+version = "0.3.46"
 description = "夏奈儿（XiaNaiBot）智能体桌面端：启动无头 gateway sidecar 并加载其 WebUI"
 authors = ["xianaibot"]
 edition = "2021"
@@ -21,8 +21,13 @@ tauri-plugin-dialog = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# 閻劋绨?sidecar respawn 閻ㄥ嫭瀵氶弫浼粹偓鈧柆?sleep閿涘湵auri 2 瀹歌弓绱堕柅鎺嶇贩鐠?tokio閿涘本妯夊蹇擄紣閺勫簼绗夋晶鐐插閺嬪嫬缂撻弮鍫曟？閿?
+# sidecar 重启退避的 sleep 需要 tokio time（tauri 2 的 async_runtime 基于 tokio）
 tokio = { version = "1", features = ["time"] }
 
 [profile.release]
 strip = true
+# 发布产物体积与运行性能优化：LTO + 单代码生成单元 + panic 直接终止。
+# 代价是发布编译变慢；增量开发用 dev profile 不受影响。
+lto = true
+codegen-units = 1
+panic = "abort"

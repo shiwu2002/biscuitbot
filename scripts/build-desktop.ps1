@@ -20,6 +20,24 @@ $ErrorActionPreference = "Stop"
 
 function Write-Info { param([string]$Message) Write-Host $Message }
 
+# 运行 native 命令并返回退出码。临时降级 EAP：bun 1.3+ 会把待执行命令 echo 到
+# stderr，PowerShell 5.1 在 $ErrorActionPreference=Stop 下会把这误判为
+# NativeCommandError 而终止脚本（实际 tsc/vite 已成功）。降级后 native stderr
+# 只显示不终止，用 $LASTEXITCODE 判断真实退出码。
+# 命令的 stdout 经 Out-Host 转发到控制台（不进入函数返回值），否则 bun 的
+# stdout 会污染返回值，让返回变成数组导致 `-ne 0` 恒为真。
+function Invoke-Native {
+    param([scriptblock]$Command)
+    $prevEAP = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & $Command | Out-Host
+        return $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+}
+
 # 切换到仓库根目录
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $Root
@@ -54,21 +72,26 @@ else {
 
 Write-Info "==> 2/6 构建 WebUI（webui/dist → xianaibot/web/dist）"
 Set-Location (Join-Path $Root "webui")
-bun install --frozen-lockfile
-if ($LASTEXITCODE -ne 0) { bun install }
-if ($LASTEXITCODE -ne 0) { throw "bun install 失败" }
-bun run build
-if ($LASTEXITCODE -ne 0) { throw "bun run build 失败" }
+if ((Invoke-Native { bun install --frozen-lockfile }) -ne 0) {
+    if ((Invoke-Native { bun install }) -ne 0) { throw "bun install 失败" }
+}
+if ((Invoke-Native { bun run build }) -ne 0) { throw "bun run build 失败" }
 Set-Location $Root
 
 Write-Info "==> 3/6 准备 PyInstaller"
 if (-not (Test-Path $PyInstaller)) {
     Write-Info "    安装 pyinstaller..."
+    # pip 把进度/状态写到 stderr，EAP=Stop 下会误判 NativeCommandError 终止，
+    # 与 bun 同样处理：临时降级 EAP，用 $LASTEXITCODE 判断真实结果。
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
     & $VenvPython -m pip install pyinstaller
     if ($LASTEXITCODE -ne 0) {
         & $VenvPython -m pip install --index-url https://pypi.org/simple pyinstaller
     }
-    if ($LASTEXITCODE -ne 0) { throw "pyinstaller 安装失败" }
+    $pipExit = $LASTEXITCODE
+    $ErrorActionPreference = $prevEAP
+    if ($pipExit -ne 0) { throw "pyinstaller 安装失败" }
 }
 
 Write-Info "==> 4/6 打包 gateway sidecar（PyInstaller onedir）"
@@ -105,6 +128,9 @@ $HiddenImports = @(
 # discover / spawn / employee / employee_discover / knowledge / search /
 # long_task / text_to_speech 等按需发现工具（含 _cinematic 下划线子包）。
 
+# PyInstaller 同样大量写 stderr，临时降级 EAP 避免误判终止，改用退出码判断。
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 & $VenvPython -m PyInstaller --noconfirm --clean --onedir --windowed `
     --distpath "$DistDir" `
     --workpath "$WorkDir" `
@@ -121,7 +147,9 @@ $HiddenImports = @(
     @HiddenImports `
     @Excludes `
     scripts/desktop_sidecar_main.py
-if ($LASTEXITCODE -ne 0) { throw "PyInstaller 打包失败" }
+$pyinstallerExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEAP
+if ($pyinstallerExit -ne 0) { throw "PyInstaller 打包失败" }
 
 New-Item -ItemType Directory -Force -Path $BinariesDir | Out-Null
 # onedir：整体复制目录（可执行文件 + _internal\），sidecar 启动时按相对路径找依赖
@@ -137,19 +165,17 @@ if ($SkipTauri) {
 
 Write-Info "==> 5/6 准备 Tauri 壳依赖与图标（幂等）"
 Set-Location (Join-Path $Root "src-tauri")
-bun install --frozen-lockfile
-if ($LASTEXITCODE -ne 0) { bun install }
-if ($LASTEXITCODE -ne 0) { throw "bun install 失败" }
+if ((Invoke-Native { bun install --frozen-lockfile }) -ne 0) {
+    if ((Invoke-Native { bun install }) -ne 0) { throw "bun install 失败" }
+}
 if (-not (Test-Path "icons\icon.ico")) {
-    bun x tauri icon ..\images\codex_icon.png -o icons
-    if ($LASTEXITCODE -ne 0) { throw "图标生成失败" }
+    if ((Invoke-Native { bun x tauri icon ..\images\codex_icon.png -o icons }) -ne 0) { throw "图标生成失败" }
 }
 Set-Location $Root
 
 Write-Info "==> 6/6 Tauri 构建（release，NSIS 安装包）"
 Set-Location (Join-Path $Root "src-tauri")
-bun run tauri build --bundles nsis
-if ($LASTEXITCODE -ne 0) { throw "tauri build 失败" }
+if ((Invoke-Native { bun run tauri build --bundles nsis }) -ne 0) { throw "tauri build 失败" }
 Set-Location $Root
 
 # 只复制**当前版本**安装包到输出目录，而不是 `*.exe` 全量。

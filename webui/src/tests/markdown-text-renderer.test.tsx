@@ -123,7 +123,7 @@ describe("MarkdownTextRenderer", () => {
   it("renders markdown videos as inline players", () => {
     render(<MarkdownTextRenderer>![xianaibot-intro.mp4](/api/media/sig/video)</MarkdownTextRenderer>);
 
-    const video = screen.getByLabelText("Video attachment: xianaibot-intro.mp4");
+    const video = screen.getByLabelText("视频附件: xianaibot-intro.mp4");
     expect(video.tagName).toBe("VIDEO");
     expect(video).toHaveAttribute("src", "/api/media/sig/video");
     expect(video).toHaveAttribute("controls");
@@ -133,7 +133,7 @@ describe("MarkdownTextRenderer", () => {
   it("renders markdown links with file-looking names as file attachments", () => {
     render(<MarkdownTextRenderer>![index.html](/api/media/sig/html)</MarkdownTextRenderer>);
 
-    expect(screen.getByLabelText("File attachment")).toHaveTextContent("index.html");
+    expect(screen.getByLabelText("文件附件")).toHaveTextContent("index.html");
     expect(screen.queryByRole("img", { name: "index.html" })).not.toBeInTheDocument();
   });
 

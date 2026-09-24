@@ -331,7 +331,7 @@ describe("MessageBubble", () => {
     const { container } = render(<MessageBubble message={message} />);
 
     expect(screen.getByText("here is the clip")).toBeInTheDocument();
-    const video = screen.getByLabelText(/video attachment/i);
+    const video = screen.getByLabelText(/视频附件/);
     expect(video.tagName).toBe("VIDEO");
     expect(video).toHaveAttribute("src", "/api/media/sig/payload");
     expect(video).toHaveAttribute("preload", "auto");
@@ -485,7 +485,7 @@ describe("MessageBubble", () => {
 
     const { container } = render(<MessageBubble message={message} />);
 
-    expect(screen.getByLabelText("File attachment")).toHaveTextContent("index.html");
+    expect(screen.getByLabelText("文件附件")).toHaveTextContent("index.html");
     expect(container.querySelector("img")).not.toBeInTheDocument();
   });
 
@@ -508,6 +508,6 @@ describe("MessageBubble", () => {
 
     expect(screen.getByRole("button", { name: /查看图片: growth.svg/ })).toBeInTheDocument();
     expect(container.querySelector('img[src="/api/media/sig/svg"]')).toBeInTheDocument();
-    expect(screen.queryByLabelText("File attachment")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("文件附件")).not.toBeInTheDocument();
   });
 });

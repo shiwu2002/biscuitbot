@@ -98,7 +98,7 @@ class ToolContext:
     image_generation_provider_configs: dict[str, Any] | None = None  # 图像生成供应商配置
     provider_configs: dict[str, Any] | None = None  # 统一供应商配置（所有已配置厂商，含 model_extra）
     vision_provider_loader: Callable[[], Any] | None = None  # 视觉模型加载器
-    timezone: str = "UTC"  # 时区，默认 UTC
+    timezone: str = "Asia/Shanghai"  # 时区，默认北京时间
     file_state_store: Any = field(default=None)  # 文件状态存储
     workspace_sandbox: Any | None = None  # 工作区沙箱
     runtime_events: Any | None = None  # 运行时事件

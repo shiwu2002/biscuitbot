@@ -833,8 +833,8 @@ describe("AgentActivityCluster", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: /preparing edit/i })).toBeInTheDocument();
-    expect(screen.getByText("Preparing file edit…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /正在准备编辑/i })).toBeInTheDocument();
+    expect(screen.getByText("正在准备文件编辑…")).toBeInTheDocument();
   });
 
   it("shows the reason when a file edit fails", () => {

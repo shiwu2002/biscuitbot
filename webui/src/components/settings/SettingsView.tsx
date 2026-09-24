@@ -1381,7 +1381,7 @@ export function SettingsView({
     }
   };
 
-  /** 「模型」tab：二级切换条 + 各子区面板（LLM / 文生图 / 文生视频占位 / 视图理解 / ASR）。 */
+  /** 「模型」tab：二级切换条 + 各子区面板（LLM / 文生图 / 文生视频占位 / 视觉理解 / 语音识别 / 语音合成）。 */
   const renderModelsTab = (sub: SettingsSectionKey, settings: SettingsPayload) => (
     <div className="space-y-8">
       <SettingsSubTabs tabs={MODEL_SUB_TABS} active={sub} onSelect={selectSection} />
@@ -1769,9 +1769,9 @@ const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallbac
   { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM" },
   { key: "image", labelKey: "settings.subtabs.model.image", fallback: "文生图" },
   { key: "video", labelKey: "settings.subtabs.model.video", fallback: "文生视频" },
-  { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视图理解" },
-  { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "ASR" },
-  { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "TTS" },
+  { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视觉理解" },
+  { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "语音识别" },
+  { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "语音合成" },
 ];
 
 /** 系统 tab 二级切换条。 */
@@ -1890,7 +1890,7 @@ function SettingsSubTabs({
   return (
     <div
       data-testid="settings-subtabs"
-      className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:px-0"
+      className="inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-full bg-[hsl(var(--cyber-glow)/0.06)] p-1.5 ring-1 ring-[hsl(var(--cyber-glow)/0.14)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:flex-wrap sm:overflow-visible"
     >
       {tabs.map((tab) => {
         const selected = tab.key === active;
@@ -1901,10 +1901,10 @@ function SettingsSubTabs({
             aria-current={selected ? "true" : undefined}
             onClick={() => onSelect(tab.key)}
             className={cn(
-              "flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[13px] font-medium transition-[color,background-color,box-shadow] duration-200",
+              "flex h-8 shrink-0 items-center rounded-full px-3.5 text-[13px] transition-[color,background-color,box-shadow,font-weight] duration-200",
               selected
-                ? "bg-[hsl(var(--cyber-glow)/0.12)] text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.42),0_0_14px_hsl(var(--cyber-glow-soft)/0.25)]"
-                : "text-muted-foreground/78 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.2)]",
+                ? "bg-background font-semibold text-foreground shadow-[0_1px_3px_hsl(var(--cyber-glow)/0.22),0_0_0_1px_hsl(var(--cyber-glow)/0.3)]"
+                : "font-medium text-muted-foreground/75 hover:text-foreground",
             )}
           >
             {t(tab.labelKey, { defaultValue: tab.fallback })}

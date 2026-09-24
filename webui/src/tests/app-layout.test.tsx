@@ -1725,7 +1725,7 @@ describe("App layout", () => {
     expect(window.location.hash).toBe("#/settings?section=models");
 
     // 语音（ASR）是「模型」tab 的二级子区，经子区切换条进入
-    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "ASR" }));
+    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "语音识别" }));
 
     expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
     expect(window.location.hash).toBe("#/settings?section=voice");

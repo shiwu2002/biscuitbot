@@ -618,7 +618,7 @@ class AgentLoop:
             image_generation_provider_configs=self._image_generation_provider_configs,
             provider_configs=self._provider_configs,
             vision_provider_loader=self._vision_provider_loader,
-            timezone=self.context.timezone or "UTC",
+            timezone=self.context.timezone or "Asia/Shanghai",
             workspace_sandbox=self.workspace_scopes.sandbox_status,
             runtime_events=self.runtime_events,
         )
