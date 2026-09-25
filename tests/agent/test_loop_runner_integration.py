@@ -299,15 +299,35 @@ async def test_subagent_max_iterations_announces_existing_fallback(tmp_path, mon
     bus = MessageBus()
     provider = MagicMock()
     provider.get_default_model.return_value = "test-model"
-    provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
-        content="working",
-        tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
-    ))
+
+    calls = {"n": 0}
+
+    async def scripted_chat(*, messages, **kwargs):
+        # 每轮给一个「新」工具调用：完全相同的调用重复到第 4 次会被重复调用
+        # 护栏拦下（utils/runtime.repeated_tool_call_error），那就走不到
+        # max_iterations 这条路径了。
+        calls["n"] += 1
+        return LLMResponse(
+            content="working",
+            tool_calls=[
+                ToolCallRequest(
+                    id=f"call_{calls['n']}",
+                    name="list_dir",
+                    arguments={"path": f"dir{calls['n']}"},
+                )
+            ],
+        )
+
+    provider.chat_with_retry = scripted_chat
+    # 子 Agent 的 hook 声明流式（_SubagentHook.wants_streaming()），runner 走
+    # chat_stream_with_retry 分支，两个入口都要打桩。
+    provider.chat_stream_with_retry = scripted_chat
     mgr = SubagentManager(
         provider=provider,
         workspace=tmp_path,
         bus=bus,
         max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        max_iterations=3,  # 触到上限即可，不必真的跑默认的 200 轮
     )
     mgr._announce_result = AsyncMock()
 

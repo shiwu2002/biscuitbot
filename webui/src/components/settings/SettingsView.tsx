@@ -197,7 +197,13 @@ interface ModelConfigurationDraft {
   model: string;
 }
 
-type PendingRestartSection = "runtime" | "browser" | "image" | "video" | "vision" | "systemIo";
+type PendingRestartSection =
+  | "runtime"
+  | "browser"
+  | "image"
+  | "video"
+  | "vision"
+  | "systemIo";
 type PendingRestartSections = Record<PendingRestartSection, boolean>;
 type RestartAwarePayload = {
   requires_restart?: boolean;
@@ -1752,7 +1758,15 @@ const SETTINGS_NAV_ITEMS: Array<{ key: SettingsSectionKey; icon: LucideIcon; fal
 ];
 
 /** 「模型」父标签家族的 section（含未上线的文生视频占位）。 */
-const MODEL_TAB_KEYS: SettingsSectionKey[] = ["models", "providers", "image", "video", "vision", "voice", "tts"];
+const MODEL_TAB_KEYS: SettingsSectionKey[] = [
+  "models",
+  "providers",
+  "image",
+  "video",
+  "vision",
+  "voice",
+  "tts",
+];
 /** 「系统」父标签家族的 section。 */
 const SYSTEM_TAB_KEYS: SettingsSectionKey[] = ["runtime", "systemIo", "advanced"];
 
@@ -3576,7 +3590,6 @@ function VisionSettings({
     </div>
   );
 }
-
 function SystemIoSettings({
   settings,
   form,

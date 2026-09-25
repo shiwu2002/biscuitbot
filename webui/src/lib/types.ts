@@ -845,7 +845,9 @@ export interface SettingsPayload {
     duplicate_similarity_threshold: number;
   };
   requires_restart: boolean;
-  restart_required_sections?: Array<"runtime" | "browser" | "image" | "video" | "vision" | "systemIo">;
+  restart_required_sections?: Array<
+    "runtime" | "browser" | "image" | "video" | "vision" | "systemIo"
+  >;
   version?: {
     current: string;
   };
@@ -1265,18 +1267,20 @@ export interface Asset {
   channel?: string;
 }
 
-/** Base64-encoded image attached to an outbound ``message`` envelope.
+/** One attachment on an outbound ``message`` envelope.
  *
- * ``data_url`` must be a ``data:image/<png|jpeg|webp|gif>;base64,...`` string
- * — the server whitelists those MIME types and rejects everything else
- * (including SVG, to avoid an XSS surface). ``name`` is advisory: it's
- * preserved for the file on disk and surfaced as the placeholder label when
- * the session is replayed.
+ * 带 ``kind`` 判别字段，不做字段嗅探：``kind`` 缺失时服务端按 ``"data"`` 处理，
+ * 以兼容旧客户端。
+ *
+ * ``data`` —— 图片 / 视频 / 文档 / 音频。``data_url`` 的 MIME 必须落在服务端
+ * 四张白名单内（``image/*`` 显式排除 SVG 以免开出 XSS 面）。``name`` 是建议
+ * 值：落盘时用于取扩展名，会话回放时用作占位标签。
+ *
+ * 只有 ``data`` 一种：曾经的 ``{kind:"url"}``（「视频直链」附件）已下线——
+ * 链接不是一种附件类型，直接写在消息正文里即可，模型会自己读并按
+ * ``video-understanding`` 技能处理（服务端也仍然忽略旧客户端发来的 ``url`` 条目）。
  */
-export interface OutboundMedia {
-  data_url: string;
-  name?: string;
-}
+export type OutboundMedia = { kind: "data"; data_url: string; name?: string };
 
 export interface OutboundImageGeneration {
   enabled: true;

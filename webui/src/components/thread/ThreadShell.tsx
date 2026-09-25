@@ -12,7 +12,7 @@ import { ThreadHeader } from "@/components/thread/ThreadHeader";
 import { TraceLogPanel } from "@/components/thread/TraceLogPanel";
 import { StreamErrorNotice } from "@/components/thread/StreamErrorNotice";
 import { ThreadViewport, type ThreadViewportHandle } from "@/components/thread/ThreadViewport";
-import { useXianaibotStream, type SendImage, type SendOptions } from "@/hooks/useXianaibotStream";
+import { useXianaibotStream, type SendAttachment, type SendOptions } from "@/hooks/useXianaibotStream";
 import { useSessionHistory } from "@/hooks/useSessions";
 import {
   fetchInstalledCliApps,
@@ -185,7 +185,7 @@ function randomHeroGreetingKey(): (typeof HERO_GREETING_KEYS)[number] {
 
 interface PendingFirstMessage {
   content: string;
-  images?: SendImage[];
+  attachments?: SendAttachment[];
   options?: SendOptions;
 }
 
@@ -544,7 +544,7 @@ export function ThreadShell({
     if (!pending) return;
     pendingFirstRef.current = null;
     setScrollToBottomSignal((value) => value + 1);
-    send(pending.content, pending.images, pending.options);
+    send(pending.content, pending.attachments, pending.options);
     setBooting(false);
   }, [chatId, send]);
 
@@ -564,10 +564,10 @@ export function ThreadShell({
   }, [token]);
 
   const handleWelcomeSend = useCallback(
-    async (content: string, images?: SendImage[], options?: SendOptions) => {
+    async (content: string, attachments?: SendAttachment[], options?: SendOptions) => {
       if (booting) return;
       setBooting(true);
-      pendingFirstRef.current = { content, images, options: withWorkspaceScope(options) };
+      pendingFirstRef.current = { content, attachments, options: withWorkspaceScope(options) };
       const newId = await onCreateChat?.(workspaceScope, draftEmployee?.id);
       if (!newId) {
         pendingFirstRef.current = null;
@@ -578,9 +578,9 @@ export function ThreadShell({
   );
 
   const handleThreadSend = useCallback(
-    (content: string, images?: SendImage[], options?: SendOptions) => {
+    (content: string, attachments?: SendAttachment[], options?: SendOptions) => {
       setScrollToBottomSignal((value) => value + 1);
-      send(content, images, withWorkspaceScope(options));
+      send(content, attachments, withWorkspaceScope(options));
     },
     [send, withWorkspaceScope],
   );

@@ -464,91 +464,6 @@
     }
   }
 
-  /** Goal halo: pale sky blue (not ``--primary``, which often reads as neutral gray). */
-  @keyframes goal-shell-glow-breathe {
-    0%,
-    100% {
-      filter: drop-shadow(0 0 10px hsl(204 72% 52% / 0.22))
-        drop-shadow(0 0 24px hsl(199 80% 58% / 0.14));
-    }
-    50% {
-      filter: drop-shadow(0 0 17px hsl(204 78% 48% / 0.32))
-        drop-shadow(0 0 38px hsl(199 85% 55% / 0.2));
-    }
-  }
-  .goal-shell-glow {
-    animation: goal-shell-glow-breathe 4.8s ease-in-out infinite;
-  }
-  @keyframes goal-shell-glow-breathe-dark {
-    0%,
-    100% {
-      filter: drop-shadow(0 0 12px hsl(198 90% 72% / 0.28))
-        drop-shadow(0 0 28px hsl(195 95% 65% / 0.16));
-    }
-    50% {
-      filter: drop-shadow(0 0 20px hsl(198 95% 78% / 0.42))
-        drop-shadow(0 0 42px hsl(195 100% 70% / 0.24));
-    }
-  }
-  .dark .goal-shell-glow {
-    animation-name: goal-shell-glow-breathe-dark;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .goal-shell-glow {
-      animation: none;
-      filter: drop-shadow(0 0 14px hsl(204 70% 50% / 0.24));
-    }
-    .dark .goal-shell-glow {
-      filter: drop-shadow(0 0 14px hsl(198 88% 70% / 0.32));
-    }
-  }
-
-  @keyframes cli-app-linked-sheen {
-    0% {
-      transform: translateX(-140%) skewX(-14deg);
-      opacity: 0;
-    }
-    18% {
-      opacity: 0.7;
-    }
-    72%,
-    100% {
-      transform: translateX(140%) skewX(-14deg);
-      opacity: 0;
-    }
-  }
-  .cli-app-linked-chip::after {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    pointer-events: none;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      hsl(var(--foreground) / 0.14) 46%,
-      hsl(var(--background) / 0.7) 50%,
-      hsl(var(--foreground) / 0.12) 54%,
-      transparent 100%
-    );
-    animation: cli-app-linked-sheen 1.25s ease-out 1;
-  }
-  .dark .cli-app-linked-chip::after {
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      hsl(var(--foreground) / 0.12) 46%,
-      hsl(var(--background) / 0.5) 50%,
-      hsl(var(--foreground) / 0.1) 54%,
-      transparent 100%
-    );
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .cli-app-linked-chip::after {
-      animation: none;
-      content: none;
-    }
-  }
-
   /* Subtle scrollbar that doesn't fight the dark background. */
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -776,55 +691,6 @@
       inset 0 1px 0 hsl(0 0% 100% / 0.25) !important;
   }
 
-  .cyber-progress-bar {
-    background: linear-gradient(
-      90deg,
-      hsl(200 90% 48%),
-      hsl(190 98% 62%)
-    );
-    box-shadow:
-      0 0 10px hsl(var(--cyber-glow-soft) / 0.55),
-      0 0 20px hsl(var(--cyber-glow) / 0.25);
-  }
-
-  @keyframes cyber-core-pulse {
-    0%,
-    100% {
-      transform: scale(1);
-      filter: drop-shadow(0 0 20px hsl(var(--cyber-glow-soft) / 0.45))
-        drop-shadow(0 0 40px hsl(var(--cyber-glow) / 0.2));
-    }
-    50% {
-      transform: scale(1.03);
-      filter: drop-shadow(0 0 28px hsl(var(--cyber-glow-soft) / 0.55))
-        drop-shadow(0 0 56px hsl(var(--cyber-glow) / 0.28));
-    }
-  }
-  @keyframes cyber-ring-spin {
-    from {
-      transform: rotate(0deg);
-    }
-    to {
-      transform: rotate(360deg);
-    }
-  }
-  .cyber-core-orb {
-    animation: cyber-core-pulse 4.5s ease-in-out infinite;
-  }
-  .cyber-core-ring {
-    animation: cyber-ring-spin 18s linear infinite;
-  }
-  .cyber-core-ring-reverse {
-    animation: cyber-ring-spin 24s linear infinite reverse;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .cyber-core-orb,
-    .cyber-core-ring,
-    .cyber-core-ring-reverse {
-      animation: none;
-    }
-  }
-
   .cyber-status-dot-running {
     background: hsl(152 78% 52%);
     box-shadow:
@@ -854,55 +720,6 @@
   }
 
   /* ===== 未来科技感增强效果 ===== */
-
-  /* 霓虹文字：电光青蓝辉光 */
-  .cyber-text-glow {
-    color: hsl(var(--cyber-glow));
-    text-shadow:
-      0 0 8px hsl(var(--cyber-glow) / 0.55),
-      0 0 18px hsl(var(--cyber-glow-soft) / 0.35);
-  }
-
-  /* 全息渐变边框：随时间流动的彩虹光边 */
-  .cyber-holo-border {
-    position: relative;
-    background-clip: padding-box;
-  }
-  .cyber-holo-border::before {
-    content: "";
-    position: absolute;
-    inset: -1px;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      120deg,
-      hsl(var(--cyber-glow)),
-      hsl(var(--cyber-violet)),
-      hsl(var(--cyber-magenta)),
-      hsl(var(--cyber-glow))
-    );
-    background-size: 300% 100%;
-    -webkit-mask:
-      linear-gradient(#000 0 0) content-box,
-      linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-    animation: cyber-holo-shift 6s linear infinite;
-  }
-  @keyframes cyber-holo-shift {
-    0% {
-      background-position: 0% 50%;
-    }
-    100% {
-      background-position: 300% 50%;
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .cyber-holo-border::before {
-      animation: none;
-    }
-  }
 
   /* 扫描线叠加：极淡的横向移动光带，用于面板顶部装饰 */
   .cyber-scanline {
@@ -956,41 +773,6 @@
     transform: scale(0.97);
   }
 
-  /* 数据流光带：从左到右扫过的微光，用于活跃行/卡片 */
-  .cyber-data-stream {
-    position: relative;
-    overflow: hidden;
-  }
-  .cyber-data-stream::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(
-      110deg,
-      transparent 30%,
-      hsl(var(--cyber-glow) / 0.14) 50%,
-      transparent 70%
-    );
-    transform: translateX(-120%);
-    animation: cyber-stream-pass 3.5s ease-in-out infinite;
-  }
-  @keyframes cyber-stream-pass {
-    0%,
-    100% {
-      transform: translateX(-120%);
-    }
-    50% {
-      transform: translateX(120%);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .cyber-data-stream::after {
-      animation: none;
-      content: none;
-    }
-  }
-
   /* 终端式等宽标签：用于技术信息、ID、状态码 */
   .cyber-mono-label {
     font-family: var(--font-mono, "JetBrains Mono", "Fira Code", monospace);
@@ -998,20 +780,6 @@
     text-transform: uppercase;
     font-size: 0.6875rem;
     font-weight: 600;
-  }
-
-  /* 六边形/切角面板：未来感容器 */
-  .cyber-clipped-panel {
-    clip-path: polygon(
-      0 8px,
-      8px 0,
-      calc(100% - 8px) 0,
-      100% 8px,
-      100% calc(100% - 8px),
-      calc(100% - 8px) 100%,
-      8px 100%,
-      0 calc(100% - 8px)
-    );
   }
 
   /* 激活态左侧光柱：用于导航选中行 */

@@ -1889,7 +1889,8 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert body["agent"]["provider"] == "openai"
         assert body["agent"]["model_preset"] == "default"
         assert body["agent"]["max_tokens"] == 8192
-        assert body["agent"]["timezone"] == "UTC"
+        # 时区默认值是北京时间（config/schema.py），不是 UTC
+        assert body["agent"]["timezone"] == "Asia/Shanghai"
         assert body["agent"]["tool_hint_max_length"] == 40
         presets = {preset["name"]: preset for preset in body["model_presets"]}
         assert presets["default"]["active"] is True
@@ -1910,11 +1911,12 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert body["web_search"]["max_results"] == 5
         assert body["web"]["fetch"]["use_jina_reader"] is True
         search_providers = {provider["name"]: provider for provider in body["web_search"]["providers"]}
+        # 下拉只留实测可用的免费源（settings_api 的 _WEB_SEARCH_PROVIDER_OPTIONS）：
+        # brave/tavily/jina/kagi/exa/searxng/olostep/volcengine 已从 WebUI 移除，
+        # 手动写进 config.json 仍会被 web.py 执行。
+        assert set(search_providers) == {"duckduckgo", "bocha"}
         assert search_providers["duckduckgo"]["credential"] == "none"
-        assert search_providers["exa"]["credential"] == "api_key"
         assert search_providers["bocha"]["credential"] == "api_key"
-        assert search_providers["volcengine"]["credential"] == "api_key"
-        assert search_providers["searxng"]["credential"] == "base_url"
         assert body["image_generation"]["enabled"] is False
         assert body["image_generation"]["provider"] == "volcengine"
         assert body["image_generation"]["provider_configured"] is False
@@ -2043,10 +2045,21 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         )
         assert duplicate_preset.status_code == 409
 
-        search_updated = await _http_get(
+        # 下拉外的 provider 不允许切换为它：WebUI 只保留实测可用的免费源
+        # （settings_api._WEB_SEARCH_PROVIDER_OPTIONS），brave/tavily/jina/
+        # kagi/exa/searxng/olostep/volcengine 已从下拉移除。
+        removed_provider = await _http_get(
             "http://127.0.0.1:"
             f"{port}/api/settings/web-search/update?provider=searxng"
-            "&base_url=https%3A%2F%2Fsearch.example.com"
+            "&base_url=https%3A%2F%2Fsearch.example.com",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert removed_provider.status_code == 400
+
+        search_updated = await _http_get(
+            "http://127.0.0.1:"
+            f"{port}/api/settings/web-search/update?provider=bocha"
+            "&api_key=bocha-secret"
             "&max_results=8&timeout=45&use_jina_reader=false",
             headers={"Authorization": "Bearer tok"},
         )
@@ -2054,9 +2067,10 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         search_body = search_updated.json()
         assert search_body["requires_restart"] is True
         assert search_body["restart_required_sections"] == ["browser", "runtime"]
-        assert search_body["web_search"]["provider"] == "searxng"
-        assert search_body["web_search"]["api_key_hint"] is None
-        assert search_body["web_search"]["base_url"] == "https://search.example.com"
+        assert search_body["web_search"]["provider"] == "bocha"
+        assert search_body["web_search"]["api_key_hint"] == "boch••••cret"
+        # api_key 型 provider 不保留 base_url；空值在载荷里回显为 None
+        assert search_body["web_search"]["base_url"] is None
         assert search_body["web_search"]["max_results"] == 8
         assert search_body["web"]["fetch"]["use_jina_reader"] is False
 
@@ -2134,9 +2148,9 @@ async def test_settings_api_returns_safe_subset_and_updates_whitelist(
         assert saved.providers.deepseek.api_key == "sk-ds-next"
         assert saved.providers.deepseek.api_base == "https://api.deepseek.com"
         assert saved.providers.ollama.api_base == "http://localhost:11434/v1"
-        assert saved.tools.web.search.provider == "searxng"
-        assert saved.tools.web.search.api_key == ""
-        assert saved.tools.web.search.base_url == "https://search.example.com"
+        assert saved.tools.web.search.provider == "bocha"
+        assert saved.tools.web.search.api_key == "bocha-secret"
+        assert saved.tools.web.search.base_url == ""
         assert saved.tools.web.search.max_results == 8
         assert saved.tools.web.search.timeout == 45
         assert saved.tools.web.fetch.use_jina_reader is False

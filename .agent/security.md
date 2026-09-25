@@ -4,11 +4,11 @@ The agent operates with significant power (file system, shell, web). The followi
 
 ## Workspace Restriction
 
-Filesystem tools (`read_file`, `write_file`, `edit_file`, `list_dir`) resolve paths through `_resolve_path` (`agent/tools/filesystem.py`), which enforces that the resolved path must lie under `allowed_dir` (typically the configured workspace), plus the media upload directory (`get_media_dir()`) and any `extra_allowed_dirs`.
+Filesystem tools (`read_file`, `write_file`, `edit_file`, `list_dir`, and any tool subclassing `_FsTool`) resolve paths through `_FsTool._resolve` (`agent/tools/filesystem.py` → `agent/tools/path_utils.py::resolve_workspace_path`), which enforces that the resolved path must lie under `allowed_dir` (typically the configured workspace), plus the media upload directory (`get_media_dir()`) and any `extra_allowed_dirs`.
 
 Shell execution (`ExecTool`, `agent/tools/shell.py`) also respects `restrict_to_workspace`: if enabled and `working_dir` is outside the workspace, the command is rejected before execution.
 
-**Rule**: Any new path-handling logic must go through `_resolve_path` or perform an equivalent `allowed_dir` check.
+**Rule**: Any new path-handling logic must go through `_FsTool._resolve` (inherit `_FsTool`) or perform an equivalent `allowed_dir` check.
 
 ## SSRF Protection
 

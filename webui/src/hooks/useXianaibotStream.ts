@@ -21,6 +21,8 @@ import type {
   ToolProgressEvent,
   UIImage,
   UIFileEdit,
+  UIMediaAttachment,
+  UIMediaKind,
   UIMessage,
   UITurnPhase,
   WorkspaceScopePayload,
@@ -410,15 +412,17 @@ function findFileEditTraceIndex(
  * separately (e.g. via ``fetchWebuiThread``) since the server only replays
  * live events.
  */
-/** Payload passed to ``send`` when the user attaches one or more images.
+/** Payload passed to ``send`` when the user attaches one or more files.
  *
  * ``media`` is handed to the wire client verbatim; ``preview`` powers the
- * optimistic user bubble (blob URLs so the preview appears before the server
- * acks the frame). Keeping the two separate lets the bubble re-use the local
- * blob URL even after the server persists the file under a different name. */
-export interface SendImage {
+ * optimistic user bubble. ``kind`` decides **where** that preview lands: 图片
+ * 进 ``message.images``（缩略图行 + 灯箱），其余进 ``message.media``
+ * （``AttachmentTile`` 的播放器 / 下载 chip）。不靠 URL 嗅探是因为文档的
+ * ``data:application/pdf;base64,…`` 载荷里含 ``.``，按扩展名判定会读错。 */
+export interface SendAttachment {
   media: OutboundMedia;
   preview: UIImage;
+  kind: UIMediaKind;
 }
 
 export interface SendOptions {
@@ -446,7 +450,7 @@ export function useXianaibotStream(
   traces: TraceEntry[];
   /** 清空当前已收集的追踪日志条目。 */
   clearTraces: () => void;
-  send: (content: string, images?: SendImage[], options?: SendOptions) => void;
+  send: (content: string, attachments?: SendAttachment[], options?: SendOptions) => void;
   transcribeAudio: (dataUrl: string, options?: { durationMs?: number }) => Promise<string>;
   stop: () => void;
   setMessages: React.Dispatch<React.SetStateAction<UIMessage[]>>;
@@ -1065,16 +1069,21 @@ export function useXianaibotStream(
   ]);
 
   const send = useCallback(
-    (content: string, images?: SendImage[], options?: SendOptions) => {
+    (content: string, attachments?: SendAttachment[], options?: SendOptions) => {
       if (!chatId) return;
-      const hasImages = !!images && images.length > 0;
-      // Text is optional when images are attached — the agent will still see
-      // the image blocks via ``media`` paths.
-      if (!hasImages && !content.trim()) return;
+      const hasAttachments = !!attachments && attachments.length > 0;
+      // Text is optional when files are attached — the agent will still see
+      // the image / video blocks via ``media`` paths.
+      if (!hasAttachments && !content.trim()) return;
 
       flushPendingStreamEvents();
       const turnId = crypto.randomUUID();
-      const previews = hasImages ? images!.map((i) => i.preview) : undefined;
+      // 图片与其余附件分两路进乐观气泡：图片走缩略图行（含灯箱），视频与文档
+      // 走附件区（播放器 / 下载 chip）。
+      const previews = attachments?.filter((a) => a.kind === "image").map((i) => i.preview);
+      const bubbleMedia: UIMediaAttachment[] | undefined = attachments
+        ?.filter((a) => a.kind !== "image")
+        .map((a) => ({ kind: a.kind, url: a.preview.url, name: a.preview.name }));
       setMessages((prev) => {
         buffer.current = null;
         activeAssistantRef.current = null;
@@ -1090,7 +1099,8 @@ export function useXianaibotStream(
             turnPhase: "user",
             turnSeq: 0,
             createdAt: Date.now(),
-            ...(previews ? { images: previews } : {}),
+            ...(previews?.length ? { images: previews } : {}),
+            ...(bubbleMedia?.length ? { media: bubbleMedia } : {}),
             ...(options?.cliApps?.length ? { cliApps: options.cliApps } : {}),
             ...(options?.mcpPresets?.length ? { mcpPresets: options.mcpPresets } : {}),
           },
@@ -1099,7 +1109,7 @@ export function useXianaibotStream(
       // Mark streaming immediately so the UI shows the loading indicator
       // right away, before the first delta arrives from the server.
       setIsStreaming(true);
-      const wireMedia = hasImages ? images!.map((i) => i.media) : undefined;
+      const wireMedia = hasAttachments ? attachments!.map((i) => i.media) : undefined;
       client.sendMessage(chatId, content, wireMedia, { ...options, turnId });
     },
     [chatId, clearActivitySegment, client, flushPendingStreamEvents],

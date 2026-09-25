@@ -69,7 +69,7 @@ CLI 子命令：`onboard`、`serve`、`gateway`、`sidecar`、`agent`、`status`
 - **MCP cancel scope 是 task-local 的**：永远不要在当前 task 之外 `stack.aclose()` 或调用 `connect_mcp_servers`（会在别的 task 进入 anyio cancel scope → `RuntimeError` + 泄漏）。tracked as `AgentLoop._mcp_owner_task`；跨 task 时用 deferred close（`_mcp_deferred_stacks`）/ deferred reconnect（`_mcp_reconnect_requests`）。详见 `docs/architecture.md` §8 与 `.agent/gotchas.md`。
 - **site-packages 遮蔽**：`.venv` 里装的 xianaibot 可能是普通（非 editable）副本，console script 会走 site-packages 旧代码 → 新路由 404。跑 `xianaibot gateway` 要加 `PYTHONPATH=<repo>`，或用 `pip install -e . --no-build-isolation`。
 - **React hooks 顺序**：`webui/src` 中 hooks 必须全部放在条件 return 之前，否则触发 React #310「Rendered more hooks」白屏（历史根因在 `ChatList.tsx`）。
-- **Workspace 边界 / SSRF**：任何新路径处理须过 `_resolve_path`（`agent/tools/filesystem.py`）；工具内禁止直接 `httpx.get`/`requests.get`，须过 `validate_url_target`（`security/network.py`）。这些结构性访问控制**不**受 `guard_level` 门控。
+- **Workspace 边界 / SSRF**：任何新路径处理须过 `_FsTool._resolve`（`agent/tools/filesystem.py:102` → `agent/tools/path_utils.py::resolve_workspace_path`）——新工具的正确姿势是继承 `_FsTool` 而不是自己拼路径；工具内禁止直接 `httpx.get`/`requests.get`，须过 `validate_url_target`（`security/network.py`）。这些结构性访问控制**不**受 `guard_level` 门控。
 
 ## 设计原则（`.agent/design.md`）
 

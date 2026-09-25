@@ -4,6 +4,7 @@ import difflib
 import hashlib
 import mimetypes
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,12 @@ class FileToolsConfig(Base):
     """Filesystem tools configuration."""
 
     enable: bool = True  # built-in file tools on by default
+
+
+# 已打开的 PDF 页文本源：(总页数, 取第 i 页文本的回调, 释放资源回调)。
+# pymupdf 与 pypdf 的 API 形态不同，用这个形状把两者的差异收敛到各自的
+# 打开函数里，页范围解析与截断格式化两种后端共用。
+_PdfSource = tuple[int, Callable[[int], str], Callable[[], None]]
 
 
 class _FsTool(Tool):
@@ -339,25 +346,66 @@ class ReadFileTool(_FsTool):
             return f"Error: 读取 {path} 失败（{e}）。请确认文件存在、不是目录且路径有效"
 
     def _read_pdf(self, fp: Path, pages: str | None) -> str:
-        try:
-            import fitz  # pymupdf
-        except ImportError:
-            return "Error: PDF reading requires pymupdf. Install with: pip install pymupdf"
+        """读取 PDF 文本，支持页范围。
 
+        优先 pymupdf（``fitz``，排版还原更好），缺失时**回退 pypdf**。桌面端
+        sidecar 打包明确排除了 ``pymupdf``（体积），而 ``pypdf`` 是核心依赖、
+        一直服务于对话附件抽取——没有这条回退就会出现「附件里的 PDF 读得出
+        内容、工作区里的 PDF 读不出来」的不一致。
+        """
+        try:
+            import fitz  # pymupdf（惰性导入，避免拖慢启动）
+        except ImportError:
+            opened = self._open_pdf_with_pypdf(fp)
+        else:
+            opened = self._open_pdf_with_fitz(fp, fitz)
+        if isinstance(opened, str):  # 打开失败：已是可直接返回的中文错误文本
+            return opened
+
+        total_pages, page_text, close = opened
+        try:
+            return self._format_pdf_pages(fp, pages, total_pages, page_text)
+        finally:
+            close()
+
+    def _open_pdf_with_fitz(self, fp: Path, fitz: Any) -> _PdfSource | str:
+        """用 pymupdf 打开 PDF，返回 ``(总页数, 取页文本函数, 关闭函数)``。"""
         try:
             doc = fitz.open(str(fp))
         except Exception as e:
             return f"Error reading PDF: {e}"
+        return len(doc), lambda i: doc[i].get_text(), doc.close
 
-        total_pages = len(doc)
+    def _open_pdf_with_pypdf(self, fp: Path) -> _PdfSource | str:
+        """用 pypdf 打开 PDF（pymupdf 缺失时的兜底）。"""
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            return (
+                "Error: PDF 读取需要 pymupdf 或 pypdf，"
+                "可执行 pip install pymupdf 安装"
+            )
+        try:
+            reader = PdfReader(fp)
+            total_pages = len(reader.pages)
+        except Exception as e:
+            return f"Error reading PDF: {e}"
+        return total_pages, lambda i: reader.pages[i].extract_text() or "", lambda: None
+
+    def _format_pdf_pages(
+        self,
+        fp: Path,
+        pages: str | None,
+        total_pages: int,
+        page_text: Callable[[int], str],
+    ) -> str:
+        """把取页文本函数的结果格式化为带页标记的文本（两种后端共用）。"""
         if pages:
             try:
                 start, end = _parse_page_range(pages, total_pages)
             except (ValueError, IndexError):
-                doc.close()
                 return f"Error: Invalid page range '{pages}'. Use format like '1-5'."
             if start > end or start >= total_pages:
-                doc.close()
                 return f"Error: Page range '{pages}' is out of bounds (document has {total_pages} pages)."
         else:
             start = 0
@@ -368,11 +416,9 @@ class ReadFileTool(_FsTool):
 
         parts: list[str] = []
         for i in range(start, end + 1):
-            page = doc[i]
-            text = page.get_text().strip()
+            text = (page_text(i) or "").strip()
             if text:
                 parts.append(f"--- Page {i + 1} ---\n{text}")
-        doc.close()
 
         if not parts:
             return f"(PDF has no extractable text: {fp})"

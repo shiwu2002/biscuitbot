@@ -1071,22 +1071,6 @@
         "edit": "編輯引導",
         "drag": "拖曳排序"
       },
-      "attachImage": "附加圖片",
-      "imageMode": {
-        "label": "圖片生成",
-        "toggle": "切換圖片生成模式",
-        "placeholder": "描述或編輯圖片…",
-        "aspectAria": "圖片畫幅",
-        "aspectLabel": "圖片畫幅",
-        "aspect": {
-          "auto": "自動",
-          "1_1": "方形 1:1",
-          "3_4": "直式 3:4",
-          "9_16": "故事版 9:16",
-          "4_3": "橫式 4:3",
-          "16_9": "寬螢幕 16:9"
-        }
-      },
       "tools": {
         "search": "搜尋",
         "reason": "推理",
@@ -1184,12 +1168,16 @@
       "encoding": "處理中…",
       "remove": "移除附件",
       "normalizedSizeHint": "{{orig}} → {{current}}（已自動壓縮）",
+      "attachments": "新增附件（文件／影片／音訊／圖片）",
+      "attachmentNeedsIdleTurn": "影片／文件附件較大，請等目前回覆結束後再送出",
       "imageRejected": {
         "unsupported_type": "不支援的檔案類型",
         "too_many_images": "每則訊息最多 {{max}} 張圖片",
+        "too_many_videos": "每則訊息最多 {{max}} 個影片",
+        "too_many_documents": "每則訊息最多 {{max}} 份文件或音訊",
         "magic_mismatch": "檔案看起來不像真正的圖片",
         "decode_failed": "無法解碼這張圖片",
-        "too_large": "圖片太大，請換一張小一點的",
+        "too_large": "附件容量超限：單一影片最大 18 MB，本則訊息附件合計最大 24 MB",
         "io": "無法讀取這個檔案"
       },
       "mentions": {

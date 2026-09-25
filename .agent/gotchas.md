@@ -16,7 +16,7 @@ Example valid usage:
 ## Windows Compatibility
 
 XiaNaiBot explicitly supports Windows. Key differences to keep in mind:
-- `ExecTool` uses `cmd /c` on Windows instead of `sh -c` (`shell.py`).
+- `ExecTool` uses `cmd /c` on Windows for **single-line** commands, but `powershell -NoProfile -Command` for **multi-line** ones (`shell.py::_spawn`). In PowerShell, bare `curl` is the `Invoke-WebRequest` alias and rejects `-o`; shell one-liners handed to the model must therefore spell it `curl.exe` (e.g. the download step in the `video-understanding` skill).
 - `cli/commands.py` forces `sys.stdout`/`stderr` to UTF-8 on startup to handle emoji and multilingual input.
 - MCP stdio server commands are normalized for Windows path separators (`mcp.py`).
 - Always use `pathlib.Path` for path manipulation; do not assume `/` separators.
@@ -34,6 +34,8 @@ Anything written into memory, session history, or prompt inputs can be replayed 
 ## Skills as Extension Point
 
 Built-in skills live in `xianaibot/skills/` (markdown + YAML frontmatter format). Agent capabilities that are "know-how" rather than code should be added as skills, not hardcoded into the agent loop. External skills can be published to and installed from ClawHub.
+
+Do **not** declare a soft dependency (e.g. `ffmpeg`) as `metadata.xianaibot.requires.bins`: `list_skills(filter_unavailable=True)` drops any skill whose bins are missing, so `build_skills_summary` never emits even the `(unavailable: CLI: …)` line — the machine that most needs the "what to do without it" guidance is the one that can't see the skill at all. Probe the binary with `exec` inside the skill body and degrade honestly (`video-understanding` is the reference example).
 
 ## Atomic Session Writes
 

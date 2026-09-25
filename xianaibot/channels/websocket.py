@@ -238,13 +238,18 @@ def _parse_envelope(raw: str) -> dict[str, Any] | None:
     return data
 
 
-# 单消息媒体限制。服务端限制略宽于客户端 ``Worker`` 归一化目标（6 MB）——
-# 容忍客户端冗余，但仍将总入口量限制在 ``_MAX_IMAGES_PER_MESSAGE * _MAX_IMAGE_BYTES``，
-# 该值完全在 ``max_message_bytes`` 范围内。
+# 单消息媒体限制。逐项上限之外还有一条**总量**预算：逐项限制的组合是可达的
+# （1×视频 + 4×图片），而 base64 会把原始字节放大 4/3，一旦超过
+# ``max_message_bytes``，websockets 库会在进入本模块的 handler **之前**以
+# 协议级 close 断开连接——前端只会看到掉线，拿不到任何可本地化的错误文案。
+# 因此所有被接受的组合都必须装得进一帧：24 MB 原始 ≈ 33 MB base64 < 36 MiB。
 _MAX_IMAGES_PER_MESSAGE = 4
-_MAX_IMAGE_BYTES = 8 * 1024 * 1024
+_MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 与前端 Worker 归一化目标（6 MB）一致
 _MAX_VIDEOS_PER_MESSAGE = 1
-_MAX_VIDEO_BYTES = 20 * 1024 * 1024
+_MAX_VIDEO_BYTES = 18 * 1024 * 1024  # 18 MB → base64 ≈ 24.7 MB，仍低于 DashScope 的 ~25 MB 护栏
+_MAX_DOCS_PER_MESSAGE = 3
+_MAX_DOC_BYTES = 20 * 1024 * 1024  # 与知识库上传保持一致
+_MAX_TOTAL_UPLOAD_BYTES = 24 * 1024 * 1024  # 本条消息所有内联附件原始字节之和
 
 # 图片 MIME 白名单——与 Composer 的 ``accept`` 列表一致。显式排除 SVG
 # 以避免嵌入脚本的 XSS 攻击面。
@@ -259,9 +264,39 @@ _VIDEO_MIME_ALLOWED: frozenset[str] = frozenset({
     "video/mp4",
     "video/webm",
     "video/quicktime",
+    "video/x-m4v",
 })
 
-_UPLOAD_MIME_ALLOWED: frozenset[str] = _IMAGE_MIME_ALLOWED | _VIDEO_MIME_ALLOWED
+# 文档白名单——下游 ``utils.document.extract_text`` 本来就能解析这些格式
+# （pypdf / python-docx / openpyxl / python-pptx），此前只是被入口白名单挡住，
+# 导致 PDF、Word 附件根本递不到抽取器。
+_DOCUMENT_MIME_ALLOWED: frozenset[str] = frozenset({
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/zip",
+})
+
+# 音频白名单——与转写链路（``audio/transcription.py``）接受的上传格式对齐。
+_AUDIO_MIME_ALLOWED: frozenset[str] = frozenset({
+    "audio/mpeg",
+    "audio/mp4",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/webm",
+    "audio/ogg",
+    "audio/x-m4a",
+    "audio/aac",
+})
+
+_UPLOAD_MIME_ALLOWED: frozenset[str] = (
+    _IMAGE_MIME_ALLOWED | _VIDEO_MIME_ALLOWED | _DOCUMENT_MIME_ALLOWED | _AUDIO_MIME_ALLOWED
+)
 
 _DATA_URL_MIME_RE = re.compile(r"^data:([^;,]+)(?:;[^,]*)*;base64,", re.DOTALL)
 
@@ -274,6 +309,19 @@ def _extract_data_url_mime(url: str) -> str | None:
     if not m:
         return None
     return m.group(1).strip().lower() or None
+
+
+def _estimate_data_url_bytes(data_url: str) -> int:
+    """按 data URL 长度估算解码后的原始字节数。
+
+    口径与 ``utils.media_decode.estimate_decoded_size`` 一致（base64 每 4 字符
+    约 3 字节），但直接作用在整条 URL 上，从而避免为了量一次长度而把几十 MB
+    的 payload 切片复制一份。
+    """
+    comma = data_url.find(",")
+    if comma < 0:
+        return 0
+    return (len(data_url) - comma - 1) * 3 // 4 + 1
 
 
 def _is_websocket_upgrade(request: WsRequest) -> bool:
@@ -618,7 +666,7 @@ class WebSocketChannel(BaseChannel):
 
     # -- 入站 WebSocket 信封 -----------------------------------------------
 
-    def _save_envelope_media(
+    async def _save_envelope_media(
         self,
         media: list[Any],
     ) -> tuple[list[str], str | None]:
@@ -630,26 +678,56 @@ class WebSocketChannel(BaseChannel):
         文件将被删除，避免部分入口泄露为孤儿文件。
         ``reason`` 是适合 UI 本地化的简短稳定令牌。
 
-        数据结构：``list[{"data_url": str, "name"?: str | None}]``。
+        条目形状（缺失 ``kind`` 视为 ``"data"``，兼容旧客户端）：
+
+        - ``{"kind": "data", "data_url": str, "name"?: str}`` —— 图片 / 视频 /
+          文档 / 音频，落盘到 ``media/websocket/``。
+        - ``{"kind": "url", "url": str, "name"?: str}`` —— 历史客户端的
+          **视频直链**条目。该功能已下线（界面上不再有直链入口），这里**整条
+          忽略**：既不落盘也不进会话。链接直接写在消息正文里即可——模型会读到
+          它并按 ``video-understanding`` 技能处理。
         """
+        # -- 计数与总预算：全部在任何落盘之前完成，避免先写后回滚 --
         image_count = 0
         video_count = 0
+        doc_count = 0
+        planned_bytes = 0
         for item in media:
-            mime = _extract_data_url_mime(item.get("data_url", "")) if isinstance(item, dict) else None
+            if not isinstance(item, dict):
+                return [], "malformed"
+            if item.get("kind", "data") == "url":
+                continue  # 已下线的直链条目：忽略（见上面的条目说明）
+            data_url = item.get("data_url")
+            mime = _extract_data_url_mime(data_url) if isinstance(data_url, str) else None
             if mime in _VIDEO_MIME_ALLOWED:
                 video_count += 1
             elif mime in _IMAGE_MIME_ALLOWED:
                 image_count += 1
+            elif mime in _DOCUMENT_MIME_ALLOWED or mime in _AUDIO_MIME_ALLOWED:
+                doc_count += 1
+            # 未知/畸形 MIME 不在这里报错，交给下面的逐项循环给出更准确的
+            # reason（"mime" / "decode"）；此处只需不把它计入预算。
+            if mime is not None and isinstance(data_url, str):
+                planned_bytes += _estimate_data_url_bytes(data_url)
         if image_count > _MAX_IMAGES_PER_MESSAGE:
             return [], "too_many_images"
         if video_count > _MAX_VIDEOS_PER_MESSAGE:
             return [], "too_many_videos"
+        if doc_count > _MAX_DOCS_PER_MESSAGE:
+            return [], "too_many_documents"
+        # 逐项限额的组合是可达的（1 视频 + 4 图片），而 base64 会把原始字节放大
+        # 4/3；一旦整帧超过 ``max_message_bytes``，websockets 库会在进入本模块
+        # 之前以协议级 close 断开，前端拿不到任何可本地化的错误文案。总量预算
+        # 保证所有被接受的组合都装得进一帧。
+        if planned_bytes > _MAX_TOTAL_UPLOAD_BYTES:
+            return [], "too_large"
 
         media_dir = get_media_dir("websocket")
         paths: list[str] = []
+        written: list[str] = []  # 本次已落盘的文件，失败时逐个回滚
 
         def _abort(reason: str) -> tuple[list[str], str]:
-            for p in paths:
+            for p in written:
                 try:
                     Path(p).unlink(missing_ok=True)
                 except OSError as exc:
@@ -661,6 +739,10 @@ class WebSocketChannel(BaseChannel):
         for item in media:
             if not isinstance(item, dict):
                 return _abort("malformed")
+
+            if item.get("kind", "data") == "url":
+                continue  # 已下线的直链条目：忽略（与上面的计数循环同一策略）
+
             data_url = item.get("data_url")
             if not isinstance(data_url, str) or not data_url:
                 return _abort("malformed")
@@ -669,11 +751,17 @@ class WebSocketChannel(BaseChannel):
                 return _abort("decode")
             if mime not in _UPLOAD_MIME_ALLOWED:
                 return _abort("mime")
-            is_video = mime in _VIDEO_MIME_ALLOWED
-            max_bytes = _MAX_VIDEO_BYTES if is_video else _MAX_IMAGE_BYTES
+            if mime in _VIDEO_MIME_ALLOWED:
+                max_bytes = _MAX_VIDEO_BYTES
+            elif mime in _IMAGE_MIME_ALLOWED:
+                max_bytes = _MAX_IMAGE_BYTES
+            else:
+                max_bytes = _MAX_DOC_BYTES
+            name = item.get("name")
             try:
                 saved = save_base64_data_url(
                     data_url, media_dir, max_bytes=max_bytes,
+                    name=name if isinstance(name, str) else None,
                 )
             except FileSizeExceeded:
                 return _abort("size")
@@ -683,6 +771,7 @@ class WebSocketChannel(BaseChannel):
             if saved is None:
                 return _abort("decode")
             paths.append(saved)
+            written.append(saved)
         return paths, None
 
     async def _dispatch_envelope(
@@ -809,14 +898,14 @@ class WebSocketChannel(BaseChannel):
                 if not isinstance(raw_media, list):
                     await self._send_event(
                         connection, "error",
-                        detail="image_rejected", reason="malformed",
+                        detail="media_rejected", reason="malformed",
                     )
                     return
-                media_paths, reason = self._save_envelope_media(raw_media)
+                media_paths, reason = await self._save_envelope_media(raw_media)
                 if reason is not None:
                     await self._send_event(
                         connection, "error",
-                        detail="image_rejected", reason=reason,
+                        detail="media_rejected", reason=reason,
                     )
                     return
 

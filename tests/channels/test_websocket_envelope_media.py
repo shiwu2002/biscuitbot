@@ -87,12 +87,23 @@ def test_extract_data_url_mime(url: Any, expected: str | None) -> None:
 
 
 def test_max_message_bytes_default_supports_multi_image_frame() -> None:
-    """Default 36 MB must comfortably hold 4 × 6 MB base64-encoded images."""
-    from xianaibot.channels.websocket import WebSocketConfig
+    """Default 36 MB must hold the largest legal batch the whitelist allows.
+
+    Per-item limits alone are not sufficient: 1 × 18 MB video + 4 × 6 MB images
+    is individually legal, yet base64 inflation (×1.374) would push it past the
+    frame cap, and ``max_message_bytes`` is enforced by the ``websockets``
+    library *before* our handler runs — the client would just see a protocol
+    close with no localizable error. ``_MAX_TOTAL_UPLOAD_BYTES`` is what keeps
+    the legal combinations inside one frame.
+    """
+    from xianaibot.channels.websocket import (
+        _MAX_TOTAL_UPLOAD_BYTES,
+        WebSocketConfig,
+    )
 
     default = WebSocketConfig().max_message_bytes
-    # 4 images × 6 MB × 1.37 base64 overhead ≈ 33 MB
-    assert default >= 33 * 1024 * 1024
+    # Worst accepted batch: total budget raw bytes → base64.
+    assert default >= _MAX_TOTAL_UPLOAD_BYTES * 4 // 3
     # Upper bound 40 MB matches plan
     with pytest.raises(Exception):
         WebSocketConfig(max_message_bytes=41_943_040 + 1)
@@ -287,7 +298,7 @@ async def test_message_rejected_when_more_than_four_images(tmp_path) -> None:
     mock_conn.send.assert_awaited_once()
     err = json.loads(mock_conn.send.call_args[0][0])
     assert err["event"] == "error"
-    assert err["detail"] == "image_rejected"
+    assert err["detail"] == "media_rejected"
     assert err["reason"] == "too_many_images"
 
 
@@ -295,7 +306,7 @@ async def test_message_rejected_when_more_than_four_images(tmp_path) -> None:
 async def test_message_rejected_on_oversize_payload(tmp_path) -> None:
     channel = _make_channel()
     mock_conn = AsyncMock()
-    oversized = b"x" * (9 * 1024 * 1024)  # > 8 MB WS limit
+    oversized = b"x" * (7 * 1024 * 1024)  # > 6 MB per-image limit
     envelope = {
         "type": "message",
         "chat_id": "abc123",
@@ -310,19 +321,20 @@ async def test_message_rejected_on_oversize_payload(tmp_path) -> None:
 
     channel._handle_message.assert_not_awaited()
     err = json.loads(mock_conn.send.call_args[0][0])
-    assert err["detail"] == "image_rejected"
+    assert err["detail"] == "media_rejected"
     assert err["reason"] == "size"
 
 
 @pytest.mark.asyncio
-async def test_message_rejected_on_non_image_mime(tmp_path) -> None:
+async def test_message_rejected_on_non_whitelisted_mime(tmp_path) -> None:
+    """Whitelisted documents pass, but an executable-ish MIME still does not."""
     channel = _make_channel()
     mock_conn = AsyncMock()
     envelope = {
         "type": "message",
         "chat_id": "abc123",
-        "content": "pdf?",
-        "media": [{"data_url": _data_url("application/pdf", b"%PDF-1.4")}],
+        "content": "exe?",
+        "media": [{"data_url": _data_url("application/x-msdownload", b"MZ")}],
     }
 
     with patch(
@@ -332,7 +344,7 @@ async def test_message_rejected_on_non_image_mime(tmp_path) -> None:
 
     channel._handle_message.assert_not_awaited()
     err = json.loads(mock_conn.send.call_args[0][0])
-    assert err["detail"] == "image_rejected"
+    assert err["detail"] == "media_rejected"
     assert err["reason"] == "mime"
 
 
@@ -437,7 +449,7 @@ async def test_message_rejected_when_media_field_is_not_list() -> None:
 
     channel._handle_message.assert_not_awaited()
     err = json.loads(mock_conn.send.call_args[0][0])
-    assert err["detail"] == "image_rejected"
+    assert err["detail"] == "media_rejected"
     assert err["reason"] == "malformed"
 
 
@@ -456,7 +468,7 @@ async def test_failed_media_does_not_partially_persist(tmp_path) -> None:
         "content": "mixed",
         "media": [
             {"data_url": _tiny_png_data_url()},
-            {"data_url": _data_url("application/pdf", b"%PDF-1.4")},
+            {"data_url": _data_url("application/x-msdownload", b"MZ")},
         ],
     }
 
@@ -471,6 +483,173 @@ async def test_failed_media_does_not_partially_persist(tmp_path) -> None:
     # Partial-batch failures must not leak files to disk.
     leftover = [p for p in tmp_path.iterdir() if p.is_file()]
     assert leftover == [], f"orphan media after rejected batch: {leftover}"
+
+
+# -- Documents / audio (previously rejected at the whitelist) -------------------
+
+
+@pytest.mark.parametrize(
+    ("mime", "expected_ext"),
+    [
+        ("application/pdf", ".pdf"),
+        (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".docx",
+        ),
+        (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ".xlsx",
+        ),
+        (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ".pptx",
+        ),
+        ("text/markdown", ".md"),
+        ("audio/mpeg", ".mp3"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_document_and_audio_upload_persists(
+    tmp_path, mime: str, expected_ext: str
+) -> None:
+    """Documents/audio reach disk — and therefore the text extractor — at all.
+
+    Before this whitelist existed, a PDF was rejected with ``reason="mime"``
+    even though ``utils.document.extract_text`` could already parse it.
+    """
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "read this",
+        "media": [{"data_url": _data_url(mime, b"payload"), "name": f"a{expected_ext}"}],
+    }
+
+    with patch(
+        "xianaibot.channels.websocket.get_media_dir", return_value=tmp_path
+    ):
+        await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_awaited_once()
+    paths = channel._handle_message.call_args.kwargs["media"]
+    assert len(paths) == 1
+    saved = Path(paths[0])
+    assert saved.exists()
+    assert saved.suffix == expected_ext
+
+
+@pytest.mark.asyncio
+async def test_too_many_documents_rejected(tmp_path) -> None:
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "many",
+        "media": [{"data_url": _data_url("application/pdf", b"%PDF-1.4")}] * 4,
+    }
+
+    with patch(
+        "xianaibot.channels.websocket.get_media_dir", return_value=tmp_path
+    ):
+        await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_not_awaited()
+    err = json.loads(mock_conn.send.call_args[0][0])
+    assert err["reason"] == "too_many_documents"
+    assert [p for p in tmp_path.iterdir() if p.is_file()] == []
+
+
+@pytest.mark.asyncio
+async def test_total_upload_budget_rejected_before_writing(tmp_path) -> None:
+    """Per-item limits are all respected, yet the batch is still refused.
+
+    This is the regression guard for the frame-size contradiction: the batch
+    below is 3 × 7 MB documents (each under ``_MAX_DOC_BYTES``) plus 1 × 4 MB
+    image (under ``_MAX_IMAGE_BYTES``) — 25 MB raw, ~34 MB once base64-encoded,
+    which exceeds the total budget and would blow past ``max_message_bytes``,
+    surfacing to the user as a bare protocol-level disconnect instead of a
+    localizable error.
+    """
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "huge",
+        "media": [
+            {"data_url": _data_url("application/pdf", b"x" * (7 * 1024 * 1024))},
+            {"data_url": _data_url("application/pdf", b"x" * (7 * 1024 * 1024))},
+            {"data_url": _data_url("application/pdf", b"x" * (7 * 1024 * 1024))},
+            {"data_url": _data_url("image/png", b"x" * (4 * 1024 * 1024))},
+        ],
+    }
+
+    with patch(
+        "xianaibot.channels.websocket.get_media_dir", return_value=tmp_path
+    ):
+        await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_not_awaited()
+    err = json.loads(mock_conn.send.call_args[0][0])
+    assert err["detail"] == "media_rejected"
+    assert err["reason"] == "too_large"
+    # The budget check runs before any decode/write.
+    assert [p for p in tmp_path.iterdir() if p.is_file()] == []
+
+
+# -- Legacy direct-link entries are ignored -----------------------------------
+#
+# 「视频直链」附件已下线（界面上不再有入口）。旧客户端仍可能发 ``{"kind": "url"}``：
+# 服务端整条忽略——不落盘、不进 media、不做任何地址校验。链接写在消息正文里即可，
+# 模型会自己读并按 ``video-understanding`` 技能处理。
+
+
+@pytest.mark.asyncio
+async def test_legacy_video_url_entry_is_ignored(tmp_path) -> None:
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "describe this",
+        "media": [
+            {"kind": "url", "url": "https://cdn.example.com/clip.mp4"},
+            {"data_url": _tiny_png_data_url()},
+        ],
+    }
+
+    with patch("xianaibot.channels.websocket.get_media_dir", return_value=tmp_path):
+        await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_awaited_once()
+    paths = channel._handle_message.call_args.kwargs["media"]
+    # 只有那张图：URL 条目被丢弃，也不会被当作路径回传。
+    assert len(paths) == 1
+    assert "https://" not in paths[0]
+    assert len([p for p in tmp_path.iterdir() if p.is_file()]) == 1
+
+
+@pytest.mark.asyncio
+async def test_legacy_video_url_only_entry_delivers_message_without_media(tmp_path) -> None:
+    """只有 URL 条目时消息照常送达，只是不带任何附件（不报错、不半途丢弃）。"""
+    channel = _make_channel()
+    mock_conn = AsyncMock()
+    envelope = {
+        "type": "message",
+        "chat_id": "abc123",
+        "content": "see https://cdn.example.com/clip.mp4",
+        "media": [{"kind": "url", "url": "https://cdn.example.com/clip.mp4"}],
+    }
+
+    with patch("xianaibot.channels.websocket.get_media_dir", return_value=tmp_path):
+        await channel._dispatch_envelope(mock_conn, "client-1", envelope)
+
+    channel._handle_message.assert_awaited_once()
+    assert channel._handle_message.call_args.kwargs["media"] is None  # 空列表 → None
+    assert [p for p in tmp_path.iterdir() if p.is_file()] == []
+    mock_conn.send.assert_not_called()  # 成功路径不发任何帧（尤其不是拒绝帧）
 
 
 @pytest.mark.asyncio

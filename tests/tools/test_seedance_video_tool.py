@@ -120,12 +120,25 @@ def test_build_content_orders_text_and_references(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("prompt", ["hello", "", "  只有空格  "])
-def test_build_content_always_prepends_aigc_disclaimer(tmp_path: Path, prompt: str) -> None:
+def test_build_content_prepends_aigc_disclaimer_only_with_references(
+    tmp_path: Path, prompt: str
+) -> None:
+    """免责声明**只在带参考图时**前置。
+
+    声明文案说的是「参考素材为 AI 生成的虚拟角色数字插画」，纯文生视频
+    （t2v）没有参考素材，拼上去与场景不符——见 ``_build_content`` 的注释。
+    """
     tool = _tool(tmp_path)
-    content = tool._build_content(prompt, None, None, None)
-    assert content[0]["type"] == "text"
-    # 无论提示词内容如何，免责声明都必须被前置
-    assert content[0]["text"].startswith(_AIGC_CHARACTER_DISCLAIMER)
+
+    # 无参考图：原样透传提示词，不掺声明（空提示词也保持空）
+    t2v = tool._build_content(prompt, None, None, None)
+    assert t2v[0]["type"] == "text"
+    assert t2v[0]["text"] == prompt
+
+    # 有参考图：声明必须前置，且不影响后续素材块的顺序
+    with_ref = tool._build_content(prompt, ["https://example.com/a.jpg"], None, None)
+    assert with_ref[0]["text"] == f"{_AIGC_CHARACTER_DISCLAIMER}{prompt}"
+    assert with_ref[1]["type"] == "image_url"
 
 
 @pytest.mark.asyncio

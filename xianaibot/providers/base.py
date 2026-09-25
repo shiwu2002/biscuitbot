@@ -765,8 +765,21 @@ class LLMProvider(ABC):
         return merged
 
     @staticmethod
+    def _multimodal_placeholder(block: dict[str, Any]) -> str | None:
+        """把视觉多模态块映射为文本占位符；非视觉块返回 ``None``。
+
+        剥离后仍保留路径——路径留着，模型之后还能靠它去读文件或调工具，
+        只是画面内容不再随请求发送。
+        """
+        btype = block.get("type")
+        if btype == "image_url":
+            path = (block.get("_meta") or {}).get("path", "")
+            return image_placeholder_text(path, empty="[image omitted]")
+        return None
+
+    @staticmethod
     def _strip_image_content(messages: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
-        """将 image_url 块替换为文本占位符；未发现图片时返回 None。"""
+        """将 image_url 块替换为文本占位符；未发现时返回 None。"""
         found = False
         result = []
         for msg in messages:
@@ -774,9 +787,12 @@ class LLMProvider(ABC):
             if isinstance(content, list):
                 new_content = []
                 for b in content:
-                    if isinstance(b, dict) and b.get("type") == "image_url":
-                        path = (b.get("_meta") or {}).get("path", "")
-                        placeholder = image_placeholder_text(path, empty="[image omitted]")
+                    placeholder = (
+                        LLMProvider._multimodal_placeholder(b)
+                        if isinstance(b, dict)
+                        else None
+                    )
+                    if placeholder is not None:
                         new_content.append({"type": "text", "text": placeholder})
                         found = True
                     else:
@@ -798,9 +814,10 @@ class LLMProvider(ABC):
             content = msg.get("content")
             if isinstance(content, list):
                 for i, b in enumerate(content):
-                    if isinstance(b, dict) and b.get("type") == "image_url":
-                        path = (b.get("_meta") or {}).get("path", "")
-                        placeholder = image_placeholder_text(path, empty="[image omitted]")
+                    if not isinstance(b, dict):
+                        continue
+                    placeholder = LLMProvider._multimodal_placeholder(b)
+                    if placeholder is not None:
                         content[i] = {"type": "text", "text": placeholder}
                         found = True
         return found
@@ -1149,11 +1166,12 @@ class LLMProvider(ABC):
                 identical_error_count = 1 if error_key else 0
 
             if not self._is_transient_response(response):
-                # 非瞬时错误：若消息含图片，尝试剥离图片后重试一次
+                # 非瞬时错误：若消息含图片，尝试剥离后重试一次
                 stripped = self._strip_image_content(original_messages)
                 if stripped is not None and stripped != kw["messages"]:
                     logger.warning(
-                        "Non-transient LLM error with image content, retrying without images"
+                        "Non-transient LLM error with multimodal content, "
+                        "retrying without images"
                     )
                     retry_kw = dict(kw)
                     retry_kw["messages"] = stripped

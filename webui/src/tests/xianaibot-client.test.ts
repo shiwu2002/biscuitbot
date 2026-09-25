@@ -744,14 +744,14 @@ describe("XianaibotClient", () => {
     client.connect();
     lastSocket().fakeOpen();
     client.sendMessage("chat-x", "look", [
-      { data_url: "data:image/png;base64,AAAA", name: "shot.png" },
+      { kind: "data", data_url: "data:image/png;base64,AAAA", name: "shot.png" },
     ]);
     const lastFrame = JSON.parse(lastSocket().sent.at(-1) as string);
     expect(lastFrame).toEqual({
       type: "message",
       chat_id: "chat-x",
       content: "look",
-      media: [{ data_url: "data:image/png;base64,AAAA", name: "shot.png" }],
+      media: [{ kind: "data", data_url: "data:image/png;base64,AAAA", name: "shot.png" }],
       webui: true,
     });
   });

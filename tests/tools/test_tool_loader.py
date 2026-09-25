@@ -70,7 +70,8 @@ def test_tool_context_defaults():
     assert ctx.cron_service is None
     assert ctx.provider_snapshot_loader is None
     assert ctx.image_generation_provider_configs is None
-    assert ctx.timezone == "UTC"
+    # 默认时区是北京时间（见 context.py 的字段声明），不再是 UTC
+    assert ctx.timezone == "Asia/Shanghai"
 
 
 # --- ToolLoader tests ---

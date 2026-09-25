@@ -332,7 +332,7 @@ describe("ThreadComposer", () => {
     // 与 hero 同款的赛博玻璃面板：悬停/聚焦时泛出霓虹光晕
     expect(input.parentElement?.parentElement?.className).toContain("cyber-glass-panel");
     expect(input.parentElement?.parentElement?.className).toContain("focus-within:shadow-");
-    expect(screen.getByRole("button", { name: "添加图片" }).className).toContain("cyber-btn-glow");
+    expect(screen.getByRole("button", { name: /^添加附件/ }).className).toContain("cyber-btn-glow");
     expect(screen.getByRole("button", { name: "发送消息" }).className).toContain("!bg-gradient-to-br");
     expect(screen.queryByText(/Enter to send/)).not.toBeInTheDocument();
   });

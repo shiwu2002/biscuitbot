@@ -59,8 +59,11 @@ class TestBuildEnvWindows:
     }
 
     def test_expected_keys(self):
+        # 关掉 venv 注入：pytest 若跑在 venv 里（``uv run pytest``），
+        # ``_build_env`` 会额外注入指向该 venv 的 VIRTUAL_ENV——那是
+        # prefer_venv_python 的行为，与本用例要钉的白名单无关。
         with patch("xianaibot.agent.tools.shell._IS_WINDOWS", True):
-            env = ExecTool()._build_env()
+            env = ExecTool(prefer_venv_python=False)._build_env()
         assert set(env) == self._EXPECTED_KEYS
 
     def test_secrets_excluded(self, monkeypatch):
@@ -304,7 +307,13 @@ class TestPathAppendPlatform:
             patch.object(ExecTool, "_spawn", side_effect=capture_spawn),
             patch.object(ExecTool, "_guard_command", return_value=None),
         ):
-            tool = ExecTool(path_prepend=r"C:\venv\Scripts", path_append=r"C:\tools\bin")
+            # 同上：venv 注入会把自己的 Scripts 目录排在最前，干扰本用例
+            # 要验证的「prepend → 原 PATH → append」顺序。
+            tool = ExecTool(
+                path_prepend=r"C:\venv\Scripts",
+                path_append=r"C:\tools\bin",
+                prefer_venv_python=False,
+            )
             await tool.execute(command="python --version")
 
         assert captured_env["PATH"] == (

@@ -580,3 +580,52 @@ async def test_session_messages_skips_vanished_media(
         finally:
             await channel.stop()
             await server_task
+
+
+@pytest.mark.asyncio
+async def test_session_messages_skips_legacy_remote_url_media(
+    bus: MagicMock, tmp_path: Path
+) -> None:
+    """历史会话里残留的远程直链条目必须被**跳过**，而不是被当成本地路径。
+
+    直链附件功能已下线（界面上不再有入口），但老会话的 ``media`` 里还留着
+    ``https://…``。这类条目从未落过盘，没有可签名的文件；若把它交给
+    ``Path()``/签名器，就会在会话读取路径上炸出 500。这里钉住：不 500、
+    不回显那一条、本地条目照常。
+    """
+    media = tmp_path / "media"
+    media.mkdir()
+    img = media / "u.png"
+    img.write_bytes(_PNG_BYTES)
+
+    sm = SessionManager(tmp_path / "ws_state")
+    sess = Session(key="websocket:legacy-link")
+    sess.add_message(
+        "user",
+        "看下这个",
+        media=[str(img), "https://cdn.example.com/clip.mp4"],
+    )
+    sm.save(sess)
+
+    channel = _ch(bus, session_manager=sm, port=29927)
+    with patch("xianaibot.webui.media_gateway.get_media_dir", return_value=media):
+        server_task = asyncio.create_task(channel.start())
+        await asyncio.sleep(0.3)
+        try:
+            boot = await _http_get("http://127.0.0.1:29927/webui/bootstrap")
+            token = boot.json()["token"]
+            resp = await _http_get(
+                "http://127.0.0.1:29927/api/sessions/websocket:legacy-link/messages",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            assert resp.status_code == 200
+            body = resp.json()
+            user_msg = next(m for m in body["messages"] if m["role"] == "user")
+            urls = user_msg["media_urls"]
+            # 只有本地那张图；远端那条既不回显、也不泄进整条响应。
+            assert len(urls) == 1
+            assert urls[0]["name"] == "u.png"
+            assert "cdn.example.com" not in resp.text
+        finally:
+            await channel.stop()
+            await server_task

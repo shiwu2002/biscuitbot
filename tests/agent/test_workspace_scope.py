@@ -189,7 +189,7 @@ def test_image_reference_scope_restricted_blocks_outside_and_full_allows(tmp_pat
     )
     token = bind_workspace_scope(restricted)
     try:
-        with pytest.raises(ImageGenerationError, match="inside the workspace"):
+        with pytest.raises(ImageGenerationError, match="参考图路径越界"):
             tool._resolve_reference_image(str(ref))
     finally:
         reset_workspace_scope(token)

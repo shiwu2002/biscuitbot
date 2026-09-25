@@ -291,7 +291,11 @@ async def test_download_dingtalk_file(tmp_path, monkeypatch) -> None:
 
     assert result is not None
     assert result.endswith("test.xlsx")
-    assert (tmp_path / "dingtalk" / "user1" / "test.xlsx").read_bytes() == file_content
+    # 媒体目录统一挂在 channels/ 子目录下（与飞书/微信/napcat 等一致），
+    # 落盘路径是 ``<media>/channels/dingtalk/<sender_id>/<文件名>``。
+    assert (
+        tmp_path / "channels" / "dingtalk" / "user1" / "test.xlsx"
+    ).read_bytes() == file_content
 
     # Verify API calls
     assert channel._http.calls[0]["method"] == "POST"

@@ -34,12 +34,19 @@ from xianaibot.agent.tools.registry import ToolRegistry  # 工具注册表，管
 from xianaibot.apps.cli import utils as cli_app_utils  # CLI 应用层工具，提供会话附加参数与运行时注解
 from xianaibot.bus.events import InboundMessage  # 入站消息事件类型
 from xianaibot.session.goal_state import goal_state_runtime_lines  # 目标状态的运行时注解行生成
+from xianaibot.utils.document import (  # 附件类型判定（图片/音频/视频/远程直链）
+    is_audio_file,
+    is_remote_url,
+    is_video_file,
+)
 from xianaibot.utils.helpers import (  # 通用辅助函数集合
+    audio_attachment_note,  # 音频附件路径说明（内容不送模型，按需转写）
     current_time_str,  # 当前时间字符串生成
     detect_image_mime,  # 图片 MIME 类型探测
     load_bundled_template,  # 加载内置模板
     truncate_text,  # 文本截断
     truncate_text_to_tokens,  # 按 token 数截断文本
+    video_attachment_note,  # 视频附件路径说明（内容不送模型）
 )
 from xianaibot.utils.prompt_templates import render_template  # 模板渲染
 
@@ -621,34 +628,61 @@ class ContextBuilder:
 
         参数:
             text: 用户文本；
-            media: 图片路径列表（可选）。
+            media: 附件列表（本地图片/音频/视频路径；渠道可能传入 http(s) 地址，
+                这类条目不做任何本地 IO，原样写进下方说明）。
 
         返回:
-            无图片时返回文本字符串；有图片时返回图片块 + 文本块的内容列表。
+            无可用图片时返回文本字符串（音频与视频只贡献路径说明）；否则返回
+            内容块列表（``image_url`` 块 + 文本块）。
+
+        音频与视频**都不构造内容块**，只把路径/URL 写进文本说明：能收视频块的
+        模型很少，且逐帧理解按帧计费（10 分钟视频可达数十万 token），成本不可控。
+        音频则由模型按需调用 ``transcribe_media`` 转写（按音频秒数计费）。需要
+        画面时模型自己用工作区工具读那个文件——给句柄，不给像素。
         """
         if not media:
             return text
 
-        images = []
-        image_paths = []
+        blocks: list[dict[str, Any]] = []
+        image_paths: list[str] = []
+        audio_paths: list[str] = []
+        video_paths: list[str] = []
         for path in media:
+            # 远程直链不做任何本地 IO（``Path(url).read_bytes()`` 会直接崩）
+            if is_remote_url(path):
+                if is_video_file(path):
+                    video_paths.append(path)
+                elif is_audio_file(path):
+                    audio_paths.append(path)
+                continue
+
             p = Path(path)
             if not p.is_file():
                 continue
-            raw = p.read_bytes()
+            if is_video_file(path):
+                # 视频不读字节：既不构造块，也就不需要那 18MB
+                video_paths.append(str(p))
+                continue
+            if is_audio_file(path):
+                # 音频同理，且必须在 read_bytes() 之前分流：否则 20MB 音频会被
+                # 整个读进内存再因为不是图片而丢掉。
+                audio_paths.append(str(p))
+                continue
+            try:
+                raw = p.read_bytes()
+            except OSError:
+                continue
+
             mime = detect_image_mime(raw) or mimetypes.guess_type(path)[0]
             if not mime or not mime.startswith("image/"):
                 continue
             b64 = base64.b64encode(raw).decode()
-            images.append({
+            blocks.append({
                 "type": "image_url",
                 "image_url": {"url": f"data:{mime};base64,{b64}"},
                 "_meta": {"path": str(p)},
             })
             image_paths.append(str(p))
-
-        if not images:
-            return text
 
         # 视觉模型可以读图片块本身；纯文本模型（如 Qwen 无视觉版、
         # DeepSeek 文本模型）会忽略或直接 400 拒绝 image_url（DeepSeek
@@ -657,9 +691,19 @@ class ContextBuilder:
         # 不必在思考时再去 find/ls 查找图片位置。DeepSeek 视觉模型
         # （deepseek-v4-flash-vision-exp，见 openai_compat_provider 的
         # _deepseek_supports_vision），image_url 块会被保留并真正送检。
-        path_note = "，".join(image_paths)
-        if text:
-            full_text = f"{text}\n[用户附加图片：{path_note}]"
-        else:
-            full_text = f"[用户附加图片：{path_note}]"
-        return images + [{"type": "text", "text": full_text}]
+        #
+        # 音频与视频只有这条文本路径（见 docstring）：内容都不送模型，所以这些
+        # 说明是模型知道附件存在的唯一途径，绝不能因为「没有块」而丢掉。
+        notes: list[str] = []
+        if image_paths:
+            notes.append(f"[用户附加图片：{'，'.join(image_paths)}]")
+        if audio_paths:
+            notes.append(audio_attachment_note("，".join(audio_paths)))
+        if video_paths:
+            notes.append(video_attachment_note("，".join(video_paths)))
+        note_text = "\n".join(notes)
+        if note_text:
+            text = f"{text}\n{note_text}" if text else note_text
+        if not blocks:
+            return text
+        return blocks + [{"type": "text", "text": text}]

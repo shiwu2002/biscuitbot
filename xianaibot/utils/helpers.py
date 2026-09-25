@@ -172,6 +172,21 @@ def detect_image_mime(data: bytes) -> str | None:
     return None
 
 
+def detect_video_mime(data: bytes) -> str | None:
+    """基于魔数嗅探视频 MIME（ISO BMFF / EBML），失败返回 ``None``。
+
+    与 :func:`detect_image_mime` 对称。只认容器头，不做编解码探测——
+    视频内容本身始终交给模型厂商理解，本地不做抽帧。
+    """
+    # ISO BMFF（mp4 / mov / m4v）：``ftyp`` box 位于偏移 4
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return "video/quicktime" if data[8:12] == b"qt  " else "video/mp4"
+    # EBML（webm / mkv）
+    if data[:4] == b"\x1a\x45\xdf\xa3":
+        return "video/webm"
+    return None
+
+
 def data_url(mime: str, b64: str) -> str:
     """构造 ``data:<mime>;base64,<b64>`` 形式的 data URL。"""
     return f"data:{mime};base64,{b64}"
@@ -289,6 +304,71 @@ def atomic_write_json(
 def image_placeholder_text(path: str | None, *, empty: str = "[image]") -> str:
     """Build an image placeholder string."""
     return f"[image: {path}]" if path else empty
+
+
+def video_placeholder_text(path: str | None, *, empty: str = "[video]") -> str:
+    """Build a video placeholder string.
+
+    与 :func:`image_placeholder_text` 对称，只用于会话回放的附件面包屑：视频
+    的内容永远不送给模型，回放时得让用户看出这里是个视频（而不是
+    ``[image: x.mp4]``）以及它落在哪个路径上。
+    """
+    return f"[video: {path}]" if path else empty
+
+
+def audio_placeholder_text(path: str | None, *, empty: str = "[audio]") -> str:
+    """Build an audio placeholder string.
+
+    与 :func:`video_placeholder_text` 对称，只用于会话回放的附件面包屑：
+    音频内容不随消息送模型，回放时得让用户看出这里是个音频（而不是
+    ``[file: x.mp3]``）以及它落在哪个路径上。
+    """
+    return f"[audio: {path}]" if path else empty
+
+
+def audio_attachment_note(paths: str) -> str:
+    """音频附件的路径说明：只给句柄，不给字节。
+
+    ``paths`` 是用「，」连接好的路径列表。音频内容**不随消息发送**：转写是
+    一次单独的 ASR 调用（按音频秒数计费，与 token 无关），由模型按需调用
+    ``transcribe_media`` 触发。
+
+    两个必须写进去的点：
+
+    1. **说明「没送」**——否则模型容易顺着用户的话假装听过录音。
+    2. **说明「正文里已有转写文本就别再调」**——飞书/微信的语音消息会把转写
+       结果内联进正文（``feishu.py`` 的 ``[transcription: …]``），不写这句会
+       诱发一次多余的付费调用。
+    """
+    return (
+        f"[用户附加音频：{paths}"
+        "（音频内容未随消息发送；若正文里没有转写文本而你需要音频里的信息，"
+        "用 transcribe_media 转写上面的路径）]"
+    )
+
+
+def video_attachment_note(paths: str) -> str:
+    """视频附件的路径说明：只给句柄，不给像素。
+
+    ``paths`` 是用「，」连接好的路径/URL 列表。视频内容**永不发送给模型**
+    是产品决策：逐帧理解按帧计费，10 分钟视频可达数十万 token，成本不可控。
+    模型拿到的只有这个路径，具体怎么取信息由 ``video-understanding`` 技能
+    规定（先转写语音、再按需抽少量帧）。
+
+    说明里**既点名技能、又把三步内联**：技能可能被 ``disabled_skills`` 或
+    员工的 capability allowlist 过滤掉，只写技能名的话这段说明就悬空了。
+
+    说明必须写清「没送」，否则模型容易顺着用户的话假装看过画面——那比
+    明说看不到糟糕得多。
+    """
+    return (
+        f"[用户附加视频：{paths}"
+        "（视频内容未发送给模型，画面不会自动解析。按 video-understanding 技能的"
+        "成本阶梯处理：先用 transcribe_media 转写上面的路径拿文字稿，超过 25MB 时"
+        "先用 exec 跑 ffmpeg 只抽压缩音轨再转写；只有画面本身重要时才用 ffmpeg 抽 "
+        "6–12 帧、逐张 read_file 看；上面若是 http(s) 链接则先用 curl.exe 下载到"
+        "工作区。禁止整片逐帧扫描）]"
+    )
 
 
 def truncate_text(text: str, max_chars: int) -> str:

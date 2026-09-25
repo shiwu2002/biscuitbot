@@ -92,6 +92,8 @@ def convert_user_message(content: Any) -> dict[str, Any]:
     - 纯字符串 → ``input_text``；
     - ``text`` 块 → ``input_text``；
     - ``image_url`` 块 → ``input_image``。
+
+    Responses API 只有 ``input_image`` / ``input_file``，没有视频输入形态。
     """
     if isinstance(content, str):
         return {"role": "user", "content": [{"type": "input_text", "text": content}]}

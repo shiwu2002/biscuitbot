@@ -183,7 +183,6 @@ class TurnContext:
 
     pending_queue: asyncio.Queue | None = None  # 中途注入消息队列
     pending_summary: str | None = None  # 自动压缩摘要
-
     ephemeral: bool = False  # 是否为临时轮次（不持久化）
     tools: ToolRegistry | None = None  # 本轮使用的工具注册表（可覆盖默认）
 
@@ -865,9 +864,10 @@ class AgentLoop:
         tool_index = self._build_tool_index(
             skill_names=self.context._employee_capability_allowlist(session.metadata)
         )
+        current_message = image_generation_prompt(msg.content, msg.metadata)
         return self.context.build_messages(
             history=history,
-            current_message=image_generation_prompt(msg.content, msg.metadata),
+            current_message=current_message,
             media=msg.media if msg.media else None,
             channel=msg.channel,
             chat_id=self._runtime_chat_id(msg),
@@ -1753,6 +1753,11 @@ class AgentLoop:
         return "ok"
 
     def _prepare_message_media(self, content: str, media: list[str]) -> tuple[str, list[str]]:
+        """把文档附件抽成文本，返回仍需构造内容块的附件路径。
+
+        返回的路径列表含图片、视频与渠道传入的 http(s) 地址——注意视频**不能**
+        走文本抽取分支，否则会被静默丢弃（见 ``extract_documents``）。
+        """
         if self._should_extract_document_text():
             return extract_documents(content, media)
         return reference_non_image_attachments(content, media)
@@ -1840,6 +1845,12 @@ class AgentLoop:
             self.llm_runtime(),
         )
 
+        # 进度/重试回调只依赖 ctx.msg，先于消息构建建立。
+        if ctx.on_progress is None:
+            ctx.on_progress = await self._build_bus_progress_callback(ctx.msg)
+        if ctx.on_retry_wait is None:
+            ctx.on_retry_wait = await self._build_retry_wait_callback(ctx.msg)
+
         ctx.initial_messages = self._build_initial_messages(
             ctx.msg,
             ctx.session,
@@ -1850,11 +1861,6 @@ class AgentLoop:
         ctx.user_persisted_early = self._persist_user_message_early(
             ctx.msg, ctx.session
         )
-
-        if ctx.on_progress is None:
-            ctx.on_progress = await self._build_bus_progress_callback(ctx.msg)
-        if ctx.on_retry_wait is None:
-            ctx.on_retry_wait = await self._build_retry_wait_callback(ctx.msg)
 
         return "ok"
 

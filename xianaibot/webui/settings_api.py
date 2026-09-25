@@ -517,7 +517,17 @@ def _resolve_model_list_provider(
 
 
 # 厂商可声明/推导的全部能力标签（各能力页据此过滤厂商下拉项）。
-_CAPABILITY_KEYS = ("llm", "vision", "image", "video", "tts", "transcription")
+# 注意 ``video`` 是**文生视频**（设置页「视频生成」）；视频**输入**理解没有
+# 独立能力标签——那条链路已下线（逐帧理解成本不可控），视频附件只以路径形式
+# 交给模型。
+_CAPABILITY_KEYS = (
+    "llm",
+    "vision",
+    "image",
+    "video",
+    "tts",
+    "transcription",
+)
 
 
 def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
@@ -1238,6 +1248,23 @@ def _validate_configured_provider(config: Any, provider: str) -> None:
         raise WebUISettingsError("provider is not configured")
 
 
+def _resolved_aux_model(
+    config: Any, preset_name: str | None, override: str | None
+) -> str | None:
+    """辅助模型（如截图理解）最终会使用的模型 ID，供设置页回显。
+
+    优先取用户手填的 override；否则取预设里声明的模型名。非预设（直接选了
+    某个 Provider 名）时返回 ``None``——此时真实模型由 Provider 侧决定，
+    设置页不该编造一个。
+    """
+    resolved = (override or "").strip()
+    if resolved:
+        return resolved
+    if preset_name and preset_name in config.model_presets:
+        return config.model_presets[preset_name].model
+    return None
+
+
 def settings_payload(
     *,
     requires_restart: bool = False,
@@ -1396,14 +1423,8 @@ def settings_payload(
                     or getattr(config.providers, defaults.vision_model, None) is not None
                 )
             ),
-            "resolved_model": (
-                (defaults.vision_model_override or "").strip()
-                or (
-                    config.model_presets[defaults.vision_model].model
-                    if defaults.vision_model
-                    and defaults.vision_model in config.model_presets
-                    else None
-                )
+            "resolved_model": _resolved_aux_model(
+                config, defaults.vision_model, defaults.vision_model_override
             ),
         },
         "system_io": {

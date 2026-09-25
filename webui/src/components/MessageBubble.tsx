@@ -131,7 +131,13 @@ export function MessageBubble({
     const images = message.images ?? [];
     const media = message.media ?? [];
     const hasImages = images.length > 0;
-    const hasMedia = media.length > 0;
+    // 乐观气泡把图片放在 ``images``、其余附件（视频 / 文档）放在
+    // ``media``；历史回放则全部在 ``media``。两者同时出现时只渲染 ``media``
+    // 里的非图片项，免得同一张图在缩略图行与附件区各出现一次。
+    const nonImageMedia = hasImages
+      ? media.filter((item) => toMediaAttachment(item).kind !== "image")
+      : media;
+    const hasMedia = nonImageMedia.length > 0;
     const hasText = message.content.trim().length > 0;
     return (
       <div
@@ -141,9 +147,7 @@ export function MessageBubble({
         )}
       >
         {hasImages ? <UserImages images={images} align="right" /> : null}
-        {!hasImages && hasMedia ? (
-          <MessageMedia media={media} align="right" />
-        ) : null}
+        {hasMedia ? <MessageMedia media={nonImageMedia} align="right" /> : null}
         {hasText ? (
           <p
             className={cn(

@@ -87,6 +87,3 @@ class WebUIMediaGateway:
             paths,
             sign_path=self.sign_or_stage_media_path,
         )
-
-    def augment_transcript_user_media(self, paths: list[str]) -> list[dict[str, Any]]:
-        return self.augment_transcript_media(paths)

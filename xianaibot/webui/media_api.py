@@ -17,7 +17,9 @@ from websockets.http11 import Request as WsRequest
 from websockets.http11 import Response
 
 from xianaibot.config.paths import get_media_dir
+from xianaibot.utils.document import is_remote_url
 from xianaibot.utils.helpers import safe_filename
+from xianaibot.utils.media_decode import readable_media_name
 from xianaibot.webui.http_utils import (
     case_insensitive_header as _case_insensitive_header,
 )
@@ -145,10 +147,15 @@ def sign_or_stage_media_path(
     media_dir: MediaDirProvider = _default_media_dir,
     logger: Any | None = None,
 ) -> dict[str, str] | None:
-    """Sign an existing media-root path, or stage an arbitrary file before signing."""
+    """Sign an existing media-root path, or stage an arbitrary file before signing.
+
+    ``name`` is the **display** name: the random prefix our ingress adds for
+    uniqueness is stripped (see ``readable_media_name``), so the WebUI chip
+    reads ``学生备注表.xlsx`` rather than ``b92da4cc4d26_学生备注表.xlsx``.
+    """
     signed = sign_media_path(path, secret=secret, media_dir=media_dir)
     if signed is not None:
-        return {"url": signed, "name": path.name}
+        return {"url": signed, "name": readable_media_name(path.name)}
     try:
         if not path.is_file():
             return None
@@ -161,7 +168,7 @@ def sign_or_stage_media_path(
     signed = sign_media_path(staged, secret=secret, media_dir=media_dir)
     if signed is None:
         return None
-    return {"url": signed, "name": path.name}
+    return {"url": signed, "name": readable_media_name(path.name)}
 
 
 def media_attachment_kind(name: str) -> str:
@@ -179,9 +186,16 @@ def signed_media_attachments(
     *,
     sign_path: SignedMediaPath,
 ) -> list[dict[str, Any]]:
-    """Map persisted media paths to WebUI attachment dicts with fresh signed URLs."""
+    """Map persisted media paths to WebUI attachment dicts with fresh signed URLs.
+
+    ``http(s)://…`` 条目**跳过**：它们来自已下线的「视频直链」附件功能，服务端
+    从未下载过，没有可签名的本地文件。历史会话里残留的直链条目因此不再回显
+    （用户已确认接受这一取舍）。
+    """
     out: list[dict[str, Any]] = []
     for pstr in paths:
+        if is_remote_url(pstr):
+            continue
         path = Path(pstr)
         att = sign_path(path)
         if att is None:
@@ -189,7 +203,7 @@ def signed_media_attachments(
         url = att.get("url")
         if not url:
             continue
-        name = att.get("name") or path.name
+        name = att.get("name") or readable_media_name(path.name)
         out.append({"kind": media_attachment_kind(name), "url": url, "name": name})
     return out
 
@@ -213,10 +227,12 @@ def attach_signed_media_urls(
         for entry in media:
             if not isinstance(entry, str) or not entry:
                 continue
+            if is_remote_url(entry):
+                continue  # 已下线的直链附件：不再回显（见 signed_media_attachments）
             signed = sign_path(Path(entry))
             if signed is None:
                 continue
-            urls.append({"url": signed, "name": Path(entry).name})
+            urls.append({"url": signed, "name": readable_media_name(Path(entry).name)})
         if urls:
             msg["media_urls"] = urls
         msg.pop("media", None)

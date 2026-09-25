@@ -140,6 +140,7 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
     # === 国内提供商 =======================================================
     # DashScope (阿里通义): Qwen 系列，OpenAI 兼容
     # 同时提供图片生成（万相 wanx）和语音识别（Paraformer）能力
+    # Qwen-VL 系列走 OpenAI 兼容端点
     ProviderSpec(
         name="dashscope",
         keywords=("qwen", "dashscope", "tongyi"),

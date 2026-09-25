@@ -132,7 +132,9 @@ async def test_tool_fails_after_retry_exhausted():
     with patch("xianaibot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
-    assert "failed after retry" in output
+    # 返回的是给模型看的中文提示（日志行才是英文）；「重试耗尽后仍失败」由
+    # 调用计数 2 + 失败文案共同钉住。
+    assert "调用失败" in output
     assert "ClosedResourceError" in output
     assert session.call_tool.call_count == 2
 
@@ -197,7 +199,7 @@ async def test_tool_does_not_retry_on_cancelled_error():
     with patch("xianaibot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         output = await wrapper.execute()
 
-    assert "cancelled" in output
+    assert "取消" in output
     assert session.call_tool.call_count == 1
     mock_sleep.assert_not_called()
 
@@ -313,7 +315,7 @@ async def test_resource_fails_after_retry_exhausted():
     with patch("xianaibot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
-    assert "failed after retry" in output
+    assert "读取失败" in output
     assert session.read_resource.call_count == 2
 
 
@@ -408,7 +410,7 @@ async def test_prompt_fails_after_retry_exhausted():
     with patch("xianaibot.agent.tools.mcp.asyncio.sleep", new_callable=AsyncMock):
         output = await wrapper.execute()
 
-    assert "failed after retry" in output
+    assert "调用失败" in output
     assert session.get_prompt.call_count == 2
 
 

@@ -297,6 +297,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(screen.getByRole("button", { name: /重启/ })).toBeInTheDocument();
   });
 
+
   it("模型厂商子区可编辑：内置厂商地址自动管理，密钥可改且有保存入口", async () => {
     const payload: SettingsPayload = {
       ...settingsPayload(),

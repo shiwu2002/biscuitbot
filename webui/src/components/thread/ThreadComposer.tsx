@@ -32,6 +32,7 @@ import {
   ImageIcon,
   Loader2,
   Mic,
+  PlaySquare,
   Plus,
   RotateCw,
   Shield,
@@ -60,14 +61,21 @@ import {
 } from "@/components/thread/WorkspaceControls";
 import { EmployeePicker } from "@/components/thread/EmployeePicker";
 import {
-  useAttachedImages,
-  type AttachedImage,
+  useAttachedMedia,
+  type Attachment,
   type AttachmentError,
   MAX_IMAGES_PER_MESSAGE,
   type RestoredReadyImage,
-} from "@/hooks/useAttachedImages";
+} from "@/hooks/useAttachedMedia";
 import { useClipboardAndDrop } from "@/hooks/useClipboardAndDrop";
-import type { SendImage, SendOptions } from "@/hooks/useXianaibotStream";
+import type { SendAttachment, SendOptions } from "@/hooks/useXianaibotStream";
+import {
+  UPLOAD_ACCEPT_ATTR,
+  UPLOAD_LIMITS,
+  toOutboundMedia,
+  toPreviewUrl,
+  toUIMediaKind,
+} from "@/lib/media";
 import { useVoiceRecorder, type VoiceRecorderErrorKey } from "@/hooks/useVoiceRecorder";
 import type {
   CliAppInfo,
@@ -90,9 +98,12 @@ import {
 } from "@/lib/provider-brand";
 import { cn } from "@/lib/utils";
 
-/** ``<input accept>``: aligned with the server's MIME whitelist. SVG is
- * deliberately excluded to avoid an embedded-script XSS surface. */
-const ACCEPT_ATTR = "image/png,image/jpeg,image/webp,image/gif";
+/** 各拒绝原因在文案里需要展示的「上限」数值（没有上限的原因不进这张表）。 */
+const REJECTION_LIMITS: Partial<Record<AttachmentError, number>> = {
+  too_many_images: MAX_IMAGES_PER_MESSAGE,
+  too_many_videos: UPLOAD_LIMITS.maxVideos,
+  too_many_documents: UPLOAD_LIMITS.maxDocuments,
+};
 const VOICE_SHORTCUT_CODE = "KeyD";
 const VOICE_SHORTCUT_ARIA = "Control+Shift+D";
 type VoiceShortcutPlatform = "apple" | "chromeos" | "linux" | "other" | "windows";
@@ -152,7 +163,7 @@ function getVoiceShortcutLabel(): string {
 }
 
 interface ThreadComposerProps {
-  onSend: (content: string, images?: SendImage[], options?: SendOptions) => void;
+  onSend: (content: string, attachments?: SendAttachment[], options?: SendOptions) => void;
   disabled?: boolean;
   placeholder?: string;
   isStreaming?: boolean;
@@ -263,6 +274,8 @@ interface SlashPaletteLayout {
 interface QueuedPrompt {
   id: string;
   text: string;
+  /** 只有图片能进队列：``storeQueuedPrompts`` 会把 data URL 写进 localStorage，
+   * 而视频 / 文档动辄 18 MB，必然撑爆 5 MB 配额并让**整个**队列落盘失败。 */
   images?: QueuedPromptImage[];
 }
 
@@ -426,18 +439,19 @@ function storeQueuedPrompts(storageKey: string, prompts: QueuedPrompt[]): void {
 }
 
 function readyImagesToQueuedImages(
-  images: Array<AttachedImage & { dataUrl: string }>,
+  images: Array<Attachment & { dataUrl: string }>,
 ): QueuedPromptImage[] {
   return images.map((img) => ({
     dataUrl: img.dataUrl,
-    name: img.file.name,
+    name: img.name,
   }));
 }
 
-function queuedImagesToSendImages(images?: QueuedPromptImage[]): SendImage[] | undefined {
+function queuedImagesToSendImages(images?: QueuedPromptImage[]): SendAttachment[] | undefined {
   if (!images?.length) return undefined;
   return images.map((img) => ({
     media: {
+      kind: "data",
       data_url: img.dataUrl,
       ...(img.name ? { name: img.name } : {}),
     },
@@ -445,6 +459,7 @@ function queuedImagesToSendImages(images?: QueuedPromptImage[]): SendImage[] | u
       url: img.dataUrl,
       ...(img.name ? { name: img.name } : {}),
     },
+    kind: "image",
   }));
 }
 
@@ -971,13 +986,24 @@ export function ThreadComposer({
     ? t("thread.composer.placeholderStreaming")
     : placeholder ?? t("thread.composer.placeholderThread");
 
-  const { images, enqueue, remove, clear, restoreReadyImages, encoding, full } =
-    useAttachedImages();
+  const {
+    attachments,
+    enqueue,
+    remove,
+    clear,
+    restoreReadyImages,
+    encoding,
+    full,
+    plannedBytes,
+  } = useAttachedMedia();
 
   const formatRejection = useCallback(
     (reason: AttachmentError): string => {
       const key = `thread.composer.imageRejected.${reason}`;
-      return t(key, { max: MAX_IMAGES_PER_MESSAGE });
+      // 每种拒绝原因各自的「上限」口径不同（图片 4 张 / 视频 1 个 / 文档 3 份
+      // / 总量 24 MB），文案里的 ``{{max}}`` 必须按原因取值。
+      const max = REJECTION_LIMITS[reason];
+      return max === undefined ? t(key) : t(key, { max });
     },
     [t],
   );
@@ -1012,20 +1038,33 @@ export function ThreadComposer({
     return () => cancelAnimationFrame(id);
   }, [disabled]);
 
-  const readyImages = useMemo(
-    () => images.filter((img): img is AttachedImage & { dataUrl: string } =>
-      img.status === "ready" && typeof img.dataUrl === "string",
-    ),
-    [images],
+  const readyAttachments = useMemo(
+    () => attachments.filter((item) => item.status === "ready"),
+    [attachments],
   );
-  const hasErrors = images.some((img) => img.status === "error");
+  const readyImages = useMemo(
+    () => readyAttachments.filter(
+      (item): item is Attachment & { dataUrl: string } =>
+        item.kind === "image" && typeof item.dataUrl === "string",
+    ),
+    [readyAttachments],
+  );
+  const hasErrors = attachments.some((item) => item.status === "error");
+  // 只有图片能进「待引导提示」队列（见 ``QueuedPrompt.images`` 的注释）。流式
+  // 进行中若挂了视频 / 文档，既不队列也不发帧——否则要么刷新后附件被静默丢弃，
+  // 要么在上一轮未结束时插进一条带着 18 MB 视频的注入消息。
+  const blockedByStreaming = !!isStreaming
+    && readyAttachments.some((item) => item.kind !== "image");
+  const overBudget = plannedBytes > UPLOAD_LIMITS.maxTotalBytes;
 
-  const hasComposerContent = value.trim().length > 0 || readyImages.length > 0;
+  const hasComposerContent = value.trim().length > 0 || readyAttachments.length > 0;
   const canSend =
     !disabled
     && !modelNeedsSetup
     && !encoding
     && !hasErrors
+    && !overBudget
+    && !blockedByStreaming
     && hasComposerContent;
   const canOpenModelSettings = Boolean(modelNeedsSetup && onModelBadgeClick && !disabled);
   const canQueueGuidance =
@@ -1034,6 +1073,8 @@ export function ThreadComposer({
     && !modelNeedsSetup
     && !encoding
     && !hasErrors
+    && !overBudget
+    && !blockedByStreaming
     && hasComposerContent
     && !value.trimStart().startsWith("/");
 
@@ -1686,6 +1727,16 @@ export function ThreadComposer({
       onModelBadgeClick?.();
       return;
     }
+    // 这两种情况下 ``canSend`` 恒为 false，而 Enter 会走到这里——必须给出
+    // 明确原因，不能静默吞掉一次发送意图。
+    if (blockedByStreaming) {
+      setInlineError(t("thread.composer.attachmentNeedsIdleTurn"));
+      return;
+    }
+    if (overBudget) {
+      setInlineError(formatRejection("too_large"));
+      return;
+    }
     if (!canSend) return;
     const trimmed = value.trim();
     const content = trimmed;
@@ -1693,16 +1744,18 @@ export function ThreadComposer({
     // the optimistic bubble preview: data URLs are self-contained (no blob
     // lifetime, safe under React StrictMode double-mount) and keep the
     // bubble in sync with whatever the backend actually sees.
-    const payload: SendImage[] | undefined =
-      readyImages.length > 0
-        ? readyImages.map((img) => ({
-            media: {
-              data_url: img.dataUrl,
-              name: img.file.name,
-            },
-            preview: { url: img.dataUrl, name: img.file.name },
-          }))
-        : undefined;
+    const payload: SendAttachment[] | undefined = readyAttachments.length > 0
+      ? readyAttachments.flatMap((item): SendAttachment[] => {
+          const media = toOutboundMedia(item);
+          const url = toPreviewUrl(item);
+          if (!media || !url) return [];
+          return [{
+            media,
+            preview: { url, name: item.name },
+            kind: toUIMediaKind(item.kind),
+          }];
+        })
+      : undefined;
     const attachedCliApps = activeCliMentionApps.map(cliAppMentionPayload);
     const attachedMcpPresets = activeMcpPresetMentions.map(mcpPresetMentionPayload);
     const attachedSkillMentions = attachedSkillsPayload(attachedSkills);
@@ -1726,13 +1779,17 @@ export function ThreadComposer({
     activeCliMentionApps,
     activeMcpPresetMentions,
     attachedSkills,
+    blockedByStreaming,
     canSend,
     clear,
     clearComposerText,
+    formatRejection,
     modelNeedsSetup,
     onModelBadgeClick,
     onSend,
-    readyImages,
+    overBudget,
+    readyAttachments,
+    t,
     value,
   ]);
 
@@ -1857,7 +1914,7 @@ export function ThreadComposer({
         ? t("thread.composer.voice.transcribing")
         : t("thread.composer.voice.hint");
   const showStopButton = isStreaming && !!onStop;
-  const relaxedHeroInput = isHero && images.length === 0 && !isStreaming;
+  const relaxedHeroInput = isHero && attachments.length === 0 && !isStreaming;
   const inputTextClasses = cn(
     "w-full resize-none bg-transparent",
     isHero
@@ -1940,15 +1997,15 @@ export function ThreadComposer({
             }}
           />
         ) : null}
-        {images.length > 0 ? (
+        {attachments.length > 0 ? (
           <div
             className="flex flex-wrap gap-2 px-3 pt-3"
-            aria-label={t("thread.composer.attachImage")}
+            aria-label={t("thread.composer.attachments")}
           >
-            {images.map((img) => (
+            {attachments.map((item) => (
               <AttachmentChip
-                key={img.id}
-                image={img}
+                key={item.id}
+                attachment={item}
                 labelRemove={t("thread.composer.remove")}
                 labelEncoding={t("thread.composer.encoding")}
                 normalizedHint={(orig, current) =>
@@ -1958,11 +2015,11 @@ export function ThreadComposer({
                   })
                 }
                 formatError={formatRejection}
-                onRemove={() => removeChip(img.id)}
-                onKeyDown={onChipKey(img.id)}
+                onRemove={() => removeChip(item.id)}
+                onKeyDown={onChipKey(item.id)}
                 registerRef={(el) => {
-                  if (el) chipRefs.current.set(img.id, el);
-                  else chipRefs.current.delete(img.id);
+                  if (el) chipRefs.current.set(item.id, el);
+                  else chipRefs.current.delete(item.id);
                 }}
               />
             ))}
@@ -2054,7 +2111,7 @@ export function ThreadComposer({
             <input
               ref={fileInputRef}
               type="file"
-              accept={ACCEPT_ATTR}
+              accept={UPLOAD_ACCEPT_ATTR}
               multiple
               hidden
               onChange={onFilePick}
@@ -2064,7 +2121,7 @@ export function ThreadComposer({
               size="icon"
               variant="ghost"
               disabled={attachButtonDisabled}
-              aria-label={t("thread.composer.attachImage")}
+              aria-label={t("thread.composer.attachments")}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
                 "rounded-full text-muted-foreground hover:text-foreground cyber-btn-glow",
@@ -2809,7 +2866,7 @@ function SlashCommandPalette({
 }
 
 interface AttachmentChipProps {
-  image: AttachedImage;
+  attachment: Attachment;
   labelRemove: string;
   labelEncoding: string;
   normalizedHint: (origBytes: number, currentBytes: number) => string;
@@ -2819,8 +2876,42 @@ interface AttachmentChipProps {
   registerRef: (el: HTMLButtonElement | null) => void;
 }
 
+/** chip 缩略图：图片给真实缩略图，视频给静音首帧，其余给类别图标。 */
+function AttachmentThumb({ attachment }: { attachment: Attachment }) {
+  if (attachment.previewUrl && attachment.kind === "image") {
+    return (
+      <img
+        src={attachment.previewUrl}
+        alt=""
+        aria-hidden
+        loading="eager"
+        draggable={false}
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+  if (attachment.previewUrl && attachment.kind === "video") {
+    return (
+      <video
+        src={attachment.previewUrl}
+        muted
+        playsInline
+        preload="metadata"
+        aria-hidden
+        className="h-full w-full object-cover"
+      />
+    );
+  }
+  const Icon = attachment.kind === "video" ? PlaySquare : ImageIcon;
+  return (
+    <div className="flex h-full w-full items-center justify-center">
+      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+    </div>
+  );
+}
+
 function AttachmentChip({
-  image,
+  attachment,
   labelRemove,
   labelEncoding,
   normalizedHint,
@@ -2830,11 +2921,11 @@ function AttachmentChip({
   registerRef,
 }: AttachmentChipProps) {
   const sizeLabel =
-    image.status === "ready" && image.normalized && image.encodedBytes
-      ? normalizedHint(image.file.size, image.encodedBytes)
-      : formatBytes(image.file.size);
+    attachment.status === "ready" && attachment.normalized && attachment.encodedBytes
+      ? normalizedHint(attachment.size, attachment.encodedBytes)
+      : formatBytes(attachment.size);
   const tone =
-    image.status === "error"
+    attachment.status === "error"
       ? "border-destructive/40 bg-destructive/5 text-destructive"
       : "border-border/70 bg-muted/60";
 
@@ -2848,21 +2939,8 @@ function AttachmentChip({
       data-testid="composer-chip"
     >
       <div className="relative h-10 w-10 overflow-hidden rounded-md bg-background">
-        {image.previewUrl ? (
-          <img
-            src={image.previewUrl}
-            alt=""
-            aria-hidden
-            loading="eager"
-            draggable={false}
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <ImageIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-          </div>
-        )}
-        {image.status === "encoding" ? (
+        <AttachmentThumb attachment={attachment} />
+        {attachment.status === "encoding" ? (
           <div
             className="absolute inset-0 flex items-center justify-center bg-background/60"
             aria-label={labelEncoding}
@@ -2872,12 +2950,12 @@ function AttachmentChip({
         ) : null}
       </div>
       <div className="flex min-w-0 flex-col text-[11.5px] leading-4">
-        <span className="max-w-[min(14rem,calc(100vw-8rem))] truncate font-medium" title={image.file.name}>
-          {image.file.name}
+        <span className="max-w-[min(14rem,calc(100vw-8rem))] truncate font-medium" title={attachment.name}>
+          {attachment.name}
         </span>
         <span className="truncate text-muted-foreground">
-          {image.status === "error" && image.error
-            ? formatError(image.error)
+          {attachment.status === "error" && attachment.error
+            ? formatError(attachment.error)
             : sizeLabel}
         </span>
       </div>

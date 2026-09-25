@@ -20,6 +20,11 @@ from xianaibot.providers.base import resolve_api_endpoint_url  # 共享的端点
 _TRANSCRIPTIONS_PATH = "audio/transcriptions"
 # 扩展名 → MIME 覆盖表：修正 mimetypes 模块对部分音频格式的误判
 _AUDIO_MIME_OVERRIDES = {
+    # 视频容器也能直接交给转写端点（服务端自己取音轨）。不给覆盖时
+    # mimetypes 会报 ``video/mp4``，而这个端点是音频端点，``audio/mp4``
+    # 才是自洽的类型——也正因为这里只认扩展名，``transcribe_media`` 传进来
+    # 的 .mp4 不会被本地拒掉。
+    ".mp4": "audio/mp4",
     ".m4a": "audio/mp4",
     ".mpga": "audio/mpeg",
     ".ogg": "audio/ogg",
@@ -27,6 +32,10 @@ _AUDIO_MIME_OVERRIDES = {
     ".wav": "audio/wav",
     ".weba": "audio/webm",
     ".webm": "audio/webm",
+    # mimetypes 对这两个给的是 nonstandard 的 ``audio/vnd.dlna.adts`` 与
+    # ``audio/x-flac``，服务端多半不认。
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
 }
 
 def _resolve_transcription_url(api_base: str | None, default_url: str) -> str:

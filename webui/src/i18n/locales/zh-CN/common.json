@@ -1070,22 +1070,6 @@
         "edit": "编辑引导",
         "drag": "拖动排序"
       },
-      "attachImage": "添加图片",
-      "imageMode": {
-        "label": "图片生成",
-        "toggle": "切换图片生成模式",
-        "placeholder": "描述或编辑图片…",
-        "aspectAria": "图片画幅",
-        "aspectLabel": "图片画幅",
-        "aspect": {
-          "auto": "自动",
-          "1_1": "方形 1:1",
-          "3_4": "竖版 3:4",
-          "9_16": "故事版 9:16",
-          "4_3": "横版 4:3",
-          "16_9": "宽屏 16:9"
-        }
-      },
       "tools": {
         "search": "搜索",
         "reason": "推理",
@@ -1197,12 +1181,16 @@
       "encoding": "处理中…",
       "remove": "移除附件",
       "normalizedSizeHint": "{{orig}} → {{current}}（已自动压缩）",
+      "attachments": "添加附件（文档 / 视频 / 音频 / 图片）",
+      "attachmentNeedsIdleTurn": "视频 / 文档附件较大，请等当前回复结束后再发送",
       "imageRejected": {
         "unsupported_type": "不支持的文件类型",
         "too_many_images": "每条消息最多 {{max}} 张图片",
+        "too_many_videos": "每条消息最多 {{max}} 个视频",
+        "too_many_documents": "每条消息最多 {{max}} 份文档或音频",
         "magic_mismatch": "文件看起来不像真实的图片",
         "decode_failed": "无法解码这张图片",
-        "too_large": "图片太大，请换一张小一点的",
+        "too_large": "附件体积超限：单个视频最大 18 MB，本条消息附件总计最大 24 MB",
         "io": "无法读取该文件"
       },
       "goalStateCloseAria": "关闭目标",

@@ -569,7 +569,9 @@ class TestUnknownAction:
     async def test_unknown_action(self):
         tool = _make_tool()
         result = await tool.execute(action="explode")
-        assert "Unknown action" in result
+        # 面向用户的报错是中文，并把非法 action 原样回显
+        assert "未知操作" in result
+        assert "explode" in result
 
 
 # ---------------------------------------------------------------------------

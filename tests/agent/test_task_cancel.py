@@ -269,6 +269,9 @@ class TestSubagentCancellation:
             captured_second_call[:] = messages
             return LLMResponse(content="done", tool_calls=[])
         provider.chat_with_retry = scripted_chat_with_retry
+        # 子 Agent 的 hook 声明 wants_streaming()，runner 实际走流式分支，
+        # 同一份脚本必须也挂在流式口上，否则会 await 到一个 MagicMock。
+        provider.chat_stream_with_retry = scripted_chat_with_retry
         mgr = SubagentManager(
             provider=provider,
             workspace=tmp_path,
@@ -339,10 +342,13 @@ class TestSubagentCancellation:
         bus = MessageBus()
         provider = MagicMock()
         provider.get_default_model.return_value = "test-model"
-        provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
+        response = LLMResponse(
             content="thinking",
             tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
-        ))
+        )
+        provider.chat_with_retry = AsyncMock(return_value=response)
+        # 同上：子 Agent 走流式分支，两个入口都要打桩
+        provider.chat_stream_with_retry = AsyncMock(return_value=response)
         mgr = SubagentManager(
             provider=provider,
             workspace=tmp_path,
@@ -382,10 +388,13 @@ class TestSubagentCancellation:
         bus = MessageBus()
         provider = MagicMock()
         provider.get_default_model.return_value = "test-model"
-        provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
+        response = LLMResponse(
             content="thinking",
             tool_calls=[ToolCallRequest(id="call_1", name="list_dir", arguments={"path": "."})],
-        ))
+        )
+        provider.chat_with_retry = AsyncMock(return_value=response)
+        # 同上：子 Agent 走流式分支，两个入口都要打桩
+        provider.chat_stream_with_retry = AsyncMock(return_value=response)
         mgr = SubagentManager(
             provider=provider,
             workspace=tmp_path,

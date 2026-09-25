@@ -22,7 +22,7 @@ def _resolve_version() -> str:
         return _pkg_version("xianaibot")
     except PackageNotFoundError:
         # 源码检出通常在没有安装 dist-info 的情况下导入 xianaibot
-        return _read_pyproject_version() or "0.3.1"
+        return _read_pyproject_version() or "4.0.0"
 
 
 __version__ = _resolve_version()

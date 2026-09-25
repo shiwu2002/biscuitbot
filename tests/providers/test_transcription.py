@@ -361,6 +361,13 @@ def test_audio_format_maps_known_extensions() -> None:
     assert _audio_mime_type(Path("v.m4a")) == "audio/mp4"
     assert _audio_mime_type(Path("v.webm")) == "audio/webm"
     assert _audio_mime_type(Path("v.wav")) == "audio/wav"
+    # transcribe_media 会把视频容器直接交给音频端点（服务端自己取音轨），
+    # 请求打的是 /audio/transcriptions，所以 MIME 必须是 audio/*。不加覆盖时
+    # mimetypes 报的是 video/mp4。
+    assert _audio_mime_type(Path("v.mp4")) == "audio/mp4"
+    # mimetypes 对这两个给的是 audio/vnd.dlna.adts 与 audio/x-flac（非标准）
+    assert _audio_mime_type(Path("v.aac")) == "audio/aac"
+    assert _audio_mime_type(Path("v.flac")) == "audio/flac"
 
 
 def test_resolve_chat_completions_url_appends_path_to_base() -> None:

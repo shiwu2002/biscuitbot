@@ -23,12 +23,12 @@ from typing import Any  # 任意类型标注
 from loguru import logger  # 日志输出
 
 from xianaibot.config.paths import get_legacy_sessions_dir  # 遗留会话目录
+from xianaibot.utils.document import media_placeholder_text  # 附件占位文本（按类型）
 from xianaibot.utils.helpers import (  # 通用辅助函数
     anchor_to_first_user_turn,
     ensure_dir,
     estimate_message_tokens,
     find_legal_message_start,
-    image_placeholder_text,
     safe_filename,
     strip_think,
 )
@@ -196,13 +196,14 @@ class Session:
             role = message.get("role")
             if role == "assistant" and isinstance(content, str):
                 content = _sanitize_assistant_replay_text(content)
-            # 从持久化的 ``media`` kwarg 合成 ``[image: path]`` 面包屑，
-            # 使 LLM 回放时仍能看到图片原来的位置。否则仅含图片的用户 turn
-            # 会回放为空用户消息——助手回复看起来像在回应虚无。
+            # 从持久化的 ``media`` kwarg 合成 ``[image: path]`` / ``[video: path]``
+            # 面包屑，使 LLM 回放时仍能看到附件原来的位置。否则仅含附件
+            # （尤其是只有一张图或一段视频）的用户 turn 会回放为空用户消息
+            # ——助手回复看起来像在回应虚无。
             media = message.get("media")
             if role == "user" and isinstance(media, list) and media and isinstance(content, str):
                 breadcrumbs = "\n".join(
-                    image_placeholder_text(p) for p in media if isinstance(p, str) and p
+                    media_placeholder_text(p) for p in media if isinstance(p, str) and p
                 )
                 content = f"{content}\n{breadcrumbs}" if content else breadcrumbs
             cli_apps = message.get("cli_apps")

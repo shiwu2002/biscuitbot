@@ -309,27 +309,28 @@ def resolve_provider_snapshot(
         return build_placeholder_snapshot(config)
 
 
-def build_vision_provider(
+def build_aux_provider(
     config: Config,
     *,
-    vision_model: str | None = None,
+    preset_name: str | None,
+    model_override: str | None,
+    fallback_model: str,
 ) -> LLMProvider | None:
-    """为截图理解创建视觉 LLM Provider。
+    """按「预设名或 Provider 名」解析并构造一个辅助 Provider。
 
-    ``vision_model`` 可以是：
+    *preset_name* 可以是：
     - **模型预设名**（如 ``"default"``）：使用该预设的 Provider 凭据与模型。
     - **Provider 名**（如 ``"openai"``、``"anthropic"``）：直接使用该
-      Provider 的凭据，此时需通过 ``vision_model_override`` 指定实际的
-      多模态模型 ID。
+      Provider 的凭据，此时需通过 *model_override* 指定实际的模型 ID。
 
-    当 *vision_model* 未配置，或传入了 Provider 名但该 Provider 未配置时
-    返回 ``None``。
+    当 *preset_name* 为空，或传入了 Provider 名但该 Provider 未配置时
+    返回 ``None``。截图理解等辅助链路共用本函数，区别只在配置字段与调用方。
     """
-    name = vision_model or config.agents.defaults.vision_model
+    name = (preset_name or "").strip()
     if not name:
         return None
 
-    override = (config.agents.defaults.vision_model_override or "").strip()
+    override = (model_override or "").strip()
     # 先按预设名查找
     preset = config.model_presets.get(name)
     if preset is not None:
@@ -341,16 +342,34 @@ def build_vision_provider(
     # 非预设 —— 视为 Provider 名（如 "openai"、"anthropic"）
     from xianaibot.config.schema import ModelPresetConfig
 
-    provider_config = getattr(config.providers, name, None)
-    if provider_config is None:
+    if getattr(config.providers, name, None) is None:
         # Provider 未配置：返回 None
         return None
     # 临时构造一个预设，复用 _make_provider_core
     temp_preset = ModelPresetConfig(
-        model=override or "vision",
+        model=override or fallback_model,
         provider=name,
     )
     return _make_provider_core(config, preset=temp_preset, model=override or None)
+
+
+def build_vision_provider(
+    config: Config,
+    *,
+    vision_model: str | None = None,
+) -> LLMProvider | None:
+    """为截图理解创建视觉 LLM Provider（见 ``build_aux_provider``）。
+
+    配置字段为 ``vision_model`` / ``vision_model_override``；未配置时
+    返回 ``None``（调用方应据此判定「视觉能力不可用」）。
+    """
+    defaults = config.agents.defaults
+    return build_aux_provider(
+        config,
+        preset_name=vision_model or defaults.vision_model,
+        model_override=defaults.vision_model_override,
+        fallback_model="vision",
+    )
 
 
 def load_provider_snapshot(

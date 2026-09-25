@@ -10,11 +10,19 @@
 """
 
 import mimetypes  # 扩展名到 MIME 的回退嗅探
+import re  # 截断尾标识别
 from pathlib import Path
 
 from loguru import logger  # 结构化日志记录
 
-from xianaibot.utils.helpers import detect_image_mime  # 基于魔数的图片 MIME 嗅探
+from xianaibot.utils.helpers import (  # 通用辅助函数
+    audio_placeholder_text,  # 音频占位文本
+    detect_image_mime,  # 基于魔数的图片 MIME 嗅探
+    detect_video_mime,  # 基于魔数的视频 MIME 嗅探
+    image_placeholder_text,  # 图片占位文本
+    video_placeholder_text,  # 视频占位文本
+)
+from xianaibot.utils.media_decode import readable_media_name  # 落盘名的展示化
 
 # 支持文本抽取的文件扩展名集合
 SUPPORTED_EXTENSIONS: set[str] = {
@@ -47,6 +55,14 @@ SUPPORTED_EXTENSIONS: set[str] = {
 
 # 单文件抽取文本的最大字符数，超出将被截断
 _MAX_TEXT_LENGTH = 200_000
+
+# 音频扩展名白名单。判定**只看扩展名/MIME，不做魔数嗅探**——ISO BMFF
+# （``.m4a`` 与 ``.mp4``）和 EBML（``.weba`` 与 ``.webm``）都是音视频共用
+# 容器，魔数完全一样，嗅探只会把音频判成视频。见 :func:`is_audio_file`。
+AUDIO_EXTENSIONS: frozenset[str] = frozenset({
+    ".aac", ".aif", ".aiff", ".amr", ".caf", ".flac", ".m4a", ".mp3", ".mpga",
+    ".oga", ".ogg", ".opus", ".wav", ".weba", ".wma",
+})
 
 
 def extract_text(path: Path) -> str | None:
@@ -216,6 +232,45 @@ def _truncate(text: str, max_length: int) -> str:
     return text[:max_length] + f"... (truncated, {len(text)} chars total)"
 
 
+# ``_truncate`` 的尾标。抽取结果是否被截断决定了注入块该怎么写：拿到节选却
+# 以为拿到全文，与拿到全文却以为拿到节选，都是会让模型白干一轮的误判。
+_TRUNCATION_MARKER_RE = re.compile(r"\.\.\. \(truncated, \d+ chars total\)\s*$")
+
+
+def _is_truncated(extracted: str) -> bool:
+    """抽取结果是否被 :func:`_truncate` 截断（尾标是同一文件内的契约）。"""
+    return bool(_TRUNCATION_MARKER_RE.search(extracted))
+
+
+def _human_size(size: int) -> str:
+    """字节数的人类可读写法（注入块里给模型看的）。"""
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.0f} KB"
+    return f"{size / (1024 * 1024):.1f} MB"
+
+
+def _doc_label(disk_name: str, size: int, extracted: str) -> str:
+    """文档注入块的抬头：文件名 + 大小 + **提取完整性**。
+
+    完整性那几个字是必需的，不是装饰。抬头只写 ``[File: x.xlsx]`` 时模型无从
+    判断手里是全文还是节选，于是倾向于自己再解析一遍原文件——实测这会在一
+    次本可秒回的问答上多花 70 秒、6 次失败的工具调用（Windows 命令引号、
+    找不到 python、``del /f /q`` 被 exec 安全策略拦下）。明确告知「已完整
+    提取」即可省掉这一轮；真被截断时也必须说出来，并给出后续内容的上限。
+
+    *disk_name* 是落盘名，含入口加的随机唯一性前缀；抬头里要剥掉它——
+    ``0b96bcf8acf5_学员备注表.xlsx`` 对模型仍是噪音，它要认得的是
+    ``学员备注表.xlsx``。
+    """
+    name = readable_media_name(disk_name)
+    size_label = _human_size(size)
+    if _is_truncated(extracted):
+        return f"{name} ({size_label}，内容过长已截断，仅含前 {_MAX_TEXT_LENGTH} 字符)"
+    return f"{name} ({size_label}，已完整提取)"
+
+
 def _is_text_extension(ext: str) -> bool:
     """判断扩展名是否属于纯文本格式。"""
     return ext in {
@@ -243,6 +298,16 @@ def _is_text_extension(ext: str) -> bool:
 _MAX_EXTRACT_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
 
+def is_remote_url(value: str) -> bool:
+    """判断 *value* 是否为 http(s) 直链。
+
+    远程媒体**不做本地文件读取**：``Path("https://…").is_file()`` 恒为
+    ``False``，若下游把它当本地路径去 ``read_bytes()`` 会直接抛异常。
+    所有面对 ``media`` 列表的函数都必须先过这一关。
+    """
+    return isinstance(value, str) and value.startswith(("http://", "https://"))
+
+
 def is_image_file(path: str) -> bool:
     """判断 *path* 是否为图片文件。
 
@@ -262,25 +327,92 @@ def is_image_file(path: str) -> bool:
     return bool(mime and mime.startswith("image/"))
 
 
+def is_audio_file(path: str) -> bool:
+    """判断 *path* 是否为音频（本地文件或 http(s) 直链）。
+
+    与 :func:`is_image_file` / :func:`is_video_file` 不同，这里**不嗅探魔数**：
+    ``.m4a`` 与 ``.mp4``、``.weba`` 与 ``.webm`` 的容器头完全一样，嗅探无法
+    区分，只会把录音误判成视频。所以扩展名白名单优先，``mimetypes`` 兜底。
+    """
+    if Path(path).suffix.lower() in AUDIO_EXTENSIONS:
+        return True
+    mime, _ = mimetypes.guess_type(path)
+    return bool(mime and mime.startswith("audio/"))
+
+
+def is_video_file(path: str) -> bool:
+    """判断 *path* 是否为视频（本地文件或 http(s) 直链）。
+
+    与 :func:`is_image_file` 对称：魔数优先，扩展名/MIME 兜底。远程直链不做
+    本地读取，只按 URL 路径的扩展名判断。
+
+    先按扩展名**否决**音频专用容器：``.m4a``（``ftypM4A``）与 ``.mp4``、
+    ``.weba`` 与 ``.webm`` 的魔数完全相同，若让魔数优先，一段录音会被判成
+    视频，于是模型拿到「用 ffmpeg 读画面」的错误说明——它要的是音频。
+    """
+    if Path(path).suffix.lower() in AUDIO_EXTENSIONS:
+        return False
+
+    if is_remote_url(path):
+        mime, _ = mimetypes.guess_type(path)
+        return bool(mime and mime.startswith("video/"))
+
+    p = Path(path)
+    mime: str | None = None
+    if p.is_file():
+        try:
+            with p.open("rb") as f:
+                mime = detect_video_mime(f.read(16))
+        except OSError:
+            mime = None
+    if not mime:
+        mime = mimetypes.guess_type(path)[0]
+    return bool(mime and mime.startswith("video/"))
+
+
+def media_placeholder_text(path: str | None, *, empty: str = "[media]") -> str:
+    """按类型给出 kind-aware 的附件占位文本。
+
+    仅看扩展名/MIME，不读文件内容——这是会话回放的热路径，且文件可能已被
+    清理（此时 ``is_image_file``/``is_video_file`` 会自动回退到扩展名判断）。
+    命名与 :func:`image_placeholder_text` 保持一致的 ``[kind: path]`` 形状。
+    """
+    if not path:
+        return empty
+    if is_audio_file(path):
+        return audio_placeholder_text(path)
+    if is_video_file(path):
+        return video_placeholder_text(path)
+    if is_image_file(path):
+        return image_placeholder_text(path)
+    return f"[file: {path}]"
+
+
 def reference_non_image_attachments(
     content: str, media: list[str],
 ) -> tuple[str, list[str]]:
-    """在不读取文件内容的前提下，将图片与非图片附件分离。
+    """在不读取文件内容的前提下，将视觉/音频附件与其他附件分离。
 
-    图片路径保留，供下游视觉块构造使用；
-    非图片路径以 ``[Attachment: path]`` 形式追加到内容末尾。
+    图片、视频与音频路径保留，交给下游 ``_build_user_content`` 处理（图片转
+    内容块，视频与音频转路径说明）；远程直链同样保留，因为它也是「下游还得管」
+    的附件。其余路径以 ``[Attachment: path]`` 形式追加到内容末尾。
     """
-    image_paths: list[str] = []
+    forward_paths: list[str] = []
     attachment_refs: list[str] = []
     for path in media:
-        if is_image_file(path):
-            image_paths.append(path)
+        if (
+            is_remote_url(path)
+            or is_image_file(path)
+            or is_audio_file(path)
+            or is_video_file(path)
+        ):
+            forward_paths.append(path)
         else:
             attachment_refs.append(f"[Attachment: {path}]")
     if attachment_refs:
         suffix = "\n".join(attachment_refs)
         content = f"{content}\n\n{suffix}" if content else suffix
-    return content, image_paths
+    return content, forward_paths
 
 
 def extract_documents(
@@ -289,19 +421,35 @@ def extract_documents(
     *,
     max_file_size: int = _MAX_EXTRACT_FILE_SIZE,
 ) -> tuple[str, list[str]]:
-    """将 *media_paths* 中的图片与文档分离。
+    """将 *media_paths* 中的文档与视觉/音频附件分离。
 
-    文档（PDF、DOCX、XLSX、PPTX、纯文本等）会被抽取为文本并
-    追加到 *text* 中；返回列表只保留图片路径，使下游层只需处理
-    视觉块。
+    文档（PDF、DOCX、XLSX、PPTX、纯文本等）会被抽取为文本并追加到
+    *text* 中；返回列表保留**仍需下游处理的路径**——图片、音频、视频与
+    http(s) 直链。下游 ``_build_user_content`` 把图片转成 ``image_url`` 块，
+    音频与视频只取路径写进文本说明（内容都不送模型，音频由模型按需调用
+    ``transcribe_media`` 转写）。
+
+    每个文档块以 ``[File: <文件名> (<大小>，已完整提取)]`` 开头（被截断时
+    写明「仅含前 N 字符」），见 :func:`_doc_label`——这行抬头是模型判断
+    「还需要自己读原文件吗」的唯一依据。
+
+    注意：视频与音频**不能**走文本抽取分支。它们的扩展名不在
+    :data:`SUPPORTED_EXTENSIONS` 中，``extract_text`` 会返回 ``None``，
+    若在此处按「非图片即文档」处理，它们会被静默丢弃、模型完全不知道
+    这个附件的存在。
 
     超过 *max_file_size* 字节的文件会被跳过并记录警告，以避免
     无限制的内存 / CPU 占用。
     """
-    image_paths: list[str] = []
+    forward_paths: list[str] = []
     doc_texts: list[str] = []
 
     for path_str in media_paths:
+        if is_remote_url(path_str):
+            # 远程直链不做本地读取与文本抽取，原样交给下游
+            forward_paths.append(path_str)
+            continue
+
         p = Path(path_str)
         if not p.is_file():
             continue
@@ -317,14 +465,21 @@ def extract_documents(
             )
             continue
 
-        if is_image_file(path_str):
-            image_paths.append(path_str)
+        if (
+            is_image_file(path_str)
+            or is_audio_file(path_str)
+            or is_video_file(path_str)
+        ):
+            forward_paths.append(path_str)
         else:
             extracted = extract_text(p)
             if extracted and not extracted.startswith("[error:"):
-                doc_texts.append(f"[File: {p.name}]\n{extracted}")
+                # 抬头带上文件名（落盘名里的可读 slug）与提取完整性：模型据此
+                # 判断「不必再自己去读原文件」，见 ``_doc_label``。
+                label = _doc_label(p.name, size, extracted)
+                doc_texts.append(f"[File: {label}]\n{extracted}")
 
     if doc_texts:  # 将抽取的文档文本拼接到原文本后
         text = text + "\n\n" + "\n\n".join(doc_texts)
 
-    return text, image_paths
+    return text, forward_paths
