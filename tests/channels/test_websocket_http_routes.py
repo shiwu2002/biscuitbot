@@ -1639,3 +1639,75 @@ def test_bootstrap_secret_also_enforced_on_localhost(bus: MagicMock) -> None:
     channel = _ch(bus, host="0.0.0.0", tokenIssueSecret="s3cret")
     resp = channel.gateway.http._handle_bootstrap(_LOCAL, _NO_HEADERS)
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_cold_storage_route_requires_token_and_returns_entries(
+    bus: MagicMock, tmp_path: Path
+) -> None:
+    """冷门仓库只读端点：无 token → 401；有 token → 轮转出去的工具列表。"""
+    now = time.time()
+    cold_dir = tmp_path / ".agent_tools"
+    cold_dir.mkdir(parents=True)
+    (cold_dir / "cold_storage.json").write_text(
+        json.dumps(
+            {
+                "old_tool": {
+                    "name": "old_tool",
+                    "capability": "很久没用的工具",
+                    "usage_md": "",
+                    "source_file": "xianaibot.agent.tools.old",
+                    "cold_since": now - 20 * 86400,
+                },
+                "new_tool": {
+                    "name": "new_tool",
+                    "capability": "最近冷落的工具",
+                    "usage_md": "new_tool.md",
+                    "source_file": "xianaibot.agent.tools.new",
+                    "cold_since": now - 2 * 86400,
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    channel = _ch(
+        bus,
+        session_manager=_seed_session(tmp_path),
+        workspace_path=tmp_path,
+        port=29930,
+    )
+    server_task = asyncio.create_task(channel.start())
+    await _wait_for_listen("127.0.0.1", 29930)
+    try:
+        deny = await _http_get("http://127.0.0.1:29930/api/webui/cold-storage")
+        assert deny.status_code == 401
+
+        boot = await _http_get("http://127.0.0.1:29930/webui/bootstrap")
+        token = boot.json()["token"]
+        resp = await _http_get(
+            "http://127.0.0.1:29930/api/webui/cold-storage",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["cold_count"] == 2
+        # 最近转入冷门仓库的排在最前
+        assert [entry["name"] for entry in body["entries"]] == ["new_tool", "old_tool"]
+        newest = body["entries"][0]
+        assert newest["capability"] == "最近冷落的工具"
+        assert newest["usage_md"] == "new_tool.md"
+        assert newest["cold_days"] == 2
+        assert set(newest) == {
+            "name",
+            "capability",
+            "usage_md",
+            "source_file",
+            "cold_since",
+            "cold_days",
+        }
+    finally:
+        await channel.stop()
+        await server_task

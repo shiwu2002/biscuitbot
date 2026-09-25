@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { TFunction } from "i18next";
 import {
+  Archive,
   Boxes,
   Brain,
   Check,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { ColdStorageSheet } from "@/components/settings/ColdStorageSheet";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,6 +95,7 @@ export function CapabilitiesView({
   const [tier, setTier] = useState<TierFilter>("all");
   const [availability, setAvailability] = useState<AvailabilityFilter>("all");
   const [source, setSource] = useState<SourceFilter>("all");
+  const [coldStorageOpen, setColdStorageOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -198,6 +201,15 @@ export function CapabilitiesView({
               defaultValue: "{{installed}} installed · {{total}} total",
             })}
           </span>
+          <button
+            type="button"
+            data-testid="cold-storage-open"
+            onClick={() => setColdStorageOpen(true)}
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[hsl(var(--cyber-panel-border)/0.4)] px-3 text-[12px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-200 hover:bg-[hsl(var(--cyber-glow)/0.08)] hover:text-foreground hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.3),0_0_12px_hsl(var(--cyber-glow-soft)/0.2)]"
+          >
+            <Archive className="h-3.5 w-3.5" aria-hidden />
+            {t("settings.capabilities.coldStorage", { defaultValue: "冷门仓库" })}
+          </button>
           {onOpenSkillHub ? (
             <button
               type="button"
@@ -350,6 +362,8 @@ export function CapabilitiesView({
           if (!open) setSelected(null);
         }}
       />
+
+      <ColdStorageSheet open={coldStorageOpen} onOpenChange={setColdStorageOpen} />
     </div>
   );
 }

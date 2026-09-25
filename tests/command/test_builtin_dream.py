@@ -22,6 +22,11 @@ class _FakeStore:
         self._pending_count = pending_count
         self.compact_history_called = False
         self.cursor_advances = []
+        self.history_notes = []
+
+    def append_history(self, entry: str, *, max_chars=None, session_key=None) -> int:
+        self.history_notes.append(entry)
+        return len(self.history_notes)
 
     def get_last_dream_cursor(self) -> int:
         return self._last_dream_cursor
@@ -224,6 +229,43 @@ async def test_dream_restore_success_mentions_files_and_followup() -> None:
     assert "- New safety commit: `eeee9999`" in out.content
     assert "- Restored files: `SOUL.md`, `memory/MEMORY.md`" in out.content
     assert "Use `/dream-log eeee9999` to inspect the restore diff." in out.content
+
+
+@pytest.mark.asyncio
+async def test_dream_restore_records_rejection_for_next_dream_run() -> None:
+    """撤销要被下一次 Dream 看见，否则它会从同一批历史里再次写回被否掉的内容。"""
+    commit = CommitInfo(sha="abcd1234", message="dream: latest", timestamp="2026-04-04 12:00")
+    diff = (
+        "diff --git a/memory/MEMORY.md b/memory/MEMORY.md\n"
+        "--- a/memory/MEMORY.md\n"
+        "+++ b/memory/MEMORY.md\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+    )
+    git = _FakeGit(diff_map={commit.sha: (commit, diff)}, revert_result="eeee9999")
+    ctx = _make_ctx("/dream-restore abcd1234", git, args="abcd1234")
+
+    await cmd_dream_restore(ctx)
+
+    notes = ctx.loop.consolidator.store.history_notes
+    assert len(notes) == 1
+    # Dream 模板里的 [correction] 标签语义：替换旧事实、不要两条并存
+    assert notes[0].startswith("[correction] ")
+    assert "abcd1234" in notes[0]
+    assert "`memory/MEMORY.md`" in notes[0]
+
+
+@pytest.mark.asyncio
+async def test_dream_restore_failure_records_nothing() -> None:
+    """撤销没成功就不该往历史里写否决记录。"""
+    git = _FakeGit(revert_result=None)
+    ctx = _make_ctx("/dream-restore abcd1234", git, args="abcd1234")
+
+    out = await cmd_dream_restore(ctx)
+
+    assert "Couldn't restore Dream change `abcd1234`." in out.content
+    assert ctx.loop.consolidator.store.history_notes == []
 
 
 # ---------------------------------------------------------------------------

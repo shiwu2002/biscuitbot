@@ -27,6 +27,10 @@ _DREAM_MAX_BATCHES = 3
 # cron callback / command handler — freeze the whole agent.
 _DREAM_BATCH_TIMEOUT_S = float(os.environ.get("XIANAIBOT_DREAM_BATCH_TIMEOUT_S", "180"))
 
+# Cap for the synthetic [correction] history entry written by /dream-restore;
+# it is a one-line pointer, not a summary.
+_DREAM_RESTORE_NOTE_MAX_CHARS = 1_200
+
 
 @dataclass(frozen=True)
 class BuiltinCommandSpec:
@@ -594,6 +598,21 @@ async def cmd_dream_restore(ctx: CommandContext) -> OutboundMessage:
         changed_files = _format_changed_files(result[1]) if result else "the tracked memory files"
         new_sha = git.revert(sha)
         if new_sha:
+            # 撤销必须让下一次 Dream 知道：否则它会从同一批历史里再次推出
+            # 被用户否掉的那条结论。用 Dream 模板里已有的 [correction] 标签
+            # （见 templates/agent/dream.md 的 History attribute tags）把否决
+            # 写进它的输入。
+            try:
+                store.append_history(
+                    "[correction] The user ran /dream-restore "
+                    f"{sha} and reverted that Dream consolidation ({changed_files}). "
+                    "Those changes were rejected: do not write the same content again "
+                    "unless newer conversation evidence supports it.",
+                    max_chars=_DREAM_RESTORE_NOTE_MAX_CHARS,
+                )
+            except Exception:
+                # 回滚已经生效，不能因为记一笔历史失败就把成功报成异常。
+                logger.warning("failed to record the /dream-restore rejection note", exc_info=True)
             content = (
                 f"Restored Dream memory to the state before `{sha}`.\n\n"
                 f"- New safety commit: `{new_sha}`\n"

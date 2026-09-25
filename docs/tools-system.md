@@ -88,6 +88,10 @@ XiaNaiBot 的工具系统采用 **渐进式发现（Progressive Discovery）** �
 
 `cold_storage_days`（默认 **14**，`0` 表示禁用冷门轮转），定义于 [schema.py](file:///Volumes/data/hczkAgent/nanobot/xianaibot/config/schema.py) 的 `ToolsConfig`。
 
+### 4.6 WebUI 可见性
+
+能力中心标题栏的「冷门仓库」按钮打开只读抽屉，列出被轮转出去的工具（名称 / 能力描述 / 已冷落天数）。数据来自 `GET /api/webui/cold-storage`（[ws_http.py](file:///Volumes/data/hczkAgent/nanobot/xianaibot/webui/ws_http.py) 的 `_handle_webui_cold_storage` → [cold_storage_api.py](file:///Volumes/data/hczkAgent/nanobot/xianaibot/webui/cold_storage_api.py) `cold_storage_payload`），与模型侧的 `cold_storage` 工具读同一份 `cold_storage.json`。**只读**：恢复入口只有 §4.4 的自动恢复，WebUI 不提供「复活」按钮——后端 HTTP 层拿不到运行中的 `UsageStats` 实例，直接改文件会被 agent 侧的下一次 `_save()` 覆盖。
+
 ## 5. 夜间维护
 
 [commands.py](file:///Volumes/data/hczkAgent/nanobot/xianaibot/cli/commands.py) 中注册的系统 cron 任务 `nightly_maintenance`，调度 `0 23 * * *`（每天 23:00，时区取 `config.agents.defaults.timezone`）。任务处理逻辑为三合一：

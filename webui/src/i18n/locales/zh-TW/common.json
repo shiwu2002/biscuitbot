@@ -855,7 +855,17 @@
       "deleteCancel": "取消",
       "deleteConfirmButton": "刪除",
       "deleting": "正在刪除...",
-      "detailDescription": "{{name}} 的詳細資訊。"
+      "detailDescription": "{{name}} 的詳細資訊。",
+      "coldStorage": "冷門倉庫",
+      "coldStorageDescription": "長期未被呼叫的工具會被輪轉到此處：schema 不再傳送給模型，呼叫它即可自動恢復。",
+      "coldStorageCount": "{{count}} 個工具在冷門倉庫",
+      "coldStorageLoading": "正在載入冷門倉庫...",
+      "coldStorageLoadFailed": "冷門倉庫載入失敗。",
+      "coldStorageEmpty": "冷門倉庫為空。所有工具都在活躍索引中。",
+      "coldStorageColdDays": "已冷落 {{days}} 天",
+      "coldStorageToday": "剛剛轉入",
+      "coldStorageRefresh": "重新整理",
+      "coldStorageReviveHint": "讓夏奈呼叫其中某個工具，它會自動恢復到活躍索引。"
     },
     "voice": {
       "selectProvider": "選擇提供商",

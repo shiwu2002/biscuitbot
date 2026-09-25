@@ -5,6 +5,7 @@ import type {
   CapabilitiesPayload,
   CapabilityDetail,
   ChatSummary,
+  ColdStoragePayload,
   Employee,
   EmployeesPayload,
   CliAppsPayload,
@@ -348,6 +349,19 @@ export async function fetchCapabilityDetail(
 ): Promise<CapabilityDetail> {
   return request<CapabilityDetail>(
     `${base}/api/webui/capabilities/${encodeURIComponent(id)}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** 冷门仓库：长期未被调用而被轮转出活跃索引的工具（只读）。 */
+export async function fetchColdStorage(
+  token: string,
+  base: string = "",
+): Promise<ColdStoragePayload> {
+  return request<ColdStoragePayload>(
+    `${base}/api/webui/cold-storage`,
     token,
     undefined,
     API_READ_TIMEOUT_MS,

@@ -231,6 +231,25 @@ export interface CapabilitiesPayload {
   installed_count: number;
 }
 
+/** 冷门仓库条目：长期未被调用、已被轮转出活跃索引的工具。
+ *
+ * 注意这是**工具级**概念（ToolRegistry），与能力目录里的技能/CLI 应用/MCP
+ * 预设不是同一份列表。
+ */
+export interface ColdStorageEntry {
+  name: string;
+  capability: string;
+  usage_md: string;
+  source_file: string;
+  cold_since: number;
+  cold_days: number;
+}
+
+export interface ColdStoragePayload {
+  cold_count: number;
+  entries: ColdStorageEntry[];
+}
+
 /** 数字人员工（Digital Employee）目录条目。
  *
  * 员工是带专属 persona 的拟人化代理：与主智能体不同，与其对话时 LLM 会沉浸

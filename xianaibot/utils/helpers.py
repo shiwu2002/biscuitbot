@@ -849,15 +849,18 @@ def sync_workspace_templates(workspace: Path, silent: bool = False) -> list[str]
 
     # Initialize git for memory version control
     try:
-        from xianaibot.utils.gitstore import GitStore
+        from xianaibot.utils.gitstore import (
+            MEMORY_EXCLUDED_PATHS,
+            MEMORY_TRACKED_DIRS,
+            MEMORY_TRACKED_FILES,
+            GitStore,
+        )
 
         gs = GitStore(
             workspace,
-            tracked_files=[
-                "SOUL.md",
-                "USER.md",
-                "memory/MEMORY.md",
-            ],
+            tracked_files=MEMORY_TRACKED_FILES,
+            tracked_dirs=MEMORY_TRACKED_DIRS,
+            excluded_paths=MEMORY_EXCLUDED_PATHS,
         )
         gs.init()
     except Exception:

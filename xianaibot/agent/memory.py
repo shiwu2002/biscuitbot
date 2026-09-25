@@ -30,7 +30,12 @@ from typing import TYPE_CHECKING, Any, Callable, Iterator  # 类型注解支持
 from loguru import logger  # 日志记录
 
 from xianaibot.session.manager import Session  # 会话对象类型
-from xianaibot.utils.gitstore import GitStore  # Git 存储，用于记忆文件的版本管理
+from xianaibot.utils.gitstore import (  # Git 存储与统一的跟踪范围
+    MEMORY_EXCLUDED_PATHS,
+    MEMORY_TRACKED_DIRS,
+    MEMORY_TRACKED_FILES,
+    GitStore,
+)
 from xianaibot.utils.helpers import (  # 通用辅助函数
     anchor_to_first_user_turn,  # 锚定切片首个 user turn（与 get_history 同源）
     atomic_write_text,  # 原子写文本
@@ -90,9 +95,14 @@ class MemoryStore:
         self._malformed_entry_logged = False  # 限速：畸形历史条目告警只记一次
         self._oversize_logged = False  # 限速：超大条目告警只记一次
         self._append_lock = threading.Lock()  # 串行化游标分配与追加，避免并发重复
-        self._git = GitStore(workspace, tracked_files=[  # Git 版本管理的关键文件
-            "SOUL.md", "USER.md", "memory/MEMORY.md",
-        ])
+        # 跟踪范围见 gitstore.MEMORY_TRACKED_*：记忆文件 + skills/.agent_tools
+        # 整目录，让模型写下的技能与自定义工具也可被 /dream-restore 回滚。
+        self._git = GitStore(
+            workspace,
+            tracked_files=MEMORY_TRACKED_FILES,
+            tracked_dirs=MEMORY_TRACKED_DIRS,
+            excluded_paths=MEMORY_EXCLUDED_PATHS,
+        )
         self._maybe_migrate_legacy_history()  # 启动时尝试迁移旧版历史
 
     @property

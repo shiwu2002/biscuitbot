@@ -437,14 +437,28 @@ _INTERNAL_HISTORY_SESSION_KEYS = {"heartbeat"}
 ### 9.1 追踪文件
 
 ```python
-GitStore(workspace, tracked_files=[
-    "SOUL.md", "USER.md", "memory/MEMORY.md",
-])
+from xianaibot.utils.gitstore import (
+    MEMORY_EXCLUDED_PATHS, MEMORY_TRACKED_DIRS, MEMORY_TRACKED_FILES,
+)
+
+GitStore(
+    workspace,
+    tracked_files=MEMORY_TRACKED_FILES,   # SOUL.md / USER.md / memory/MEMORY.md
+    tracked_dirs=MEMORY_TRACKED_DIRS,     # skills/ / .agent_tools/
+    excluded_paths=MEMORY_EXCLUDED_PATHS, # .agent_tools/{usage_stats,cold_storage}.json
+)
 ```
+
+这三个常量定义在 [gitstore.py](file:///Volumes/data/hczkAgent/nanobot/xianaibot/utils/gitstore.py) 里，由两个建仓入口（`MemoryStore`、`helpers.init_workspace`）共用——跟踪范围必须同源，否则「谁先建仓」会决定哪些文件进版本库。
+
+**为什么要整目录跟踪**：技能（`skills/<name>/SKILL.md`）与自定义工具（`.agent_tools/manifest.json`）是模型/Dream 直接落盘的，文件名事先不可知，只有按目录收集才能让它们的新增、修改、删除都进提交，`/dream-restore` 才回滚得动。
 
 注意：
 - `history.jsonl` **不**纳入 Git 版本控制（频繁追加，体积大）
 - `.dream_cursor` **不**纳入 Git 版本控制——`/dream-restore` 回滚记忆文件内容时不应回滚处理进度游标，否则会导致 Dream 重复处理已整合的历史（因为 `history.jsonl` 本身也不回滚）。`.dream_cursor` 的真实值始终保留在文件中，Git 仅用于记忆内容的版本化。
+- `usage_stats.json` / `cold_storage.json` **不**纳入版本控制：它们每次工具调用都会被改写，纳入只会淹没提交日志，回滚时还会复活过期的调用统计
+- 目录跟踪会跳过 `__pycache__/`、`*.pyc`（技能目录里可能跑过脚本）
+- 旧工作区无需手动迁移：`init()` 在仓库已存在时会补齐 `.gitignore` 里缺失的条目
 
 ### 9.2 自动提交
 
@@ -464,6 +478,10 @@ GitStore(workspace, tracked_files=[
 | `/dream-restore <sha>` | 恢复到指定快照（创建新 commit 记录回滚，不回滚 `.dream_cursor`）|
 
 `revert` 操作通过将 tracked files 恢复到目标 commit 的父 commit 状态来实现，然后创建一个新的 revert commit，保证历史可追溯。`.dream_cursor` 不在 tracked files 中，因此回滚不会影响 Dream 处理进度。
+
+跟踪目录按同样语义**对齐**到父 commit：写回其中存在的文件（按字节，技能目录里可能有 zip/图片），并删除「那次提交之后才进入跟踪」的文件——否则回滚掉 Dream 新建的技能会是个空操作。从未提交过的文件不动：只回滚已提交的内容。
+
+回滚成功后会往 `history.jsonl` 追加一条 `[correction]` 历史（`_DREAM_RESTORE_NOTE_MAX_CHARS` 截断），记录「用户撤销了这次整合、这些改动被否掉」。Dream 的输入正是未处理的历史条目（`build_dream_prompt`），而 `templates/agent/dream.md` 已经把 `[correction]` 定义为「替换旧事实、不要两条并存」的保留提示——这样回滚就不再是「文件改回去了、但模型下次还会从同一批对话里推出同一条被否掉的结论」。
 
 `/dream-log` 末尾通过 `count_unprocessed_history()`（[memory.py:530](file:///Volumes/data/hczkAgent/nanobot/xianaibot/agent/memory.py#L530)）显示当前 pending 条目数，让用户直观感知 Dream 是否积压。
 

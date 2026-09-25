@@ -40,6 +40,7 @@ from xianaibot.webui.capabilities_api import (
     capabilities_payload,
     capability_detail_payload,
 )
+from xianaibot.webui.cold_storage_api import cold_storage_payload
 from xianaibot.webui.file_preview import WebUIFilePreviewError, file_preview_payload
 from xianaibot.webui.gateway_tokens import GatewayTokenStore, token_response_payload
 from xianaibot.webui.http_utils import (
@@ -762,6 +763,8 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/webui/capabilities/([^/]+)$", got)
         if m:
             return self._handle_webui_capability_detail(request, m.group(1))
+        if got == "/api/webui/cold-storage":
+            return self._handle_webui_cold_storage(request)
         m = re.match(r"^/api/avatars/([^/]+)$", got)
         if m:
             # 头像文件读取（同步 IO），放到线程池避免阻塞事件循环
@@ -1029,6 +1032,16 @@ class GatewayHTTPHandler:
         if payload is None:
             return _http_error(404, "capability not found")
         return _http_json_response(payload)
+
+    def _handle_webui_cold_storage(self, request: WsRequest) -> Response:
+        """冷门仓库只读列表：长期未被调用、已被轮转出活跃索引的工具。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        try:
+            return _http_json_response(cold_storage_payload(self.skills_workspace_path))
+        except Exception:
+            logger.exception("failed to list cold storage")
+            return _http_error(500, "failed to list cold storage")
 
     def _handle_webui_skill_delete(self, request: WsRequest, raw_name: str) -> Response:
         if not self.check_api_token(request):

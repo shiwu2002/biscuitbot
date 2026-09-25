@@ -855,7 +855,17 @@
       "deleteCancel": "取消",
       "deleteConfirmButton": "删除",
       "deleting": "正在删除...",
-      "detailDescription": "{{name}} 的详情。"
+      "detailDescription": "{{name}} 的详情。",
+      "coldStorage": "冷门仓库",
+      "coldStorageDescription": "长期未被调用的工具会被轮转到此处：schema 不再发送给模型，调用它即可自动恢复。",
+      "coldStorageCount": "{{count}} 个工具在冷门仓库",
+      "coldStorageLoading": "正在加载冷门仓库...",
+      "coldStorageLoadFailed": "冷门仓库加载失败。",
+      "coldStorageEmpty": "冷门仓库为空。所有工具都在活跃索引中。",
+      "coldStorageColdDays": "已冷落 {{days}} 天",
+      "coldStorageToday": "刚刚转入",
+      "coldStorageRefresh": "刷新",
+      "coldStorageReviveHint": "让夏奈调用其中某个工具，它会自动恢复到活跃索引。"
     },
     "voice": {
       "selectProvider": "选择提供商",
