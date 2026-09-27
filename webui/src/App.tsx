@@ -371,47 +371,53 @@ function HostChrome({
   const { t } = useTranslation();
 
   return (
-    <header
-      data-tauri-drag-region="deep"
-      className="host-drag-region absolute inset-x-0 top-0 z-40 h-11 bg-transparent text-foreground/90"
-    >
-      <div className="host-no-drag pointer-events-auto absolute left-3 top-2 flex items-center gap-1">
-        <div
-          className="flex h-6 w-6 shrink-0 select-none items-center justify-center rounded-lg bg-[hsl(var(--cyber-glow)/0.15)] shadow-[0_0_12px_hsl(var(--cyber-glow-soft)/0.35)]"
-          title="夏奈儿"
-        >
-          <img
-            src="/brand/xianaibot_icon.png?v=20260903"
-            alt="夏奈儿"
-            className="h-5 w-5 shrink-0 select-none object-contain"
-            draggable={false}
-          />
-        </div>
-        {onToggleSidebar ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={t("thread.header.toggleSidebar")}
-            data-testid="host-sidebar-toggle"
-            onClick={onToggleSidebar}
-            onFocus={!sidebarOpen ? onSidebarPreviewEnter : undefined}
-            onBlur={!sidebarOpen ? onSidebarPreviewLeave : undefined}
-            onMouseEnter={!sidebarOpen ? onSidebarPreviewEnter : undefined}
-            onMouseLeave={!sidebarOpen ? onSidebarPreviewLeave : undefined}
-            className="h-7 w-7 rounded-lg bg-transparent text-muted-foreground/85 shadow-none hover:bg-transparent hover:text-foreground"
+    <>
+      <header
+        data-tauri-drag-region="deep"
+        className="host-drag-region absolute inset-x-0 top-0 z-40 h-11 bg-transparent text-foreground/90"
+      >
+        <div className="host-no-drag pointer-events-auto absolute left-3 top-2 flex items-center gap-1">
+          <div
+            className="flex h-6 w-6 shrink-0 select-none items-center justify-center rounded-lg bg-[hsl(var(--cyber-glow)/0.15)] shadow-[0_0_12px_hsl(var(--cyber-glow-soft)/0.35)]"
+            title="夏奈儿"
           >
-            <PanelLeft className="h-[15px] w-[15px]" strokeWidth={1.75} />
-          </Button>
-        ) : null}
-      </div>
-      <div className="host-no-drag pointer-events-auto absolute right-0 top-0 flex h-11 items-center">
+            <img
+              src="/brand/xianaibot_icon.png?v=20260903"
+              alt="夏奈儿"
+              className="h-5 w-5 shrink-0 select-none object-contain"
+              draggable={false}
+            />
+          </div>
+          {onToggleSidebar ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={t("thread.header.toggleSidebar")}
+              data-testid="host-sidebar-toggle"
+              onClick={onToggleSidebar}
+              onFocus={!sidebarOpen ? onSidebarPreviewEnter : undefined}
+              onBlur={!sidebarOpen ? onSidebarPreviewLeave : undefined}
+              onMouseEnter={!sidebarOpen ? onSidebarPreviewEnter : undefined}
+              onMouseLeave={!sidebarOpen ? onSidebarPreviewLeave : undefined}
+              className="h-7 w-7 rounded-lg bg-transparent text-muted-foreground/85 shadow-none hover:bg-transparent hover:text-foreground"
+            >
+              <PanelLeft className="h-[15px] w-[15px]" strokeWidth={1.75} />
+            </Button>
+          ) : null}
+        </div>
+      </header>
+      {/* 窗口控制（最小化/最大化/关闭）独立成层：聊天顶栏 ThreadHeader 已提到
+          z-50（修复其按钮被拖拽层吞点击），若窗口控制仍留在 z-40 的宿主拖拽层内，
+          会被 ThreadHeader 的毛玻璃面板盖住（同属宿主层堆叠上下文，子元素无法
+          越过 z-50 的兄弟层）。提到 z-[60] 确保永远可点、不被遮挡。 */}
+      <div className="host-no-drag pointer-events-auto absolute right-0 top-0 z-[60] flex h-11 items-center">
         {rightAction ? (
           <div className="flex items-center pr-1">{rightAction}</div>
         ) : null}
         <WindowTitlebarControls />
       </div>
-    </header>
+    </>
   );
 }
 

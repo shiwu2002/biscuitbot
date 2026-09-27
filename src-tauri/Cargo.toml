@@ -1,6 +1,6 @@
 [package]
 name = "xianaibot"
-version = "4.0.3"
+version = "4.0.4"
 description = "夏奈儿（XiaNaiBot）智能体桌面端：启动无头 gateway sidecar 并加载其 WebUI"
 authors = ["xianaibot"]
 edition = "2021"
