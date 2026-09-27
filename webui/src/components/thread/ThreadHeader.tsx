@@ -36,11 +36,17 @@ export function ThreadHeader({
 
   return (
     <div
+      data-tauri-drag-region=""
       className={cn(
-        "cyber-glass-panel cyber-scanline relative z-10 flex items-center justify-between gap-3 border-b-0 px-3 py-2",
+        "host-drag-region cyber-glass-panel cyber-scanline relative z-50 flex items-center justify-between gap-3 border-b-0 px-3 py-2",
         minimal && "h-11",
-        !minimal && hostChromeTitleInset && "lg:pl-[128px]",
-        hideSidebarToggleForHostChrome && "lg:pr-[136px]",
+        // 桌面宿主模式：宿主拖拽层（App.tsx z-40 全宽 44px）会盖住本组件右侧
+        // 按钮组（会话信息/导航/追踪/主题），点击被拖拽 IPC 吞掉。因此本组件
+        // 提到 z-50，并自身声明拖拽区——空白处仍可拖动窗口，按钮不受影响。
+        // 左右 inset 不再限 lg：窗口控制按钮在任意宽度都存在，窄窗下按钮组
+        // 不得钻进最小化/关闭区域。
+        !minimal && hostChromeTitleInset && "pl-[128px]",
+        hideSidebarToggleForHostChrome && "pr-[136px]",
       )}
       style={{ borderRadius: 0 }}
     >
