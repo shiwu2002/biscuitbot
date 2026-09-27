@@ -211,7 +211,12 @@ type RestartAwarePayload = {
   runtime_surface?: SettingsPayload["runtime_surface"];
   runtime_capabilities?: SettingsPayload["runtime_capabilities"];
 };
-const CONTEXT_WINDOW_TOKEN_OPTIONS = [65_536, 262_144] as const;
+const CONTEXT_WINDOW_TOKEN_OPTIONS = [65_536, 262_144, 1_048_576] as const;
+const CONTEXT_WINDOW_TOKEN_LABELS: Record<number, string> = {
+  65_536: "64K",
+  262_144: "256K",
+  1_048_576: "1M",
+};
 const DEFERRED_MODEL_LIST_PROVIDERS = new Set([
   "ollama",
 ]);
@@ -2616,7 +2621,7 @@ function ModelsSettings({
               value={String(form.contextWindowTokens)}
               options={CONTEXT_WINDOW_TOKEN_OPTIONS.map((tokens) => ({
                 value: String(tokens),
-                label: tokens === 262_144 ? "256K" : "64K",
+                label: CONTEXT_WINDOW_TOKEN_LABELS[tokens] ?? `${Math.round(tokens / 1024)}K`,
               }))}
               onChange={(value) =>
                 setForm((prev) => ({

@@ -24,7 +24,7 @@ import os  # 读取环境变量（LLM 超时配置）
 import time  # 计时（LLM/工具调用耗时）
 from contextlib import suppress  # 忽略可预期异常（如 prepare_call 失败）
 from copy import deepcopy  # 深拷贝消息列表，避免钩子修改污染原始数据
-from dataclasses import dataclass, field  # 数据类装饰器与字段默认工厂
+from dataclasses import dataclass, field, replace  # 数据类装饰器、字段默认工厂与字段替换
 from pathlib import Path  # 工作区路径类型
 from typing import Any, Callable  # 类型注解支持
 
@@ -95,6 +95,9 @@ _MAX_LENGTH_RECOVERIES = 3  # 输出被截断（finish_reason=length）时的最
 _MAX_INJECTIONS_PER_TURN = 3  # 单轮允许注入的最大用户消息数
 _MAX_INJECTION_CYCLES = 5  # 单次执行允许的注入循环上限，避免无限延续
 _SNIP_SAFETY_BUFFER = 1024  # 历史裁剪的安全缓冲 token 数
+# 上下文超装兜底的目标窗口：模型实际窗口小于配置值（如配置 1M 但模型只支持
+# 256K）时，API 返回 context_length_exceeded 类错误，本轮运行降回该窗口重试。
+_CONTEXT_OVERFLOW_FALLBACK_TOKENS = 262_144
 _MICROCOMPACT_KEEP_RECENT = 10  # 微压缩时保留的最近可压缩工具结果条数
 _MICROCOMPACT_MIN_CHARS = 500  # 微压缩仅处理超过该字符数的工具结果
 _COMPACTABLE_TOOLS = frozenset({  # 可被微压缩的工具名集合
@@ -640,6 +643,7 @@ class AgentRunner:
         injection_cycles = 0  # 注入循环计数
         repeated_error_streak = 0  # 连续同类工具错误计数（用于「换一种方式」提醒）
         repeated_error_last_key: str | None = None  # 上一个错误签名
+        context_overflow_downgraded = False  # 是否已执行过超装降档（只降一次避免死循环）
 
         for iteration in range(spec.max_iterations):
             try:
@@ -929,6 +933,32 @@ class AgentRunner:
                 continue
 
             if response.finish_reason == "error":  # LLM 错误分支
+                # 上下文超装兜底：配置的窗口大于模型实际支持（如配置 1M 但模型
+                # 只有 256K）时，API 返回 context_length_exceeded 类错误。把本轮
+                # 运行的窗口降回 256K、按新预算裁剪历史后立即重试，而不是把错误
+                # 直接抛给用户。只降档一次：降档后仍超限说明模型窗口比 256K 还小
+                # 或估算失真，按普通错误收尾避免死循环。
+                if (
+                    not context_overflow_downgraded
+                    and (spec.context_window_tokens or 0) > _CONTEXT_OVERFLOW_FALLBACK_TOKENS
+                    and LLMProvider.is_context_overflow_response(response)
+                ):
+                    context_overflow_downgraded = True
+                    spec = replace(
+                        spec,
+                        context_window_tokens=_CONTEXT_OVERFLOW_FALLBACK_TOKENS,
+                        context_block_limit=None,  # 块上限若大于实际窗口会再次超装，一并解除
+                    )
+                    messages[:] = self._snip_history(spec, messages)
+                    logger.warning(
+                        "Context overflow detected for {} ({}); downgrading run context "
+                        "window to {} tokens and retrying",
+                        spec.session_key or "default",
+                        spec.model,
+                        _CONTEXT_OVERFLOW_FALLBACK_TOKENS,
+                    )
+                    await hook.after_iteration(context)
+                    continue
                 if LLMProvider.is_arrearage_response(response):
                     final_content = _ARREARAGE_ERROR_MESSAGE
                 else:

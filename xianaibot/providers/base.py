@@ -374,6 +374,34 @@ class LLMProvider(ABC):
         "concurrency limit",
         "速率限制",
     )
+    # 上下文超限（prompt 超出模型窗口）错误 token：error_type / error_code 匹配
+    _CONTEXT_OVERFLOW_ERROR_TOKENS = frozenset({
+        "context_length_exceeded",
+        "context_length_exceed_error",
+        "context_window_exceeded",
+        "input_length_exceeded",
+        "max_input_tokens_exceeded",
+        "request_too_large",
+    })
+    # 上下文超限文本标记（content 小写匹配）：覆盖各家的自然语言表述
+    _CONTEXT_OVERFLOW_TEXT_MARKERS = (
+        "maximum context length",
+        "context length exceeded",
+        "context_length_exceeded",
+        "exceeds the context window",
+        "exceed the context window",
+        "context window is full",
+        "prompt is too long",  # Anthropic
+        "input token count",  # Gemini: "The input token count (…) exceeds …"
+        "too many input tokens",
+        "input tokens exceed",
+        "input length exceeds",
+        "request too large",
+        "输入 token 总数超过",  # GLM 等中文网关
+        "输入token总数超过",
+        "超过上下文长度",
+        "上下文长度超限",
+    )
 
     _SENTINEL = object()  # 用于区分"未传参"与"显式传 None"的哨兵对象
 
@@ -579,6 +607,30 @@ class LLMProvider(ABC):
 
         content = (response.content or "").lower()
         return any(marker in content for marker in cls._NON_RETRYABLE_429_TEXT_MARKERS)
+
+    @classmethod
+    def is_context_overflow_response(cls, response: LLMResponse) -> bool:
+        """检测上下文超限（prompt 超出模型实际窗口）类错误。
+
+        配置的上下文窗口大于模型实际支持时，各家 API 以不同表述报错：
+        OpenAI ``context_length_exceeded``、Anthropic "prompt is too long"、
+        Gemini "The input token count (…) exceeds…"、HTTP 413、中文网关
+        「输入token总数超过」等；统一按 HTTP 413、语义 token 与文本标记匹配。
+        """
+        if response.error_status_code is not None and int(response.error_status_code) == 413:
+            return True
+
+        type_token = cls._normalize_error_token(response.error_type)
+        code_token = cls._normalize_error_token(response.error_code)
+        if any(
+            token in cls._CONTEXT_OVERFLOW_ERROR_TOKENS
+            for token in (type_token, code_token)
+            if token is not None
+        ):
+            return True
+
+        content = (response.content or "").lower()
+        return any(marker in content for marker in cls._CONTEXT_OVERFLOW_TEXT_MARKERS)
 
     @staticmethod
     def _normalize_error_token(value: Any) -> str | None:

@@ -93,3 +93,19 @@ def test_anthropic_handle_error_marks_connection_kind() -> None:
 def test_is_arrearage_response(expected: bool, kwargs: dict) -> None:
     response = LLMResponse(finish_reason="error", **{"content": "boom", **kwargs})
     assert LLMProvider.is_arrearage_response(response) is expected
+
+
+@pytest.mark.parametrize("expected, kwargs", [
+    (True, {"error_status_code": 413}),  # HTTP 413 Payload Too Large
+    (True, {"error_type": "context_length_exceeded"}),  # OpenAI 语义 type
+    (True, {"error_code": "request_too_large"}),  # 语义 code
+    (True, {"content": "This model's maximum context length is 262144 tokens"}),  # OpenAI 文本
+    (True, {"content": "prompt is too long: 300000 tokens > 200000 maximum"}),  # Anthropic
+    (True, {"content": "The input token count (300000) exceeds the maximum"}),  # Gemini
+    (True, {"content": "输入token总数超过上限"}),  # 中文网关
+    (False, {"error_status_code": 400, "error_type": "invalid_request_error", "content": "bad param"}),  # 普通参数错误
+    (False, {"content": "429 rate limit exceeded"}),  # 限流不误判
+])
+def test_is_context_overflow_response(expected: bool, kwargs: dict) -> None:
+    response = LLMResponse(finish_reason="error", **{"content": "boom", **kwargs})
+    assert LLMProvider.is_context_overflow_response(response) is expected

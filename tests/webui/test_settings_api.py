@@ -516,7 +516,7 @@ def test_update_context_window_rejects_unknown_values(
     save_config(Config(), config_path)
     monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
-    with pytest.raises(WebUISettingsError, match="context_window_tokens must be 65536 or 262144"):
+    with pytest.raises(WebUISettingsError, match="context_window_tokens must be one of"):
         update_agent_settings({"context_window_tokens": ["128000"]})
 
 

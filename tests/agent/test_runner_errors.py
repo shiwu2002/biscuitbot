@@ -104,6 +104,94 @@ async def test_llm_arrearage_error_surfaces_clear_message():
 
 
 @pytest.mark.asyncio
+async def test_context_overflow_downgrades_window_and_retries():
+    """超装错误触发降档到 256K 并立即重试，而不是把错误抛给用户。"""
+    from xianaibot.agent.runner import AgentRunSpec, AgentRunner
+
+    provider = MagicMock(spec=LLMProvider)
+    provider.chat_with_retry = AsyncMock(side_effect=[
+        LLMResponse(
+            content="This model's maximum context length is 262144 tokens",
+            finish_reason="error",
+            error_status_code=400,
+        ),
+        LLMResponse(content="recovered", usage={}),
+    ])
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+
+    runner = AgentRunner(provider)
+    result = await runner.run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "hello"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=5,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        context_window_tokens=1_048_576,
+    ))
+
+    assert provider.chat_with_retry.await_count == 2
+    assert result.stop_reason == "completed"
+    assert result.final_content == "recovered"
+
+
+@pytest.mark.asyncio
+async def test_context_overflow_no_downgrade_when_window_at_fallback():
+    """窗口本就 ≤256K 时超装错误照常收尾，不触发降档重试。"""
+    from xianaibot.agent.runner import AgentRunSpec, AgentRunner
+
+    provider = MagicMock(spec=LLMProvider)
+    provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
+        content="maximum context length exceeded",
+        finish_reason="error",
+        error_status_code=400,
+    ))
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+
+    runner = AgentRunner(provider)
+    result = await runner.run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "hello"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=5,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        context_window_tokens=262_144,
+    ))
+
+    assert provider.chat_with_retry.await_count == 1
+    assert result.stop_reason == "error"
+
+
+@pytest.mark.asyncio
+async def test_context_overflow_downgrade_only_once():
+    """降档到 256K 后仍超限：不再二次降档，按普通错误收尾。"""
+    from xianaibot.agent.runner import AgentRunSpec, AgentRunner
+
+    provider = MagicMock(spec=LLMProvider)
+    provider.chat_with_retry = AsyncMock(return_value=LLMResponse(
+        content="maximum context length exceeded",
+        finish_reason="error",
+        error_status_code=400,
+    ))
+    tools = MagicMock()
+    tools.get_definitions.return_value = []
+
+    runner = AgentRunner(provider)
+    result = await runner.run(AgentRunSpec(
+        initial_messages=[{"role": "user", "content": "hello"}],
+        tools=tools,
+        model="test-model",
+        max_iterations=5,
+        max_tool_result_chars=_MAX_TOOL_RESULT_CHARS,
+        context_window_tokens=1_048_576,
+    ))
+
+    assert provider.chat_with_retry.await_count == 2  # 降档重试一次后放弃
+    assert result.stop_reason == "error"
+
+
+@pytest.mark.asyncio
 async def test_runner_tool_error_sets_final_content():
     from xianaibot.agent.runner import AgentRunSpec, AgentRunner
 
