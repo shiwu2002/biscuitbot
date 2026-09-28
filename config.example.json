@@ -21,10 +21,7 @@
       "consolidationRatio": 0.5,
       "disabledSkills": [],
       "dream": {
-        "enabled": true,
-        "intervalH": 2,
-        "maxBatchSize": 50,
-        "maxIterations": 3
+        "enabled": true
       },
       "visionModel": null,
       "visionModelOverride": null

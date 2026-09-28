@@ -143,7 +143,7 @@ xianaibot 的安全机制分为两层：
 
 #### DreamConfig
 
-记忆整合配置：`enabled`、`interval_h`(2)、`cron`(遗留覆盖)、`model_override`、`build_schedule(timezone)` 优先使用 cron 否则按 `interval_h` 生成 `every` 调度。
+记忆整合配置：`enabled`、`cron`(遗留覆盖)、`model_override`、`build_schedule(timezone)` 优先使用 cron 否则按默认 `0 22 * * *`（每天 22:00，按传入的 timezone 计算即北京时间）生成 cron 调度。
 
 ### 7.3 运行时路径
 

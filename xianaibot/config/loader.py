@@ -245,7 +245,7 @@ def update_config(config_path: Path | None = None) -> Iterator[Config]:
     用法::
 
         with update_config() as config:
-            config.dream.interval_h = 4
+            config.agents.defaults.dream.cron = "0 */6 * * *"
         # with 块正常退出时自动 save_config；抛异常则不保存
 
     所有对 config.json 的读改写都应走本入口，避免多线程交错时

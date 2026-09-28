@@ -80,10 +80,7 @@ class TtsConfig(Base):
 class DreamConfig(Base):
     """Dream 记忆整合配置。"""
 
-    _HOUR_MS = 3_600_000  # 一小时对应的毫秒数
-
     enabled: bool = True  # 启动时注册周期性 Dream 整合任务
-    interval_h: int = Field(default=2, ge=1)  # 默认每 2 小时执行一次
     cron: str | None = Field(default=None, exclude=True)  # 遗留 cron 表达式覆盖
     model_override: str | None = Field(
         default=None,
@@ -91,17 +88,20 @@ class DreamConfig(Base):
     )  # 覆盖 Dream 会话使用的模型（待实现）
 
     def build_schedule(self, timezone: str) -> CronSchedule:
-        """构建运行时调度，优先使用遗留 cron 覆盖。"""
+        """构建运行时调度：默认每天 22:00 执行，优先使用遗留 cron 覆盖。
+
+        ``timezone`` 由调用方传入（``config.agents.defaults.timezone``，默认
+        ``Asia/Shanghai`` 即北京时间），确保调度按北京时间计算。
+        """
         if self.cron:
             return CronSchedule(kind="cron", expr=self.cron, tz=timezone)
-        return CronSchedule(kind="every", every_ms=self.interval_h * self._HOUR_MS)
+        return CronSchedule(kind="cron", expr="0 22 * * *", tz=timezone)
 
     def describe_schedule(self) -> str:
         """返回用于日志与启动输出的人类可读调度摘要。"""
         if self.cron:
             return f"cron {self.cron} (legacy)"
-        hours = self.interval_h
-        return f"every {hours}h"
+        return "cron 0 22 * * * (daily 22:00)"
 
 
 class InlineFallbackConfig(Base):

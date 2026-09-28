@@ -269,7 +269,7 @@ Dream 是 xianaibot 记忆系统的核心创新，采用**两阶段**设计将�
 
 #### 6.3.1 触发方式
 
-- **定时触发**：由 cron 系统任务自动执行，默认每 2 小时（`DreamConfig.interval_h`）
+- **定时触发**：由 cron 系统任务自动执行，默认每天 22:00（北京时间，`DreamConfig.build_schedule` 生成 cron `0 22 * * *`）
 - **手动触发**：用户执行 `/dream` 命令（[command/builtin.py:306](file:///Volumes/data/hczkAgent/nanobot/xianaibot/command/builtin.py#L306)）
 
 #### 6.3.1a 多批次循环处理
@@ -496,8 +496,7 @@ GitStore(
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
 | `enabled` | `true` | 启动时是否注册定时 Dream 任务 |
-| `interval_h` | `2` | 触发间隔（小时） |
-| `cron` | `null` | 遗留 cron 表达式覆盖（优先于 interval_h） |
+| `cron` | `null` | 遗留 cron 表达式覆盖（优先于默认 `0 22 * * *`） |
 | `model_override` | `null` | Dream 专用模型覆盖（未实现） |
 
 ### 10.2 相关 AgentDefaults 配置
@@ -519,8 +518,7 @@ GitStore(
       "maxMessages": 120,
       "consolidationRatio": 0.5,
       "dream": {
-        "enabled": true,
-        "intervalH": 2
+        "enabled": true
       }
     }
   }
