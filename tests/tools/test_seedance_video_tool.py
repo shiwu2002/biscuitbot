@@ -6,9 +6,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from xianaibot.agent.tools.kling_video import _DEFAULT_BASE_URL as _KLING_DEFAULT_BASE_URL
+from xianaibot.agent.tools._video_common import (
+    AIGC_CHARACTER_DISCLAIMER,
+    VideoToolError,
+    resolve_audio_ref,
+    resolve_image_ref,
+    resolve_video_ref,
+)
 from xianaibot.agent.tools.seedance_video import (
-    _AIGC_CHARACTER_DISCLAIMER,
     SeedanceVideoError,
     SeedanceVideoTool,
     SeedanceVideoToolConfig,
@@ -29,20 +34,42 @@ PNG_DATA_URL = (
 def _tool(tmp_path: Path, **cfg: object) -> SeedanceVideoTool:
     return SeedanceVideoTool(
         workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, **cfg),
+        config=SeedanceVideoToolConfig(**cfg),
     )
 
 
-def test_tool_metadata_and_config(tmp_path: Path) -> None:
+def test_tool_metadata_and_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tool = _tool(tmp_path)
-    assert tool.name == "generate_video"
+    assert tool.name == "generate_video_seedance"
     assert tool.config_key == "seedance_video"
     assert SeedanceVideoTool.config_cls() is SeedanceVideoToolConfig
 
-    ctx = SimpleNamespace(config=SimpleNamespace(seedance_video=SeedanceVideoToolConfig(enabled=False)))
+    # 启用门控（厂商自包含后不再有 enabled/provider 字段）：
+    # 显式 apiKey / 环境变量 ARK_API_KEY / 模型厂商页 volcengine 密钥任一即启用。
+    monkeypatch.delenv("ARK_API_KEY", raising=False)
+    ctx = SimpleNamespace(
+        workspace=tmp_path,
+        config=SimpleNamespace(seedance_video=SeedanceVideoToolConfig()),
+        provider_configs={},
+    )
     assert SeedanceVideoTool.enabled(ctx) is False
-    ctx.config.seedance_video.enabled = True
+
+    ctx.config.seedance_video = SeedanceVideoToolConfig(api_key="ark-explicit")
     assert SeedanceVideoTool.enabled(ctx) is True
+
+    ctx.config.seedance_video = SeedanceVideoToolConfig()
+    monkeypatch.setenv("ARK_API_KEY", "ark-env")
+    assert SeedanceVideoTool.enabled(ctx) is True
+
+    monkeypatch.delenv("ARK_API_KEY", raising=False)
+    ctx.provider_configs = {"volcengine": SimpleNamespace(api_key="ark-from-provider")}
+    assert SeedanceVideoTool.enabled(ctx) is True
+
+    # 其他厂商（kling / minimax）的密钥不启用 Seedance 工具
+    ctx.provider_configs = {"kling": SimpleNamespace(api_key="AK:SK")}
+    assert SeedanceVideoTool.enabled(ctx) is False
 
 
 def test_default_model_is_seedance_2_0() -> None:
@@ -65,38 +92,33 @@ def test_schema_exposes_four_input_interfaces(tmp_path: Path) -> None:
 
 
 def test_resolve_image_ref_passthrough(tmp_path: Path) -> None:
-    tool = _tool(tmp_path)
-    assert tool._resolve_image_ref(PNG_DATA_URL) == PNG_DATA_URL
-    assert tool._resolve_image_ref("https://example.com/a.jpg") == "https://example.com/a.jpg"
+    assert resolve_image_ref(PNG_DATA_URL) == PNG_DATA_URL
+    assert resolve_image_ref("https://example.com/a.jpg") == "https://example.com/a.jpg"
 
 
 def test_resolve_image_ref_local_path_to_base64(tmp_path: Path) -> None:
-    tool = _tool(tmp_path)
     img = tmp_path / "cat.png"
     img.write_bytes(PNG_BYTES)
-    out = tool._resolve_image_ref(str(img))
+    out = resolve_image_ref(str(img))
     assert out == "data:image/png;base64," + base64.b64encode(PNG_BYTES).decode("ascii")
 
 
 def test_resolve_image_ref_missing_file(tmp_path: Path) -> None:
-    tool = _tool(tmp_path)
-    with pytest.raises(SeedanceVideoError):
-        tool._resolve_image_ref(str(tmp_path / "nope.png"))
+    with pytest.raises(VideoToolError):
+        resolve_image_ref(str(tmp_path / "nope.png"))
 
 
 def test_resolve_audio_ref_local_path_to_base64(tmp_path: Path) -> None:
-    tool = _tool(tmp_path)
     audio = tmp_path / "voice.mp3"
     audio.write_bytes(b"ID3\x04\x00\x00\x00\x00\x00\x00")
-    out = tool._resolve_audio_ref(str(audio))
+    out = resolve_audio_ref(str(audio))
     assert out.startswith("data:audio/mpeg;base64,")
 
 
 def test_resolve_video_ref_only_public_url(tmp_path: Path) -> None:
-    tool = _tool(tmp_path)
-    assert tool._resolve_video_ref("https://example.com/v.mp4") == "https://example.com/v.mp4"
-    with pytest.raises(SeedanceVideoError):
-        tool._resolve_video_ref(str(tmp_path / "local.mp4"))
+    assert resolve_video_ref("https://example.com/v.mp4") == "https://example.com/v.mp4"
+    with pytest.raises(VideoToolError):
+        resolve_video_ref(str(tmp_path / "local.mp4"))
 
 
 def test_build_content_orders_text_and_references(tmp_path: Path) -> None:
@@ -109,7 +131,7 @@ def test_build_content_orders_text_and_references(tmp_path: Path) -> None:
     )
     # 文本块始终以 AIGC 虚拟角色免责声明开头，随后才是原始提示词
     assert content[0]["type"] == "text"
-    assert content[0]["text"] == f"{_AIGC_CHARACTER_DISCLAIMER}hello"
+    assert content[0]["text"] == f"{AIGC_CHARACTER_DISCLAIMER}hello"
     assert content[1]["type"] == "image_url"
     assert content[1]["role"] == "reference_image"
     assert content[1]["image_url"]["url"] == "https://example.com/a.jpg"
@@ -137,7 +159,7 @@ def test_build_content_prepends_aigc_disclaimer_only_with_references(
 
     # 有参考图：声明必须前置，且不影响后续素材块的顺序
     with_ref = tool._build_content(prompt, ["https://example.com/a.jpg"], None, None)
-    assert with_ref[0]["text"] == f"{_AIGC_CHARACTER_DISCLAIMER}{prompt}"
+    assert with_ref[0]["text"] == f"{AIGC_CHARACTER_DISCLAIMER}{prompt}"
     assert with_ref[1]["type"] == "image_url"
 
 
@@ -161,102 +183,55 @@ def test_config_registered_in_schema() -> None:
 
 
 def test_create_resolves_key_from_unified_provider_config(tmp_path: Path) -> None:
-    """视频密钥按 seedance_video.provider 从统一 providers 配置取用，与文生图解耦。"""
+    """Seedance 密钥固定从统一 providers 配置的 volcengine 厂商取用。"""
     ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SimpleNamespace(
-            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="volcengine")
-        ),
+        config=SimpleNamespace(seedance_video=SeedanceVideoToolConfig()),
         provider_configs={"volcengine": SimpleNamespace(api_key="ark-from-provider")},
     )
     tool = SeedanceVideoTool.create(ctx)
     assert tool._ark_api_key == "ark-from-provider"
+    assert tool.config is ctx.config.seedance_video
 
 
-def test_create_supports_different_provider_than_image_gen(tmp_path: Path) -> None:
-    """文生视频可指向与文生图不同的厂商，只要该厂商已在「模型厂商」页配置。"""
+def test_create_ignores_other_vendor_providers(tmp_path: Path) -> None:
+    """其他厂商（kling）的密钥不会串到 Seedance 工具上。"""
     ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SimpleNamespace(
-            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="my_video_vendor")
-        ),
-        provider_configs={"my_video_vendor": SimpleNamespace(api_key="video-vendor-key")},
+        config=SimpleNamespace(seedance_video=SeedanceVideoToolConfig()),
+        provider_configs={"kling": SimpleNamespace(api_key="AK123:SK456")},
     )
     tool = SeedanceVideoTool.create(ctx)
-    assert tool._ark_api_key == "video-vendor-key"
+    assert tool._ark_api_key is None
 
 
 def test_create_missing_provider_falls_back_to_none(tmp_path: Path) -> None:
     """厂商未配置时 create 不抛错，密钥解析交给 _api_key 的环境变量兜底。"""
     ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SimpleNamespace(
-            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="volcengine")
-        ),
+        config=SimpleNamespace(seedance_video=SeedanceVideoToolConfig()),
         provider_configs={},
     )
     tool = SeedanceVideoTool.create(ctx)
     assert tool._ark_api_key is None
 
 
-def test_kling_key_prefers_provider_key_over_stale_tool_key(tmp_path: Path) -> None:
-    """可灵路径取 key 必须优先「模型厂商」页 kling 厂商密钥。
-
-    切厂商到可灵后工具级 apiKey 常残留方舟 ``ark-`` 前缀 key，若优先用它会拿 ark key
-    去鉴权可灵 API → 必然 401。回归：两者并存时取 kling 厂商 key。
-    """
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True, provider="kling", api_key="ark-cb6b6da8-stale-volcengine-key"
-        ),
-        ark_api_key="AK123:SK456",
-    )
-    assert tool._resolve_kling_key() == "AK123:SK456"
+def test_resolve_model_falls_back_on_foreign_vendor_names(tmp_path: Path) -> None:
+    """旧统一入口时代的 config 可能残留可灵/MiniMax 模型名，统一回退默认。"""
+    tool = _tool(tmp_path)
+    # 残留其他厂商模型名 → 回退默认
+    assert tool._resolve_model("kling-3.0") == "doubao-seedance-2-0-260128"
+    assert tool._resolve_model("MiniMax-H3") == "doubao-seedance-2-0-260128"
+    # 合法 Seedance 模型 / Endpoint ID 保留
+    assert tool._resolve_model("doubao-seedance-2-5-260628") == "doubao-seedance-2-5-260628"
+    assert tool._resolve_model("ep-20260101-verify") == "ep-20260101-verify"
+    # 空值 → 配置默认
+    assert tool._resolve_model(None) == "doubao-seedance-2-0-260128"
+    assert tool._resolve_model("  ") == "doubao-seedance-2-0-260128"
 
 
-def test_kling_key_falls_back_to_tool_key_when_no_provider(tmp_path: Path) -> None:
-    """未在「模型厂商」页配 kling 厂商时，工具级 apiKey 仍可作兜底。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True, provider="kling", api_key="relay-token-abc"
-        ),
-    )
-    assert tool._resolve_kling_key() == "relay-token-abc"
-
-
-def test_kling_api_base_ignores_stale_tool_base_url(tmp_path: Path) -> None:
-    """可灵 base URL 不读工具级 baseUrl（可能残留方舟地址），用模型厂商 apiBase → 可灵默认。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True,
-            provider="kling",
-            base_url="https://ark.cn-beijing.volces.com/api/v3",
-        ),
-    )
-    assert tool._kling_api_base() == _KLING_DEFAULT_BASE_URL
-    # 模型厂商页自定义 apiBase 优先于默认
-    tool_with_relay = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True,
-            provider="kling",
-            base_url="https://ark.cn-beijing.volces.com/api/v3",
-        ),
-        provider_api_base="https://relay.example/v1",
-    )
-    assert tool_with_relay._kling_api_base() == "https://relay.example/v1"
-
-
-@pytest.mark.asyncio
-async def test_execute_drops_resolution_in_r2v_mode(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """r2v（带参考素材）模式下不发送 resolution；纯文生视频才保留。"""
-    tool = _tool(tmp_path, api_key="ark-test")
+def _fake_video_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, object]:
+    """屏蔽 HTTP 与落盘，仅捕获创建任务的请求体。"""
     captured: dict[str, object] = {}
 
     async def fake_create(self, client, body):
@@ -266,12 +241,25 @@ async def test_execute_drops_resolution_in_r2v_mode(
     async def fake_poll(self, client, task_id):
         return {"content": {"video_url": "https://example.com/out.mp4"}}
 
-    async def fake_download(self, client, video_url):
-        return {"path": str(tmp_path / "out.mp4")}
+    async def fake_download(client, video_url, *, workspace, save_dir, default_model, model=None):
+        return {"path": str(tmp_path / "out.mp4"), "model": model or default_model}
 
     monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
     monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    monkeypatch.setattr(
+        "xianaibot.agent.tools.seedance_video.download_and_store", fake_download
+    )
+    return captured
+
+
+@pytest.mark.asyncio
+async def test_execute_drops_resolution_in_r2v_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """r2v（带参考素材）模式下不发送 resolution；纯文生视频才保留。"""
+    tool = _tool(tmp_path, api_key="ark-test")
+    captured = _fake_video_flow(monkeypatch, tmp_path)
 
     # r2v：带参考视频，显式传 resolution=720p 应被丢弃
     await tool.execute(
@@ -296,21 +284,7 @@ async def test_execute_defaults_generate_audio_true_in_r2v(
 ) -> None:
     """未显式传 generate_audio 时一律默认开启音效（纯文生/图生同样默认开）。"""
     tool = _tool(tmp_path, api_key="ark-test")
-    captured: dict[str, object] = {}
-
-    async def fake_create(self, client, body):
-        captured["body"] = body
-        return "task-1"
-
-    async def fake_poll(self, client, task_id):
-        return {"content": {"video_url": "https://example.com/out.mp4"}}
-
-    async def fake_download(self, client, video_url):
-        return {"path": str(tmp_path / "out.mp4")}
-
-    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
-    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    captured = _fake_video_flow(monkeypatch, tmp_path)
 
     # 带参考视频：默认开启
     await tool.execute(prompt="保持运镜", video_urls=["https://example.com/v.mp4"])
@@ -340,21 +314,7 @@ async def test_execute_drops_default_resolution_in_r2v_mode(
 ) -> None:
     """r2v 模式同样忽略配置里的 default_resolution。"""
     tool = _tool(tmp_path, api_key="ark-test", default_resolution="720p")
-    captured: dict[str, object] = {}
-
-    async def fake_create(self, client, body):
-        captured["body"] = body
-        return "task-1"
-
-    async def fake_poll(self, client, task_id):
-        return {"content": {"video_url": "https://example.com/out.mp4"}}
-
-    async def fake_download(self, client, video_url):
-        return {"path": str(tmp_path / "out.mp4")}
-
-    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
-    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    captured = _fake_video_flow(monkeypatch, tmp_path)
 
     await tool.execute(
         prompt="保持运镜不变",
@@ -363,3 +323,19 @@ async def test_execute_drops_default_resolution_in_r2v_mode(
     body = captured["body"]
     assert body["content"][1]["role"] == "reference_image"
     assert "resolution" not in body
+
+
+@pytest.mark.asyncio
+async def test_execute_resolves_model_per_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """按次传参的 model 覆盖默认模型；残留其他厂商模型名回退默认。"""
+    tool = _tool(tmp_path, api_key="ark-test")
+    captured = _fake_video_flow(monkeypatch, tmp_path)
+
+    await tool.execute(prompt="一只橘猫弹钢琴", model="doubao-seedance-2-5-260628")
+    assert captured["body"]["model"] == "doubao-seedance-2-5-260628"
+
+    await tool.execute(prompt="一只橘猫弹钢琴", model="kling-3.0")
+    assert captured["body"]["model"] == "doubao-seedance-2-0-260128"

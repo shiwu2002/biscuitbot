@@ -1,7 +1,7 @@
 ---
 name: talking-avatar-video
 tier: agent
-description: 数字人口播视频工具生成流程：先用角色生成三视图进行定稿再加上配音音频，通过 generate_video（Seedance）生成带声音、口型同步、自然融入场景的竖屏口播视频。当用户要用某个数字人/角色形象做口播视频、配音讲解视频时使用。
+description: 数字人口播视频工具生成流程：先用角色生成三视图进行定稿再加上配音音频，通过 generate_video_seedance（Seedance）生成带声音、口型同步、自然融入场景的竖屏口播视频。当用户要用某个数字人/角色形象做口播视频、配音讲解视频时使用。
 metadata: {"xianaibot":{"emoji":"🎤"}}
 ---
 
@@ -56,7 +56,7 @@ metadata: {"xianaibot":{"emoji":"🎤"}}
 ## 生成调用（模板）
 
 ```
-generate_video(
+generate_video_seedance(
   prompt=<见下方提示词模板>,
   image_urls=["<三视图路径>"],
   audio_urls=["<配音mp3路径>"],

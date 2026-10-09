@@ -1,7 +1,7 @@
 ---
 name: media-generation-craft
 tier: user
-description: 把用户的模糊想法/一句话需求变成高质量图片或视频：先判断意图与用途，再把提示词扩写成专业级描述（主体+环境+风格+构图+光线+运镜），最后用 generate_image / generate_video 生成并交付。覆盖文生图、图生图改图、文生视频、图生视频、多片段拼接，以及「现有生成能力都不可用时怎么办」的诚实降级。当用户要生成/画/做一张图、一段视频、把照片动起来、改图风格、做视觉素材，或需要海报、Logo、封面等平面设计方案时使用。
+description: 把用户的模糊想法/一句话需求变成高质量图片或视频：先判断意图与用途，再把提示词扩写成专业级描述（主体+环境+风格+构图+光线+运镜），最后用 generate_image / generate_video_seedance 生成并交付。覆盖文生图、图生图改图、文生视频、图生视频、多片段拼接，以及「现有生成能力都不可用时怎么办」的诚实降级。当用户要生成/画/做一张图、一段视频、把照片动起来、改图风格、做视觉素材，或需要海报、Logo、封面等平面设计方案时使用。
 metadata: {"xianaibot":{"emoji":"🎨"}}
 ---
 
@@ -22,8 +22,10 @@ metadata: {"xianaibot":{"emoji":"🎨"}}
 
 1. **先发现，再动手。** 用 `discover_tools("生成图片")` / `discover_tools("生成视频")`
    确认当前到底有哪些生成工具可用。本项目的原生工具是 `generate_image`（图片）与
-   `generate_video`（视频），调用前用 `read_file` 读它们的使用说明
-   （`docs/generate_image.md` / `docs/generate_video.md`），按真实参数传参。
+   `generate_video_seedance`（视频，火山方舟 Seedance；另有 `generate_video_kling`（可灵）
+   与 `generate_video_minimax`（MiniMax H3）两家备选视频工具），调用前用 `read_file`
+   读它们的使用说明（`docs/generate_image.md` / `docs/generate_video_seedance.md` /
+   `docs/generate_video_kling.md` / `docs/generate_video_minimax.md`），按真实参数传参。
 2. **优先用原生工具。** 用户在本机配置里已经决定启用哪些厂商与模型，那是他的选择，
    不要替他改、也不要在提示词里写死某个模型名。需要的是「具备某种能力的模型」——
    例如「文字渲染准确的模型」「角色一致性强的模型」「支持参考图的编辑模型」——
@@ -33,9 +35,9 @@ metadata: {"xianaibot":{"emoji":"🎨"}}
    `cold_storage` 找到 `mcp_` 前缀的生成类工具（用户在 `tools.mcpServers` 里
    自己接的服务），说明用户有意为此付费/自建，应当优先使用；同样先读它的说明再调用。
 4. **一个都没有时，诚实说明，不要硬编。** 如果确实找不到任何可用的生成工具：
-   - 明确告诉用户「当前没有可用的图像/视频生成能力」，并指出这是开关问题不是能力问题
-     （图片生成开关：`tools.imageGeneration.enabled`；视频生成开关：
-     `tools.seedanceVideo.enabled`，可在「模型厂商」页配置密钥）。
+   - 明确告诉用户「当前没有可用的图像/视频生成能力」，并指出这是配置问题不是能力问题
+     （图片生成开关：`tools.image_generation.enabled`；视频生成无需开关——
+     在「模型厂商」页给 通义万相 / Seedance / 可灵 / MiniMax 任一家配好密钥后，对应工具即自动可用）。
    - **绝对不要**改用 `exec` 去调某个第三方 CLI、去装某个未配置的服务、或凭空编造一个
      看起来像结果的图片路径。也不要假装生成成功。
    - 可以退而求其次：如果你能用 `exec` + 本地库（如 ffmpeg、Pillow）做出**确定能做出**的
@@ -105,13 +107,14 @@ metadata: {"xianaibot":{"emoji":"🎨"}}
 要生成较长视频时，不要指望一次调用搞定：
 
 1. 先做故事/分镜规划，把长视频拆成若干约 10 秒的独立片段，按顺序编号。
-2. 每个片段单独调 `generate_video`，通过共享关键视觉元素（角色、服装、背景、色调）衔接。
+2. 每个片段单独调 `generate_video_seedance`，通过共享关键视觉元素（角色、服装、背景、色调）衔接。
 3. **让片段首尾连贯**：把上一段的尾帧作为下一段 `image_urls` 的**首个元素**
    （`image_urls` 的第一个元素会被当作首帧参考）。
 4. 全部片段生成后，用 FFmpeg concat 合并（`-c copy` 直接复制流，避免重编码丢音频）。
 
 更多时长/分辨率/厂商参数差异（例如某些厂商只支持部分画幅值，越界值会被静默丢弃）
-以 `docs/generate_video.md` 为准——**先读文档再传参**。
+以各厂商文档为准（`docs/generate_video_seedance.md` / `docs/generate_video_kling.md` /
+`docs/generate_video_minimax.md`）——**先读文档再传参**。
 
 ## 第六步：交付
 

@@ -37,7 +37,7 @@ _SHOT_STATUSES = ("pending", "prompted", "qc_pass", "qc_fail", "final")
 # 质检默认阈值：任一一致性分数低于此值即判「不通过」
 _QC_THRESHOLD = 85
 
-# 画幅可选值（与 generate_video 对齐）
+# 画幅可选值（与视频生成工具 generate_video_* 对齐）
 _RATIOS = ("16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive")
 
 # 全部 action（供 schema enum 与分派使用）

@@ -688,18 +688,7 @@ export interface SettingsPayload {
     max_images_per_turn: number;
     save_dir: string;
   };
-  video_generation: {
-    enabled: boolean;
-    api_key_configured: boolean;
-    provider: string;
-    model: string;
-    default_ratio: string;
-    default_duration: number;
-    default_resolution: string | null;
-    generate_audio: boolean;
-    watermark: boolean;
-    save_dir: string;
-  };
+  video_generation: VideoGenerationSettings;
   screenshot: {
     enabled: boolean;
     max_width: number;
@@ -1060,7 +1049,6 @@ export interface ProviderSettingsUpdate {
   apiKey?: string;
   apiBase?: string;
   apiType?: "auto" | "chat_completions" | "responses";
-  capabilities?: string[];
 }
 
 export interface WebSearchSettingsUpdate {
@@ -1092,14 +1080,51 @@ export interface ImageGenerationSettingsUpdate {
   maxImagesPerTurn: number;
 }
 
-export interface VideoGenerationSettingsUpdate {
-  enabled: boolean;
+/**
+ * 视频生成厂商键（厂商自包含工具）。
+ *
+ * 不再枚举具体厂商：卡片清单由后端 payload 的 `video_generation.vendors` 派生
+ * （工具类上的 vendor_spec），新增厂商只加后端 1 个文件，前端自动出现。
+ */
+export type VideoVendor = string;
+
+/** 单个视频厂商的默认参数（字段按各厂商 config 实际存在与否下发）。 */
+export interface VideoGenerationVendorSettings {
+  configured: boolean;
+  /** 卡片标题（后端下发，免 i18n key）。 */
+  display_name: string;
+  /** 密钥来源的「模型厂商」名（如 seedance→volcengine），供品牌 logo 查表。 */
   provider: string;
+  /** 清晰度可否留空（=交给模型自动决定）；false 时前端禁用空选项。 */
+  resolution_optional: boolean;
+  model: string;
+  default_ratio: string;
+  default_duration: number;
+  default_resolution: string | null;
+  generate_audio?: boolean;
+  seed?: number | null;
+  watermark?: boolean;
+  save_dir: string;
+}
+
+/** 视频生成设置：各厂商默认参数 + 能力/选项数据（后端下发，单一事实来源）。 */
+export interface VideoGenerationSettings {
+  vendors: Record<string, VideoGenerationVendorSettings>;
+  support: Record<string, string[]>;
+  ratio_options: Record<string, string[]>;
+  resolution_options: Record<string, string[]>;
+  duration_ranges: Record<string, number[]>;
+  model_suggestions: Record<string, string[]>;
+}
+
+export interface VideoGenerationSettingsUpdate {
+  vendor: VideoVendor;
   model: string;
   defaultRatio: string;
   defaultDuration: number;
   defaultResolution: string;
   generateAudio: boolean;
+  seed: string;
   watermark: boolean;
 }
 

@@ -27,8 +27,11 @@ from xianaibot.cron.types import CronSchedule  # 定时任务调度类型
 if TYPE_CHECKING:
     # 仅类型检查时导入的工具配置类型，避免运行时循环依赖
     from xianaibot.agent.tools.cli_apps import CliAppsToolConfig
+    from xianaibot.agent.tools.dashscope_video import DashScopeVideoToolConfig
     from xianaibot.agent.tools.filesystem import FileToolsConfig
     from xianaibot.agent.tools.image_generation import ImageGenerationToolConfig
+    from xianaibot.agent.tools.kling_video import KlingVideoToolConfig
+    from xianaibot.agent.tools.minimax_video import MiniMaxVideoToolConfig
     from xianaibot.agent.tools.screenshot import ScreenshotToolConfig
     from xianaibot.agent.tools.seedance_video import SeedanceVideoToolConfig
     from xianaibot.agent.tools.self import MyToolConfig
@@ -222,7 +225,6 @@ class ProviderConfig(Base):
     extra_headers: dict[str, str] | None = None  # 自定义请求头（如 AiHubMix 的 APP-Code）
     extra_body: dict[str, Any] | None = None  # 额外提供商请求字段；结构随提供商/API 形态变化
     extra_query: dict[str, str] | None = None  # 额外查询参数（如 Azure 风格网关的 api-version）
-    capabilities: list[str] | None = None  # 用户显式声明的能力标签；None=按注册表自动推断
 
 
 class ProvidersConfig(Base):
@@ -405,6 +407,15 @@ class ToolsConfig(Base):
     )
     seedance_video: SeedanceVideoToolConfig = Field(
         default_factory=lambda: _lazy_default("xianaibot.agent.tools.seedance_video", "SeedanceVideoToolConfig"),
+    )
+    kling_video: KlingVideoToolConfig = Field(
+        default_factory=lambda: _lazy_default("xianaibot.agent.tools.kling_video", "KlingVideoToolConfig"),
+    )
+    minimax_video: MiniMaxVideoToolConfig = Field(
+        default_factory=lambda: _lazy_default("xianaibot.agent.tools.minimax_video", "MiniMaxVideoToolConfig"),
+    )
+    dashscope_video: DashScopeVideoToolConfig = Field(
+        default_factory=lambda: _lazy_default("xianaibot.agent.tools.dashscope_video", "DashScopeVideoToolConfig"),
     )
     system_io: SystemIoToolConfig = Field(
         default_factory=lambda: _lazy_default("xianaibot.agent.tools.system_io", "SystemIoToolConfig"),
@@ -679,8 +690,11 @@ def _resolve_tool_config_refs() -> None:
     import sys
 
     from xianaibot.agent.tools.cli_apps import CliAppsToolConfig
+    from xianaibot.agent.tools.dashscope_video import DashScopeVideoToolConfig
     from xianaibot.agent.tools.filesystem import FileToolsConfig
     from xianaibot.agent.tools.image_generation import ImageGenerationToolConfig
+    from xianaibot.agent.tools.kling_video import KlingVideoToolConfig
+    from xianaibot.agent.tools.minimax_video import MiniMaxVideoToolConfig
     from xianaibot.agent.tools.screenshot import ScreenshotToolConfig
     from xianaibot.agent.tools.seedance_video import SeedanceVideoToolConfig
     from xianaibot.agent.tools.self import MyToolConfig
@@ -700,6 +714,9 @@ def _resolve_tool_config_refs() -> None:
     mod.ImageGenerationToolConfig = ImageGenerationToolConfig  # type: ignore[attr-defined]
     mod.ScreenshotToolConfig = ScreenshotToolConfig  # type: ignore[attr-defined]
     mod.SeedanceVideoToolConfig = SeedanceVideoToolConfig  # type: ignore[attr-defined]
+    mod.KlingVideoToolConfig = KlingVideoToolConfig  # type: ignore[attr-defined]
+    mod.MiniMaxVideoToolConfig = MiniMaxVideoToolConfig  # type: ignore[attr-defined]
+    mod.DashScopeVideoToolConfig = DashScopeVideoToolConfig  # type: ignore[attr-defined]
     mod.SystemIoToolConfig = SystemIoToolConfig  # type: ignore[attr-defined]
 
     ToolsConfig.model_rebuild()

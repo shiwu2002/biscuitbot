@@ -142,6 +142,7 @@ import type {
   TranscriptionSettingsUpdate,
   TtsSettingsUpdate,
   VideoGenerationSettingsUpdate,
+  VideoVendor,
   WebSearchSettingsUpdate,
   WebuiDefaultAccessMode,
 } from "@/lib/types";
@@ -264,8 +265,26 @@ const LOCAL_UNCONFIGURED_PROVIDER_ORDER = new Map(
 
 const IMAGE_ASPECT_RATIO_OPTIONS = ["1:1", "3:4", "9:16", "4:3", "16:9", "3:2", "2:3", "21:9"];
 const IMAGE_SIZE_OPTIONS = ["1K", "2K", "4K", "1024x1024", "1536x1024", "1024x1536"];
-const VIDEO_RATIO_OPTIONS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9", "adaptive"];
-const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"];
+// 视频生成卡片清单 / 标题 / 能力数据全部由后端 payload 下发（工具类上的
+// vendor_spec 派生），前端不再维护厂商名单：新增视频厂商只改后端 1 个文件。
+/** 按后端下发顺序取视频厂商键（即前端卡片顺序）。 */
+function videoVendorKeys(settings: SettingsPayload | null): string[] {
+  return Object.keys(settings?.video_generation.vendors ?? {});
+}
+
+/** 卡片标题：后端下发 display_name；缺省回退卡片键。 */
+function videoVendorLabel(settings: SettingsPayload | null, vendor: string): string {
+  return settings?.video_generation.vendors[vendor]?.display_name ?? vendor;
+}
+
+/** 方式徽章的本地化标签。 */
+const VIDEO_SUPPORT_LABELS: Record<string, string> = {
+  t2v: "文生视频",
+  i2v: "图生视频",
+  v2v: "视频生视频",
+  ref_image: "参考图",
+  ref_audio: "参考音频",
+};
 const EMPTY_PENDING_RESTART_SECTIONS: PendingRestartSections = {
   runtime: false,
   browser: false,
@@ -396,16 +415,13 @@ const DEFAULT_IMAGE_GENERATION_FORM: ImageGenerationSettingsUpdate = {
   maxImagesPerTurn: 4,
 };
 
-const DEFAULT_VIDEO_GENERATION_FORM: VideoGenerationSettingsUpdate = {
-  enabled: false,
-  provider: "volcengine",
-  model: "doubao-seedance-2-5-260628",
-  defaultRatio: "16:9",
-  defaultDuration: 5,
-  defaultResolution: "",
-  generateAudio: true,
-  watermark: false,
-};
+/**
+ * 视频表单空兜底：无 initialSettings 时才用（正常路径由 payload 填充）。
+ *
+ * 刻意不写死任何厂商的模型名与清晰度——真实值恒来自 payload（`video_generation`
+ * 是单一事实来源），留空比留下会过期的默认值更安全。
+ */
+const DEFAULT_VIDEO_GENERATION_FORM: Record<string, VideoGenerationSettingsUpdate> = {};
 
 const DEFAULT_SCREENSHOT_FORM: ScreenshotSettingsUpdate = {
   enabled: false,
@@ -514,17 +530,26 @@ function imageGenerationFormFromPayload(payload: SettingsPayload): ImageGenerati
   };
 }
 
-function videoGenerationFormFromPayload(payload: SettingsPayload): VideoGenerationSettingsUpdate {
-  return {
-    enabled: payload.video_generation.enabled,
-    provider: payload.video_generation.provider,
-    model: payload.video_generation.model,
-    defaultRatio: payload.video_generation.default_ratio,
-    defaultDuration: payload.video_generation.default_duration,
-    defaultResolution: payload.video_generation.default_resolution ?? "",
-    generateAudio: payload.video_generation.generate_audio,
-    watermark: payload.video_generation.watermark,
-  };
+function videoGenerationFormFromPayload(
+  payload: SettingsPayload,
+): Record<string, VideoGenerationSettingsUpdate> {
+  const form: Record<string, VideoGenerationSettingsUpdate> = {};
+  // 厂商清单由 payload 派生（后端 vendor_spec），新增厂商无需改前端。
+  for (const vendor of Object.keys(payload.video_generation.vendors)) {
+    const vendorSettings = payload.video_generation.vendors[vendor];
+    if (!vendorSettings) continue;
+    form[vendor] = {
+      vendor,
+      model: vendorSettings.model,
+      defaultRatio: vendorSettings.default_ratio,
+      defaultDuration: vendorSettings.default_duration,
+      defaultResolution: vendorSettings.default_resolution ?? "",
+      generateAudio: vendorSettings.generate_audio ?? true,
+      seed: vendorSettings.seed == null ? "" : String(vendorSettings.seed),
+      watermark: vendorSettings.watermark ?? false,
+    };
+  }
+  return form;
 }
 
 function screenshotFormFromPayload(payload: SettingsPayload): ScreenshotSettingsUpdate {
@@ -668,11 +693,12 @@ export function SettingsView({
         ? imageGenerationFormFromPayload(initialSettings)
         : DEFAULT_IMAGE_GENERATION_FORM,
   );
-  const [videoGenerationForm, setVideoGenerationForm] = useState<VideoGenerationSettingsUpdate>(
-    () =>
-      initialSettings
-        ? videoGenerationFormFromPayload(initialSettings)
-        : DEFAULT_VIDEO_GENERATION_FORM,
+  const [videoGenerationForm, setVideoGenerationForm] = useState<
+    Record<VideoVendor, VideoGenerationSettingsUpdate>
+  >(() =>
+    initialSettings
+      ? videoGenerationFormFromPayload(initialSettings)
+      : DEFAULT_VIDEO_GENERATION_FORM,
   );
   const [screenshotForm, setScreenshotForm] = useState<ScreenshotSettingsUpdate>(() =>
     initialSettings ? screenshotFormFromPayload(initialSettings) : DEFAULT_SCREENSHOT_FORM,
@@ -881,19 +907,26 @@ export function SettingsView({
     );
   }, [imageGenerationForm, settings]);
 
-  const videoGenerationDirty = useMemo(() => {
-    if (!settings) return false;
-    return (
-      videoGenerationForm.enabled !== settings.video_generation.enabled ||
-      videoGenerationForm.provider !== settings.video_generation.provider ||
-      videoGenerationForm.model !== settings.video_generation.model ||
-      videoGenerationForm.defaultRatio !== settings.video_generation.default_ratio ||
-      videoGenerationForm.defaultDuration !== settings.video_generation.default_duration ||
-      videoGenerationForm.defaultResolution !==
-        (settings.video_generation.default_resolution ?? "") ||
-      videoGenerationForm.generateAudio !== settings.video_generation.generate_audio ||
-      videoGenerationForm.watermark !== settings.video_generation.watermark
-    );
+  const videoGenerationDirty = useMemo<Record<string, boolean>>(() => {
+    const dirty: Record<string, boolean> = {};
+    for (const vendor of Object.keys(videoGenerationForm)) {
+      const form = videoGenerationForm[vendor];
+      const saved = settings?.video_generation.vendors[vendor];
+      if (!form) {
+        dirty[vendor] = false;
+        continue;
+      }
+      dirty[vendor] = saved
+        ? form.model !== saved.model ||
+          form.defaultRatio !== saved.default_ratio ||
+          form.defaultDuration !== saved.default_duration ||
+          form.defaultResolution !== (saved.default_resolution ?? "") ||
+          form.generateAudio !== (saved.generate_audio ?? true) ||
+          form.watermark !== (saved.watermark ?? false) ||
+          form.seed !== (saved.seed == null ? "" : String(saved.seed))
+        : false;
+    }
+    return dirty;
   }, [videoGenerationForm, settings]);
 
   const screenshotDirty = useMemo(() => {
@@ -1152,11 +1185,11 @@ export function SettingsView({
     }
   };
 
-  const saveVideoGenerationSettings = async () => {
-    if (!settings || !videoGenerationDirty || videoGenerationSaving) return;
+  const saveVideoGenerationSettings = async (vendor: VideoVendor) => {
+    if (!settings || !videoGenerationDirty[vendor] || videoGenerationSaving) return;
     setVideoGenerationSaving(true);
     try {
-      const payload = await updateVideoGenerationSettings(token, videoGenerationForm);
+      const payload = await updateVideoGenerationSettings(token, videoGenerationForm[vendor]);
       applyPayload(payload);
       if (payload.requires_restart) {
         setPendingRestartSections((prev) => ({ ...prev, video: true }));
@@ -1787,7 +1820,7 @@ const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallbac
   { key: "providers", labelKey: "settings.subtabs.model.providers", fallback: "模型厂商" },
   { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM" },
   { key: "image", labelKey: "settings.subtabs.model.image", fallback: "文生图" },
-  { key: "video", labelKey: "settings.subtabs.model.video", fallback: "文生视频" },
+  { key: "video", labelKey: "settings.subtabs.model.video", fallback: "视频生成" },
   { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视觉理解" },
   { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "语音识别" },
   { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "语音合成" },
@@ -2646,15 +2679,6 @@ function ModelsSettings({
 
 const PROVIDER_API_TYPES = ["auto", "chat_completions", "responses"] as const;
 
-const PROVIDER_CAPABILITIES: ReadonlyArray<{ key: string; label: string }> = [
-  { key: "llm", label: "对话" },
-  { key: "vision", label: "视觉理解" },
-  { key: "image", label: "文生图" },
-  { key: "video", label: "文生视频" },
-  { key: "tts", label: "语音合成" },
-  { key: "transcription", label: "语音转写" },
-];
-
 function ProvidersSettings({
   token,
   settings,
@@ -2680,7 +2704,6 @@ function ProvidersSettings({
     apiKey: string;
     apiBase: string;
     apiType: "auto" | "chat_completions" | "responses";
-    capabilities: string[];
   } | null>(null);
   const [savingProvider, setSavingProvider] = useState<string | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<string | null>(null);
@@ -2707,7 +2730,6 @@ function ProvidersSettings({
       apiKey: string;
       apiBase: string;
       apiType: "auto" | "chat_completions" | "responses";
-      capabilities: string[];
     }>,
   ) =>
     setDraft((current) => {
@@ -2715,33 +2737,20 @@ function ProvidersSettings({
         apiKey: "",
         apiBase: provider.api_base || provider.default_api_base || "",
         apiType: (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto",
-        capabilities: [...(provider.capabilities ?? [])],
       };
       return { ...base, ...patch };
     });
-
-  const toggleCapability = (provider: SettingsPayload["providers"][number]) => (key: string) => {
-    const currentCaps = draft?.capabilities ?? provider.capabilities ?? [];
-    const next = currentCaps.includes(key)
-      ? currentCaps.filter((c) => c !== key)
-      : [...currentCaps, key];
-    updateDraft(provider)({ capabilities: next });
-  };
 
   const saveProvider = async (provider: SettingsPayload["providers"][number]) => {
     if (!draft || savingProvider) return;
     const currentBase = provider.api_base || provider.default_api_base || "";
     const currentType = (provider.api_type as "auto" | "chat_completions" | "responses") ?? "auto";
-    const currentCaps = provider.capabilities ?? [];
     const apiKey = draft.apiKey.trim();
     const apiBase = draft.apiBase.trim();
     const hasKeyChange = Boolean(apiKey);
     const hasBaseChange = apiBase !== currentBase;
     const hasTypeChange = provider.name === "openai" && draft.apiType !== currentType;
-    const hasCapsChange =
-      draft.capabilities.length !== currentCaps.length ||
-      draft.capabilities.some((c) => !currentCaps.includes(c));
-    if (!hasKeyChange && !hasBaseChange && !hasTypeChange && !hasCapsChange) {
+    if (!hasKeyChange && !hasBaseChange && !hasTypeChange) {
       setDraft(null);
       return;
     }
@@ -2753,7 +2762,6 @@ function ProvidersSettings({
         ...(hasKeyChange ? { apiKey } : {}),
         ...(hasBaseChange ? { apiBase } : {}),
         ...(hasTypeChange ? { apiType: draft.apiType } : {}),
-        ...(hasCapsChange ? { capabilities: draft.capabilities } : {}),
       });
       onProviderSaved(payload);
       setDraft(null);
@@ -2886,33 +2894,6 @@ function ProvidersSettings({
                 </div>
               </div>
             ) : null}
-            <div>
-              <p className="text-[12px] font-medium text-muted-foreground">
-                {tx("settings.providers.capabilities", "支持的能力")}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {PROVIDER_CAPABILITIES.map((cap) => {
-                  const selected = (draft?.capabilities ?? provider.capabilities ?? []).includes(
-                    cap.key,
-                  );
-                  return (
-                    <button
-                      key={cap.key}
-                      type="button"
-                      onClick={() => toggleCapability(provider)(cap.key)}
-                      className={cn(
-                        "h-8 rounded-full border px-3 text-[12px] transition-colors",
-                        selected
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-input text-muted-foreground hover:bg-muted/50",
-                      )}
-                    >
-                      {cap.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
             {error ? (
               <p className="text-[12px] text-destructive">{error}</p>
             ) : null}
@@ -3237,10 +3218,77 @@ function VideoGenerationSettings({
 }: {
   token: string;
   settings: SettingsPayload;
+  form: Record<VideoVendor, VideoGenerationSettingsUpdate>;
+  dirty: Record<VideoVendor, boolean>;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<Record<VideoVendor, VideoGenerationSettingsUpdate>>>;
+  onSave: (vendor: VideoVendor) => void;
+  onOpenProviders: () => void;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+  requiresRestartPending: boolean;
+  showBrandLogos: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  return (
+    <div className="space-y-7">
+      <section>
+        <SettingsSectionTitle>{tx("settings.sections.videoGeneration", "视频生成")}</SettingsSectionTitle>
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+          {tx(
+            "settings.video.vendorIntro",
+            "在「模型厂商」页配置任一家视频厂商的密钥后，智能体即可调用对应的视频生成工具；无需逐厂商开关。",
+          )}
+        </p>
+        <div className="mt-4 space-y-4">
+          {videoVendorKeys(settings).map((vendor) => (
+            <VendorVideoCard
+              key={vendor}
+              vendor={vendor}
+              token={token}
+              settings={settings}
+              form={form[vendor]}
+              dirty={dirty[vendor]}
+              saving={saving}
+              onChangeForm={onChangeForm}
+              onSave={() => onSave(vendor)}
+              onOpenProviders={onOpenProviders}
+              onRestart={onRestart}
+              isRestarting={isRestarting}
+              requiresRestartPending={requiresRestartPending}
+              showBrandLogos={showBrandLogos}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+/** 单厂商视频卡片：状态徽章 + 方式徽章 + 折叠默认参数表单。 */
+function VendorVideoCard({
+  vendor,
+  token,
+  settings,
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onOpenProviders,
+  onRestart,
+  isRestarting,
+  requiresRestartPending,
+  showBrandLogos,
+}: {
+  vendor: VideoVendor;
+  token: string;
+  settings: SettingsPayload;
   form: VideoGenerationSettingsUpdate;
   dirty: boolean;
   saving: boolean;
-  onChangeForm: Dispatch<SetStateAction<VideoGenerationSettingsUpdate>>;
+  onChangeForm: Dispatch<SetStateAction<Record<VideoVendor, VideoGenerationSettingsUpdate>>>;
   onSave: () => void;
   onOpenProviders: () => void;
   onRestart?: () => void;
@@ -3250,176 +3298,203 @@ function VideoGenerationSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const videoProviders = providersWithCapability(settings, "video");
-  const selectedProvider =
-    videoProviders.find((provider) => provider.name === form.provider) ?? videoProviders[0];
-  const providerConfigured = !!selectedProvider?.configured;
-  const apiKeyConfigured =
-    settings.video_generation.api_key_configured || providerConfigured;
-  const missingCredential = form.enabled && !apiKeyConfigured;
+  // hooks 必须在任何条件 return 之前（CLAUDE.md 陷阱：React #310）。
+  const [expanded, setExpanded] = useState(false);
+
+  const vendorSettings = settings.video_generation.vendors[vendor];
+  const label = videoVendorLabel(settings, vendor);
+  // 卡片进入渲染即应存在后端数据；payload 不含该厂商时只渲染标题占位，不抛错。
+  const configured = vendorSettings?.configured ?? false;
+  const support = settings.video_generation.support[vendor] ?? [];
+  // 后端只下发各厂商 config 实际存在的字段，故用「字段是否存在」决定是否渲染该行。
+  const showGenerateAudio = vendorSettings?.generate_audio !== undefined;
+  const showSeed = vendorSettings?.seed !== undefined;
+  const showWatermark = vendorSettings?.watermark !== undefined;
+
   const ratioOptions = optionRowsWithCurrent(
-    VIDEO_RATIO_OPTIONS.map((value) => ({ name: value, label: value })),
+    (settings.video_generation.ratio_options[vendor] ?? []).map((value) => ({
+      name: value,
+      label: value,
+    })),
     form.defaultRatio,
   );
   const resolutionOptions = optionRowsWithCurrent(
     [
-      { name: "", label: tx("settings.video.resolutionAuto", "模型自动决定") },
-      ...VIDEO_RESOLUTION_OPTIONS.map((value) => ({ name: value, label: value })),
+      // 清晰度必填的厂商（resolution_optional=false）不提供「自动」。
+      ...(vendorSettings?.resolution_optional === false
+        ? []
+        : [{ name: "", label: tx("settings.video.resolutionAuto", "模型自动决定") }]),
+      ...(settings.video_generation.resolution_options[vendor] ?? []).map((value) => ({
+        name: value,
+        label: value,
+      })),
     ],
     form.defaultResolution,
   );
+  const [durationMin, durationMax] = settings.video_generation.duration_ranges[vendor] ?? [
+    1, 60,
+  ];
+  const modelSuggestions = settings.video_generation.model_suggestions[vendor] ?? [];
+  const onOff = (on: boolean) => (on ? tx("settings.values.on", "On") : tx("settings.values.off", "Off"));
+
+  const updateForm = (patch: Partial<VideoGenerationSettingsUpdate>) =>
+    onChangeForm((prev) => ({ ...prev, [vendor]: { ...prev[vendor], ...patch } }));
 
   return (
-    <div className="space-y-7">
-      <section>
-        <SettingsSectionTitle>{tx("settings.sections.videoGeneration", "视频生成")}</SettingsSectionTitle>
-        <SettingsGroup>
-          <SettingsRow
-            title={tx("settings.rows.videoGeneration", "视频生成")}
-            description={tx("settings.help.videoGeneration", "在对话中暴露视频生成能力（当 Seedance 密钥已配置时）。")}
+    <div className="rounded-2xl border border-border/60 bg-card/40">
+      <div className="flex flex-wrap items-start justify-between gap-3 p-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-medium">{label}</span>
+            <StatusPill tone={configured ? "success" : "neutral"}>
+              {configured
+                ? tx("settings.values.configured", "已配置")
+                : tx("settings.values.notConfigured", "未配置")}
+            </StatusPill>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {support.map((key) => (
+              <span
+                key={key}
+                className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground"
+              >
+                {VIDEO_SUPPORT_LABELS[key] ?? key}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!configured ? (
+            <Button size="sm" variant="outline" onClick={onOpenProviders} className="rounded-full">
+              {tx("settings.video.configureProvider", "配置厂商")}
+            </Button>
+          ) : null}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="rounded-full"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
           >
-            <ToggleButton
-              checked={form.enabled}
-              onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
-              ariaLabel={tx("settings.rows.videoGeneration", "视频生成")}
-              label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+            {expanded
+              ? tx("settings.video.collapse", "收起")
+              : tx("settings.video.expand", "默认参数")}
+          </Button>
+        </div>
+      </div>
+      {expanded ? (
+        <div className="border-t border-border/60 p-4">
+          <SettingsGroup>
+            <SettingsRow
+              title={tx("settings.rows.videoModel", "视频模型")}
+              description={tx("settings.help.videoModel", `发送给${label}的模型名称。`)}
+            >
+              <ModelIdPicker
+                token={token}
+                settings={settings}
+                provider={vendorSettings?.provider ?? vendor}
+                value={form.model}
+                showProviderLogos={showBrandLogos}
+                onChange={(model) => updateForm({ model })}
+                suggestedModels={modelSuggestions}
+              />
+            </SettingsRow>
+            <SettingsRow
+              title={tx("settings.rows.videoRatio", "画面比例")}
+              description={tx("settings.help.videoRatio", "提示未指定时使用的默认画面比例。")}
+            >
+              <ProviderPicker
+                providers={ratioOptions}
+                value={form.defaultRatio}
+                emptyLabel={tx("settings.video.selectRatio", "选择画面比例")}
+                onChange={(defaultRatio) => updateForm({ defaultRatio })}
+              />
+            </SettingsRow>
+            <SettingsRow
+              title={tx("settings.rows.videoDuration", "时长")}
+              description={tx(
+                "settings.help.videoDuration",
+                `生成的视频时长（秒），${durationMin}–${durationMax}。`,
+              )}
+            >
+              <NumberInput
+                value={form.defaultDuration}
+                min={durationMin}
+                max={durationMax}
+                suffix={tx("settings.video.seconds", "秒")}
+                onChange={(defaultDuration) => updateForm({ defaultDuration })}
+              />
+            </SettingsRow>
+            <SettingsRow
+              title={tx("settings.rows.videoResolution", "分辨率")}
+              description={tx(
+                "settings.help.videoResolution",
+                "提示未指定时使用的默认分辨率；「模型自动决定」交由模型选择。",
+              )}
+            >
+              <ProviderPicker
+                providers={resolutionOptions}
+                value={form.defaultResolution}
+                emptyLabel={tx("settings.video.selectResolution", "选择分辨率")}
+                onChange={(defaultResolution) => updateForm({ defaultResolution })}
+              />
+            </SettingsRow>
+            {showGenerateAudio ? (
+              <SettingsRow
+                title={tx("settings.rows.videoGenerateAudio", "生成音轨")}
+                description={tx("settings.help.videoGenerateAudio", "生成带音轨的视频。")}
+              >
+                <ToggleButton
+                  checked={form.generateAudio}
+                  onChange={(generateAudio) => updateForm({ generateAudio })}
+                  ariaLabel={`${label} ${tx("settings.rows.videoGenerateAudio", "生成音轨")}`}
+                  label={onOff(form.generateAudio)}
+                />
+              </SettingsRow>
+            ) : null}
+            {showSeed ? (
+              <SettingsRow
+                title={tx("settings.rows.videoSeed", "随机种子")}
+                description={tx("settings.help.videoSeed", "固定种子可复现结果；留空表示随机。")}
+              >
+                <Input
+                  value={form.seed}
+                  onChange={(event) => updateForm({ seed: event.target.value })}
+                  placeholder={tx("settings.video.seedPlaceholder", "留空 = 随机")}
+                  className="h-8 w-40 max-w-full rounded-full text-[13px]"
+                />
+              </SettingsRow>
+            ) : null}
+            {showWatermark ? (
+              <SettingsRow
+                title={tx("settings.rows.videoWatermark", "水印")}
+                description={tx("settings.help.videoWatermark", "为生成的视频添加水印。")}
+              >
+                <ToggleButton
+                  checked={form.watermark}
+                  onChange={(watermark) => updateForm({ watermark })}
+                  ariaLabel={`${label} ${tx("settings.rows.videoWatermark", "水印")}`}
+                  label={onOff(form.watermark)}
+                />
+              </SettingsRow>
+            ) : null}
+            <ReadOnlyRow
+              title={tx("settings.rows.videoSaveDir", "保存目录")}
+              value={vendorSettings.save_dir}
             />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoProvider", "视频厂商")}
-            description={tx("settings.help.videoProvider", "选择视频生成厂商；未配置时默认使用火山方舟。")}
-          >
-            <ProviderPicker
-              providers={videoProviders}
-              value={form.provider}
-              emptyLabel={tx("settings.video.selectProvider", "选择视频厂商")}
-              showProviderLogos={showBrandLogos}
-              onChange={(provider) => onChangeForm((prev) => ({ ...prev, provider }))}
+            <RestartSettingsFooter
+              dirty={dirty}
+              saving={saving}
+              pendingRestart={requiresRestartPending}
+              dirtyMessage={tx("settings.status.restartAfterSaving", "保存更改，就绪后重启。")}
+              pendingMessage={tx("settings.status.savedRestartApply", "已保存。就绪后重启。")}
+              onSave={onSave}
+              onRestart={onRestart}
+              isRestarting={isRestarting}
             />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoProviderStatus", "密钥状态")}
-            description={tx("settings.help.videoProviderStatus", "文生视频与文生图共用「模型厂商」页的火山方舟密钥。")}
-          >
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <StatusPill tone={apiKeyConfigured ? "success" : "neutral"}>
-                {apiKeyConfigured
-                  ? tx("settings.values.configured", "已配置")
-                  : tx("settings.values.notConfigured", "未配置")}
-              </StatusPill>
-              {!apiKeyConfigured ? (
-                <Button size="sm" variant="outline" onClick={onOpenProviders} className="rounded-full">
-                  {tx("settings.video.configureProvider", "配置厂商")}
-                </Button>
-              ) : null}
-            </div>
-          </SettingsRow>
-        </SettingsGroup>
-      </section>
-
-      <section>
-        <SettingsSectionTitle>{tx("settings.sections.videoDefaults", "生成参数")}</SettingsSectionTitle>
-        <SettingsGroup>
-          <SettingsRow
-            title={tx("settings.rows.videoModel", "视频模型")}
-            description={tx("settings.help.videoModel", "发送给所选视频厂商的模型名称。")}
-          >
-            <ModelIdPicker
-              token={token}
-              settings={settings}
-              provider={form.provider}
-              value={form.model}
-              showProviderLogos={showBrandLogos}
-              onChange={(model) => onChangeForm((prev) => ({ ...prev, model }))}
-              providerRows={videoProviders}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoRatio", "画面比例")}
-            description={tx("settings.help.videoRatio", "提示未指定时使用的默认画面比例。")}
-          >
-            <ProviderPicker
-              providers={ratioOptions}
-              value={form.defaultRatio}
-              emptyLabel={tx("settings.video.selectRatio", "选择画面比例")}
-              onChange={(defaultRatio) => onChangeForm((prev) => ({ ...prev, defaultRatio }))}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoDuration", "时长")}
-            description={tx("settings.help.videoDuration", "生成的视频时长（秒），4–30。")}
-          >
-            <NumberInput
-              value={form.defaultDuration}
-              min={4}
-              max={30}
-              onChange={(defaultDuration) =>
-                onChangeForm((prev) => ({ ...prev, defaultDuration }))
-              }
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoResolution", "分辨率")}
-            description={tx("settings.help.videoResolution", "提示未指定时使用的默认分辨率；「模型自动决定」交由模型选择。")}
-          >
-            <ProviderPicker
-              providers={resolutionOptions}
-              value={form.defaultResolution}
-              emptyLabel={tx("settings.video.selectResolution", "选择分辨率")}
-              onChange={(defaultResolution) =>
-                onChangeForm((prev) => ({ ...prev, defaultResolution }))
-              }
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoGenerateAudio", "生成音轨")}
-            description={tx("settings.help.videoGenerateAudio", "生成带音轨的视频。")}
-          >
-            <ToggleButton
-              checked={form.generateAudio}
-              onChange={(generateAudio) =>
-                onChangeForm((prev) => ({ ...prev, generateAudio }))
-              }
-              ariaLabel={tx("settings.rows.videoGenerateAudio", "生成音轨")}
-              label={form.generateAudio ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.videoWatermark", "水印")}
-            description={tx("settings.help.videoWatermark", "为生成的视频添加水印。")}
-          >
-            <ToggleButton
-              checked={form.watermark}
-              onChange={(watermark) => onChangeForm((prev) => ({ ...prev, watermark }))}
-              ariaLabel={tx("settings.rows.videoWatermark", "水印")}
-              label={form.watermark ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
-            />
-          </SettingsRow>
-          <ReadOnlyRow
-            title={tx("settings.rows.videoSaveDir", "保存目录")}
-            value={settings.video_generation.save_dir}
-          />
-          <RestartSettingsFooter
-            dirty={dirty}
-            saving={saving}
-            pendingRestart={requiresRestartPending}
-            disabled={missingCredential}
-            message={
-              missingCredential
-                ? tx(
-                    "settings.video.missingCredential",
-                    "在 config.json 配置 Seedance 密钥后再启用视频生成。",
-                  )
-                : undefined
-            }
-            dirtyMessage={tx("settings.status.restartAfterSaving", "保存更改，就绪后重启。")}
-            pendingMessage={tx("settings.status.savedRestartApply", "已保存。就绪后重启。")}
-            onSave={onSave}
-            onRestart={onRestart}
-            isRestarting={isRestarting}
-          />
-        </SettingsGroup>
-      </section>
+          </SettingsGroup>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -6208,6 +6283,7 @@ function ModelIdPicker({
   showProviderLogos,
   onChange,
   providerRows,
+  suggestedModels,
 }: {
   token: string;
   settings: SettingsPayload;
@@ -6216,6 +6292,8 @@ function ModelIdPicker({
   showProviderLogos: boolean;
   onChange: (model: string) => void;
   providerRows?: SettingsPayload["providers"];
+  /** 静态建议模型（如视频厂商）：提供时不下发检索请求，仅展示这份列表，仍可自由手输。 */
+  suggestedModels?: string[];
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
@@ -6227,6 +6305,7 @@ function ModelIdPicker({
   const effectiveProvider =
     provider === "auto" ? settings.agent.resolved_provider ?? provider : provider;
   const hasConcreteProvider = Boolean(effectiveProvider && effectiveProvider !== "auto");
+  const hasSuggestedModels = Boolean(suggestedModels && suggestedModels.length);
   const providerRow = providerRows
     ? (providerRows.find((row) => row.name === effectiveProvider) ?? null)
     : settingsProviderRow(settings, effectiveProvider);
@@ -6237,9 +6316,11 @@ function ModelIdPicker({
   const providerUsesManualModelIds =
     hasConcreteProvider && providerConfigured && providerRow?.auth_type === "oauth";
   const canFetchModels =
-    hasConcreteProvider && providerConfigured && !providerUsesManualModelIds;
+    !hasSuggestedModels && hasConcreteProvider && providerConfigured && !providerUsesManualModelIds;
   const normalizedQuery = query.trim().toLowerCase();
-  const providerModels = payload?.models ?? [];
+  const providerModels: ProviderModelsPayload["models"] = hasSuggestedModels
+    ? suggestedModels!.map((id) => ({ id, label: id }))
+    : payload?.models ?? [];
   const visibleModels = providerModels
     .filter((model) => {
       if (!normalizedQuery) return true;
@@ -6255,10 +6336,12 @@ function ModelIdPicker({
     canFetchModels && (!defersModelList || hasDeferredSearchQuery);
   const waitingForModelSearch =
     open && canFetchModels && defersModelList && !hasDeferredSearchQuery;
-  const hasModelList = payload?.status === "available";
-  const showModels = Boolean(hasModelList && payload && (!isCatalog || normalizedQuery));
+  const hasModelList = hasSuggestedModels || payload?.status === "available";
+  const showModels = Boolean(
+    hasSuggestedModels || (hasModelList && payload && (!isCatalog || normalizedQuery)),
+  );
   const customCandidate = query.trim();
-  const allowCustomModel = !providerRequiresConfiguration;
+  const allowCustomModel = !providerRequiresConfiguration || hasSuggestedModels;
   const exactQueryMatch = providerModels.some((model) => model.id === customCandidate);
   const providerModelCount = payload?.model_count ?? providerModels.length;
   const modelUnconfigured = !value.trim() || !providerConfigured;
@@ -6378,15 +6461,15 @@ function ModelIdPicker({
           </div>
         </div>
 
-        {providerRequiresConfiguration ? (
+        {providerRequiresConfiguration && !hasSuggestedModels ? (
           <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
             {tx("settings.models.providerNotConfigured", "Configure this provider before loading models.")}
           </div>
-        ) : providerUsesManualModelIds ? (
+        ) : providerUsesManualModelIds && !hasSuggestedModels ? (
           <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
             {tx("settings.models.unsupportedModelList", "Type a model ID manually.")}
           </div>
-        ) : !canFetchModels ? (
+        ) : !canFetchModels && !hasSuggestedModels ? (
           <div className="px-2 py-1.5 text-[11px] leading-4 text-muted-foreground">
             {tx("settings.models.autoProviderCustomOnly", "Auto provider mode uses custom model IDs.")}
           </div>

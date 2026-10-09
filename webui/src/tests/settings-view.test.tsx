@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsView, type SettingsSectionKey } from "@/components/settings/SettingsView";
 import { ClientProvider } from "@/providers/ClientProvider";
 import type { SettingsPayload } from "@/lib/types";
+import { videoGenerationPayload } from "./video-generation-fixture";
 
 function jsonResponse(body: unknown): Response {
   return {
@@ -70,18 +71,7 @@ function settingsPayload(): SettingsPayload {
       max_images_per_turn: 4,
       save_dir: "generated",
     },
-    video_generation: {
-      enabled: false,
-      provider: "volcengine",
-      api_key_configured: false,
-      model: "doubao-seedance",
-      default_ratio: "16:9",
-      default_duration: 6,
-      default_resolution: null,
-      generate_audio: true,
-      watermark: false,
-      save_dir: "generated/videos",
-    },
+    video_generation: videoGenerationPayload(),
     screenshot: {
       enabled: false,
       max_width: 1920,
@@ -193,19 +183,18 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(subtabs.getByRole("button", { name: "文生图" })).toHaveAttribute("aria-current", "true");
     expect(await screen.findByRole("switch", { name: "图片生成" })).toBeInTheDocument();
 
-    fireEvent.click(subtabs.getByRole("button", { name: "文生视频" }));
-    expect(subtabs.getByRole("button", { name: "文生视频" })).toHaveAttribute(
+    fireEvent.click(subtabs.getByRole("button", { name: "视频生成" }));
+    expect(subtabs.getByRole("button", { name: "视频生成" })).toHaveAttribute(
       "aria-current",
       "true",
     );
-    expect(await screen.findByRole("switch", { name: "视频生成" })).toBeInTheDocument();
-    expect(screen.getByText("画面比例")).toBeInTheDocument();
-    expect(screen.getByText("时长")).toBeInTheDocument();
-    expect(screen.getByText("分辨率")).toBeInTheDocument();
-    expect(screen.getByText("生成音轨")).toBeInTheDocument();
-    expect(screen.getByText("水印")).toBeInTheDocument();
-    expect(screen.getByText("保存目录")).toBeInTheDocument();
-    expect(screen.getByText("密钥状态")).toBeInTheDocument();
+    // 四家厂商卡片（折叠态）默认渲染，展开后才显示默认参数表单。
+    expect(await screen.findByText("Seedance")).toBeInTheDocument();
+    expect(screen.getByText("可灵")).toBeInTheDocument();
+    expect(screen.getByText("MiniMax")).toBeInTheDocument();
+    expect(screen.getByText("通义万相（灵积）")).toBeInTheDocument();
+    expect(screen.getAllByText("未配置").length).toBe(4);
+    expect(screen.getAllByRole("button", { name: "默认参数" }).length).toBe(4);
 
     fireEvent.click(subtabs.getByRole("button", { name: "视觉理解" }));
     expect(subtabs.getByRole("button", { name: "视觉理解" })).toHaveAttribute(
@@ -245,13 +234,12 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(screen.getByRole("heading", { name: "语音识别" })).toBeInTheDocument();
   });
 
-  it("文生视频子区渲染真面板并保存设置，返回视频重启桶", async () => {
+  it("视频生成子区渲染厂商卡片并保存设置，返回视频重启桶", async () => {
     const payload: SettingsPayload = {
       ...settingsPayload(),
-      video_generation: {
-        ...settingsPayload().video_generation,
-        api_key_configured: true,
-      },
+      video_generation: videoGenerationPayload({
+        seedance: { configured: true },
+      }),
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -261,7 +249,6 @@ describe("SettingsView 标签合并与二级子区", () => {
       if (url.startsWith("/api/settings/video-generation/update")) {
         return jsonResponse({
           ...payload,
-          video_generation: { ...payload.video_generation, enabled: true },
           requires_restart: true,
           restart_required_sections: ["video"],
         });
@@ -273,21 +260,35 @@ describe("SettingsView 标签合并与二级子区", () => {
     renderSettingsView({ initialSection: "models", initialSettings: payload });
 
     const subtabs = within(screen.getByTestId("settings-subtabs"));
-    fireEvent.click(subtabs.getByRole("button", { name: "文生视频" }));
+    fireEvent.click(subtabs.getByRole("button", { name: "视频生成" }));
 
-    expect(await screen.findByRole("switch", { name: "视频生成" })).toBeInTheDocument();
-    expect(screen.getByText("doubao-seedance")).toBeInTheDocument();
-    expect(screen.getByText("16:9")).toBeInTheDocument();
-    expect(screen.getByText("generated/videos")).toBeInTheDocument();
+    // 四家厂商卡片 + 方式徽章 + 状态徽章
+    expect(await screen.findByText("Seedance")).toBeInTheDocument();
+    expect(screen.getByText("可灵")).toBeInTheDocument();
+    expect(screen.getByText("MiniMax")).toBeInTheDocument();
+    expect(screen.getByText("通义万相（灵积）")).toBeInTheDocument();
+    expect(screen.getAllByText("视频生成").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("文生视频").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("参考音频").length).toBeGreaterThan(0);
+    // kling 卡片不支持参考音频
+    expect(screen.getAllByText("已配置").length).toBe(1);
     // 视频面板不含密钥/地址编辑字段
     expect(screen.queryByPlaceholderText(/apiKey|api key|留空则保留当前 key/i)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("switch", { name: "视频生成" }));
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    // 展开 Seedance 卡片的默认参数表单并保存
+    const seedanceCard = screen.getByText("Seedance").closest("div.rounded-2xl") as HTMLElement;
+    fireEvent.click(within(seedanceCard).getByRole("button", { name: "默认参数" }));
+
+    expect(within(seedanceCard).getByText("doubao-seedance")).toBeInTheDocument();
+    expect(within(seedanceCard).getByText("generated/videos")).toBeInTheDocument();
+
+    // 改动一项默认参数（水印）以置脏，再保存。
+    fireEvent.click(within(seedanceCard).getByRole("switch", { name: "Seedance 水印" }));
+    fireEvent.click(within(seedanceCard).getByRole("button", { name: "保存" }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/api/settings/video-generation/update"),
+        expect.stringContaining("/api/settings/video-generation/update?vendor=seedance"),
         expect.objectContaining({
           headers: { Authorization: "Bearer tok" },
         }),

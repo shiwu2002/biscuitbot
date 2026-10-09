@@ -222,35 +222,15 @@ def test_update_provider_settings_updates_dynamic_custom_provider(
     assert dynamic_provider.api_key == "sk-test"
 
 
-def test_update_provider_settings_persists_capabilities(
+def test_declared_capabilities_query_is_ignored(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    config_path = tmp_path / "config.json"
-    save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    """旧客户端仍发 ``capabilities`` 时静默忽略——能力标签已改为纯派生。
 
-    update_provider_settings(
-        {
-            "provider": [DYNAMIC_PROVIDER_NAME],
-            "capabilities": ["llm,vision,image"],
-        }
-    )
-
-    saved = load_config(config_path)
-    dynamic_provider = saved.providers.model_extra[DYNAMIC_PROVIDER_NAME]
-    assert dynamic_provider.capabilities == ["llm", "vision", "image"]
-
-    payload = settings_payload()
-    providers = {row["name"]: row for row in payload["providers"]}
-    assert providers[DYNAMIC_PROVIDER_NAME]["capabilities"] == ["llm", "vision", "image"]
-
-
-def test_provider_capabilities_override_narrows_llm(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """用户把厂商能力收窄为仅图像时，该厂商应退出 LLM 模型预设下拉。"""
+    厂商能力不再可声明（「模型厂商」页已无该排复选框），但旧前端/客户端可能
+    继续下发这个查询键；它应与其它未知键一样被忽略，而不是 400 或写回配置。
+    """
     config_path = tmp_path / "config.json"
     save_config(_dynamic_provider_config(), config_path)
     monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
@@ -262,34 +242,15 @@ def test_provider_capabilities_override_narrows_llm(
         }
     )
 
-    rows = _unified_provider_rows(load_config(config_path))
-    row = next(r for r in rows if r["name"] == DYNAMIC_PROVIDER_NAME)
-    assert row["capabilities"] == ["image"]
-    assert row["model_selectable"] is False
+    saved = load_config(config_path)
+    dynamic_provider = saved.providers.model_extra[DYNAMIC_PROVIDER_NAME]
+    # 声明值不再持久化（字段已从 ProviderConfig 删除，加载时被忽略）
+    assert getattr(dynamic_provider, "capabilities", None) is None
 
-
-def test_provider_capabilities_empty_declared_not_auto_detected(
-    tmp_path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """用户清空全部能力时，应保留空列表而非回退自动推断。"""
-    config_path = tmp_path / "config.json"
-    save_config(_dynamic_provider_config(), config_path)
-    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
-
-    update_provider_settings(
-        {
-            "provider": [DYNAMIC_PROVIDER_NAME],
-            "capabilities": [""],
-        }
-    )
-
-    row = next(
-        r for r in _unified_provider_rows(load_config(config_path))
-        if r["name"] == DYNAMIC_PROVIDER_NAME
-    )
-    assert row["capabilities"] == []
-    assert row["model_selectable"] is False
+    payload = settings_payload()
+    providers = {row["name"]: row for row in payload["providers"]}
+    # payload 里的 capabilities 是注册表派生值：动态自定义厂商无规格 → llm + vision
+    assert providers[DYNAMIC_PROVIDER_NAME]["capabilities"] == ["llm", "vision"]
 
 
 def test_delete_provider_settings_removes_dynamic_provider_and_resets_refs(
@@ -316,7 +277,7 @@ def test_delete_provider_settings_removes_dynamic_provider_and_resets_refs(
         },
         "tools": {
             "image_generation": {"provider": DYNAMIC_PROVIDER_NAME},
-            "seedance_video": {"provider": DYNAMIC_PROVIDER_NAME},
+            "seedance_video": {"model": DYNAMIC_PROVIDER_NAME},
         },
         "tts": {"provider": DYNAMIC_PROVIDER_NAME},
         "transcription": {"provider": DYNAMIC_PROVIDER_NAME},
@@ -332,7 +293,8 @@ def test_delete_provider_settings_removes_dynamic_provider_and_resets_refs(
     assert saved.agents.defaults.provider == "auto"
     assert saved.model_presets["mine"].provider == "auto"
     assert saved.tools.image_generation.provider == "volcengine"
-    assert saved.tools.seedance_video.provider == "volcengine"
+    # 自定义厂商不是视频厂商，删除时不应触碰视频工具的 model。
+    assert saved.tools.seedance_video.model == DYNAMIC_PROVIDER_NAME
     assert saved.tts.provider is None
     assert saved.transcription.provider is None
 
@@ -1247,48 +1209,65 @@ def test_provider_capabilities_kling_video_only() -> None:
     assert _provider_capabilities("kling", config) == ["video"]
 
 
-def test_update_video_generation_settings_kling_requires_key(
+def test_resolve_model_list_provider_keeps_llm_base_for_dual_video_provider() -> None:
+    """灵积同时是 LLM 与视频厂商：模型枚举必须走 LLM 兼容模式 base，不能被视频裸域顶替。
+
+    视频客户端的 ``_default_base_url`` 是视频 API 的裸域（DashScope 为
+    ``https://dashscope.aliyuncs.com``），而无条件覆盖会让
+    ``/api/settings/provider-models?provider=dashscope`` 去请求
+    ``https://dashscope.aliyuncs.com/models``（404）。
+    """
+    spec, name, _ = _resolve_model_list_provider(Config(), "dashscope")  # type: ignore[misc]
+    assert name == "dashscope"
+    assert spec.default_api_base == "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # 纯视频厂商（无自带默认 base）仍补视频客户端的 base URL。
+    kling_spec, _, _ = _resolve_model_list_provider(Config(), "kling")  # type: ignore[misc]
+    assert kling_spec.default_api_base == "https://api-beijing.klingai.com"
+
+
+
+
+def test_update_video_generation_settings_kling_routes_to_kling_config(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """provider=kling 时启用校验：无 key 抛错，配 key 后成功。"""
+    """vendor=kling 路由到 tools.kling_video；密钥在「模型厂商」页配置后判定已配置。"""
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
     monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
-    # 未配任何密钥 → 启用被拒
-    with pytest.raises(WebUISettingsError, match="api key is required"):
-        update_video_generation_settings(
-            {
-                "provider": ["kling"],
-                "model": ["kling-v3-omni"],
-                "enabled": ["true"],
-            }
-        )
-
-    # 在「模型厂商」页配置可灵密钥后 → 可启用
-    update_provider_settings(
-        {
-            "provider": ["kling"],
-            "apiKey": ["AK123:SK456"],
-        }
-    )
+    # 未配任何密钥 → 工具未启用，但默认参数仍可保存。
     payload = update_video_generation_settings(
         {
-            "provider": ["kling"],
+            "vendor": ["kling"],
             "model": ["kling-v3-omni"],
-            "enabled": ["true"],
+            "default_ratio": ["9:16"],
+            "default_duration": ["9"],
         }
     )
-    assert payload["video_generation"]["enabled"] is True
-    assert payload["video_generation"]["provider"] == "kling"
-    assert payload["video_generation"]["model"] == "kling-v3-omni"
-    assert payload["video_generation"]["api_key_configured"] is True
+    kling = payload["video_generation"]["vendors"]["kling"]
+    assert kling["configured"] is False
+    assert kling["model"] == "kling-v3-omni"
+    assert kling["default_ratio"] == "9:16"
+    assert kling["default_duration"] == 9
+
+    # 在「模型厂商」页配置可灵密钥后 → 判定已配置
+    update_provider_settings({"provider": ["kling"], "apiKey": ["AK123:SK456"]})
+    payload = update_video_generation_settings({"vendor": ["kling"]})
+    assert payload["video_generation"]["vendors"]["kling"]["configured"] is True
 
     saved = load_config(config_path)
-    assert saved.tools.seedance_video.enabled is True
-    assert saved.tools.seedance_video.provider == "kling"
+    assert saved.tools.kling_video.model == "kling-v3-omni"
+    assert saved.tools.kling_video.default_ratio == "9:16"
+    assert saved.tools.kling_video.default_duration == 9
     assert saved.providers.model_extra["kling"].api_key == "AK123:SK456"
+
+
+def test_update_video_generation_settings_requires_vendor() -> None:
+    """缺少 vendor 参数直接拒绝（无法确定写入哪家厂商）。"""
+    with pytest.raises(WebUISettingsError, match="vendor is required"):
+        update_video_generation_settings({"model": ["kling-v3-omni"]})
 
 
 # ---- MiniMax H3 视频厂商 --------------------------------------------------
@@ -1379,37 +1358,178 @@ def test_provider_models_payload_minimax_requests_v1_models(
     assert payload["models"][0]["id"] == "MiniMax-Text-01"
 
 
-def test_update_video_generation_settings_minimax_requires_key(
+def test_update_video_generation_settings_minimax_routes_to_minimax_config(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """provider=minimax 时启用校验：无 key 抛错，配 key 后成功。"""
+    """vendor=minimax 路由到 tools.minimax_video；密钥在「模型厂商」页配置后判定已配置。"""
     config_path = tmp_path / "config.json"
     save_config(Config.model_validate({}), config_path)
     monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
 
-    with pytest.raises(WebUISettingsError, match="api key is required"):
-        update_video_generation_settings(
-            {
-                "provider": ["minimax"],
-                "model": ["MiniMax-H3"],
-                "enabled": ["true"],
-            }
-        )
-
-    update_provider_settings({"provider": ["minimax"], "apiKey": ["mm-secret"]})
     payload = update_video_generation_settings(
         {
-            "provider": ["minimax"],
+            "vendor": ["minimax"],
             "model": ["MiniMax-H3"],
-            "enabled": ["true"],
+            "default_duration": ["12"],
+            "watermark": ["true"],
         }
     )
-    assert payload["video_generation"]["enabled"] is True
-    assert payload["video_generation"]["provider"] == "minimax"
-    assert payload["video_generation"]["model"] == "MiniMax-H3"
-    assert payload["video_generation"]["api_key_configured"] is True
+    minimax = payload["video_generation"]["vendors"]["minimax"]
+    assert minimax["configured"] is False
+    assert minimax["model"] == "MiniMax-H3"
+    assert minimax["default_duration"] == 12
+    assert minimax["watermark"] is True
+
+    update_provider_settings({"provider": ["minimax"], "apiKey": ["mm-secret"]})
+    payload = update_video_generation_settings({"vendor": ["minimax"]})
+    assert payload["video_generation"]["vendors"]["minimax"]["configured"] is True
 
     saved = load_config(config_path)
-    assert saved.tools.seedance_video.provider == "minimax"
+    assert saved.tools.minimax_video.model == "MiniMax-H3"
+    assert saved.tools.minimax_video.default_duration == 12
+    assert saved.tools.minimax_video.watermark is True
     assert saved.providers.model_extra["minimax"].api_key == "mm-secret"
+
+
+def test_update_video_generation_settings_dashscope_routes_to_dashscope_config(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """vendor=dashscope 路由到 tools.dashscope_video；密钥在「模型厂商」页配置后判定已配置。"""
+    config_path = tmp_path / "config.json"
+    save_config(Config.model_validate({}), config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+    # 屏蔽环境变量兜底密钥，确保 configured 只反映配置页写入的密钥
+    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+
+    payload = update_video_generation_settings(
+        {
+            "vendor": ["dashscope"],
+            "model": ["wan2.6-i2v"],
+            "default_ratio": ["9:16"],
+            "default_duration": ["5"],
+            "default_resolution": ["1080P"],
+        }
+    )
+    dashscope = payload["video_generation"]["vendors"]["dashscope"]
+    assert dashscope["configured"] is False
+    assert dashscope["model"] == "wan2.6-i2v"
+    assert dashscope["default_ratio"] == "9:16"
+    assert dashscope["default_duration"] == 5
+    assert dashscope["default_resolution"] == "1080P"
+
+    # 在「模型厂商」页配置灵积密钥后 → 判定已配置（dashscope 同时是 LLM 厂商）
+    update_provider_settings({"provider": ["dashscope"], "apiKey": ["sk-ds-1"]})
+    payload = update_video_generation_settings({"vendor": ["dashscope"]})
+    assert payload["video_generation"]["vendors"]["dashscope"]["configured"] is True
+
+    saved = load_config(config_path)
+    assert saved.tools.dashscope_video.model == "wan2.6-i2v"
+    assert saved.tools.dashscope_video.default_resolution == "1080P"
+
+
+def test_update_video_generation_settings_per_vendor_validation() -> None:
+    """选项按厂商校验：kling 不接受 4:3，seedance 才接受 adaptive。"""
+    with pytest.raises(WebUISettingsError, match="aspect ratio"):
+        update_video_generation_settings({"vendor": ["kling"], "default_ratio": ["4:3"]})
+    with pytest.raises(WebUISettingsError, match="aspect ratio"):
+        update_video_generation_settings({"vendor": ["kling"], "default_ratio": ["adaptive"]})
+    with pytest.raises(WebUISettingsError, match="between 3 and 15"):
+        update_video_generation_settings({"vendor": ["kling"], "default_duration": ["20"]})
+    with pytest.raises(WebUISettingsError, match="resolution"):
+        update_video_generation_settings({"vendor": ["seedance"], "default_resolution": ["2K"]})
+    # 通义万相：只收 16:9 / 9:16 / 1:1，时长 2–15，清晰度只认 480P/720P/1080P
+    with pytest.raises(WebUISettingsError, match="aspect ratio"):
+        update_video_generation_settings({"vendor": ["dashscope"], "default_ratio": ["adaptive"]})
+    with pytest.raises(WebUISettingsError, match="between 2 and 15"):
+        update_video_generation_settings({"vendor": ["dashscope"], "default_duration": ["20"]})
+    with pytest.raises(WebUISettingsError, match="resolution"):
+        update_video_generation_settings({"vendor": ["dashscope"], "default_resolution": ["768P"]})
+
+
+def test_settings_payload_video_generation_per_vendor_shape() -> None:
+    """payload.video_generation 新结构：vendors + support + 选项下发。"""
+    payload = settings_payload()
+    video = payload["video_generation"]
+    # 厂商清单由各工具类的 vendor_spec 派生（新增厂商无需改设置层）
+    assert set(video["vendors"]) == {"seedance", "kling", "minimax", "dashscope"}
+    # 卡片展示信息（前端标题/品牌/清晰度必填标记）由后端下发
+    assert video["vendors"]["dashscope"]["display_name"] == "通义万相（灵积）"
+    assert video["vendors"]["dashscope"]["provider"] == "dashscope"
+    assert video["vendors"]["dashscope"]["resolution_optional"] is True
+    assert video["vendors"]["minimax"]["resolution_optional"] is False
+    # kling 不支持 seed / watermark；minimax 不支持 seed / generate_audio。
+    assert "seed" not in video["vendors"]["kling"]
+    assert "watermark" not in video["vendors"]["kling"]
+    assert "seed" not in video["vendors"]["minimax"]
+    assert "generate_audio" not in video["vendors"]["minimax"]
+    assert "seed" in video["vendors"]["seedance"]
+    assert "watermark" in video["vendors"]["seedance"]
+    assert video["support"]["kling"] == ["t2v", "i2v", "v2v"]
+    assert "ref_audio" in video["support"]["minimax"]
+    assert video["ratio_options"]["kling"] == ["16:9", "9:16", "1:1"]
+    assert video["duration_ranges"]["kling"] == [3, 15]
+    assert video["model_suggestions"]["minimax"] == ["MiniMax-H3", "MiniMax-H3-Max"]
+    assert "kling-v3-omni" in video["model_suggestions"]["kling"]
+    assert "doubao-seedance-2-0-fast-260128" in video["model_suggestions"]["seedance"]
+    # 通义万相：能力徽章与选项
+    assert video["support"]["dashscope"] == ["t2v", "i2v"]
+    assert video["ratio_options"]["dashscope"] == ["16:9", "9:16", "1:1"]
+    assert video["resolution_options"]["dashscope"] == ["480P", "720P", "1080P"]
+    assert video["duration_ranges"]["dashscope"] == [2, 15]
+    assert "wan2.6-t2v" in video["model_suggestions"]["dashscope"]
+    assert "wan2.6-i2v-flash" in video["model_suggestions"]["dashscope"]
+    assert "wan2.2-i2v-flash" in video["model_suggestions"]["dashscope"]
+
+
+def test_delete_provider_settings_resets_matching_video_vendor_model(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """删除视频厂商（kling）时把对应工具的 model 复位为默认值。"""
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config.model_validate(
+            {
+                "providers": {"kling": {"apiKey": "AK:SK"}},
+                "tools": {"kling_video": {"model": "kling-v3-omni"}},
+            }
+        ),
+        config_path,
+    )
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+
+    delete_provider_settings({"provider": ["kling"]})
+
+    saved = load_config(config_path)
+    assert saved.tools.kling_video.model == "kling-3.0"
+
+
+def test_delete_provider_settings_resets_video_model_when_provider_differs_from_key(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """provider ≠ 卡片键时级联仍生效：删除 volcengine → 复位 seedance_video.model。
+
+    灵积（dashscope）本身是内置 LLM 厂商、不可删除，故用 seedance↔volcengine
+    这一对（spec.provider 与 spec.key 不同）覆盖级联的泛化分支。
+    """
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config.model_validate(
+            {
+                "providers": {"volcengine": {"apiKey": "AK:SK"}},
+                "tools": {"seedance_video": {"model": "doubao-seedance-2-0-pro"}},
+            }
+        ),
+        config_path,
+    )
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+
+    delete_provider_settings({"provider": ["volcengine"]})
+
+    saved = load_config(config_path)
+    assert saved.tools.seedance_video.model == type(
+        saved.tools.seedance_video
+    ).model_fields["model"].default

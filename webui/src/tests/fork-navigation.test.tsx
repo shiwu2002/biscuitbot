@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
+import { videoGenerationPayload } from "./video-generation-fixture";
 
 // Real useSessions + real Shell + real ThreadShell. We only fake the
 // transport: bootstrap, WebSocket client, and the HTTP API responses.
@@ -93,7 +94,7 @@ function baseSettingsPayload() {
     web_search: { provider: "duckduckgo", api_key_hint: null, base_url: null, max_results: 5, timeout: 30, providers: [] },
     web: { enable: true, proxy: null, user_agent: null, search: { max_results: 5, timeout: 30 }, fetch: { use_jina_reader: true } },
     image_generation: { enabled: false, provider: "openrouter", provider_configured: false, model: "openai/gpt-5.4-image-2", default_aspect_ratio: "1:1", default_image_size: "1K", max_images_per_turn: 4, save_dir: "generated" },
-    video_generation: { enabled: false, api_key_configured: false, model: "doubao-seedance", default_ratio: "16:9", default_duration: 6, default_resolution: null, generate_audio: true, watermark: false, save_dir: "generated/videos" },
+    video_generation: videoGenerationPayload(),
     screenshot: { enabled: false, max_width: 1920, max_height: 1080, quality: 70, vision_model: null, vision_model_override: null, vision_model_configured: false, resolved_model: null },
     system_io: { enabled: false, allow_actions: [], available_actions: [] },
     runtime: { config_path: "/tmp/config.json", workspace_path: "/tmp/workspace", gateway_host: "127.0.0.1", gateway_port: 18790, heartbeat: { enabled: true, interval_s: 1800, keep_recent_messages: 8 }, dream: { schedule: "every 2h", max_batch_size: 20, max_iterations: 15, annotate_line_ages: true }, unified_session: false },

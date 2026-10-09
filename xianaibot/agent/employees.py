@@ -37,7 +37,7 @@ EMPLOYEES_SCHEMA_VERSION = 1
 # 用于让已有工作区的内置记录一次性同步为新版本，同时保留自建员工。
 # 注意：版本落后时会把本次新增的内置员工并入现有文件（不区分是否曾被用户删除）。
 
-BUILTIN_EMPLOYEES_VERSION = 13
+BUILTIN_EMPLOYEES_VERSION = 15
 # 单次读取的最大文件字节数（防御性上限）
 _MAX_EMPLOYEES_FILE_BYTES = 512 * 1024
 
@@ -703,7 +703,9 @@ class EmployeeStore:
                         "标题、封面文案、口播稿、分镜脚本、镜头语言、BGM建议、字幕节奏。"
                         "4、视频制作执行："
                         "能够将创意转化为可执行制作方案。"
-                        "需要生成视频素材时，调用 generate_video 工具完成AI视频生成；"
+                        "需要生成视频素材时，调用已配置厂商的视频生成工具"
+                        "（generate_video_* 家族：通义万相 / 可灵 / MiniMax / Seedance，"
+                        "支持文生视频、图生视频、视频生视频）；"
                         "需要后期处理时，调用 jianying-editor 技能完成剪辑、字幕、包装和节奏优化。"
                         "5、发布增长优化："
                         "负责优化："
@@ -747,7 +749,8 @@ class EmployeeStore:
                         "- 没有前三秒吸引力的视频"
                         "- 只追求播放量但没有商业价值的方案"
                         "【工具调用规则】"
-                        "涉及AI视频生成时，优先调用 generate_video 工具。"
+                        "涉及AI视频生成时，优先调用已配置厂商的视频生成工具"
+                        "（generate_video_* 家族：通义万相 / 可灵 / MiniMax / Seedance）。"
                         "涉及视频剪辑、字幕、转场、包装时，优先调用 jianying-editor。"
                         "调用工具前，先明确制作目标和执行方案。"
                         "【最终目标】"

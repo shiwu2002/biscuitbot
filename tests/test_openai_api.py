@@ -318,7 +318,8 @@ async def test_models_endpoint_lists_all_configured_models(aiohttp_client, mock_
         },
         tools=SimpleNamespace(
             image_generation=SimpleNamespace(enabled=True, provider="zhipu", model="cogview-3"),
-            seedance_video=SimpleNamespace(enabled=True, model="seedance-v2"),
+            # 视频工具无开关：厂商密钥配好即启用（此处直接给工具自身 api_key）。
+            seedance_video=SimpleNamespace(api_key="sk-test-seedance", model="seedance-v2"),
         ),
         tts=SimpleNamespace(enabled=True, provider="openai", model="tts-1"),
         transcription=SimpleNamespace(enabled=True, provider="whisper", model="whisper-1"),

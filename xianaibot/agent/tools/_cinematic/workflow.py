@@ -859,7 +859,9 @@ def compile_prompt(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any
         "audio_urls": audio_urls,
         "message": (
             "pass prompt + image_urls (first element = previous shot last frame "
-            "only when continuity=true) + audio_urls to generate_video, then record_qc"
+            "only when continuity=true) + audio_urls to a video generation tool "
+            "(generate_video_seedance / generate_video_kling / generate_video_minimax), "
+            "then record_qc"
         ),
     }
 
@@ -904,7 +906,7 @@ def record_qc(store: ProjectStore, kwargs: dict[str, Any]) -> dict[str, Any]:
         return {
             "project_id": project_id, "shot_id": shot_id, "stage": data["stage"],
             "passed": False, "below_threshold": below,
-            "message": f"QC failed on {below}; regenerate. Adjust compile_prompt and generate_video again, then record_qc.",
+            "message": f"QC failed on {below}; regenerate. Adjust compile_prompt and call the video generation tool again, then record_qc.",
         }
     return {
         "project_id": project_id, "shot_id": shot_id, "stage": data["stage"],
@@ -1049,7 +1051,7 @@ def next_action(data: dict[str, Any]) -> str:
         return "plan_shot for every shot"
     if stage == "video_generation":
         return (
-            "compile_prompt for the next pending shot (then generate_video → "
+            "compile_prompt for the next pending shot (then a video generation tool → "
             "record_qc → record_shot_result → record_shot_frame if the next shot "
             "needs continuity); 有对白的镜头必须先 attach_audio，否则 compile_prompt 拒绝"
         )

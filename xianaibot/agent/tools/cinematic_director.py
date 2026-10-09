@@ -28,7 +28,7 @@
   locations/, props/, shots/, videos/, reviews/}``。
 
 边界：本工具**不生成视频/图片/音频**，只产出结构化方案、校验门、规范化
-prompt 与记录；视频/图片/配音分别由 ``generate_video`` / ``generate_image`` /
+prompt 与记录；视频/图片/配音分别由 ``generate_video_*`` / ``generate_image`` /
 ``text_to_speech`` 等工具执行。
 """
 

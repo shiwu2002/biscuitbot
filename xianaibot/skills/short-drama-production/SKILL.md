@@ -1,7 +1,7 @@
 ---
 name: short-drama-production
 tier: user
-description: AI短剧/长视频全流程制作：以 cinematic_director 导演工具驱动 11 阶段状态机（建项目→剧本→空间规划→资产→分镜→视频生成→审核→成片），剧本交给宫本编剧、角色/场景参考图用 generate_image、角色配音与台词用 text_to_speech、视频用 generate_video、剪辑交给阿伟。当用户要做短剧、长视频、把小说/故事/剧本改编成影视作品时使用。
+description: AI短剧/长视频全流程制作：以 cinematic_director 导演工具驱动 11 阶段状态机（建项目→剧本→空间规划→资产→分镜→视频生成→审核→成片），剧本交给宫本编剧、角色/场景参考图用 generate_image、角色配音与台词用 text_to_speech、视频用 generate_video_seedance、剪辑交给阿伟。当用户要做短剧、长视频、把小说/故事/剧本改编成影视作品时使用。
 metadata: {"xianaibot":{"emoji":"🎭"}}
 ---
 
@@ -12,7 +12,7 @@ metadata: {"xianaibot":{"emoji":"🎭"}}
 > 资产审核 → 资产锁定 → 分镜 → 视频生成 → 视频审核 → 成片。
 > 阶段顺序、审核 Gate、数据冻结由工具**代码强制**，不要跳过、不要自作主张改流程。
 > 导演工具只做编排与管控，**不生成视频/图片/音频**——具体产出分别交给
-> `generate_image` / `text_to_speech` / `generate_video`。
+> `generate_image` / `text_to_speech` / `generate_video_seedance`。
 
 ## 何时使用
 
@@ -27,7 +27,7 @@ metadata: {"xianaibot":{"emoji":"🎭"}}
 | 剧本创作/优化       | `invoke_employee(employee_id="screenwriter", ...)`（宫本）        |
 | 角色/场景/道具参考图   | `generate_image`（文生图，含角色三视图合成图）                               |
 | 角色声线 / 对白台词音频 | `text_to_speech`（多角色独立声线）                                     |
-| 视频生成          | `generate_video`（Seedance，喂 compile\_prompt 产物）               |
+| 视频生成          | `generate_video_seedance`（Seedance，喂 compile\_prompt 产物）               |
 | 剪辑 / 成片拼接     | `invoke_employee(employee_id="clip-master", ...)`（阿伟）或 ffmpeg |
 | 查询项目当前状态      | `cinematic_director(action="status", ...)`                    |
 
@@ -43,7 +43,7 @@ set_floorplan            → spatial_planning（强制，先声明平面图）
 add_asset (CHAR/LOC/PROP)→ world_building → character_design
 review_assets + lock_assets → asset_lock
 plan_shot                → storyboard
-compile_prompt → generate_video → quality_check（record_qc）
+compile_prompt → generate_video_seedance → quality_check（record_qc）
 record_shot_result → final_edit（阿伟剪辑 / ffmpeg 拼接成片）
 ```
 
@@ -332,7 +332,7 @@ cinematic_director(
 ### 6.4 生成视频（generate\_video）
 
 ```
-generate_video(
+generate_video_seedance(
   prompt="<compile_prompt 返回的 prompt>",
   image_urls=["<compile_prompt 返回的 image_urls>"],
   audio_urls=["<compile_prompt 返回的 audio_urls>"],
@@ -360,7 +360,7 @@ cinematic_director(
 )
 ```
 
-任一分值 < 85 → `qc_fail`，工具拒绝推进，需调整 `compile_prompt` 后重新 `generate_video` 再 `record_qc`。
+任一分值 < 85 → `qc_fail`，工具拒绝推进，需调整 `compile_prompt` 后重新 `generate_video_seedance` 再 `record_qc`。
 
 ***
 

@@ -4,7 +4,7 @@ AI 导演工作流编排工具。把「导演圣经 → 剧本 → 剧本审核 
 
 ## 何时使用
 
-用户想拍短剧、把小说/故事/剧本改编成视频、做 AI 影视/分镜/预告片生产时使用。本工具**不生成视频/图片/音频**——它只做编排与管控；视频/图片/配音分别交给 `generate_video` / `generate_image` / `text_to_speech`。
+用户想拍短剧、把小说/故事/剧本改编成视频、做 AI 影视/分镜/预告片生产时使用。本工具**不生成视频/图片/音频**——它只做编排与管控；视频/图片/配音分别交给 `generate_video_seedance` / `generate_image` / `text_to_speech`。
 
 ## 11 阶段状态机
 
@@ -153,7 +153,7 @@ shot 必填 `spatial`（空间布局站位，空间规划强制后每个镜头�
 `project_id` + `shot_id` + 可选 `camera/lens/fps/movement/depth/lighting`。
 
 ### compile_prompt —— 编译规范化 Prompt（禁止 LLM 直接编最终提示词）
-参数 `project_id` + `shot_id`。按固定规则编译出带 `@CHAR001 @LOC001` 锚点的 prompt，返回 `prompt` + `image_urls` + `audio_urls`，供 `generate_video` 直接调用。全部镜头编译后自动 → `quality_check`。
+参数 `project_id` + `shot_id`。按固定规则编译出带 `@CHAR001 @LOC001` 锚点的 prompt，返回 `prompt` + `image_urls` + `audio_urls`，供 `generate_video_seedance` 直接调用。全部镜头编译后自动 → `quality_check`。
 
 `image_urls` 装配顺序（自动，Agent 只需照搬）：**上一镜头尾帧（首帧引用，仅当 `continuity=true`）** → **空间坐标关系资产图**（`attach_spatial_map`，若存在）→ 人物/场景/道具参考图。`audio_urls` 来自 `attach_audio` 附加的音频资产（若存在）。
 
@@ -191,7 +191,7 @@ Camera: tracking, 24fps（机位在 @LOC001 西南方 28 米）
 
 该尾帧会在**下一镜头** `compile_prompt(continuity=true)` 时被作为首帧引用（`image_urls[0]`），实现片段连贯。**只有需要衔接的镜头才需记录**——跨场景/跨剧情段可跳过本动作。
 
-> **顺序生成**：需要连贯的镜头须**逐个**生成——`compile_prompt(Shot N, continuity=…) → generate_video → record_qc → record_shot_result → record_shot_frame`，再做 `Shot N+1`。`record_qc` / `record_shot_result` / `record_shot_frame` 因此在 `video_generation / quality_check / final_edit` 阶段均可用（阶段只是进度指示，真正硬门是镜头自身状态）。
+> **顺序生成**：需要连贯的镜头须**逐个**生成——`compile_prompt(Shot N, continuity=…) → generate_video_seedance → record_qc → record_shot_result → record_shot_frame`，再做 `Shot N+1`。`record_qc` / `record_shot_result` / `record_shot_frame` 因此在 `video_generation / quality_check / final_edit` 阶段均可用（阶段只是进度指示，真正硬门是镜头自身状态）。
 
 ### attach_audio —— 附加音频资产（storyboard / video_generation 阶段）
 | 参数 | 必填 | 说明 |
@@ -199,7 +199,7 @@ Camera: tracking, 24fps（机位在 @LOC001 西南方 28 米）
 | project_id / shot_id | 是 | 定位镜头 |
 | audio | 是 | 音频资产路径（`text_to_speech` 生成的本地路径 / URL） |
 
-分镜中 `dialogue=true` 的镜头**必须**在 `compile_prompt` 前调用本动作，否则 `compile_prompt` 拒绝（口型 + 音频一致性）。附加后 `compile_prompt` 会把它作为 `audio_urls` 返回，供 `generate_video` 使用。
+分镜中 `dialogue=true` 的镜头**必须**在 `compile_prompt` 前调用本动作，否则 `compile_prompt` 拒绝（口型 + 音频一致性）。附加后 `compile_prompt` 会把它作为 `audio_urls` 返回，供 `generate_video_seedance` 使用。
 
 ### attach_spatial_map —— 附加空间坐标关系资产图（set_floorplan 之后任意阶段）
 | 参数 | 必填 | 说明 |
@@ -279,7 +279,7 @@ cinematic_director(action="compile_prompt", project_id="snow-forest", shot_id="S
 # prompt 中已注入方位短语，如「@CHAR001 …（站在 @LOC001 中央，面向东）」
 
 # 8. 生成视频（image_urls / audio_urls 直接照搬 compile_prompt 的返回）
-generate_video(prompt="<上一步的 prompt>", image_urls=["<上一步的 image_urls>"],
+generate_video_seedance(prompt="<上一步的 prompt>", image_urls=["<上一步的 image_urls>"],
                audio_urls=["<上一步的 audio_urls>"], ratio="16:9", duration=10)
 
 # 9. 视频审核（结合视觉能力读视频首帧与参考图对比后打分）
@@ -297,7 +297,7 @@ cinematic_director(action="record_shot_frame", project_id="snow-forest",
 
 # 11. 下一镜头：连续动作 → continuity=true，工具把 Shot001 尾帧作为 image_urls[0] 首帧引用
 cinematic_director(action="compile_prompt", project_id="snow-forest", shot_id="Shot002", continuity=true)
-# → image_urls[0] = Shot001 尾帧，实现片段连贯；再 generate_video → record_qc → record_shot_result → record_shot_frame …
+# → image_urls[0] = Shot001 尾帧，实现片段连贯；再 generate_video_seedance → record_qc → record_shot_result → record_shot_frame …
 # 跨场景/跨剧情/硬切则省略 continuity（或 continuity=false），不引入上一镜头尾帧
 ```
 

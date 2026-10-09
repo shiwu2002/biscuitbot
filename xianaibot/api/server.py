@@ -401,10 +401,42 @@ def _collect_models(config: Any, model_name: str) -> list[dict[str, Any]]:
             getattr(image_cfg, "provider", None) or "xianaibot-image",
         )
 
-    # 文生视频（Seedance）
-    video_cfg = getattr(tools, "seedance_video", None)
-    if video_cfg is not None and getattr(video_cfg, "enabled", False):
-        add(getattr(video_cfg, "model", None), "seedance")
+    # 视频生成（厂商自包含工具：密钥已配置才列出，与工具加载门控一致）。
+    # 厂商清单由各工具类上的 vendor_spec 派生——新增视频厂商无需改这里。
+    if tools is not None:
+        try:
+            from types import SimpleNamespace
+
+            from xianaibot.agent.tools._video_common import video_vendor_classes
+
+            try:
+                from xianaibot.providers.image_generation import unified_provider_configs
+
+                provider_configs = unified_provider_configs(config)
+            except Exception:
+                # 配置对象缺 providers 段（测试/嵌入式精简配置）时降级为空，
+                # 工具仍可凭自身 api_key 判定是否可用。
+                provider_configs = {}
+
+            video_ctx = SimpleNamespace(
+                config=tools,
+                provider_configs=provider_configs,
+            )
+            for tool_cls in video_vendor_classes():
+                # 逐个厂商容错：精简配置可能缺某家的 *VideoToolConfig 段，
+                # 不能让一家缺席影响其余厂商的模型列举。
+                try:
+                    if not tool_cls.enabled(video_ctx):
+                        continue
+                    spec = tool_cls.vendor_spec
+                    add(
+                        getattr(getattr(tools, spec.config_key), "model", None),
+                        spec.key,
+                    )
+                except Exception:
+                    logger.debug("视频生成模型收集跳过 {}", tool_cls.__name__, exc_info=True)
+        except Exception:
+            logger.debug("视频生成模型收集失败", exc_info=True)
 
     # TTS（用 resolve_tts_config 取解析后的默认模型）
     tts_cfg = getattr(config, "tts", None)

@@ -17,7 +17,12 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from xianaibot import __version__
+from xianaibot.agent.tools._video_common import (
+    video_vendor_spec,  # 单个视频厂商卡片元数据（由工具类的 vendor_spec 派生）
+    video_vendor_specs,  # 全部视频厂商卡片元数据（派生，非写死）
+)
 from xianaibot.agent.tools.kling_video import (
+    KLING_KNOWN_MODELS,  # 可灵已知模型清单（与视频建议模型同源）
     get_video_gen_provider,
     video_gen_provider_names,
 )
@@ -144,19 +149,75 @@ _IMAGE_GENERATION_ASPECT_RATIOS = {
     "21:9",
 }
 
-# 视频生成（Seedance）可选项 —— 与 seedance_video.py 的约束保持一致。
-_VIDEO_RATIO_OPTIONS = {
-    "16:9",
-    "9:16",
-    "1:1",
-    "4:3",
-    "3:4",
-    "21:9",
-    "adaptive",
-}
-_VIDEO_RESOLUTION_OPTIONS = {"480p", "720p", "1080p", "4K"}
-_VIDEO_DURATION_MIN = 4
-_VIDEO_DURATION_MAX = 30
+# 视频生成厂商清单与其选项/支持能力**不写死在设置层**：由各厂商工具类上声明的
+# ``vendor_spec``（``_video_common.VideoVendorSpec``）派生（见 ``_video_vendor_specs()``）。
+# 新增一个视频厂商 = 新增一个（声明了 vendor_spec 的）工具模块，本文件无需改动。
+# 各厂商可编辑的默认参数字段同样由该厂商 config 模型自动推导（见 ``_video_config_fields()``）。
+
+# 视频设置页可编辑的「可选」字段：只有该厂商 config 模型里实际存在的那几个才会
+# 参与更新校验（其余字段——api_key/轮询参数/prompt_extend 等——属内部参数，不接受
+# 来自设置页的写入）。model/default_* 与 save_dir 由更新函数直接处理，不在此列。
+_VIDEO_OPTIONAL_FIELDS = ("generate_audio", "watermark", "seed")
+
+
+def _video_vendor_specs() -> tuple[Any, ...]:
+    """所有视频厂商的卡片元数据（按工具类名稳定排序，即前端卡片顺序）。"""
+    return video_vendor_specs()
+
+
+def _video_vendor_keys() -> tuple[str, ...]:
+    """所有视频厂商的卡片键（设置页 ``vendor`` 参数的合法取值）。"""
+    return tuple(spec.key for spec in _video_vendor_specs())
+
+
+def _video_provider_names() -> frozenset[str]:
+    """所有视频厂商的密钥来源 provider 名（用于能力标签推断）。"""
+    return frozenset(spec.provider for spec in _video_vendor_specs())
+
+
+def _is_video_provider(name: str) -> bool:
+    """该「模型厂商」名是否承载某个视频厂商的密钥（如 volcengine / kling / dashscope）。"""
+    return name in _video_provider_names()
+
+
+def _video_spec_for_provider(name: str) -> Any | None:
+    """按「模型厂商」名取对应的视频厂商元数据（一个 provider 可能服务多家）。"""
+    for spec in _video_vendor_specs():
+        if spec.provider == name:
+            return spec
+    return None
+
+
+def _video_config_fields(vendor: str) -> tuple[str, ...]:
+    """该厂商在设置页可接受的「可选」字段（= config 模型里实际存在的那几个）。
+
+    与旧写死表的语义一致：seedance 有 generate_audio/seed/watermark，kling 只有
+    generate_audio，minimax 只有 watermark。改为按 config 模型推导后，新增厂商
+    无需在此登记。
+    """
+    config_cls = _video_tool_config_cls(vendor)
+    if config_cls is None:
+        return ()
+    fields = getattr(config_cls, "model_fields", {})
+    return tuple(f for f in _VIDEO_OPTIONAL_FIELDS if f in fields)
+
+
+def _video_tool_config_cls(vendor: str) -> Any | None:
+    """取该厂商工具配置类（``<Vendor>VideoToolConfig``），取不到返回 None。
+
+    用「工具名 → 模块」反查而不是拼字符串，避免 ``settings_api`` 与工具模块之间
+    再维护一份映射。
+    """
+    try:
+        from xianaibot.agent.tools.loader import ToolLoader
+
+        for tool_cls in ToolLoader().discover():
+            spec = getattr(tool_cls, "vendor_spec", None)
+            if spec is not None and spec.key == vendor:
+                return tool_cls.config_cls()
+    except Exception:  # noqa: BLE001 - 配置类取不到只影响可选字段集合
+        return None
+    return None
 
 _CONTEXT_WINDOW_TOKEN_OPTIONS = {65_536, 262_144, 1_048_576}
 _MODEL_CONFIGURATION_SLUG_RE = re.compile(r"[^a-z0-9_-]+")
@@ -223,16 +284,11 @@ _MODEL_LIST_OFFICIAL_PROVIDERS = {
 _MULTI_CAPABILITY_VENDORS = frozenset({"minimax"})
 
 # 没有 OpenAI 风格 /models 端点的厂商，直接返回这份已知模型列表（避免请求 404）。
-# 可灵官方不提供模型枚举接口，模型名内嵌在 URL 路径（如 /image-to-video/kling-3.0）。
+# 可灵官方不提供模型枚举接口，模型名内嵌在 URL 路径（如 /image-to-video/kling-3.0），
+# 因此清单来源是 kling_video.py 的 KLING_KNOWN_MODELS（与「视频生成」页建议模型同一份）。
 _KNOWN_MODEL_LISTS: dict[str, list[dict[str, Any]]] = {
     "kling": [
-        {"id": "kling-3.0", "label": "可灵 3.0（默认）"},
-        {"id": "kling-3.0-pro", "label": "可灵 3.0 Pro"},
-        {"id": "kling-3.0-turbo", "label": "可灵 3.0 Turbo"},
-        {"id": "kling-v3-omni", "label": "可灵 3.0 Omni"},
-        {"id": "kling-video-o1", "label": "可灵 Video O1"},
-        {"id": "kling-v2.1-master", "label": "可灵 2.1 Master"},
-        {"id": "kling-v2.1-turbo", "label": "可灵 2.1 Turbo"},
+        {"id": model_id, "label": label} for model_id, label in KLING_KNOWN_MODELS
     ],
 }
 
@@ -393,19 +449,47 @@ def _provider_config_by_name(config: Any, name: str) -> ProviderConfig | None:
     return None
 
 
-def _video_api_key_configured(config: Any) -> bool:
-    """按 ``seedance_video.provider`` 判断视频生成密钥是否已配置（WebUI 显示/启用校验用）。
+def _video_api_key_configured(config: Any, vendor: str) -> bool:
+    """判断某视频厂商的密钥是否已配置（WebUI 显示 / 工具启用校验用）。
 
-    火山方舟额外兜底 ``ARK_API_KEY`` 环境变量；其余厂商（可灵等）从统一
-    providers 配置按 provider 名取密钥，且支持 ``config.api_key`` 显式覆盖。
+    与各工具 ``enabled()`` 的门控同源：本段 ``api_key`` 显式配置 ∨ 该厂商自带的环境
+    变量兜底（如 Seedance 的 ``ARK_API_KEY``、DashScope 的 ``DASHSCOPE_API_KEY``）∨
+    「模型厂商」页对应 provider（由 spec 的 ``provider`` 给出，seedance→volcengine）的密钥。
     """
-    video_config = config.tools.seedance_video
-    if (video_config.api_key or "").strip():
+    spec = video_vendor_spec(vendor)
+    if spec is None:
+        return False
+    config_key = spec.config_key
+    vendor_config = getattr(config.tools, config_key, None)
+    if vendor_config is not None and (getattr(vendor_config, "api_key", "") or "").strip():
         return True
-    if video_config.provider == "volcengine" and os.environ.get("ARK_API_KEY", "").strip():
+    if any(os.environ.get(env, "").strip() for env in spec.api_key_env):
         return True
-    provider_cfg = _provider_config_by_name(config, video_config.provider)
+    provider_cfg = _provider_config_by_name(config, spec.provider)
     return bool(provider_cfg and (provider_cfg.api_key or "").strip())
+
+
+def _video_vendor_payload(config: Any, vendor: str) -> dict[str, Any]:
+    """组装单个视频厂商的设置页 payload（只含该厂商 config 实际存在的字段）。
+
+    除各默认参数字段外，还下发卡片的展示信息（``display_name`` / ``provider`` /
+    ``resolution_optional``），使前端无需在别处维护厂商名与特例分支。
+    """
+    spec = video_vendor_spec(vendor)
+    data: dict[str, Any] = {
+        "configured": _video_api_key_configured(config, vendor),
+    }
+    if spec is None:
+        return data
+    data["display_name"] = spec.display_name
+    data["provider"] = spec.provider
+    data["resolution_optional"] = spec.resolution_optional
+    vendor_config = getattr(config.tools, spec.config_key, None)
+    for field in ("model", "default_ratio", "default_duration", "default_resolution", "save_dir"):
+        data[field] = getattr(vendor_config, field, None)
+    for field in _video_config_fields(vendor):
+        data[field] = getattr(vendor_config, field, None)
+    return data
 
 
 def _resolve_settings_provider(
@@ -455,12 +539,19 @@ def _resolve_model_list_provider(
         spec, key, provider_config = resolved
         # 视频能力厂商（可灵等）即使已作为自定义厂商存入 model_extra，其动态 spec
         # 默认 ``is_direct=True``，会被误判为「免密钥 / 无需 apiBase」。按注册表
-        # 修正为需密钥，并带上客户端自带的默认 base URL。
+        # 修正为需密钥；动态 spec 没有默认 base 时才补上视频客户端自带的 base URL。
+        #
+        # **只在原 spec 没有默认 base 时补**：像 DashScope 这类「既是 LLM 又是一家
+        # 视频厂商」的注册表内一等厂商，其模型枚举端点随 LLM 的
+        # ``/compatible-mode/v1``（DashScope 的 ``/models`` 就是它），而视频客户端的
+        # ``_default_base_url`` 是视频 API 的裸域——无条件覆盖会让
+        # ``/api/settings/provider-models?provider=dashscope`` 变成请求
+        # ``https://dashscope.aliyuncs.com/models`` 而 404。
         if get_video_gen_provider(key) is not None:
-            default_api_base = _image_default_base_url(get_video_gen_provider(key))
+            video_api_base = _image_default_base_url(get_video_gen_provider(key))
             spec = replace(
                 spec,
-                default_api_base=default_api_base or spec.default_api_base,
+                default_api_base=spec.default_api_base or video_api_base,
                 is_direct=False,
             )
         return spec, key, provider_config
@@ -516,32 +607,28 @@ def _resolve_model_list_provider(
     return spec, name, provider_config
 
 
-# 厂商可声明/推导的全部能力标签（各能力页据此过滤厂商下拉项）。
+# 厂商的能力标签（各能力页据此过滤厂商下拉项）**全部由注册表派生**，
+# 不再是「模型厂商」页可勾选的声明项（2026-10 删除：勾选既不决定任何行为，
+# 又会让注册表推断在用户动过一次之后永久失效）。
+# 派生取值：``llm`` / ``vision`` / ``image`` / ``video`` / ``tts`` / ``transcription``。
 # 注意 ``video`` 是**文生视频**（设置页「视频生成」）；视频**输入**理解没有
 # 独立能力标签——那条链路已下线（逐帧理解成本不可控），视频附件只以路径形式
 # 交给模型。
-_CAPABILITY_KEYS = (
-    "llm",
-    "vision",
-    "image",
-    "video",
-    "tts",
-    "transcription",
-)
 
 
 def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
-    """按注册表/硬编码规则自动推断厂商能力（用户未显式声明时的兜底）。"""
+    """按注册表/硬编码规则推断厂商能力（唯一来源）。
+
+    能力专用厂商（图像 / 视频 / TTS / 转写）即使存进 ``model_extra`` 也不具备
+    LLM 能力；例外见 :data:`_MULTI_CAPABILITY_VENDORS`：这些厂商既当 LLM 又注册了
+    生成能力，走「叠加」而不是「替换」，否则会让已有的 LLM 配置丢掉 llm/vision 标签。
+    """
     caps: list[str] = []
     spec = find_by_name(name)
     is_dynamic = any(key == name for key, _ in _dynamic_provider_items(config))
-    # 能力专用厂商（图像/TTS/转写/视频）即使存入 model_extra 也不具备 LLM 能力。
-    # 例外见 _MULTI_CAPABILITY_VENDORS：这些厂商既是 LLM 厂商又注册了生成能力，
-    # 走「叠加」而不是「替换」，否则会让已有的 LLM 配置丢掉 llm/vision 标签。
     is_capability_only = spec is None and name not in _MULTI_CAPABILITY_VENDORS and (
         get_image_gen_provider(name) is not None
-        or name == "volcengine"
-        or get_video_gen_provider(name) is not None
+        or _is_video_provider(name)
         or get_tts_provider(name) is not None
         or get_transcription_provider(name) is not None
     )
@@ -552,7 +639,7 @@ def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
             caps.append("vision")
     if get_image_gen_provider(name) is not None:
         caps.append("image")
-    if name == "volcengine" or get_video_gen_provider(name) is not None:
+    if _is_video_provider(name) or get_video_gen_provider(name) is not None:
         caps.append("video")
     if get_tts_provider(name) is not None:
         caps.append("tts")
@@ -562,16 +649,11 @@ def _detect_provider_capabilities(name: str, config: Any) -> list[str]:
 
 
 def _provider_capabilities(name: str, config: Any) -> list[str]:
-    """厂商可服务的能力标签：优先读用户在「模型厂商」页显式声明，否则自动推断。"""
-    provider_config = _provider_config_by_name(config, name)
-    declared = getattr(provider_config, "capabilities", None) if provider_config else None
-    if declared is not None:
-        # 只保留合法能力标签并去重，保持稳定顺序
-        seen: list[str] = []
-        for cap in declared:
-            if cap in _CAPABILITY_KEYS and cap not in seen:
-                seen.append(cap)
-        return seen
+    """厂商可服务的能力标签（payload 输出项，前端据此过滤各能力页的厂商下拉）。
+
+    只由注册表派生——「模型厂商」页不再提供可勾选的能力声明（见
+    :func:`_detect_provider_capabilities` 上方注释）。
+    """
     return _detect_provider_capabilities(name, config)
 
 
@@ -585,6 +667,10 @@ def _capability_provider_label(name: str, spec: Any) -> str:
         return "可灵"
     if name == "minimax":
         return "MiniMax"
+    # 新增视频厂商：用其卡片显示名兜底，免去为每家改这里。
+    video_spec = _video_spec_for_provider(name)
+    if video_spec is not None:
+        return video_spec.display_name
     if name == "edge-tts":
         return "Edge TTS"
     return name
@@ -641,9 +727,12 @@ def _unified_provider_rows(config: Any) -> list[dict[str, Any]]:
         spec, key, provider_config = resolved
         row = _provider_settings_row(key, spec, provider_config)
         # 覆盖能力厂商特有的「已配置」语义
-        if name == "volcengine":
+        video_spec = _video_spec_for_provider(name)
+        if video_spec is not None and video_spec.api_key_env:
+            # 视频厂商可带环境变量兜底密钥（如火山方舟的 ARK_API_KEY）
             row["configured"] = bool(
-                provider_config.api_key or os.environ.get("ARK_API_KEY", "").strip()
+                provider_config.api_key
+                or any(os.environ.get(env, "").strip() for env in video_spec.api_key_env)
             )
         elif name == "edge-tts":
             row["configured"] = True  # 免密钥，恒可用
@@ -1297,7 +1386,6 @@ def settings_payload(
 
     search_config = config.tools.web.search
     image_config = config.tools.image_generation
-    video_config = config.tools.seedance_video
     transcription = resolve_transcription_config(config)
     tts = resolve_tts_config(config)
     search_provider = (
@@ -1399,16 +1487,26 @@ def settings_payload(
             "save_dir": image_config.save_dir,
         },
         "video_generation": {
-            "enabled": video_config.enabled,
-            "api_key_configured": _video_api_key_configured(config),
-            "provider": video_config.provider,
-            "model": video_config.model,
-            "default_ratio": video_config.default_ratio,
-            "default_duration": video_config.default_duration,
-            "default_resolution": video_config.default_resolution,
-            "generate_audio": video_config.generate_audio,
-            "watermark": video_config.watermark,
-            "save_dir": video_config.save_dir,
+            # 厂商自包含：三家厂商各自的默认参数 + 能力徽章数据全部后端下发（单一事实来源）。
+            # 厂商清单与全部选项均由各厂商工具类的 vendor_spec 派生（单一事实来源）。
+            # dict 的键序即前端卡片顺序。
+            "vendors": {
+                spec.key: _video_vendor_payload(config, spec.key)
+                for spec in _video_vendor_specs()
+            },
+            "support": {spec.key: list(spec.support) for spec in _video_vendor_specs()},
+            "ratio_options": {
+                spec.key: list(spec.ratio_options) for spec in _video_vendor_specs()
+            },
+            "resolution_options": {
+                spec.key: list(spec.resolution_options) for spec in _video_vendor_specs()
+            },
+            "duration_ranges": {
+                spec.key: list(spec.duration_range) for spec in _video_vendor_specs()
+            },
+            "model_suggestions": {
+                spec.key: list(spec.model_suggestions) for spec in _video_vendor_specs()
+            },
         },
         "screenshot": {
             "enabled": config.tools.screenshot.enable,
@@ -1737,22 +1835,8 @@ def update_provider_settings(query: QueryParams) -> dict[str, Any]:
                     provider_config.api_type = parsed_api_type
                     changed = True
 
-        if "capabilities" in query:
-            raw = _query_first(query, "capabilities") or ""
-            requested = [c.strip().lower() for c in raw.split(",") if c.strip()]
-            invalid = [c for c in requested if c not in _CAPABILITY_KEYS]
-            if invalid:
-                raise WebUISettingsError(
-                    "capabilities must be one of: " + ", ".join(_CAPABILITY_KEYS)
-                )
-            # 去重并保持稳定顺序
-            seen: list[str] = []
-            for c in requested:
-                if c not in seen:
-                    seen.append(c)
-            if provider_config.capabilities != seen:
-                provider_config.capabilities = seen
-                changed = True
+        # 旧版前端/客户端可能继续发 ``capabilities=...``：能力标签已改为纯派生
+        # （见 _detect_provider_capabilities），该查询键被静默忽略，与其它未知键一致。
 
     image_config = config.tools.image_generation
     restart_required = (
@@ -1816,8 +1900,15 @@ def delete_provider_settings(query: QueryParams) -> dict[str, Any]:
                 preset.provider = "auto"
         if config.tools.image_generation.provider.replace("-", "_") == normalized:
             config.tools.image_generation.provider = "volcengine"
-        if config.tools.seedance_video.provider.replace("-", "_") == normalized:
-            config.tools.seedance_video.provider = "volcengine"
+        # 视频厂商自包含：删厂商时把对应工具的 model 复位为默认值
+        # （旧统一入口时代的 provider 字段已不存在）。
+        for spec in _video_vendor_specs():
+            if spec.provider.replace("-", "_") != normalized:
+                continue
+            video_config = getattr(config.tools, spec.config_key, None)
+            if video_config is None:
+                continue
+            video_config.model = type(video_config).model_fields["model"].default
         if config.transcription.provider and config.transcription.provider.replace("-", "_") == normalized:
             config.transcription.provider = None
         if config.tts.provider and config.tts.provider.replace("-", "_") == normalized:
@@ -2098,18 +2189,26 @@ def update_image_generation_settings(query: QueryParams) -> dict[str, Any]:
 
 
 def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
-    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
-    # 参数校验 / 密钥校验失败时 with 异常退出、不保存，与原语义一致。
-    with update_config() as config:
-        video_config = config.tools.seedance_video
-        changed = False
+    """更新某一家视频厂商的默认参数（``vendor`` 必填，路由到对应 config）。
 
-        enabled = _query_first(query, "enabled")
-        if enabled is not None:
-            parsed_enabled = _parse_bool(enabled, "enabled")
-            if video_config.enabled != parsed_enabled:
-                video_config.enabled = parsed_enabled
-                changed = True
+    厂商自包含重构后无 ``enabled`` / ``provider``：启用与否由「模型厂商」页是否
+    配置对应厂商密钥决定（工具 ``enabled()`` 门控），故本函数只写默认参数。
+    """
+    vendor = (_query_first(query, "vendor") or "").strip().lower()
+    spec = video_vendor_spec(vendor)
+    if spec is None:
+        raise WebUISettingsError("video generation vendor is required")
+
+    ratio_options = spec.ratio_options
+    resolution_options = spec.resolution_options
+    duration_min, duration_max = spec.duration_range
+    allowed_fields = _video_config_fields(vendor)
+
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    # 参数校验失败时 with 异常退出、不保存，与原语义一致。
+    with update_config() as config:
+        video_config = getattr(config.tools, spec.config_key)
+        changed = False
 
         model = _query_first(query, "model")
         if model is not None:
@@ -2122,21 +2221,10 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
                 video_config.model = model
                 changed = True
 
-        provider = _query_first(query, "provider")
-        if provider is not None:
-            provider = provider.strip().lower()
-            if not provider:
-                raise WebUISettingsError("video generation provider is required")
-            if len(provider) > 64:
-                raise WebUISettingsError("video generation provider is too long")
-            if video_config.provider != provider:
-                video_config.provider = provider
-                changed = True
-
         default_ratio = _query_first_alias(query, "default_ratio", "defaultRatio")
         if default_ratio is not None:
             default_ratio = default_ratio.strip()
-            if default_ratio not in _VIDEO_RATIO_OPTIONS:
+            if default_ratio not in ratio_options:
                 raise WebUISettingsError("unsupported video generation aspect ratio")
             if video_config.default_ratio != default_ratio:
                 video_config.default_ratio = default_ratio
@@ -2148,8 +2236,10 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
                 parsed_duration = int(default_duration)
             except ValueError:
                 raise WebUISettingsError("default_duration must be an integer") from None
-            if parsed_duration < _VIDEO_DURATION_MIN or parsed_duration > _VIDEO_DURATION_MAX:
-                raise WebUISettingsError("default_duration must be between 4 and 30")
+            if parsed_duration < duration_min or parsed_duration > duration_max:
+                raise WebUISettingsError(
+                    f"default_duration must be between {duration_min} and {duration_max}"
+                )
             if video_config.default_duration != parsed_duration:
                 video_config.default_duration = parsed_duration
                 changed = True
@@ -2158,9 +2248,12 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
         if default_resolution is not None:
             default_resolution = default_resolution.strip()
             if default_resolution:
-                if default_resolution not in _VIDEO_RESOLUTION_OPTIONS:
+                if default_resolution not in resolution_options:
                     raise WebUISettingsError("unsupported video generation resolution")
-                parsed_resolution = default_resolution
+                parsed_resolution: str | None = default_resolution
+            elif not spec.resolution_optional:
+                # 该厂商清晰度必填（如 minimax 各模式都需下发），空值回退默认值、不置 None。
+                parsed_resolution = video_config.default_resolution
             else:
                 # 空值 = 模型自动决定（对应 default_resolution=None）。
                 parsed_resolution = None
@@ -2168,18 +2261,35 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
                 video_config.default_resolution = parsed_resolution
                 changed = True
 
+        # generate_audio / seed / watermark 仅在该厂商 config 存在时接受（kling 无
+        # seed/watermark，minimax 无 generate_audio/seed）。
         generate_audio = _query_first_alias(query, "generate_audio", "generateAudio")
-        if generate_audio is not None:
+        if generate_audio is not None and "generate_audio" in allowed_fields:
             parsed_audio = _parse_bool(generate_audio, "generate_audio")
             if video_config.generate_audio != parsed_audio:
                 video_config.generate_audio = parsed_audio
                 changed = True
 
         watermark = _query_first_alias(query, "watermark", "watermark")
-        if watermark is not None:
+        if watermark is not None and "watermark" in allowed_fields:
             parsed_watermark = _parse_bool(watermark, "watermark")
             if video_config.watermark != parsed_watermark:
                 video_config.watermark = parsed_watermark
+                changed = True
+
+        seed = _query_first_alias(query, "seed", "seed")
+        if seed is not None and "seed" in allowed_fields:
+            seed = seed.strip()
+            if seed:
+                try:
+                    parsed_seed = int(seed)
+                except ValueError:
+                    raise WebUISettingsError("seed must be an integer") from None
+            else:
+                # 空值 = 随机（对应 seed=None）。
+                parsed_seed = None
+            if video_config.seed != parsed_seed:
+                video_config.seed = parsed_seed
                 changed = True
 
         save_dir = _query_first_alias(query, "save_dir", "saveDir")
@@ -2192,14 +2302,6 @@ def update_video_generation_settings(query: QueryParams) -> dict[str, Any]:
             if video_config.save_dir != save_dir:
                 video_config.save_dir = save_dir
                 changed = True
-
-        if video_config.enabled and not _video_api_key_configured(config):
-            provider = video_config.provider
-            if provider == "volcengine":
-                raise WebUISettingsError("seedance api key is required to enable video generation")
-            raise WebUISettingsError(
-                f"video generation provider ({provider}) api key is required to enable video generation"
-            )
 
     return settings_payload(requires_restart=changed)
 

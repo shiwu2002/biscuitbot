@@ -914,7 +914,6 @@ export async function updateProviderSettings(
   if (update.apiKey !== undefined) query.set("api_key", update.apiKey);
   if (update.apiBase !== undefined) query.set("api_base", update.apiBase);
   if (update.apiType !== undefined) query.set("api_type", update.apiType);
-  if (update.capabilities !== undefined) query.set("capabilities", update.capabilities.join(","));
   return request<SettingsPayload>(
     `${base}/api/settings/provider/update?${query}`,
     token,
@@ -1212,13 +1211,13 @@ export async function updateVideoGenerationSettings(
   base: string = "",
 ): Promise<SettingsPayload> {
   const query = new URLSearchParams();
-  query.set("enabled", String(update.enabled));
-  query.set("provider", update.provider);
+  query.set("vendor", update.vendor);
   query.set("model", update.model);
   query.set("default_ratio", update.defaultRatio);
   query.set("default_duration", String(update.defaultDuration));
   query.set("default_resolution", update.defaultResolution);
   query.set("generate_audio", String(update.generateAudio));
+  query.set("seed", update.seed);
   query.set("watermark", String(update.watermark));
   return request<SettingsPayload>(
     `${base}/api/settings/video-generation/update?${query}`,

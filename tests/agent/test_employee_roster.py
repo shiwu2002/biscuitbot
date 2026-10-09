@@ -118,7 +118,8 @@ class TestSkillBelongsToEmployee:
             session_metadata={"employee": "short-video-operator"}
         )
         assert "jianying-editor" in prompt
-        assert "seedance" not in prompt  # seedance 技能已并入 generate_video 工具文档
+        # persona 里点名视频厂商工具属正常；被下线的 seedance 技能不得再作为技能列出
+        assert "- **seedance**" not in prompt
         assert "ip-positioning" not in prompt
         # 技能归属自己：其它员工技能（加粗技能行）不得出现在本员工会话
         assert "- **secretary**" not in prompt

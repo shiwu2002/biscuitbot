@@ -21,8 +21,10 @@ metadata: {"xianaibot":{"emoji":"🛒"}}
 
 1. **先发现，再动手。** 用 `discover_tools("生成图片")` / `discover_tools("生成视频")`
    确认当前到底有哪些生成工具可用。本项目的原生工具是 `generate_image`（图片）与
-   `generate_video`（视频），调用前用 `read_file` 读它们的使用说明
-   （`docs/generate_image.md` / `docs/generate_video.md`），按真实参数传参。
+   `generate_video_seedance`（视频，火山方舟 Seedance；另有 `generate_video_kling`（可灵）
+   与 `generate_video_minimax`（MiniMax H3）两家备选视频工具），调用前用 `read_file`
+   读它们的使用说明（`docs/generate_image.md` / `docs/generate_video_seedance.md` /
+   `docs/generate_video_kling.md` / `docs/generate_video_minimax.md`），按真实参数传参。
 2. **优先用原生工具。** 用户在本机配置里已经决定启用哪些厂商与模型，那是他的选择，
    不要替他改、也不要在提示词里写死某个模型名。需要的是「具备某种能力的模型」——
    例如「文字渲染准确的模型」「角色一致性强的模型」「支持参考图的编辑模型」——
@@ -32,9 +34,9 @@ metadata: {"xianaibot":{"emoji":"🛒"}}
    `cold_storage` 找到 `mcp_` 前缀的生成类工具（用户在 `tools.mcpServers` 里
    自己接的服务），说明用户有意为此付费/自建，应当优先使用；同样先读它的说明再调用。
 4. **一个都没有时，诚实说明，不要硬编。** 如果确实找不到任何可用的生成工具：
-   - 明确告诉用户「当前没有可用的图像/视频生成能力」，并指出这是开关问题不是能力问题
-     （图片生成开关：`tools.imageGeneration.enabled`；视频生成开关：
-     `tools.seedanceVideo.enabled`，可在「模型厂商」页配置密钥）。
+   - 明确告诉用户「当前没有可用的图像/视频生成能力」，并指出这是配置问题不是能力问题
+     （图片生成开关：`tools.image_generation.enabled`；视频生成无需开关——
+     在「模型厂商」页给 通义万相 / Seedance / 可灵 / MiniMax 任一家配好密钥后，对应工具即自动可用）。
    - **绝对不要**改用 `exec` 去调某个第三方 CLI、去装某个未配置的服务、或凭空编造一个
      看起来像结果的图片路径。也不要假装生成成功。
    - 可以退而求其次：如果你能用 `exec` + 本地库（如 ffmpeg、Pillow）做出**确定能做出**的

@@ -6,6 +6,7 @@ import { ThreadShell } from "@/components/thread/ThreadShell";
 import { CLI_APPS_CHANGED_EVENT } from "@/lib/cli-app-events";
 import { ClientProvider } from "@/providers/ClientProvider";
 import type { CliAppsPayload, Employee, SettingsPayload, UIMessage } from "@/lib/types";
+import { videoGenerationPayload } from "./video-generation-fixture";
 
 const HERO_GREETING_PATTERN =
   /我们要一起做点什么？|今天从哪里开始？|今天一起构建什么？|我们要一起解决什么？/;
@@ -186,18 +187,7 @@ function modelSettings(model: string, provider: string): SettingsPayload {
       max_images_per_turn: 4,
       save_dir: "generated",
     },
-    video_generation: {
-      enabled: false,
-      provider: "volcengine",
-      api_key_configured: false,
-      model: "doubao-seedance",
-      default_ratio: "16:9",
-      default_duration: 6,
-      default_resolution: null,
-      generate_audio: true,
-      watermark: false,
-      save_dir: "generated/videos",
-    },
+    video_generation: videoGenerationPayload(),
     screenshot: {
       enabled: false,
       max_width: 1920,

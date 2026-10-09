@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import i18n from "@/i18n";
 import type { ChatSummary, SessionAutomationJob } from "@/lib/types";
+import { videoGenerationPayload } from "./video-generation-fixture";
 
 const connectSpy = vi.fn();
 const refreshSpy = vi.fn();
@@ -100,17 +101,7 @@ function baseSettingsPayload() {
       max_images_per_turn: 4,
       save_dir: "generated",
     },
-    video_generation: {
-      enabled: false,
-      api_key_configured: false,
-      model: "doubao-seedance",
-      default_ratio: "16:9",
-      default_duration: 6,
-      default_resolution: null,
-      generate_audio: true,
-      watermark: false,
-      save_dir: "generated/videos",
-    },
+    video_generation: videoGenerationPayload(),
     screenshot: {
       enabled: false,
       max_width: 1920,
@@ -1492,17 +1483,7 @@ describe("App layout", () => {
                 max_images_per_turn: 4,
                 save_dir: "generated",
               },
-              video_generation: {
-                enabled: false,
-                api_key_configured: false,
-                model: "doubao-seedance",
-                default_ratio: "16:9",
-                default_duration: 6,
-                default_resolution: null,
-                generate_audio: true,
-                watermark: false,
-                save_dir: "generated/videos",
-              },
+              video_generation: videoGenerationPayload(),
               screenshot: {
                 enabled: false,
                 max_width: 1920,
@@ -1816,17 +1797,7 @@ describe("App layout", () => {
                 max_images_per_turn: 4,
                 save_dir: "generated",
               },
-              video_generation: {
-                enabled: false,
-                api_key_configured: false,
-                model: "doubao-seedance",
-                default_ratio: "16:9",
-                default_duration: 6,
-                default_resolution: null,
-                generate_audio: true,
-                watermark: false,
-                save_dir: "generated/videos",
-              },
+              video_generation: videoGenerationPayload(),
               screenshot: {
                 enabled: false,
                 max_width: 1920,

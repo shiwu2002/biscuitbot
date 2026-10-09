@@ -41,7 +41,7 @@
 
 ## 图生视频（让图片动起来）
 
-`generate_video` 的 `image_urls` **第一个元素会被当作首帧参考**。提示词写运动：
+`generate_video_seedance` 的 `image_urls` **第一个元素会被当作首帧参考**。提示词写运动：
 
 - **运镜动词**：推近、拉远、横移、环绕、跟随、手持晃动、慢速推进、快速甩镜
 - **主体动作**：「舞者旋转」「烟雾缓缓上升」「猫转头看向镜头」
@@ -51,7 +51,7 @@
 
 ## 否定式表述
 
-`generate_image` 与 `generate_video` **都没有 `negative_prompt` 参数**，所以别写「不要 X」，
+`generate_image` 与 `generate_video_seedance` **都没有 `negative_prompt` 参数**，所以别写「不要 X」，
 改用正面表述——正面描述比否定描述对模型更有效：
 
 | 不要写 | 改成 |
@@ -75,9 +75,11 @@
 
 - **`generate_image`**：`docs/generate_image.md` 只举例了 `1:1 / 16:9 / 9:16 / 4:3`。
   其余取值能否用**取决于实际启用的厂商**——不确定时优先用这四个，或干脆不传让工具走默认。
-- **`generate_video`**：文档列出 `16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive`，
-  但**部分厂商只支持其中一部分**，越界的值会被**静默丢弃并回落默认值**——不会报错，
-  只会给你一个比例不对的成品。传之前先读 `docs/generate_video.md` 的厂商参数差异表。
+- **`generate_video_seedance`**：文档列出 `16:9 / 9:16 / 1:1 / 4:3 / 3:4 / 21:9 / adaptive`，
+  但**部分厂商只支持其中一部分**（例如 `generate_video_kling` 仅 `16:9 / 9:16 / 1:1`），
+  越界的值会被**静默丢弃并回落默认值**——不会报错，只会给你一个比例不对的成品。
+  传之前先读对应厂商的文档（`docs/generate_video_seedance.md` /
+  `docs/generate_video_kling.md` / `docs/generate_video_minimax.md`）。
 
 ## 文字渲染（Logo / 海报 / 封面）
 

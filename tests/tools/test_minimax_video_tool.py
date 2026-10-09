@@ -1,9 +1,9 @@
-"""MiniMax H3 视频生成工具 / 客户端测试。
+﻿"""MiniMax H3 视频生成工具 / 客户端测试。
 
 覆盖：base URL 归一化、build_request 的模式判定与角色映射、三道互斥/上限校验、
 create_task 的 base_resp 业务错误、poll 的双路径双词表容错、file_id → download_url
-换取，以及 generate_video 工具在 ``provider == "minimax"`` 时的分流路径
-（volcengine / kling 原路径零改动）。
+换取，以及厂商自包含的 ``generate_video_minimax`` 工具（启用门控、密钥解析、
+模型名残留回退、execute 全流程与错误路径）。
 """
 
 from __future__ import annotations
@@ -24,11 +24,9 @@ from xianaibot.agent.tools.minimax_video import (
     _MINIMAX_DEFAULT_MODEL,
     MiniMaxVideoClient,
     MiniMaxVideoError,
+    MiniMaxVideoTool,
+    MiniMaxVideoToolConfig,
     _normalize_api_base,
-)
-from xianaibot.agent.tools.seedance_video import (
-    SeedanceVideoTool,
-    SeedanceVideoToolConfig,
 )
 
 # ---- Fake HTTP 层 ------------------------------------------------------------
@@ -71,11 +69,9 @@ class FakeHttp:
         return self.get_responses[index]
 
 
-def _tool(tmp_path: Path, **overrides) -> SeedanceVideoTool:
-    config = SeedanceVideoToolConfig(
-        enabled=True, provider="minimax", api_key="mm-test", **overrides
-    )
-    return SeedanceVideoTool(workspace=tmp_path, config=config)
+def _tool(tmp_path: Path, **overrides) -> MiniMaxVideoTool:
+    config = MiniMaxVideoToolConfig(api_key="mm-test", **overrides)
+    return MiniMaxVideoTool(workspace=tmp_path, config=config)
 
 
 # ---- 注册与 base URL ---------------------------------------------------------
@@ -490,52 +486,86 @@ async def test_retrieve_file_url_base_resp_error_raises() -> None:
         await client.retrieve_file_url(http, "f-1")
 
 
-# ---- 工具分流：minimax vs volcengine / kling ---------------------------------
 
 
-def test_minimax_model_fallback_off_seedance_names(tmp_path: Path) -> None:
+# ---- Tool：generate_video_minimax（厂商自包含）-------------------------------
+
+
+def test_minimax_tool_metadata_and_config(tmp_path: Path) -> None:
     tool = _tool(tmp_path)
-    assert tool._minimax_model(None) == _MINIMAX_DEFAULT_MODEL
-    assert tool._minimax_model("doubao-seedance-2-5-260628") == _MINIMAX_DEFAULT_MODEL
-    assert tool._minimax_model("custom-h3") == "custom-h3"
+    assert tool.name == "generate_video_minimax"
+    assert tool.config_key == "minimax_video"
+    assert MiniMaxVideoTool.config_cls() is MiniMaxVideoToolConfig
+
+    # 启用门控：显式 apiKey 或「模型厂商」页 minimax 厂商密钥
+    ctx = SimpleNamespace(
+        workspace=tmp_path,
+        config=SimpleNamespace(minimax_video=MiniMaxVideoToolConfig()),
+        provider_configs={},
+    )
+    assert MiniMaxVideoTool.enabled(ctx) is False
+    ctx.config.minimax_video = MiniMaxVideoToolConfig(api_key="mm-explicit")
+    assert MiniMaxVideoTool.enabled(ctx) is True
+    ctx.config.minimax_video = MiniMaxVideoToolConfig()
+    ctx.provider_configs = {"minimax": SimpleNamespace(api_key="mm-from-provider")}
+    assert MiniMaxVideoTool.enabled(ctx) is True
+    # 其他厂商（volcengine）的密钥不启用 MiniMax 工具
+    ctx.provider_configs = {"volcengine": SimpleNamespace(api_key="ark-xxx")}
+    assert MiniMaxVideoTool.enabled(ctx) is False
+
+
+def test_minimax_config_registered_in_schema() -> None:
+    from xianaibot.config.schema import ToolsConfig
+
+    assert "minimax_video" in ToolsConfig.model_fields
+
+
+def test_minimax_model_falls_back_on_foreign_vendor_names(tmp_path: Path) -> None:
+    """残留 Seedance/可灵模型名（旧配置切厂商未切模型）时回退 H3 默认。"""
+    tool = _tool(tmp_path)
+    assert tool._resolve_model(None) == _MINIMAX_DEFAULT_MODEL
+    assert tool._resolve_model("doubao-seedance-2-5-260628") == _MINIMAX_DEFAULT_MODEL
+    assert tool._resolve_model("kling-3.0") == _MINIMAX_DEFAULT_MODEL
+    # 显式自定义模型保留（大小写敏感）
+    assert tool._resolve_model("custom-h3") == "custom-h3"
 
 
 def test_minimax_key_prefers_provider_page_over_stale_tool_key(tmp_path: Path) -> None:
     """切厂商后 config.api_key 可能残留方舟 key，必须优先用「模型厂商」页的密钥。"""
-    config = SeedanceVideoToolConfig(enabled=True, provider="minimax", api_key="ark-stale")
-    tool = SeedanceVideoTool(
-        workspace=tmp_path, config=config, ark_api_key="mm-fresh", provider_api_base=""
-    )
-    assert tool._resolve_minimax_key() == "mm-fresh"
-    # 无「模型厂商」页密钥时回退配置值
-    bare = SeedanceVideoTool(workspace=tmp_path, config=config)
-    assert bare._resolve_minimax_key() == "ark-stale"
-    # 两者皆空 → 报错
-    empty = SeedanceVideoTool(
+    tool = MiniMaxVideoTool(
         workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="minimax"),
+        config=MiniMaxVideoToolConfig(api_key="ark-stale"),
+        provider_api_key="mm-fresh",
+    )
+    assert tool._api_key() == "mm-fresh"
+    # 无「模型厂商」页密钥时回退配置值
+    bare = MiniMaxVideoTool(
+        workspace=tmp_path, config=MiniMaxVideoToolConfig(api_key="ark-stale")
+    )
+    assert bare._api_key() == "ark-stale"
+    # 两者皆空 → 报错
+    empty = MiniMaxVideoTool(
+        workspace=tmp_path, config=MiniMaxVideoToolConfig()
     )
     with pytest.raises(MiniMaxVideoError, match="未配置"):
-        empty._resolve_minimax_key()
+        empty._api_key()
 
 
-def test_minimax_api_base_ignores_stale_ark_base_url(tmp_path: Path) -> None:
-    """config.base_url 是方舟工具级地址，MiniMax 路径必须忽略它。"""
-    tool = SeedanceVideoTool(
+def test_minimax_api_base_left_empty_for_client_normalization(tmp_path: Path) -> None:
+    """apiBase 留空交给客户端归一化，聊天式 base（带 /v1）收敛到裸域。"""
+    tool = MiniMaxVideoTool(
         workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True, provider="minimax", base_url="https://ark.cn-beijing.volces.com/api/v3"
-        ),
+        config=MiniMaxVideoToolConfig(),
         provider_api_base="https://api.minimaxi.com/v1",
     )
-    assert tool._minimax_api_base() == "https://api.minimaxi.com/v1"
-    # 未配置 apiBase → 空串，由客户端归一化为官方默认
-    bare = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="minimax"),
+    # 工具层只 rstrip 尾斜杠，/v1 剥离统一收敛在 MiniMaxVideoClient
+    assert tool._api_base() == "https://api.minimaxi.com/v1"
+    bare = MiniMaxVideoTool(workspace=tmp_path, config=MiniMaxVideoToolConfig())
+    assert bare._api_base() == ""
+    assert MiniMaxVideoClient(api_key="k", api_base=tool._api_base()).api_base == (
+        "https://api.minimaxi.com"
     )
-    assert bare._minimax_api_base() == ""
-    assert MiniMaxVideoClient(api_key="k", api_base=bare._minimax_api_base()).api_base == (
+    assert MiniMaxVideoClient(api_key="k", api_base=bare._api_base()).api_base == (
         _DEFAULT_BASE_URL
     )
 
@@ -543,102 +573,19 @@ def test_minimax_api_base_ignores_stale_ark_base_url(tmp_path: Path) -> None:
 def test_create_takes_minimax_key_and_api_base(tmp_path: Path) -> None:
     ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SimpleNamespace(
-            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="minimax")
-        ),
+        config=SimpleNamespace(minimax_video=MiniMaxVideoToolConfig()),
         provider_configs={
             "minimax": SimpleNamespace(api_key="mm-1", api_base="https://api.minimaxi.com/v1")
         },
     )
-    tool = SeedanceVideoTool.create(ctx)
-    assert tool._ark_api_key == "mm-1"
+    tool = MiniMaxVideoTool.create(ctx)
+    assert tool._provider_api_key == "mm-1"
     assert tool.provider_api_base == "https://api.minimaxi.com/v1"
+    assert tool.config is ctx.config.minimax_video
 
 
-@pytest.mark.asyncio
-async def test_execute_dispatches_to_minimax_path(tmp_path: Path, monkeypatch) -> None:
-    tool = _tool(tmp_path)
-    captured: dict = {}
-
-    async def fake_minimax(self, **kwargs):
-        captured.update(kwargs)
-        return '{"video": "ok"}'
-
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_minimax", fake_minimax)
-    result = await tool.execute(
-        prompt="hello",
-        image_urls=["https://a.example/first.png"],
-        reference_images=["https://a.example/ref.png"],
-        watermark=True,
-        seed=7,
-    )
-    assert json.loads(result) == {"video": "ok"}
-    assert captured["prompt"] == "hello"
-    assert captured["reference_images"] == ["https://a.example/ref.png"]
-    assert captured["seed"] == 7
-    assert captured["watermark"] is True
-
-
-@pytest.mark.asyncio
-async def test_volcengine_path_does_not_call_minimax(tmp_path: Path, monkeypatch) -> None:
-    """默认厂商走方舟路径，_execute_minimax 不应被调用（防回归）。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(
-            enabled=True, provider="volcengine", api_key="ark-test"
-        ),
-    )
-
-    def fail(**kwargs):
-        raise AssertionError("_execute_minimax 不应在 volcengine 路径被调用")
-
-    async def fake_create(self, client, body):
-        return "task-1"
-
-    async def fake_poll(self, client, task_id):
-        return {"content": {"video_url": "https://example.com/out.mp4"}}
-
-    async def fake_download(self, client, video_url, **kwargs):
-        return {"path": str(tmp_path / "out.mp4")}
-
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_minimax", fail)
-    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
-    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
-
-    result = await tool.execute(prompt="hello")
-    assert result.startswith('{"video":')
-
-
-@pytest.mark.asyncio
-async def test_kling_path_does_not_call_minimax(tmp_path: Path, monkeypatch) -> None:
-    """provider=kling 时不应落到 MiniMax 分支，且 reference_images 被忽略。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
-    )
-    captured: dict = {}
-
-    async def fake_kling(self, **kwargs):
-        captured.update(kwargs)
-        return '{"video": "kling"}'
-
-    def fail(**kwargs):
-        raise AssertionError("_execute_minimax 不应在 kling 路径被调用")
-
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_kling", fake_kling)
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_minimax", fail)
-
-    result = await tool.execute(prompt="hello", reference_images=["https://a.example/ref.png"])
-    assert json.loads(result) == {"video": "kling"}
-    # reference_images 不进入可灵路径（不写进 kling 参数）
-    assert "reference_images" not in captured
-
-
-@pytest.mark.asyncio
-async def test_execute_minimax_full_flow(tmp_path: Path, monkeypatch) -> None:
-    """minimax 全流程：建任务 → 轮询 → file_id 换 URL → 落盘，返回 JSON 元数据。"""
-    tool = _tool(tmp_path)
+def _fake_minimax_flow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict:
+    """屏蔽 MiniMax HTTP 与落盘，捕获 create_task 请求体与下载 URL。"""
     captured: dict = {}
 
     async def fake_create(self, client, endpoint, body):
@@ -653,14 +600,24 @@ async def test_execute_minimax_full_flow(tmp_path: Path, monkeypatch) -> None:
         captured["file_id"] = file_id
         return "https://cdn.example/out.mp4"
 
-    async def fake_download(self, client, video_url, *, model=None):
+    async def fake_download(client, video_url, *, workspace, save_dir, default_model, model=None):
         captured["download_url"] = video_url
-        return {"path": str(tmp_path / "out.mp4"), "model": model}
+        return {"path": str(tmp_path / "out.mp4"), "model": model or default_model}
 
     monkeypatch.setattr(MiniMaxVideoClient, "create_task", fake_create)
     monkeypatch.setattr(MiniMaxVideoClient, "poll", fake_poll)
     monkeypatch.setattr(MiniMaxVideoClient, "retrieve_file_url", fake_retrieve)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    monkeypatch.setattr(
+        "xianaibot.agent.tools.minimax_video.download_and_store", fake_download
+    )
+    return captured
+
+
+@pytest.mark.asyncio
+async def test_execute_minimax_full_flow(tmp_path: Path, monkeypatch) -> None:
+    """minimax 全流程：建任务 → 轮询 → file_id 换 URL → 落盘，返回 JSON 元数据。"""
+    tool = _tool(tmp_path)
+    captured = _fake_minimax_flow(monkeypatch, tmp_path)
 
     result = await tool.execute(
         prompt="让照片动起来",
@@ -695,14 +652,16 @@ async def test_execute_minimax_prefers_direct_url_over_file_id(
     async def fake_retrieve(self, client, file_id):
         raise AssertionError("已有直接 URL 时不应再换 file_id")
 
-    async def fake_download(self, client, video_url, *, model=None):
+    async def fake_download(client, video_url, *, workspace, save_dir, default_model, model=None):
         captured["download_url"] = video_url
-        return {"path": str(tmp_path / "out.mp4"), "model": model}
+        return {"path": str(tmp_path / "out.mp4"), "model": model or default_model}
 
     monkeypatch.setattr(MiniMaxVideoClient, "create_task", fake_create)
     monkeypatch.setattr(MiniMaxVideoClient, "poll", fake_poll)
     monkeypatch.setattr(MiniMaxVideoClient, "retrieve_file_url", fake_retrieve)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    monkeypatch.setattr(
+        "xianaibot.agent.tools.minimax_video.download_and_store", fake_download
+    )
 
     await tool.execute(prompt="hello")
     assert captured["download_url"] == "https://cdn.example/d.mp4"
@@ -718,25 +677,7 @@ async def test_execute_minimax_local_image_and_audio_auto_base64(
     img.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 64)  # JPEG 魔数
     audio = tmp_path / "voice.mp3"
     audio.write_bytes(b"ID3" + b"\x00" * 32)
-    captured: dict = {}
-
-    async def fake_create(self, client, endpoint, body):
-        captured["body"] = body
-        return "mm-task"
-
-    async def fake_poll(self, client, task_id, **kwargs):
-        return {"status": "Success", "file_id": "f-1"}
-
-    async def fake_retrieve(self, client, file_id):
-        return "https://cdn.example/out.mp4"
-
-    async def fake_download(self, client, video_url, *, model=None):
-        return {"path": str(tmp_path / "out.mp4"), "model": model}
-
-    monkeypatch.setattr(MiniMaxVideoClient, "create_task", fake_create)
-    monkeypatch.setattr(MiniMaxVideoClient, "poll", fake_poll)
-    monkeypatch.setattr(MiniMaxVideoClient, "retrieve_file_url", fake_retrieve)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    captured = _fake_minimax_flow(monkeypatch, tmp_path)
 
     result = await tool.execute(
         prompt="hello",
@@ -783,10 +724,7 @@ async def test_execute_minimax_validation_error_returned_as_error_string(
 
 @pytest.mark.asyncio
 async def test_execute_minimax_missing_key_returns_error(tmp_path: Path) -> None:
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="minimax"),
-    )
+    tool = MiniMaxVideoTool(workspace=tmp_path, config=MiniMaxVideoToolConfig())
     result = await tool.execute(prompt="hello")
     assert result.startswith("Error: MiniMax API key 未配置")
 

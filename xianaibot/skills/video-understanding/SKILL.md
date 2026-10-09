@@ -24,7 +24,7 @@ metadata: {"xianaibot":{"emoji":"🎥"}}
 
 不要用本技能的场景：
 
-- 要**生成 / 剪辑**视频 → `generate_video`、`jianying-editor`、`short-drama-production`。
+- 要**生成 / 剪辑**视频 → `generate_video_seedance`、`jianying-editor`、`short-drama-production`。
 - 纯音频文件（`.mp3` / `.wav` / `.m4a`）→ 直接 `transcribe_media`，不用探测也不用抽帧。
 - 只是想**转发/保存**这段视频 → 不需要理解，别去转写。
 

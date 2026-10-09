@@ -169,12 +169,12 @@ def test_generic_image_client_resolves_v1_path() -> None:
     assert client.api_base == "https://relay.example.com/v1"
 
 
-def test_provider_capabilities_respects_declared_capabilities() -> None:
-    """用户在「模型厂商」页显式声明的能力标签应覆盖注册表自动推断。"""
+def test_provider_capabilities_ignores_stale_declared_field() -> None:
+    """能力标签为纯派生：config 里残留的 ``capabilities`` 声明不再影响结果。"""
     from xianaibot.config.schema import Config
     from xianaibot.webui.settings_api import _provider_capabilities
 
-    # newapi 默认自动推断出 llm/vision/image/tts/transcription，但用户可收窄为仅图像
+    # 老 config.json 里可能残留 "capabilities": [...]，加载时被忽略
     cfg = Config(
         providers={
             "newapi": {
@@ -184,11 +184,13 @@ def test_provider_capabilities_respects_declared_capabilities() -> None:
             }
         }
     )
-    assert _provider_capabilities("newapi", cfg) == ["image"]
-
-    # 未显式声明时仍走自动推断
-    cfg2 = Config(providers={"newapi": {"apiKey": "sk-newapi"}})
-    assert "llm" in _provider_capabilities("newapi", cfg2)
+    assert _provider_capabilities("newapi", cfg) == [
+        "llm",
+        "vision",
+        "image",
+        "tts",
+        "transcription",
+    ]
 
 
 def test_generic_tts_spec_resolution() -> None:

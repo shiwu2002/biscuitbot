@@ -1,16 +1,18 @@
-"""MiniMax H3 视频生成客户端。
+"""MiniMax H3 视频生成工具（自包含：客户端 + Tool）。
 
 本模块把 MiniMax 开放平台（``api.minimaxi.com``，中国大陆；海外
-``api.minimax.io``）的 MiniMax H3 多模态视频生成能力封装为轻量客户端，供
-``generate_video`` 工具（``seedance_video.py``）在 ``provider == "minimax"`` 时调用。
+``api.minimax.io``）的 MiniMax H3 多模态视频生成能力封装为
+``generate_video_minimax`` 工具（厂商自包含架构，方向 B）：
+``MiniMaxVideoClient`` 负责「认证 + 请求构造 + 任务创建/轮询/取下载地址」，
+``MiniMaxVideoTool`` 负责参数 schema、启用门控与视频落盘。启用门控：
+「模型厂商」页配置了 minimax 厂商密钥（或 ``tools.minimax_video.apiKey``
+显式配置）即启用。
 
-与 seedance_video.py 的关系
+与其他视频工具的关系
 ===========================
-- 本模块**不 import** ``seedance_video.py``（否则工具加载/配置 schema 会触发循环
-  依赖）；``seedance_video.py`` 单向 import 本模块。
-- 落盘、图片/视频/音频引用解析等工具职责仍由 ``seedance_video.py`` 的
-  ``_execute_minimax`` 复用其现有方法完成，本模块只负责「认证 + 请求构造 +
-  任务创建/轮询/取下载地址」。
+- 本模块**不 import** ``seedance_video.py``（避免循环依赖）；厂商注册表复用
+  ``kling_video.py`` 的全局唯一实现（``register_video_gen_provider``）。
+- 落盘、图片/视频/音频引用解析等厂商无关辅助复用 ``_video_common.py``。
 
 MiniMax H3 API 要点
 ===================
@@ -42,21 +44,44 @@ MiniMax H3 API 要点
 from __future__ import annotations
 
 import asyncio  # 轮询间隔
-import json  # 请求体序列化与体积核算
+import json  # 请求体序列化与体积核算 / 工具返回结果
+from pathlib import Path  # 工作区路径处理
 from typing import Any  # 任意类型
 
 import httpx  # 异步 HTTP 客户端
 from loguru import logger  # 结构化日志
+from pydantic import Field  # Pydantic 字段校验
 
+from xianaibot.agent.tools._video_common import (  # 厂商无关共享辅助
+    VideoToolError,
+    VideoVendorSpec,
+    download_and_store,
+    resolve_audio_ref,
+    resolve_image_ref,
+    resolve_video_ref,
+)
+from xianaibot.agent.tools.base import Tool, tool_parameters  # 工具基类与参数装饰器
 from xianaibot.agent.tools.kling_video import (
     register_video_gen_provider,  # 全局唯一的视频厂商注册表（勿另建）
 )
+from xianaibot.agent.tools.schema import (  # schema 构造器
+    ArraySchema,
+    BooleanSchema,
+    IntegerSchema,
+    StringSchema,
+    tool_parameters_schema,
+)
+from xianaibot.config_base import Base  # 配置基类
 
 # MiniMax 官方 API 默认 base URL（中国大陆；海外为 https://api.minimax.io）。
 # 只保存裸域：所有端点路径自带 /v1、/v2 前缀。
 _DEFAULT_BASE_URL = "https://api.minimaxi.com"
 # 默认模型：MiniMax H3（模型名大小写敏感，勿小写）
 _MINIMAX_DEFAULT_MODEL = "MiniMax-H3"
+# v2 视频端点（/v2/video_generation）当前可选模型：H3 与 H3-Max（后者 480P/768P、
+# 5–15 秒，不支持 2K）。仅作「视频模型」下拉的建议项，不参与校验——真正的取值
+# 由配置/工具入参决定（_resolve_model 对非 Seedance/可灵残留名回退 H3）。
+_MINIMAX_KNOWN_MODELS = ("MiniMax-H3", "MiniMax-H3-Max")
 # H3 支持的画幅比例（adaptive 仅 r2va 可用，t2va 会被拒绝）
 _MINIMAX_RATIOS = ("adaptive", "21:9", "16:9", "4:3", "1:1", "3:4", "9:16")
 # H3 支持的清晰度（大写；仅这两档）
@@ -113,7 +138,7 @@ _PENDING_STATUSES = frozenset(
 _URL_KEYS = ("download_url", "video_url", "file_url")
 
 
-class MiniMaxVideoError(RuntimeError):
+class MiniMaxVideoError(VideoToolError):
     """MiniMax H3 视频生成/编辑失败时抛出。"""
 
 
@@ -218,7 +243,7 @@ class MiniMaxVideoClient:
         if not self.api_key:
             raise MiniMaxVideoError(
                 "MiniMax API key 未配置：请在「模型厂商」页配置 minimax 厂商的 "
-                "API Key，或在 config.json 设置 tools.seedance_video.apiKey。"
+                "API Key，或在 config.json 设置 tools.minimax_video.apiKey。"
             )
         return f"Bearer {self.api_key}"
 
@@ -582,3 +607,323 @@ class MiniMaxVideoClient:
 
 
 register_video_gen_provider(MiniMaxVideoClient)
+
+
+# ---------------------------------------------------------------------------
+# Tool —— generate_video_minimax（厂商自包含，与 client 同文件）
+# ---------------------------------------------------------------------------
+
+
+class MiniMaxVideoToolConfig(Base):
+    """MiniMax H3 视频生成工具配置。
+
+    职责：承载 MiniMax H3 视频生成工具的运行时配置项。厂商自包含重构后无
+    ``enabled`` / ``provider`` 字段——启用与否由「模型厂商」页是否配置
+    minimax 密钥决定（或本段 ``api_key`` 显式覆盖）。base URL 刻意不设字段：
+    留空交给 ``MiniMaxVideoClient`` 归一化（兼容聊天式 base）。
+    """
+
+    api_key: str | None = None  # 显式 API Key；缺省回退「模型厂商」页 minimax 厂商密钥
+    model: str = _MINIMAX_DEFAULT_MODEL  # 默认模型（H3，大小写敏感）
+    default_ratio: str = "16:9"  # 默认画幅（t2va 必填；i2va 由首帧推导）
+    default_duration: int = Field(default=_MINIMAX_DURATION_DEFAULT, ge=_MINIMAX_DURATION_MIN, le=_MINIMAX_DURATION_MAX)  # 默认时长（秒）
+    default_resolution: str = _MINIMAX_RESOLUTION_DEFAULT  # 默认清晰度（H3 各模式都必须下发）
+    watermark: bool = False  # 是否默认添加 AIGC 水印（映射 aigc_watermark）
+    save_dir: str = "generated_video"  # artifact 保存子目录名
+    poll_interval_sec: float = Field(default=10.0, ge=1.0, le=60.0)  # 轮询间隔（秒）
+    max_poll_attempts: int = Field(default=180, ge=1, le=600)  # 最大轮询次数（约 30 分钟）
+    timeout_sec: float = Field(default=120.0, ge=10.0, le=600.0)  # 单次 HTTP 超时（秒）
+
+
+@tool_parameters(
+    tool_parameters_schema(
+        prompt=StringSchema(
+            "视频生成/编辑的文本提示词（必填）。描述主体、运镜、景别、构图、光影、氛围与节奏越具体越好。",
+            min_length=1,
+        ),
+        image_urls=ArraySchema(
+            StringSchema(
+                "首帧/尾帧图片：本地文件路径（含微信/渠道收到的图片路径）、"
+                "可公开访问的 HTTP(S) URL，或 base64 data URL。"
+            ),
+            description=(
+                "可选首帧/尾帧（图生视频 i2va）：传 1 张作首帧、2 张依次作首帧与尾帧，"
+                "最多 2 张；与 reference_images（参考图）互斥。"
+            ),
+        ),
+        reference_images=ArraySchema(
+            StringSchema(
+                "参考图片：本地文件路径、可公开访问的 HTTP(S) URL，或 base64 data URL。"
+            ),
+            description=(
+                "可选「参考图」（主体的外观/风格参考，不是首尾帧，最多 9 张）；"
+                "与 image_urls（首帧/尾帧）互斥；此时 video_urls 最多 3 段、"
+                "audio_urls 最多 3 段，素材文件合计最多 12 个。"
+            ),
+        ),
+        video_urls=ArraySchema(
+            StringSchema("参考视频的可公开访问 HTTP(S) URL。"),
+            description="可选参考视频（r2va），最多 3 段。仅支持公网 HTTP(S) URL，不支持本地文件。",
+        ),
+        audio_urls=ArraySchema(
+            StringSchema(
+                "参考音频：本地文件路径、可公开访问的 HTTP(S) URL，或 base64 data URL。"
+            ),
+            description=(
+                "可选参考音频（口型/音色参考等），最多 3 段，且不能单独使用——"
+                "必须同时传 reference_images 或 video_urls。"
+            ),
+        ),
+        ratio=StringSchema(
+            "画幅比例。文生视频（t2va）必填且不接受 adaptive（缺省用 16:9）；"
+            "图生视频由首帧推导、传了也会被忽略；参考生视频可选。",
+            enum=_MINIMAX_RATIOS,
+        ),
+        duration=IntegerSchema(
+            description="视频时长（秒）4–15，超出会被截断到区间内。",
+            minimum=_MINIMAX_DURATION_MIN,
+            maximum=_MINIMAX_DURATION_MAX,
+        ),
+        resolution=StringSchema(
+            "清晰度（MiniMax H3 各模式都需要，取值 768P / 2K；480p、720p 映射为 768P，"
+            "1080p、4K 映射为 2K）。",
+            enum=_MINIMAX_RESOLUTIONS,
+        ),
+        watermark=BooleanSchema(
+            description="是否添加 AIGC 水印（默认关闭）。",
+        ),
+        model=StringSchema(
+            "可选模型覆盖（默认 MiniMax-H3，大小写敏感，必须精确匹配）。",
+        ),
+        required=["prompt"],
+    )
+)
+class MiniMaxVideoTool(Tool):
+    """通过 MiniMax H3 生成/编辑视频，并持久化为本地文件。
+
+    职责：把 MiniMax H3 的多模态视频生成能力封装为 agent 可调用的工具。
+    模式由输入自动判定（见 ``MiniMaxVideoClient.build_request``）：有参考素材 →
+    r2va；有 image_urls → i2va（首帧/尾帧）；否则 t2va。不支持的能力（随机
+    种子、音画同步开关）不在参数 schema 中，传入会被 ``**kwargs`` 静默吸收。
+    """
+
+    _capability = (
+        "Generate or edit videos from text/image/video/audio with MiniMax H3 "
+        "(first/last frame + style references, returns file path)."
+    )
+    _usage_md = "docs/generate_video_minimax.md"  # 工具使用说明文档路径
+
+    config_key = "minimax_video"  # 配置键名
+
+    # 厂商卡片元数据（WebUI「视频生成」页与 /v1/models 由它派生；见 _video_common）
+    vendor_spec = VideoVendorSpec(
+        key="minimax",
+        display_name="MiniMax",
+        provider="minimax",
+        tool_name="generate_video_minimax",
+        config_key="minimax_video",
+        support=("t2v", "i2v", "v2v", "ref_image", "ref_audio"),
+        ratio_options=_MINIMAX_RATIOS,
+        resolution_options=_MINIMAX_RESOLUTIONS,
+        duration_range=(_MINIMAX_DURATION_MIN, _MINIMAX_DURATION_MAX),
+        model_suggestions=_MINIMAX_KNOWN_MODELS,
+        # H3 各模式都必须下发清晰度，故不能留空（不提供「模型自动决定」）。
+        resolution_optional=False,
+    )
+
+    @classmethod
+    def config_cls(cls):
+        """返回该工具使用的配置类。"""
+        return MiniMaxVideoToolConfig
+
+    @classmethod
+    def enabled(cls, ctx: Any) -> bool:
+        """「模型厂商」页配置了 minimax 密钥（或显式 apiKey）即启用。"""
+        config = ctx.config.minimax_video
+        if (config.api_key or "").strip():
+            return True
+        provider_configs = getattr(ctx, "provider_configs", None) or {}
+        provider_cfg = provider_configs.get("minimax")
+        return bool((getattr(provider_cfg, "api_key", None) or "").strip())
+
+    @classmethod
+    def create(cls, ctx: Any) -> Tool:
+        """从上下文创建工具实例（密钥/地址优先取「模型厂商」页 minimax 厂商配置）。"""
+        provider_configs = getattr(ctx, "provider_configs", None) or {}
+        provider_cfg = provider_configs.get("minimax")
+        return cls(
+            workspace=ctx.workspace,
+            config=ctx.config.minimax_video,
+            provider_api_key=getattr(provider_cfg, "api_key", None),
+            provider_api_base=getattr(provider_cfg, "api_base", None),
+        )
+
+    def __init__(
+        self,
+        *,
+        workspace: str | Path,
+        config: MiniMaxVideoToolConfig,
+        provider_api_key: str | None = None,
+        provider_api_base: str | None = None,
+    ) -> None:
+        self.workspace = Path(workspace).expanduser()  # 工作区路径，展开 ~
+        self.config = config  # 工具配置
+        self._provider_api_key = provider_api_key  # 模型厂商页配置的 minimax 密钥
+        self.provider_api_base = provider_api_base  # 模型厂商页配置的 minimax apiBase
+
+    @property
+    def name(self) -> str:
+        """工具名称。"""
+        return "generate_video_minimax"
+
+    @property
+    def description(self) -> str:
+        """工具描述，指导模型如何调用。"""
+        return (
+            "Generate or edit a video with MiniMax H3 (multimodal: text + first/last "
+            "frame + style/subject reference images + reference videos + reference "
+            "audios). Mode is auto-detected from inputs: reference materials -> r2va; "
+            "image_urls -> i2va (first/last frame, max 2); otherwise t2va. "
+            "image_urls (first/last frame) and reference_images (style references) "
+            "are mutually exclusive; reference audios cannot be used alone. "
+            "Resolution (768P/2K) is required in all modes; ratio is required for "
+            "t2va (no adaptive) and derived from first frame in i2va. "
+            "Runs asynchronously and returns the downloaded video file path. "
+            "Other video vendors: use generate_video_seedance or generate_video_kling "
+            "instead."
+        )
+
+    # ---- 内部实现 ----------------------------------------------------------
+
+    def _api_key(self) -> str:
+        """解析 MiniMax 密钥：模型厂商页 minimax 密钥优先，其次配置显式值。
+
+        优先级理由同可灵：工具级 ``config.api_key`` 可能残留其他厂商的值。
+        MiniMax 视频与聊天共用同一个静态 API Key（无需 JWT 签名）。
+        """
+        key = (self._provider_api_key or "").strip() or (self.config.api_key or "").strip()
+        if not key:
+            raise MiniMaxVideoError(
+                "MiniMax API key 未配置：请在「模型厂商」页配置 minimax 厂商的 "
+                "API Key，或在 config.json 设置 tools.minimax_video.apiKey。"
+            )
+        return key
+
+    def _api_base(self) -> str:
+        """返回「模型厂商」页 minimax 厂商的 apiBase，留空返回空串。
+
+        刻意**不在此回退默认常量**：留空即交给 ``MiniMaxVideoClient`` 归一化，这样
+        「MiniMax 同时当 LLM 用」时填的聊天式 base（带 ``/v1``）与 Anthropic 式 base
+        （带 ``/anthropic``）都只有一处收敛逻辑。
+        """
+        return (self.provider_api_base or "").rstrip("/")
+
+    def _resolve_model(self, model: str | None) -> str:
+        """解析 MiniMax 模型名：残留其他厂商模型名（旧配置切厂商未切模型）回退 H3 默认。
+
+        模型名大小写敏感，必须精确为 ``MiniMax-H3``；显式自定义 ID 原样保留。
+        """
+        candidate = (model or "").strip() or (self.config.model or "").strip()
+        lowered = candidate.lower()
+        if not candidate or "seedance" in lowered or "kling" in lowered:
+            return _MINIMAX_DEFAULT_MODEL
+        return candidate
+
+    async def execute(
+        self,
+        prompt: str,
+        image_urls: list[str] | None = None,
+        reference_images: list[str] | None = None,
+        video_urls: list[str] | None = None,
+        audio_urls: list[str] | None = None,
+        ratio: str | None = None,
+        duration: int | None = None,
+        resolution: str | None = None,
+        watermark: bool | None = None,
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """执行 MiniMax H3 视频生成/编辑。
+
+        参数:
+            prompt: 文本提示词（必填）。
+            image_urls: 可选首帧/尾帧列表（1 张首帧，2 张首帧+尾帧；与 reference_images 互斥）。
+            reference_images: 可选参考图列表（风格/主体参考，≤9；与 image_urls 互斥）。
+            video_urls: 可选参考视频列表（仅公网 URL，≤3）。
+            audio_urls: 可选参考音频列表（≤3，须搭配 reference_images 或 video_urls）。
+            ratio: 画幅比例（t2va 必填且不接受 adaptive）。
+            duration: 时长（秒）4–15。
+            resolution: 清晰度（768P / 2K，各模式必须下发）。
+            watermark: 是否加 AIGC 水印。
+            model: 模型覆盖（默认 MiniMax-H3）。
+
+        返回:
+            包含视频本地路径与元数据的 JSON 字符串；出错时返回错误说明。
+        """
+        try:
+            resolved_model = self._resolve_model(model)
+
+            minimax_images = [resolve_image_ref(v) for v in image_urls or []]
+            minimax_references = [resolve_image_ref(v) for v in reference_images or []]
+            # 参考视频：仅公网 URL（与方舟、可灵一致，不额外放开本地文件）。
+            minimax_videos = [resolve_video_ref(v) for v in video_urls or []]
+            minimax_audios = [resolve_audio_ref(v) for v in audio_urls or []]
+
+            client = MiniMaxVideoClient(
+                api_key=self._api_key(),
+                api_base=self._api_base(),
+                poll_interval_sec=self.config.poll_interval_sec,
+                max_poll_attempts=self.config.max_poll_attempts,
+                timeout=self.config.timeout_sec,
+            )
+            endpoint, body = client.build_request(
+                prompt=prompt,
+                image_urls=minimax_images,
+                reference_images=minimax_references,
+                video_urls=minimax_videos,
+                audio_urls=minimax_audios,
+                ratio=ratio,
+                duration=duration if duration is not None else self.config.default_duration,
+                resolution=resolution or self.config.default_resolution,
+                watermark=watermark if watermark is not None else self.config.watermark,
+                model=resolved_model,
+            )
+
+            async with httpx.AsyncClient(timeout=self.config.timeout_sec) as http:
+                task_id = await client.create_task(http, endpoint, body)
+                logger.info(
+                    "MiniMax H3 任务已创建：{}（model={}，endpoint={}）",
+                    task_id,
+                    resolved_model,
+                    endpoint,
+                )
+                data = await client.poll(http, task_id)
+                # 正常流程只回 file_id，需换一次下载地址；部分网关形态会直接给 URL。
+                video_url = client.extract_direct_url(data)
+                if not video_url:
+                    video_url = await client.retrieve_file_url(
+                        http, client.extract_file_id(data)
+                    )
+                artifact = await download_and_store(
+                    http,
+                    video_url,
+                    workspace=self.workspace,
+                    save_dir=self.config.save_dir,
+                    default_model=self.config.model,
+                    model=resolved_model,
+                )
+
+            return json.dumps(
+                {
+                    "video": artifact,
+                    "task_id": task_id,
+                    "model": resolved_model,
+                    "next_step": (
+                        "视频已生成并保存到本地。可把 path 作为后续剪辑工具的输入，"
+                        "或通过 message 工具把视频文件交付给用户。"
+                    ),
+                },
+                ensure_ascii=False,
+            )
+        except VideoToolError as exc:
+            return f"Error: {exc}"
