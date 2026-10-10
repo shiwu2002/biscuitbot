@@ -173,14 +173,14 @@ describe("SettingsView 标签合并与二级子区", () => {
     }
   });
 
-  it("模型 tab 二级切换条可在 LLM/文生图/文生视频/视觉理解/语音识别 间切换", async () => {
+  it("模型 tab 二级切换条可在 LLM/图片生成/视频生成/视觉理解/语音识别 间切换", async () => {
     renderSettingsView({ initialSection: "models", initialSettings: settingsPayload() });
     const subtabs = within(screen.getByTestId("settings-subtabs"));
     expect(subtabs.getByRole("button", { name: "LLM" })).toHaveAttribute("aria-current", "true");
     expect(screen.getByText("当前配置")).toBeInTheDocument();
 
-    fireEvent.click(subtabs.getByRole("button", { name: "文生图" }));
-    expect(subtabs.getByRole("button", { name: "文生图" })).toHaveAttribute("aria-current", "true");
+    fireEvent.click(subtabs.getByRole("button", { name: "图片生成" }));
+    expect(subtabs.getByRole("button", { name: "图片生成" })).toHaveAttribute("aria-current", "true");
     expect(await screen.findByRole("switch", { name: "图片生成" })).toBeInTheDocument();
 
     fireEvent.click(subtabs.getByRole("button", { name: "视频生成" }));
@@ -208,7 +208,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     expect(await screen.findByRole("heading", { name: "语音识别" })).toBeInTheDocument();
   });
 
-  it("image 深链落到模型 tab 的文生图子区，父标签高亮", () => {
+  it("image 深链落到模型 tab 的图片生成子区，父标签高亮", () => {
     renderSettingsView({
       initialSection: "image",
       initialSettings: settingsPayload(),
@@ -216,7 +216,7 @@ describe("SettingsView 标签合并与二级子区", () => {
     });
     expect(screen.getByRole("button", { name: "模型" })).toHaveAttribute("aria-current", "page");
     expect(
-      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }),
+      within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "图片生成" }),
     ).toHaveAttribute("aria-current", "true");
     expect(screen.getByRole("switch", { name: "图片生成" })).toBeInTheDocument();
   });

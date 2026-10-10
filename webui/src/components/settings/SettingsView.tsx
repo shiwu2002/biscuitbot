@@ -47,6 +47,7 @@ import {
   RotateCcw,
   Search,
   Server,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Trash2,
@@ -1425,7 +1426,7 @@ export function SettingsView({
     }
   };
 
-  /** 「模型」tab：二级切换条 + 各子区面板（LLM / 文生图 / 文生视频占位 / 视觉理解 / 语音识别 / 语音合成）。 */
+  /** 「模型」tab：二级切换条 + 各子区面板（LLM / 图片生成 / 视频 / 视觉理解 / 语音识别 / 语音合成）。 */
   const renderModelsTab = (sub: SettingsSectionKey, settings: SettingsPayload) => (
     <div className="space-y-8">
       <SettingsSubTabs tabs={MODEL_SUB_TABS} active={sub} onSelect={selectSection} />
@@ -1815,22 +1816,32 @@ function topLevelSection(section: SettingsSectionKey): SettingsSectionKey {
   return section;
 }
 
-/** 模型 tab 二级切换条（子区键即 section key，点选即 selectSection）。 */
-const MODEL_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }> = [
-  { key: "providers", labelKey: "settings.subtabs.model.providers", fallback: "模型厂商" },
-  { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM" },
-  { key: "image", labelKey: "settings.subtabs.model.image", fallback: "文生图" },
-  { key: "video", labelKey: "settings.subtabs.model.video", fallback: "视频生成" },
-  { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视觉理解" },
-  { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "语音识别" },
-  { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "语音合成" },
+/** 模型 tab 二级切换条（子区键即 section key，点选即 selectSection）。LLM 为主配置置顶。 */
+const MODEL_SUB_TABS: Array<{
+  key: SettingsSectionKey;
+  labelKey: string;
+  fallback: string;
+  icon: LucideIcon;
+}> = [
+  { key: "models", labelKey: "settings.subtabs.model.llm", fallback: "LLM", icon: Brain },
+  { key: "providers", labelKey: "settings.subtabs.model.providers", fallback: "模型厂商", icon: Layers },
+  { key: "image", labelKey: "settings.subtabs.model.image", fallback: "图片生成", icon: ImageIcon },
+  { key: "video", labelKey: "settings.subtabs.model.video", fallback: "视频生成", icon: PlayCircle },
+  { key: "vision", labelKey: "settings.subtabs.model.vision", fallback: "视觉理解", icon: Eye },
+  { key: "voice", labelKey: "settings.subtabs.model.asr", fallback: "语音识别", icon: Mic },
+  { key: "tts", labelKey: "settings.subtabs.model.tts", fallback: "语音合成", icon: Waves },
 ];
 
 /** 系统 tab 二级切换条。 */
-const SYSTEM_SUB_TABS: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }> = [
-  { key: "runtime", labelKey: "settings.subtabs.system.runtime", fallback: "运行" },
-  { key: "systemIo", labelKey: "settings.subtabs.system.systemIo", fallback: "系统 IO" },
-  { key: "advanced", labelKey: "settings.subtabs.system.advanced", fallback: "安全" },
+const SYSTEM_SUB_TABS: Array<{
+  key: SettingsSectionKey;
+  labelKey: string;
+  fallback: string;
+  icon: LucideIcon;
+}> = [
+  { key: "runtime", labelKey: "settings.subtabs.system.runtime", fallback: "运行", icon: Server },
+  { key: "systemIo", labelKey: "settings.subtabs.system.systemIo", fallback: "系统 IO", icon: HardDrive },
+  { key: "advanced", labelKey: "settings.subtabs.system.advanced", fallback: "安全", icon: ShieldCheck },
 ];
 
 function visibleWebuiDefaultAccessMode(mode: string | null | undefined): WebuiDefaultAccessMode {
@@ -1934,7 +1945,7 @@ function SettingsSubTabs({
   active,
   onSelect,
 }: {
-  tabs: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string }>;
+  tabs: Array<{ key: SettingsSectionKey; labelKey: string; fallback: string; icon?: LucideIcon }>;
   active: SettingsSectionKey;
   onSelect: (section: SettingsSectionKey) => void;
 }) {
@@ -1946,6 +1957,7 @@ function SettingsSubTabs({
     >
       {tabs.map((tab) => {
         const selected = tab.key === active;
+        const Icon = tab.icon;
         return (
           <button
             key={tab.key}
@@ -1953,12 +1965,24 @@ function SettingsSubTabs({
             aria-current={selected ? "true" : undefined}
             onClick={() => onSelect(tab.key)}
             className={cn(
-              "flex h-8 shrink-0 items-center rounded-full px-3.5 text-[13px] transition-[color,background-color,box-shadow,font-weight] duration-200",
+              "group flex h-8 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-[color,background-color,box-shadow,font-weight] duration-200",
               selected
                 ? "bg-background font-semibold text-foreground shadow-[0_1px_3px_hsl(var(--cyber-glow)/0.22),0_0_0_1px_hsl(var(--cyber-glow)/0.3)]"
                 : "font-medium text-muted-foreground/75 hover:text-foreground",
             )}
           >
+            {Icon ? (
+              <Icon
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0",
+                  selected
+                    ? "text-[hsl(var(--cyber-glow-soft))]"
+                    : "text-muted-foreground/55 transition-colors group-hover:text-foreground",
+                )}
+                strokeWidth={2}
+                aria-hidden
+              />
+            ) : null}
             {t(tab.labelKey, { defaultValue: tab.fallback })}
           </button>
         );
@@ -2999,7 +3023,7 @@ function ProvidersSettings({
       <p className="max-w-[42rem] text-[13px] leading-6 text-muted-foreground">
         {tx(
           "settings.providers.description",
-          "配置各厂商的 API Key 与 API 地址。配置后，文生图 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
+          "配置各厂商的 API Key 与 API 地址。配置后，图片生成 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
         )}
       </p>
       <div className="relative">
@@ -3059,12 +3083,12 @@ function ImageGenerationSettings({
 }) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
-  const imageProviders = providersWithCapability(settings, "image").filter(
-    (provider) => provider.configured,
+  // 卡片列出全部声明 image 能力的厂商（含未配置，与视频生成页一致）；
+  // 未配置的展示「配置厂商」入口，已配置的可点选为当前厂商。
+  const imageProviders = providersWithCapability(settings, "image");
+  const providerConfigured = imageProviders.some(
+    (provider) => provider.name === form.provider && provider.configured,
   );
-  const selectedProvider =
-    imageProviders.find((provider) => provider.name === form.provider) ?? imageProviders[0];
-  const providerConfigured = !!selectedProvider?.configured;
   const missingCredential = form.enabled && !providerConfigured;
   const aspectOptions = optionRowsWithCurrent(
     IMAGE_ASPECT_RATIO_OPTIONS.map((value) => ({ name: value, label: value })),
@@ -3079,48 +3103,64 @@ function ImageGenerationSettings({
     <div className="space-y-7">
       <section>
         <SettingsSectionTitle>{tx("settings.sections.imageGeneration", "Image generation")}</SettingsSectionTitle>
-        <SettingsGroup>
-          <SettingsRow
-            title={tx("settings.rows.imageGeneration", "Image generation")}
-            description={tx("settings.help.imageGeneration", "Expose generate_image in chats when a configured image provider is available.")}
-          >
-            <ToggleButton
-              checked={form.enabled}
-              onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
-              ariaLabel={tx("settings.rows.imageGeneration", "Image generation")}
-              label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.imageProvider", "Image provider")}
-            description={tx("settings.help.imageProvider", "Choose the registry provider used by generate_image.")}
-          >
-            <ProviderPicker
-              providers={imageProviders}
-              value={form.provider}
-              emptyLabel={tx("settings.image.selectProvider", "Select provider")}
-              showProviderLogos={showBrandLogos}
-              onChange={(provider) => onChangeForm((prev) => ({ ...prev, provider }))}
-            />
-          </SettingsRow>
-          <SettingsRow
-            title={tx("settings.rows.imageProviderStatus", "Provider status")}
-            description={tx("settings.help.imageProviderStatus", "Image generation reuses provider credentials from Providers.")}
-          >
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <StatusPill tone={providerConfigured ? "success" : "neutral"}>
-                {providerConfigured
-                  ? tx("settings.values.configured", "Configured")
-                  : tx("settings.values.notConfigured", "Not configured")}
-              </StatusPill>
-              {!providerConfigured ? (
-                <Button size="sm" variant="outline" onClick={onOpenProviders} className="rounded-full">
-                  {tx("settings.image.configureProvider", "Configure provider")}
-                </Button>
-              ) : null}
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+          {tx(
+            "settings.image.cardIntro",
+            "开启后聊天中可调用 generate_image；点选下方卡片切换图片厂商，默认参数对所选厂商生效。",
+          )}
+        </p>
+        <div className="mt-4">
+          <SettingsGroup>
+            <SettingsRow
+              title={tx("settings.rows.imageGeneration", "Image generation")}
+              description={tx("settings.help.imageGeneration", "Expose generate_image in chats when a configured image provider is available.")}
+            >
+              <ToggleButton
+                checked={form.enabled}
+                onChange={(enabled) => onChangeForm((prev) => ({ ...prev, enabled }))}
+                ariaLabel={tx("settings.rows.imageGeneration", "Image generation")}
+                label={form.enabled ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+              />
+            </SettingsRow>
+          </SettingsGroup>
+        </div>
+        {imageProviders.length ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {imageProviders.map((provider) => (
+              <ImageProviderCard
+                key={provider.name}
+                provider={provider}
+                active={provider.name === form.provider}
+                settings={settings}
+                showProviderLogos={showBrandLogos}
+                onSelect={() => onChangeForm((prev) => ({ ...prev, provider: provider.name }))}
+                onOpenProviders={onOpenProviders}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-dashed border-border/70 bg-card/30 px-4 py-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-[13px] font-medium text-foreground">
+                {tx("settings.image.emptyProviders", "No image providers yet")}
+              </div>
+              <div className="mt-0.5 text-[12px] leading-5 text-muted-foreground">
+                {tx(
+                  "settings.image.emptyProvidersHint",
+                  "先在「模型厂商」添加支持图片生成的提供商，卡片会自动出现。",
+                )}
+              </div>
             </div>
-        </SettingsRow>
-        </SettingsGroup>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onOpenProviders}
+              className="shrink-0 rounded-full"
+            >
+              {tx("settings.image.configureProvider", "Configure provider")}
+            </Button>
+          </div>
+        )}
       </section>
 
       <section>
@@ -3198,6 +3238,65 @@ function ImageGenerationSettings({
           />
         </SettingsGroup>
       </section>
+    </div>
+  );
+}
+
+/** 图片厂商卡片：品牌图标 + 配置状态 + 启用入口；选中卡片带霓虹描边（视觉对齐视频生成页）。 */
+function ImageProviderCard({
+  provider,
+  active,
+  settings,
+  showProviderLogos,
+  onSelect,
+  onOpenProviders,
+}: {
+  provider: SettingsPayload["providers"][number];
+  active: boolean;
+  settings: SettingsPayload;
+  showProviderLogos: boolean;
+  onSelect: () => void;
+  onOpenProviders: () => void;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  const label = providerDisplayLabel(settings.providers, provider.name) || provider.name;
+  const configured = provider.configured;
+
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-2xl border p-4 transition-all duration-200",
+        active
+          ? "border-[hsl(var(--cyber-glow)/0.45)] bg-[hsl(var(--cyber-glow)/0.06)] shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.28),0_10px_30px_-14px_hsl(var(--cyber-glow)/0.5)]"
+          : "border-border/60 bg-card/40 hover:-translate-y-0.5 hover:border-[hsl(var(--cyber-glow)/0.3)] hover:bg-card/70 hover:shadow-[0_10px_28px_-16px_hsl(var(--cyber-glow)/0.4)]",
+      )}
+    >
+      <div className="flex items-center gap-2.5">
+        <ProviderPickerIcon provider={provider.name} showBrandLogos={showProviderLogos} />
+        <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{label}</span>
+        <StatusPill tone={configured ? "success" : "neutral"}>
+          {configured
+            ? tx("settings.values.configured", "Configured")
+            : tx("settings.values.notConfigured", "Not configured")}
+        </StatusPill>
+      </div>
+      <div className="mt-auto flex items-center justify-end gap-2">
+        {active ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[hsl(var(--cyber-glow)/0.12)] px-2.5 py-1 text-[11px] font-medium text-[hsl(var(--cyber-glow-soft))]">
+            <Check className="h-3 w-3" aria-hidden />
+            {tx("settings.image.activeProvider", "In use")}
+          </span>
+        ) : configured ? (
+          <Button size="sm" variant="outline" onClick={onSelect} className="rounded-full">
+            {tx("settings.image.useProvider", "Use")}
+          </Button>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={onOpenProviders} className="rounded-full">
+            {tx("settings.image.configureProvider", "Configure provider")}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -3341,10 +3440,21 @@ function VendorVideoCard({
     onChangeForm((prev) => ({ ...prev, [vendor]: { ...prev[vendor], ...patch } }));
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/40">
+    <div
+      className={cn(
+        "rounded-2xl border bg-card/40 transition-all duration-200",
+        configured
+          ? "border-[hsl(var(--cyber-glow)/0.22)] shadow-[0_8px_28px_-18px_hsl(var(--cyber-glow)/0.5)] hover:border-[hsl(var(--cyber-glow)/0.4)] hover:bg-card/70 hover:shadow-[0_12px_32px_-16px_hsl(var(--cyber-glow)/0.55)]"
+          : "border-border/60 hover:border-[hsl(var(--cyber-glow)/0.28)] hover:bg-card/70",
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3 p-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
+            <ProviderPickerIcon
+              provider={vendorSettings?.provider ?? vendor}
+              showBrandLogos={showBrandLogos}
+            />
             <span className="text-[13px] font-medium">{label}</span>
             <StatusPill tone={configured ? "success" : "neutral"}>
               {configured
@@ -3356,7 +3466,7 @@ function VendorVideoCard({
             {support.map((key) => (
               <span
                 key={key}
-                className="rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground"
+                className="rounded-full bg-[hsl(var(--cyber-glow)/0.07)] px-2 py-0.5 text-[11px] text-muted-foreground ring-1 ring-inset ring-[hsl(var(--cyber-glow)/0.12)]"
               >
                 {VIDEO_SUPPORT_LABELS[key] ?? key}
               </span>
@@ -3379,11 +3489,18 @@ function VendorVideoCard({
             {expanded
               ? tx("settings.video.collapse", "收起")
               : tx("settings.video.expand", "默认参数")}
+            <ChevronDown
+              className={cn(
+                "ml-1 h-3.5 w-3.5 text-muted-foreground transition-transform duration-200",
+                expanded && "rotate-180",
+              )}
+              aria-hidden
+            />
           </Button>
         </div>
       </div>
       {expanded ? (
-        <div className="border-t border-border/60 p-4">
+        <div className="animate-in fade-in slide-in-from-top-1 border-t border-border/60 p-4 duration-200">
           <SettingsGroup>
             <SettingsRow
               title={tx("settings.rows.videoModel", "视频模型")}
@@ -6292,7 +6409,7 @@ function ModelIdPicker({
   showProviderLogos: boolean;
   onChange: (model: string) => void;
   providerRows?: SettingsPayload["providers"];
-  /** 静态建议模型（如视频厂商）：提供时不下发检索请求，仅展示这份列表，仍可自由手输。 */
+  /** 静态建议模型（如视频厂商）：候选回退 + 置顶项；厂商可拉取列表时与真实列表合并（建议在前、去重），仍可自由手输。 */
   suggestedModels?: string[];
 }) {
   const { t } = useTranslation();
@@ -6315,12 +6432,18 @@ function ModelIdPicker({
   const providerRequiresConfiguration = hasConcreteProvider && !providerConfigured;
   const providerUsesManualModelIds =
     hasConcreteProvider && providerConfigured && providerRow?.auth_type === "oauth";
-  const canFetchModels =
-    !hasSuggestedModels && hasConcreteProvider && providerConfigured && !providerUsesManualModelIds;
+  const canFetchModels = hasConcreteProvider && providerConfigured && !providerUsesManualModelIds;
   const normalizedQuery = query.trim().toLowerCase();
-  const providerModels: ProviderModelsPayload["models"] = hasSuggestedModels
+  const suggestedRows: ProviderModelsPayload["models"] = hasSuggestedModels
     ? suggestedModels!.map((id) => ({ id, label: id }))
-    : payload?.models ?? [];
+    : [];
+  const providerModels: ProviderModelsPayload["models"] =
+    payload?.status === "available"
+      ? [
+          ...suggestedRows,
+          ...payload.models.filter((model) => !suggestedRows.some((row) => row.id === model.id)),
+        ]
+      : suggestedRows;
   const visibleModels = providerModels
     .filter((model) => {
       if (!normalizedQuery) return true;
@@ -6336,9 +6459,9 @@ function ModelIdPicker({
     canFetchModels && (!defersModelList || hasDeferredSearchQuery);
   const waitingForModelSearch =
     open && canFetchModels && defersModelList && !hasDeferredSearchQuery;
-  const hasModelList = hasSuggestedModels || payload?.status === "available";
   const showModels = Boolean(
-    hasSuggestedModels || (hasModelList && payload && (!isCatalog || normalizedQuery)),
+    providerModels.length > 0 &&
+      (!payload || payload.status !== "available" || !isCatalog || normalizedQuery),
   );
   const customCandidate = query.trim();
   const allowCustomModel = !providerRequiresConfiguration || hasSuggestedModels;

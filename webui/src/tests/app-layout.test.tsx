@@ -1633,11 +1633,12 @@ describe("App layout", () => {
     clickProviderRow("Atomic Chat");
     expect(screen.getAllByText("http://localhost:1337/v1").length).toBeGreaterThan(0);
 
-    // 图片生成是「模型」tab 的二级子区（文生图），经子区切换条进入
-    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "文生图" }));
+    // 图片生成是「模型」tab 的二级子区，经子区切换条进入
+    fireEvent.click(within(screen.getByTestId("settings-subtabs")).getByRole("button", { name: "图片生成" }));
     expect(screen.getByRole("heading", { name: "模型" })).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "图片生成" })).toBeInTheDocument();
-    expect(screen.getByText("提供商状态")).toBeInTheDocument();
+    // 图片厂商卡片化后，无具备 image 能力的厂商时展示空态卡片
+    expect(screen.getByText("暂无支持图片生成的厂商")).toBeInTheDocument();
     expect(screen.getByText("openai/gpt-5.4-image-2")).toBeInTheDocument();
     expect(screen.getByText("保存目录")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();

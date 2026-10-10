@@ -944,6 +944,47 @@ def test_resolve_model_list_provider_synthesizes_non_llm_capabilities() -> None:
     assert _resolve_model_list_provider(config, "zzz-not-real") is None
 
 
+def test_provider_models_payload_configured_volcengine_uses_ark_fallback_base(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """回归：「模型厂商」页配置的火山方舟（model_extra 自定义项）仍能拉模型列表。
+
+    动态 spec 既无 default_api_base，is_direct=True 还会被误判免密钥；
+    此前该路径误报 missing_api_base（"Configure an API base URL to load
+    models."），卡死文生图页的模型选择。
+    """
+    config_path = tmp_path / "config.json"
+    config = Config.model_validate({"providers": {"volcengine": {"apiKey": "sk-ark"}}})
+    save_config(config, config_path)
+    monkeypatch.setattr("xianaibot.config.loader._current_config_path", config_path)
+
+    resolved = _resolve_model_list_provider(config, "volcengine")
+    assert resolved is not None
+    spec, name, provider_config = resolved
+    assert name == "volcengine"
+    assert spec.default_api_base == "https://ark.cn-beijing.volces.com/api/v3"
+    assert spec.is_direct is False
+    assert provider_config.api_key == "sk-ark"
+
+    def fake_get(url: str, **kwargs):
+        assert url == "https://ark.cn-beijing.volces.com/api/v3/models"
+        assert kwargs["headers"]["Authorization"] == "Bearer sk-ark"
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "doubao-seedream-4-0", "owned_by": "volcengine"}]},
+            request=httpx.Request("GET", url),
+        )
+
+    monkeypatch.setattr("xianaibot.webui.settings_api.httpx.get", fake_get)
+
+    payload = provider_models_payload({"provider": ["volcengine"]})
+
+    assert payload["provider"] == "volcengine"
+    assert payload["status"] == "available"
+    assert payload["models"][0]["id"] == "doubao-seedream-4-0"
+
+
 def test_provider_capabilities_derives_from_registries() -> None:
     """能力标签从 registry 推导：火山方舟=image+video、edge-tts=tts、groq=transcription。"""
     config = Config()

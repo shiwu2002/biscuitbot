@@ -554,6 +554,17 @@ def _resolve_model_list_provider(
                 default_api_base=spec.default_api_base or video_api_base,
                 is_direct=False,
             )
+        # 图像能力厂商同理：作为自定义厂商存入 model_extra 后，动态 spec 同样
+        # 没有 default_api_base 且 is_direct=True 会被误判「免密钥」（ollama
+        # 除外）。这里按图像注册表补默认地址（DashScope 等注册表内一等厂商
+        # 已有 LLM base，``or`` 保证不覆盖）。
+        elif get_image_gen_provider(key) is not None:
+            image_api_base = _image_default_base_url(get_image_gen_provider(key))
+            spec = replace(
+                spec,
+                default_api_base=spec.default_api_base or image_api_base,
+                is_direct=key == "ollama",
+            )
         return spec, key, provider_config
 
     name = provider_name.strip()

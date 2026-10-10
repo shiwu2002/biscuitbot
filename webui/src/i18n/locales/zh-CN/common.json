@@ -139,7 +139,7 @@
       "model": {
         "llm": "LLM",
         "providers": "模型厂商",
-        "image": "文生图",
+        "image": "图片生成",
         "video": "视频生成",
         "vision": "视觉理解",
         "asr": "语音识别",
@@ -593,7 +593,7 @@
       }
     },
     "providers": {
-      "description": "配置各厂商的 API Key 与 API 地址。配置后，文生图 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
+      "description": "配置各厂商的 API Key 与 API 地址。配置后，图片生成 / TTS / 语音转写等页面即可选择该厂商并拉取其模型列表。",
       "searchPlaceholder": "搜索提供商",
       "noMatches": "没有匹配的提供商。",
       "keyStatus": "密钥状态",
@@ -613,6 +613,11 @@
       "thirdPartyBrands": "产品名称、Logo 和品牌归各自所有者所有；此处仅用于识别，不代表背书或合作。"
     },
     "image": {
+      "cardIntro": "开启后聊天中可调用 generate_image；点选下方卡片切换图片厂商，默认参数对所选厂商生效。",
+      "useProvider": "使用",
+      "activeProvider": "使用中",
+      "emptyProviders": "暂无支持图片生成的厂商",
+      "emptyProvidersHint": "先在「模型厂商」添加支持图片生成的提供商，卡片会自动出现。",
       "selectProvider": "选择提供商",
       "selectAspect": "选择比例",
       "selectSize": "选择尺寸",

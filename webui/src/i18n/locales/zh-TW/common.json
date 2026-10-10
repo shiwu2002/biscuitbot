@@ -139,7 +139,7 @@
       "model": {
         "llm": "LLM",
         "providers": "模型廠商",
-        "image": "文生圖",
+        "image": "圖片生成",
         "video": "影片生成",
         "vision": "視覺理解",
         "asr": "語音辨識",
@@ -478,7 +478,7 @@
       }
     },
     "providers": {
-      "description": "配置各廠商的 API Key 與 API 位址。配置後，文生圖 / TTS / 語音轉寫等頁面即可選擇該廠商並拉取其模型列表。",
+      "description": "配置各廠商的 API Key 與 API 位址。配置後，圖片生成 / TTS / 語音轉寫等頁面即可選擇該廠商並拉取其模型列表。",
       "searchPlaceholder": "搜尋供應商",
       "noMatches": "沒有符合的供應商。",
       "keyStatus": "金鑰狀態",
@@ -495,6 +495,11 @@
       "readOnlyDescription": "已設定的供應商金鑰與位址由內部設定檔（config.json）統一維護，此處僅展示設定狀態。"
     },
     "image": {
+      "cardIntro": "開啟後聊天中可調用 generate_image；點選下方卡片切換圖片廠商，預設參數對所選廠商生效。",
+      "useProvider": "使用",
+      "activeProvider": "使用中",
+      "emptyProviders": "暫無支援圖片生成的廠商",
+      "emptyProvidersHint": "先在「模型廠商」新增支援圖片生成的供應商，卡片會自動出現。",
       "selectProvider": "選擇供應商",
       "selectAspect": "選擇比例",
       "selectSize": "選擇尺寸",
