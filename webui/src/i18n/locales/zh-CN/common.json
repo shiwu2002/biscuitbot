@@ -1287,7 +1287,14 @@
     "failed": "无法预览这个文件。",
     "routeMissing": "文件预览需要最新的 gateway。请重启夏奈儿 gateway 后再试。",
     "resize": "调整文件预览宽度",
-    "truncated": "文件较大，当前只显示前半部分预览。"
+    "truncated": "文件较大，当前只显示前半部分预览。",
+    "download": "下载",
+    "downloading": "正在准备下载...",
+    "reveal": "在文件夹中显示",
+    "revealing": "正在打开文件夹...",
+    "binary": "该文件为二进制文件，无法预览。",
+    "downloadFailed": "下载失败，请重试。",
+    "revealFailed": "无法在文件夹中定位该文件。"
   },
   "documentPreview": {
     "preview": "预览",

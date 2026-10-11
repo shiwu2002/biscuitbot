@@ -1,4 +1,4 @@
-"""Workspace-scoped source preview payloads for the WebUI."""
+"""Workspace-scoped file access payloads for the WebUI."""
 
 from __future__ import annotations
 
@@ -22,13 +22,8 @@ class WebUIFilePreviewError(ValueError):
         self.message = message
 
 
-def file_preview_payload(
-    raw_path: str | None,
-    *,
-    scope: WorkspaceScope,
-    max_bytes: int = MAX_FILE_PREVIEW_BYTES,
-) -> dict[str, Any]:
-    """Return a text preview for a file inside the session workspace."""
+def resolve_workspace_file(raw_path: str | None, *, scope: WorkspaceScope) -> Path:
+    """Resolve a WebUI-supplied path to an existing file inside the workspace."""
 
     path = _clean_preview_path(raw_path)
     if not path:
@@ -52,6 +47,18 @@ def file_preview_payload(
 
     if not resolved.is_file():
         raise WebUIFilePreviewError(404, "file not found")
+    return resolved
+
+
+def file_preview_payload(
+    raw_path: str | None,
+    *,
+    scope: WorkspaceScope,
+    max_bytes: int = MAX_FILE_PREVIEW_BYTES,
+) -> dict[str, Any]:
+    """Return a text preview for a file inside the session workspace."""
+
+    resolved = resolve_workspace_file(raw_path, scope=scope)
 
     try:
         with open(resolved, "rb") as f:

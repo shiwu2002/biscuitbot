@@ -41,7 +41,11 @@ from xianaibot.webui.capabilities_api import (
     capability_detail_payload,
 )
 from xianaibot.webui.cold_storage_api import cold_storage_payload
-from xianaibot.webui.file_preview import WebUIFilePreviewError, file_preview_payload
+from xianaibot.webui.file_preview import (
+    WebUIFilePreviewError,
+    file_preview_payload,
+    resolve_workspace_file,
+)
 from xianaibot.webui.gateway_tokens import GatewayTokenStore, token_response_payload
 from xianaibot.webui.http_utils import (
     case_insensitive_header as _case_insensitive_header,
@@ -313,7 +317,7 @@ class GatewayHTTPHandler:
             return response
 
         # Session routes
-        response = await self._dispatch_session_routes(request, got)
+        response = await self._dispatch_session_routes(connection, request, got)
         if response is not None:
             return response
 
@@ -431,7 +435,9 @@ class GatewayHTTPHandler:
 
     # -- Session routes -----------------------------------------------------
 
-    async def _dispatch_session_routes(self, request: WsRequest, got: str) -> Response | None:
+    async def _dispatch_session_routes(
+        self, connection: Any, request: WsRequest, got: str
+    ) -> Response | None:
         m = re.match(r"^/api/sessions/([^/]+)/messages$", got)
         if m:
             # 会话消息读取含同步文件 IO，放到线程池避免阻塞事件循环
@@ -445,6 +451,16 @@ class GatewayHTTPHandler:
         m = re.match(r"^/api/sessions/([^/]+)/file-preview$", got)
         if m:
             return self._handle_file_preview(request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/file-download$", got)
+        if m:
+            # 下载需把工作区文件 staging 进 media 目录（同步文件 IO），放到线程池执行
+            return await asyncio.to_thread(self._handle_file_download, request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/file-reveal$", got)
+        if m:
+            # explorer /select 与 open -R 都是阻塞系统调用，放到线程池执行
+            return await asyncio.to_thread(self._handle_file_reveal, connection, request, m.group(1))
 
         m = re.match(r"^/api/sessions/([^/]+)/automations$", got)
         if m:
@@ -568,6 +584,63 @@ class GatewayHTTPHandler:
         except WebUIFilePreviewError as e:
             return _http_error(e.status, e.message)
         return _http_json_response(payload)
+
+    def _handle_file_download(self, request: WsRequest, key: str) -> Response:
+        """Hand back a signed media URL the browser can download natively."""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not _is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        path = _query_first(_parse_query(request.path), "path")
+        try:
+            resolved = resolve_workspace_file(
+                path,
+                scope=self.workspaces.scope_for_session_key(decoded_key),
+            )
+        except WebUIFilePreviewError as e:
+            return _http_error(e.status, e.message)
+        staged = self.media.sign_or_stage_media_path(resolved)
+        if not staged or not staged.get("url"):
+            return _http_error(500, "failed to prepare download")
+        # ``staged["name"]`` 会剥掉 media 入站加的前缀，工作区文件应回传真实文件名。
+        return _http_json_response({"url": staged["url"], "name": resolved.name})
+
+    def _handle_file_reveal(
+        self, connection: Any, request: WsRequest, key: str
+    ) -> Response:
+        """在系统文件管理器中定位工作区文件（只选中，不执行文件本身）。
+
+        仅当客户端与工作区同机时可用（``workspace_controls_available``，与工作目录
+        切换同一谓词）：文件本来就在用户自己的磁盘上，直接定位过去，不必再拷一份到
+        media 目录 + 下载目录。异地浏览器没有这台机器，只能走 ``file-download``。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if not self.workspace_controls_available(connection):
+            return _http_error(
+                403, "revealing files is only available on the machine running the workspace"
+            )
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not _is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        path = _query_first(_parse_query(request.path), "path")
+        try:
+            resolved = resolve_workspace_file(
+                path,
+                scope=self.workspaces.scope_for_session_key(decoded_key),
+            )
+        except WebUIFilePreviewError as e:
+            return _http_error(e.status, e.message)
+        try:
+            self._reveal_in_file_manager(resolved)
+        except OSError as exc:
+            return _http_error(500, f"failed to reveal file: {exc}")
+        return _http_json_response({"ok": True, "path": str(resolved)})
 
     def _handle_session_automations(self, request: WsRequest, key: str) -> Response:
         if not self.check_api_token(request):
@@ -943,6 +1016,22 @@ class GatewayHTTPHandler:
             subprocess.run(["open", target], check=True)
         else:
             subprocess.run(["xdg-open", target], check=True)
+
+    @staticmethod
+    def _reveal_in_file_manager(file_path: Path) -> None:
+        """在系统文件管理器中**选中**一个文件（跨平台），不执行文件本身。
+
+        Windows: ``explorer /select,<file>``；macOS: ``open -R``；其余平台无统一的
+        「选中文件」入口，退化为打开所在目录。注意 Windows 的 explorer 即使成功也
+        可能返回非 0 退出码，故 ``check=False``（与 ``_open_directory`` 一致）。
+        """
+        target = str(file_path)
+        if sys.platform == "win32":
+            subprocess.run(["explorer", f"/select,{target}"], check=False)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", "-R", target], check=True)
+        else:
+            subprocess.run(["xdg-open", str(file_path.parent)], check=True)
 
     def _handle_commands(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

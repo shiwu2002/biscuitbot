@@ -849,6 +849,7 @@ export function ThreadShell({
           token={token}
           desktopWidth={filePreviewWidth}
           isClosing={filePreviewClosing}
+          canRevealFile={workspaceControls?.can_reveal_file === true}
           onResizeStart={handleFilePreviewResizeStart}
           onClose={handleCloseFilePreview}
         />

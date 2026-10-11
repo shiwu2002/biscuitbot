@@ -65,6 +65,7 @@ def test_workspace_payload_is_config_data_dir_scoped(tmp_path, monkeypatch) -> N
     assert payload["default_scope"]["access_mode"] == "full"
     assert payload["default_access_mode"] == "default"
     assert payload["controls"]["can_change_project"] is True
+    assert payload["controls"]["can_reveal_file"] is True
 
 
 def test_workspace_payload_hides_mutable_state_when_controls_unavailable(
@@ -84,6 +85,8 @@ def test_workspace_payload_hides_mutable_state_when_controls_unavailable(
     assert payload["default_scope"]["project_path"] == str(default.resolve())
     assert payload["controls"]["can_change_project"] is False
     assert payload["controls"]["can_use_full_access"] is False
+    # 异地浏览器没有这台机器上的文件，只能下载
+    assert payload["controls"]["can_reveal_file"] is False
 
 
 def test_workspace_payload_uses_webui_default_access_mode(tmp_path, monkeypatch) -> None:

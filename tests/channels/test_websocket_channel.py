@@ -3013,6 +3013,365 @@ def test_handle_file_preview_rejects_paths_outside_workspace(tmp_path) -> None:
     assert resp.status_code == 403
 
 
+def _local_connection() -> MagicMock:
+    """客户端与工作区同机（127.0.0.1）的连接对象。"""
+    return MagicMock(remote_address=("127.0.0.1", 52341))
+
+
+def _remote_connection() -> MagicMock:
+    """异地浏览器连接：文件不在它自己的机器上，只能下载。"""
+    return MagicMock(remote_address=("203.0.113.7", 52341))
+
+
+def _file_download_request(enc: str, path: str, *, token: str = "tok"):
+    from urllib.parse import quote
+
+    from websockets.datastructures import Headers
+    from websockets.http11 import Request
+
+    return Request(
+        f"/api/sessions/{enc}/file-download?path={quote(path, safe='')}",
+        Headers([("Authorization", f"Bearer {token}")]),
+    )
+
+
+def test_handle_file_download_returns_fetchable_media_url(monkeypatch, tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    archive = workspace / "reports" / "报告.zip"
+    archive.parent.mkdir(parents=True)
+    archive.write_bytes(b"PK\x03\x04zip-bytes")
+
+    media_root = tmp_path / "media"
+    ws_media = media_root / "websocket"
+    ws_media.mkdir(parents=True)
+
+    def fake_media_dir(channel: str | None = None):
+        return ws_media if channel == "websocket" else media_root
+
+    monkeypatch.setattr("xianaibot.webui.media_gateway.get_media_dir", fake_media_dir)
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    key = "websocket:file-download"
+    enc = quote(key, safe="")
+
+    resp = gateway.http._handle_file_download(
+        _file_download_request(enc, "reports/报告.zip"),
+        enc,
+    )
+
+    assert resp.status_code == 200
+    body = json.loads(resp.body.decode())
+    # 真实文件名，不被 media 入站前缀改写
+    assert body["name"] == "报告.zip"
+    assert body["url"].startswith("/api/media/")
+
+    # 签出的 URL 必须真的能取回原始字节，否则前端仍拿不到文件
+    parts = body["url"].strip("/").split("/")
+    assert parts[:2] == ["api", "media"]
+    fetched = gateway.media.serve_signed_media(parts[2], parts[3])
+    assert fetched.status_code == 200
+    assert fetched.body == b"PK\x03\x04zip-bytes"
+
+
+@pytest.mark.asyncio
+async def test_session_route_dispatches_file_download(monkeypatch, tmp_path) -> None:
+    """路由表必须挂上 file-download，否则前端只会拿到 404。"""
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "out.zip").write_bytes(b"PK\x03\x04")
+
+    media_root = tmp_path / "media"
+    ws_media = media_root / "websocket"
+    ws_media.mkdir(parents=True)
+
+    def fake_media_dir(channel: str | None = None):
+        return ws_media if channel == "websocket" else media_root
+
+    monkeypatch.setattr("xianaibot.webui.media_gateway.get_media_dir", fake_media_dir)
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-download", safe="")
+
+    resp = await gateway.http._dispatch_session_routes(
+        _local_connection(),
+        _file_download_request(enc, "out.zip"),
+        f"/api/sessions/{enc}/file-download",
+    )
+
+    assert resp.status_code == 200
+    assert json.loads(resp.body.decode())["name"] == "out.zip"
+
+
+@pytest.mark.asyncio
+async def test_file_download_is_fetchable_over_http(bus, monkeypatch, tmp_path) -> None:
+    """端到端：拿到签名 URL 后，浏览器侧直接 GET 就能取回原始字节。"""
+    from urllib.parse import quote
+
+    port = 29873
+    archive_bytes = b"PK\x03\x04zip-bytes"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "out.zip").write_bytes(archive_bytes)
+
+    media_root = tmp_path / "media"
+    ws_media = media_root / "websocket"
+    ws_media.mkdir(parents=True)
+
+    def fake_media_dir(channel: str | None = None):
+        return ws_media if channel == "websocket" else media_root
+
+    monkeypatch.setattr("xianaibot.webui.media_gateway.get_media_dir", fake_media_dir)
+
+    cfg: dict[str, Any] = {
+        "enabled": True,
+        "allowFrom": ["*"],
+        "host": "127.0.0.1",
+        "port": port,
+        "path": "/ws",
+        "websocketRequiresToken": False,
+    }
+    gateway = build_gateway_services(
+        config=WebSocketConfig.model_validate(cfg),
+        bus=bus,
+        session_manager=None,
+        static_dist_path=None,
+        workspace_path=workspace,
+        default_restrict_to_workspace=False,
+        runtime_model_name=None,
+        runtime_surface="browser",
+        runtime_capabilities_overrides=None,
+    )
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    channel = WebSocketChannel(cfg, bus, gateway=gateway)
+
+    server_task = asyncio.create_task(channel.start())
+    await asyncio.sleep(0.3)
+    try:
+        enc = quote("websocket:file-download", safe="")
+        resp = await _http_get(
+            f"http://127.0.0.1:{port}/api/sessions/{enc}/file-download?path=out.zip",
+            headers={"Authorization": "Bearer tok"},
+        )
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["name"] == "out.zip"
+
+        downloaded = await _http_get(f"http://127.0.0.1:{port}{body['url']}")
+        assert downloaded.status_code == 200
+        assert downloaded.content == archive_bytes
+    finally:
+        await channel.stop()
+        await server_task
+
+
+def test_handle_file_download_rejects_paths_outside_workspace(tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "secret.zip"
+    outside.write_bytes(b"PK\x03\x04secret")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-download", safe="")
+
+    resp = gateway.http._handle_file_download(
+        _file_download_request(enc, str(outside)),
+        enc,
+    )
+
+    assert resp.status_code == 403
+
+
+def test_handle_file_download_requires_token_and_existing_file(tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-download", safe="")
+
+    missing = gateway.http._handle_file_download(
+        _file_download_request(enc, "nope.zip"),
+        enc,
+    )
+    assert missing.status_code == 404
+
+    unauthorized = gateway.http._handle_file_download(
+        _file_download_request(enc, "nope.zip", token="bad"),
+        enc,
+    )
+    assert unauthorized.status_code == 401
+
+
+def _file_reveal_request(enc: str, path: str, *, token: str = "tok"):
+    from urllib.parse import quote
+
+    from websockets.datastructures import Headers
+    from websockets.http11 import Request
+
+    return Request(
+        f"/api/sessions/{enc}/file-reveal?path={quote(path, safe='')}",
+        Headers([("Authorization", f"Bearer {token}")]),
+    )
+
+
+def _stub_reveal(monkeypatch, gateway: Any) -> list[Path]:
+    """替换真正的 explorer/open 调用，只记录被定位的路径。"""
+    revealed: list[Path] = []
+    monkeypatch.setattr(
+        gateway.http,
+        "_reveal_in_file_manager",
+        lambda file_path: revealed.append(file_path),
+    )
+    return revealed
+
+
+def test_handle_file_reveal_selects_workspace_file(monkeypatch, tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    target = workspace / "reports" / "报告.zip"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"PK\x03\x04")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-reveal", safe="")
+    revealed = _stub_reveal(monkeypatch, gateway)
+
+    resp = gateway.http._handle_file_reveal(
+        _local_connection(),
+        _file_reveal_request(enc, "reports/报告.zip"),
+        enc,
+    )
+
+    assert resp.status_code == 200
+    # 定位的是工作区里的原文件本身——不 staging、不产生任何副本
+    assert revealed == [target.resolve()]
+    assert json.loads(resp.body.decode())["path"] == str(target.resolve())
+
+
+def test_handle_file_reveal_is_same_machine_only(monkeypatch, tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "out.zip").write_bytes(b"PK\x03\x04")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-reveal", safe="")
+    revealed = _stub_reveal(monkeypatch, gateway)
+
+    remote = gateway.http._handle_file_reveal(
+        _remote_connection(),
+        _file_reveal_request(enc, "out.zip"),
+        enc,
+    )
+    assert remote.status_code == 403
+    assert revealed == []
+
+    # 打包桌面端（native）无 localhost 对端地址也应放行
+    native = _basic_handler(MagicMock(), workspace_path=workspace, runtime_surface="native")
+    native.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    native_revealed = _stub_reveal(monkeypatch, native)
+    allowed = native.http._handle_file_reveal(
+        _remote_connection(),
+        _file_reveal_request(enc, "out.zip"),
+        enc,
+    )
+    assert allowed.status_code == 200
+    assert [p.name for p in native_revealed] == ["out.zip"]
+
+
+def test_handle_file_reveal_rejects_paths_outside_workspace(tmp_path) -> None:
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "secret.zip"
+    outside.write_bytes(b"PK\x03\x04secret")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-reveal", safe="")
+
+    outside_resp = gateway.http._handle_file_reveal(
+        _local_connection(),
+        _file_reveal_request(enc, str(outside)),
+        enc,
+    )
+    assert outside_resp.status_code == 403
+
+    missing = gateway.http._handle_file_reveal(
+        _local_connection(),
+        _file_reveal_request(enc, "nope.zip"),
+        enc,
+    )
+    assert missing.status_code == 404
+
+    unauthorized = gateway.http._handle_file_reveal(
+        _local_connection(),
+        _file_reveal_request(enc, "nope.zip", token="bad"),
+        enc,
+    )
+    assert unauthorized.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_session_route_dispatches_file_reveal(monkeypatch, tmp_path) -> None:
+    """路由表必须挂上 file-reveal，否则前端只会拿到 404。"""
+    from urllib.parse import quote
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "out.zip").write_bytes(b"PK\x03\x04")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:file-reveal", safe="")
+    _stub_reveal(monkeypatch, gateway)
+
+    resp = await gateway.http._dispatch_session_routes(
+        _local_connection(),
+        _file_reveal_request(enc, "out.zip"),
+        f"/api/sessions/{enc}/file-reveal",
+    )
+
+    assert resp.status_code == 200
+    assert json.loads(resp.body.decode())["ok"] is True
+
+
+def test_reveal_in_file_manager_selects_the_file_on_windows(monkeypatch, tmp_path) -> None:
+    """Windows 必须用 /select,<file> 定位文件本身，而不是打开所在目录。"""
+    import subprocess as _subprocess
+
+    from xianaibot.webui.ws_http import GatewayHTTPHandler
+
+    target = tmp_path / "报告.zip"
+    calls: list[list[str]] = []
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr(
+        _subprocess,
+        "run",
+        lambda args, **kwargs: calls.append(args),
+    )
+
+    GatewayHTTPHandler._reveal_in_file_manager(target)
+
+    assert calls == [["explorer", f"/select,{target}"]]
+
+
 def test_handle_webui_thread_get_backfills_legacy_missing_user_rows(
     tmp_path,
     monkeypatch,

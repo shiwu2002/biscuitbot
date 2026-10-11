@@ -510,6 +510,8 @@ export interface WorkspacesPayload {
   controls: {
     can_change_project: boolean;
     can_use_full_access: boolean;
+    /** 客户端与工作区同机时可「在文件夹中显示」（否则只能下载）。 */
+    can_reveal_file: boolean;
   };
 }
 
@@ -1387,6 +1389,12 @@ export interface FilePreviewPayload {
   content: string;
   size: number;
   truncated: boolean;
+}
+
+/** Signed media URL that lets the browser download a workspace file. */
+export interface FileDownloadPayload {
+  url: string;
+  name: string;
 }
 
 /** Text preview of a generated document asset (docx/pdf/xlsx/…). */

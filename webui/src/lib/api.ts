@@ -10,6 +10,7 @@ import type {
   EmployeesPayload,
   CliAppsPayload,
   DocumentPreviewPayload,
+  FileDownloadPayload,
   FilePreviewPayload,
   ImageGenerationSettingsUpdate,
   KnowledgeDocument,
@@ -224,6 +225,45 @@ export async function fetchFilePreview(
   query.set("path", path);
   return request<FilePreviewPayload>(
     `${base}/api/sessions/${encodeURIComponent(key)}/file-preview?${query}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/** Signed same-origin URL for downloading a workspace file (any file type). */
+export async function fetchFileDownload(
+  token: string,
+  key: string,
+  path: string,
+  base: string = "",
+): Promise<FileDownloadPayload> {
+  const query = new URLSearchParams();
+  query.set("path", path);
+  return request<FileDownloadPayload>(
+    `${base}/api/sessions/${encodeURIComponent(key)}/file-download?${query}`,
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
+}
+
+/**
+ * Ask the gateway to select a workspace file in the OS file manager.
+ *
+ * Only meaningful when the client shares the machine with the workspace
+ * (`workspaces.controls.can_reveal_file`); remote browsers download instead.
+ */
+export async function revealWorkspaceFile(
+  token: string,
+  key: string,
+  path: string,
+  base: string = "",
+): Promise<{ ok: boolean; path: string }> {
+  const query = new URLSearchParams();
+  query.set("path", path);
+  return request<{ ok: boolean; path: string }>(
+    `${base}/api/sessions/${encodeURIComponent(key)}/file-reveal?${query}`,
     token,
     undefined,
     API_READ_TIMEOUT_MS,

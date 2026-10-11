@@ -1287,7 +1287,14 @@
     "failed": "無法預覽這個檔案。",
     "routeMissing": "檔案預覽需要最新的 gateway。請重啟夏奈兒 gateway 後再試。",
     "resize": "調整檔案預覽寬度",
-    "truncated": "檔案較大，目前只顯示前半部分預覽。"
+    "truncated": "檔案較大，目前只顯示前半部分預覽。",
+    "download": "下載",
+    "downloading": "正在準備下載...",
+    "reveal": "在資料夾中顯示",
+    "revealing": "正在開啟資料夾...",
+    "binary": "此檔案為二進位檔案，無法預覽。",
+    "downloadFailed": "下載失敗，請重試。",
+    "revealFailed": "無法在資料夾中定位此檔案。"
   },
   "documentPreview": {
     "preview": "預覽",

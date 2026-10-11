@@ -4,6 +4,7 @@ import {
   createModelConfiguration,
   deleteSession,
   fetchFilePreview,
+  fetchFileDownload,
   fetchAutomations,
   fetchCliApps,
   fetchInstalledCliApps,
@@ -21,6 +22,7 @@ import {
   listSlashCommands,
   loginProviderOAuth,
   logoutProviderOAuth,
+  revealWorkspaceFile,
   runAutomationAction,
   runCliAppAction,
   runMcpPresetAction,
@@ -84,6 +86,30 @@ describe("webui API helpers", () => {
 
     expect(fetch).toHaveBeenCalledWith(
       "/api/sessions/websocket%3Achat-1/file-preview?path=%2Ftmp%2Fproject%2Fhook.py%3A12",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+        credentials: "same-origin",
+      }),
+    );
+  });
+
+  it("percent-encodes websocket keys and paths when fetching file download URLs", async () => {
+    await fetchFileDownload("tok", "websocket:chat-1", "/tmp/project/报告.zip");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sessions/websocket%3Achat-1/file-download?path=%2Ftmp%2Fproject%2F%E6%8A%A5%E5%91%8A.zip",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer tok" },
+        credentials: "same-origin",
+      }),
+    );
+  });
+
+  it("percent-encodes websocket keys and paths when revealing a workspace file", async () => {
+    await revealWorkspaceFile("tok", "websocket:chat-1", "/tmp/project/报告.zip");
+
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/sessions/websocket%3Achat-1/file-reveal?path=%2Ftmp%2Fproject%2F%E6%8A%A5%E5%91%8A.zip",
       expect.objectContaining({
         headers: { Authorization: "Bearer tok" },
         credentials: "same-origin",

@@ -155,6 +155,8 @@ def workspaces_payload(
         "controls": {
             "can_change_project": controls_available,
             "can_use_full_access": controls_available,
+            # 同机时才能「在文件夹中显示」——文件本来就在这台机器上，不必再下载一份副本。
+            "can_reveal_file": controls_available,
         },
     }
 

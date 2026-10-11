@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { AlertCircle, ChevronRight, FileText, Loader2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { AlertCircle, ChevronRight, Download, FileText, FolderOpen, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CodeBlock } from "@/components/CodeBlock";
 import { splitFilePath } from "@/components/FileReferenceChip";
-import { ApiError, fetchFilePreview } from "@/lib/api";
+import {
+  ApiError,
+  fetchFileDownload,
+  fetchFilePreview,
+  revealWorkspaceFile,
+} from "@/lib/api";
 import type { FilePreviewPayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -15,13 +20,15 @@ interface FilePreviewPanelProps {
   token: string;
   desktopWidth?: number;
   isClosing?: boolean;
+  /** 客户端与工作区同机时为 true：可以「在文件夹中显示」而不必下载一份副本。 */
+  canRevealFile?: boolean;
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onClose: () => void;
 }
 
 type PreviewState =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; code?: number }
   | { status: "ready"; payload: FilePreviewPayload };
 
 function supportsHoverCloseControl(): boolean {
@@ -29,19 +36,74 @@ function supportsHoverCloseControl(): boolean {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
+/** 文件操作入口：头部图标按钮与错误态带文字按钮共用。 */
+function FileActionButton({
+  busy,
+  icon,
+  label,
+  onClick,
+  className,
+  spinnerClassName = "h-4 w-4",
+  showLabel = false,
+}: {
+  busy: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  className?: string;
+  spinnerClassName?: string;
+  showLabel?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title={label}
+      aria-label={label}
+      className={cn("disabled:opacity-60", className)}
+    >
+      {busy ? (
+        <Loader2 className={cn("shrink-0 animate-spin", spinnerClassName)} aria-hidden />
+      ) : (
+        icon
+      )}
+      {showLabel ? <span>{label}</span> : null}
+    </button>
+  );
+}
+
+const FILE_ACTION_ICON_CLASS = cn(
+  "inline-flex h-8 w-8 items-center justify-center rounded-full",
+  "text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
+const FILE_ACTION_LABEL_CLASS = cn(
+  "inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/30 px-2.5 py-1 text-xs",
+  "text-foreground/80 transition-colors hover:bg-muted/50 hover:text-foreground",
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+);
+
 export function FilePreviewPanel({
   sessionKey,
   path,
   token,
   desktopWidth = 544,
   isClosing = false,
+  canRevealFile = false,
   onResizeStart,
   onClose,
 }: FilePreviewPanelProps) {
   const { t } = useTranslation();
   const [state, setState] = useState<PreviewState>({ status: "loading" });
   const [entered, setEntered] = useState(false);
+  // 两个操作共用一个 busy 槽位：任一进行中都禁用另一个，避免重复触发系统调用。
+  const [busyAction, setBusyAction] = useState<"download" | "reveal" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [supportsHoverClose, setSupportsHoverClose] = useState(supportsHoverCloseControl);
+  const downloading = busyAction === "download";
+  const revealing = busyAction === "reveal";
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setEntered(true));
@@ -64,25 +126,75 @@ export function FilePreviewPanel({
   useEffect(() => {
     let cancelled = false;
     setState({ status: "loading" });
+    setActionError(null);
     fetchFilePreview(token, sessionKey, path)
       .then((payload) => {
         if (!cancelled) setState({ status: "ready", payload });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        const message = error instanceof ApiError
-          ? (error.status === 404 && /API route not found/i.test(error.message)
+        const code = error instanceof ApiError ? error.status : undefined;
+        let message = t("filePreview.failed", { defaultValue: "Could not preview this file." });
+        if (code === 415) {
+          // 二进制文件（压缩包/可执行文件等）：预览走不通，直接指向下载
+          message = t("filePreview.binary", {
+            defaultValue: "This file is binary and cannot be previewed. Download it to open it.",
+          });
+        } else if (error instanceof ApiError) {
+          message = error.status === 404 && /API route not found/i.test(error.message)
             ? t("filePreview.routeMissing", {
               defaultValue: "File preview needs the latest gateway. Restart 夏奈儿 gateway and try again.",
             })
-            : error.message)
-          : t("filePreview.failed", { defaultValue: "Could not preview this file." });
-        setState({ status: "error", message });
+            : error.message;
+        }
+        setState({ status: "error", message, code });
       });
     return () => {
       cancelled = true;
     };
   }, [path, sessionKey, t, token]);
+
+  // 懒加载：只有点下载才 staging 文件并签名，避免预览每个文件都往 media 目录拷一份。
+  const handleDownload = useCallback(async () => {
+    if (busyAction) return;
+    setBusyAction("download");
+    setActionError(null);
+    try {
+      const { url, name } = await fetchFileDownload(token, sessionKey, path);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = name;
+      anchor.rel = "noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch {
+      setActionError(t("filePreview.downloadFailed", { defaultValue: "Download failed. Try again." }));
+    } finally {
+      setBusyAction(null);
+    }
+  }, [busyAction, path, sessionKey, t, token]);
+
+  // 同机时直接在文件管理器中定位原文件：不产生任何副本，也不执行文件本身。
+  const handleReveal = useCallback(async () => {
+    if (busyAction) return;
+    setBusyAction("reveal");
+    setActionError(null);
+    try {
+      await revealWorkspaceFile(token, sessionKey, path);
+    } catch {
+      setActionError(t("filePreview.revealFailed", { defaultValue: "Could not show this file in the file manager." }));
+    } finally {
+      setBusyAction(null);
+    }
+  }, [busyAction, path, sessionKey, t, token]);
+
+  const downloadLabel = downloading
+    ? t("filePreview.downloading", { defaultValue: "Preparing download…" })
+    : t("filePreview.download", { defaultValue: "Download" });
+  const revealLabel = revealing
+    ? t("filePreview.revealing", { defaultValue: "Opening the file manager…" })
+    : t("filePreview.reveal", { defaultValue: "Show in folder" });
 
   const displayPath = state.status === "ready" ? state.payload.display_path : path;
   const previewPath = state.status === "ready" ? state.payload.path : displayPath;
@@ -203,6 +315,24 @@ export function FilePreviewPanel({
                 </span>
               </>
             )}
+            <div className="ml-auto flex flex-none items-center gap-1">
+              {canRevealFile ? (
+                <FileActionButton
+                  busy={revealing}
+                  icon={<FolderOpen className="h-4 w-4" aria-hidden />}
+                  label={revealLabel}
+                  onClick={() => void handleReveal()}
+                  className={FILE_ACTION_ICON_CLASS}
+                />
+              ) : null}
+              <FileActionButton
+                busy={downloading}
+                icon={<Download className="h-4 w-4" aria-hidden />}
+                label={downloadLabel}
+                onClick={() => void handleDownload()}
+                className={FILE_ACTION_ICON_CLASS}
+              />
+            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
@@ -246,6 +376,12 @@ export function FilePreviewPanel({
               </div>
             </div>
 
+            {actionError ? (
+              <p className="shrink-0 border-b border-border/45 bg-destructive/10 px-4 py-2 text-xs text-destructive">
+                {actionError}
+              </p>
+            ) : null}
+
             <div className="min-h-0 flex-1 overflow-auto">
               {state.status === "loading" ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -257,6 +393,31 @@ export function FilePreviewPanel({
                   <div className="max-w-sm">
                     <AlertCircle className="mx-auto mb-3 h-5 w-5 text-muted-foreground/70" aria-hidden />
                     <p>{state.message}</p>
+                    {/* 二进制文件预览不了，但仍应能拿到文件 */}
+                    {state.code === 415 ? (
+                      <div className="mt-4 flex items-center justify-center gap-2">
+                        {canRevealFile ? (
+                          <FileActionButton
+                            busy={revealing}
+                            icon={<FolderOpen className="h-3.5 w-3.5" aria-hidden />}
+                            label={revealLabel}
+                            onClick={() => void handleReveal()}
+                            showLabel
+                            spinnerClassName="h-3.5 w-3.5"
+                            className={FILE_ACTION_LABEL_CLASS}
+                          />
+                        ) : null}
+                        <FileActionButton
+                          busy={downloading}
+                          icon={<Download className="h-3.5 w-3.5" aria-hidden />}
+                          label={downloadLabel}
+                          onClick={() => void handleDownload()}
+                          showLabel
+                          spinnerClassName="h-3.5 w-3.5"
+                          className={FILE_ACTION_LABEL_CLASS}
+                        />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : (

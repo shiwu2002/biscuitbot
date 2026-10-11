@@ -588,7 +588,11 @@ describe("ThreadComposer", () => {
           access_mode: "restricted",
           restrict_to_workspace: true,
         }}
-        workspaceControls={{ can_change_project: true, can_use_full_access: true }}
+        workspaceControls={{
+          can_change_project: true,
+          can_use_full_access: true,
+          can_reveal_file: true,
+        }}
         onWorkspaceScopeChange={onWorkspaceScopeChange}
       />,
     );
@@ -624,7 +628,11 @@ describe("ThreadComposer", () => {
           restrict_to_workspace: false,
         }}
         workspaceDefaultScope={defaultScope}
-        workspaceControls={{ can_change_project: true, can_use_full_access: true }}
+        workspaceControls={{
+          can_change_project: true,
+          can_use_full_access: true,
+          can_reveal_file: true,
+        }}
         onWorkspaceScopeChange={onWorkspaceScopeChange}
       />,
     );
@@ -693,7 +701,11 @@ describe("ThreadComposer", () => {
         variant="hero"
         workspaceScope={defaultScope}
         workspaceDefaultScope={defaultScope}
-        workspaceControls={{ can_change_project: true, can_use_full_access: true }}
+        workspaceControls={{
+          can_change_project: true,
+          can_use_full_access: true,
+          can_reveal_file: true,
+        }}
         onWorkspaceScopeChange={onWorkspaceScopeChange}
       />,
     );
@@ -725,7 +737,11 @@ describe("ThreadComposer", () => {
         variant="hero"
         workspaceScope={defaultScope}
         workspaceDefaultScope={defaultScope}
-        workspaceControls={{ can_change_project: true, can_use_full_access: true }}
+        workspaceControls={{
+          can_change_project: true,
+          can_use_full_access: true,
+          can_reveal_file: true,
+        }}
         onWorkspaceScopeChange={vi.fn()}
       />,
     );
