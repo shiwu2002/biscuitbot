@@ -382,7 +382,7 @@ function HostChrome({
             title="夏奈儿"
           >
             <img
-              src="/brand/xianaibot_icon.png?v=20260903"
+              src="/brand/xianaibot_icon.png?v=20261012"
               alt="夏奈儿"
               className="h-5 w-5 shrink-0 select-none object-contain"
               draggable={false}
