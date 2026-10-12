@@ -48,66 +48,58 @@ const pptxAttachment: UIMediaAttachment = {
 };
 
 describe("AttachmentTile document preview", () => {
-  it("shows a preview button and lazy-fetches only on expand", async () => {
-    const fetchMock = stubFetch(new ArrayBuffer(16));
+  it("calls onOpenPreview instead of downloading when the main view passes it", () => {
+    const onOpenPreview = vi.fn();
+    render(<AttachmentTile attachment={pptxAttachment} onOpenPreview={onOpenPreview} />);
+
+    const chip = screen.getByTitle("deck.pptx");
+    expect(chip).toHaveTextContent("deck.pptx");
+    expect(screen.queryByRole("link", { name: "文件附件" })).not.toBeInTheDocument();
+
+    fireEvent.click(chip);
+    expect(onOpenPreview).toHaveBeenCalledTimes(1);
+    expect(onOpenPreview).toHaveBeenCalledWith(pptxAttachment);
+  });
+
+  it("keeps the download chip when onOpenPreview is not provided", () => {
     render(<AttachmentTile attachment={pptxAttachment} />);
 
-    expect(screen.getByLabelText("文件附件")).toHaveTextContent("deck.pptx");
-    expect(screen.getByRole("button", { name: "预览" })).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "预览" }));
-    await waitFor(() => expect(screen.getByTestId("pptx-preview")).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "文件附件" })).toHaveAttribute(
+      "href",
+      "/api/media/sig/deck",
+    );
+    expect(screen.queryByRole("button", { name: "预览 deck.pptx" })).not.toBeInTheDocument();
   });
 
-  it("does not offer preview for unsupported extensions", () => {
-    render(<AttachmentTile attachment={{ kind: "file", url: "/m/pdf", name: "doc.pdf" }} />);
-    expect(screen.queryByRole("button", { name: "预览" })).not.toBeInTheDocument();
-  });
-
-  it("does not offer preview for inline or compact variants", () => {
-    const { unmount } = render(<AttachmentTile attachment={pptxAttachment} inline />);
-    expect(screen.queryByRole("button", { name: "预览" })).not.toBeInTheDocument();
-    unmount();
-    render(<AttachmentTile attachment={pptxAttachment} variant="compact" />);
-    expect(screen.queryByRole("button", { name: "预览" })).not.toBeInTheDocument();
-  });
-
-  it("does not offer preview without a url", () => {
-    render(<AttachmentTile attachment={{ kind: "file", name: "deck.pptx" }} />);
-    expect(screen.queryByRole("button", { name: "预览" })).not.toBeInTheDocument();
-  });
-
-  it("collapse unmounts the preview and re-expand uses the cached buffer", async () => {
-    const fetchMock = stubFetch(new ArrayBuffer(16));
+  it("keeps the download chip for extensions the panel cannot preview without a path", () => {
+    const onOpenPreview = vi.fn();
     render(
       <AttachmentTile
-        attachment={{ kind: "file", url: "/api/media/sig/doc", name: "report.docx" }}
+        attachment={{ kind: "file", url: "/m/pdf", name: "doc.pdf" }}
+        onOpenPreview={onOpenPreview}
       />,
     );
-
-    fireEvent.click(screen.getByRole("button", { name: "预览" }));
-    await waitFor(() => expect(screen.getByTestId("docx-rendered")).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: "收起预览" }));
-    expect(screen.queryByTestId("docx-rendered")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "预览" }));
-    await waitFor(() => expect(screen.getByTestId("docx-rendered")).toBeInTheDocument());
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("link", { name: "文件附件" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /预览/ })).not.toBeInTheDocument();
   });
 
-  it("shows an error and download fallback when fetch fails", async () => {
-    const fetchMock = vi.fn(async () => {
-      throw new Error("boom");
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    render(<AttachmentTile attachment={{ ...pptxAttachment, url: "/m/bad" }} />);
+  it("keeps the download chip for inline or compact variants", () => {
+    const onOpenPreview = vi.fn();
+    const { unmount } = render(
+      <AttachmentTile attachment={pptxAttachment} inline onOpenPreview={onOpenPreview} />,
+    );
+    expect(screen.getByRole("link", { name: "文件附件" })).toBeInTheDocument();
+    unmount();
+    render(
+      <AttachmentTile attachment={pptxAttachment} variant="compact" onOpenPreview={onOpenPreview} />,
+    );
+    expect(screen.getByRole("link", { name: "文件附件" })).toBeInTheDocument();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "预览" }));
-    await waitFor(() => expect(screen.getByText(/预览失败/)).toBeInTheDocument());
-    expect(screen.getByRole("link", { name: "下载" })).toHaveAttribute("href", "/m/bad");
+  it("keeps the unavailable tile without a url", () => {
+    render(<AttachmentTile attachment={{ kind: "file", name: "deck.pptx" }} />);
+    expect(screen.queryByRole("button", { name: /预览/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "文件附件" })).not.toBeInTheDocument();
   });
 });
 

@@ -152,10 +152,14 @@ def sign_or_stage_media_path(
     ``name`` is the **display** name: the random prefix our ingress adds for
     uniqueness is stripped (see ``readable_media_name``), so the WebUI chip
     reads ``学生备注表.xlsx`` rather than ``b92da4cc4d26_学生备注表.xlsx``.
+
+    ``path`` is the file's location on this machine (workspace 生成物是原始路径；
+    非 media 根文件 staging 后是副本路径)。WebUI 用它做「打开所在位置」与
+    工作区路径预览——与消息正文里的文件引用 chip 暴露路径的口径一致。
     """
     signed = sign_media_path(path, secret=secret, media_dir=media_dir)
     if signed is not None:
-        return {"url": signed, "name": readable_media_name(path.name)}
+        return {"url": signed, "name": readable_media_name(path.name), "path": str(path)}
     try:
         if not path.is_file():
             return None
@@ -168,7 +172,7 @@ def sign_or_stage_media_path(
     signed = sign_media_path(staged, secret=secret, media_dir=media_dir)
     if signed is None:
         return None
-    return {"url": signed, "name": readable_media_name(path.name)}
+    return {"url": signed, "name": readable_media_name(path.name), "path": str(path)}
 
 
 def media_attachment_kind(name: str) -> str:
@@ -204,7 +208,7 @@ def signed_media_attachments(
         if not url:
             continue
         name = att.get("name") or readable_media_name(path.name)
-        out.append({"kind": media_attachment_kind(name), "url": url, "name": name})
+        out.append({"kind": media_attachment_kind(name), "url": url, "name": name, "path": pstr})
     return out
 
 
@@ -232,7 +236,7 @@ def attach_signed_media_urls(
             signed = sign_path(Path(entry))
             if signed is None:
                 continue
-            urls.append({"url": signed, "name": readable_media_name(Path(entry).name)})
+            urls.append({"url": signed, "name": readable_media_name(Path(entry).name), "path": entry})
         if urls:
             msg["media_urls"] = urls
         msg.pop("media", None)

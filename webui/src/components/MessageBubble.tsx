@@ -48,6 +48,8 @@ interface MessageBubbleProps {
   cliApps?: CliAppInfo[];
   mcpPresets?: McpPresetInfo[];
   onOpenFilePreview?: (path: string) => void;
+  /** 点击消息里的生成物附件 chip：在右侧预览面板打开（由 ThreadShell 提供路由）。 */
+  onOpenAttachment?: (attachment: UIMediaAttachment) => void;
   onForkFromHere?: () => void;
 }
 
@@ -86,6 +88,7 @@ export function MessageBubble({
   cliApps = [],
   mcpPresets = [],
   onOpenFilePreview,
+  onOpenAttachment,
   onForkFromHere,
 }: MessageBubbleProps) {
   const { t } = useTranslation();
@@ -147,7 +150,7 @@ export function MessageBubble({
         )}
       >
         {hasImages ? <UserImages images={images} align="right" /> : null}
-        {hasMedia ? <MessageMedia media={nonImageMedia} align="right" /> : null}
+        {hasMedia ? <MessageMedia media={nonImageMedia} align="right" onOpenAttachment={onOpenAttachment} /> : null}
         {hasText ? (
           <p
             className={cn(
@@ -215,7 +218,7 @@ export function MessageBubble({
           >
             {message.content}
           </MarkdownText>
-          {media.length > 0 ? <MessageMedia media={media} align="left" /> : null}
+          {media.length > 0 ? <MessageMedia media={media} align="left" onOpenAttachment={onOpenAttachment} /> : null}
           {showAssistantFooterRow ? (
             <TooltipProvider delayDuration={220} skipDelayDuration={80}>
               <div className="mt-2 flex min-h-8 flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
@@ -363,9 +366,11 @@ function mergeCliMentionApps(
 function MessageMedia({
   media,
   align,
+  onOpenAttachment,
 }: {
   media: UIMediaAttachment[];
   align: "left" | "right";
+  onOpenAttachment?: (attachment: UIMediaAttachment) => void;
 }) {
   if (media.length === 0) return null;
   const images: UIImage[] = [];
@@ -390,7 +395,11 @@ function MessageMedia({
         <UserImages images={images} align={align} size={align === "left" ? "large" : "compact"} />
       ) : null}
       {nonImages.map((item, i) => (
-        <AttachmentTile key={`${item.url ?? item.name ?? item.kind}-${i}`} attachment={item} />
+        <AttachmentTile
+          key={`${item.url ?? item.name ?? item.kind}-${i}`}
+          attachment={item}
+          onOpenPreview={onOpenAttachment}
+        />
       ))}
     </div>
   );

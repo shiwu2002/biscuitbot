@@ -30,6 +30,8 @@ export interface UIMediaAttachment {
   kind: UIMediaKind;
   url?: string;
   name?: string;
+  /** 生成物在本机的原始路径（后端 media_api 附带）：用于右侧预览与「打开所在位置」。 */
+  path?: string;
 }
 
 export interface UIMessageSource { kind: "cron"; label?: string; }
@@ -1192,7 +1194,7 @@ export type InboundEvent =
       text: string;
       reply_to?: string;
       media?: string[];
-      media_urls?: Array<{ url: string; name?: string; kind?: UIMediaKind }>;
+      media_urls?: Array<{ url: string; name?: string; kind?: UIMediaKind; path?: string }>;
       tool_events?: ToolProgressEvent[];
       /** Present when the frame is an agent breadcrumb (e.g. tool hint,
        * generic progress line) rather than a conversational reply. */

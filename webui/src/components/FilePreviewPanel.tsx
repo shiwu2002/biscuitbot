@@ -4,7 +4,9 @@ import { AlertCircle, ChevronRight, Download, FileText, FolderOpen, Loader2, X }
 import { useTranslation } from "react-i18next";
 
 import { CodeBlock } from "@/components/CodeBlock";
+import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
 import { splitFilePath } from "@/components/FileReferenceChip";
+import { getDocumentPreviewKind } from "@/lib/file-preview";
 import {
   ApiError,
   fetchFileDownload,
@@ -12,16 +14,23 @@ import {
   revealWorkspaceFile,
 } from "@/lib/api";
 import type { FilePreviewPayload } from "@/lib/types";
+import { showToast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 interface FilePreviewPanelProps {
   sessionKey: string;
-  path: string;
+  /** 工作区路径预览模式：走 file-preview API（与 ``media`` 二选一）。 */
+  path?: string;
+  /** 消息附件 media 模式：附件没有原始路径时用签名 URL 直接渲染 DocumentPreview。 */
+  media?: { url: string; name: string } | null;
   token: string;
   desktopWidth?: number;
   isClosing?: boolean;
   /** 客户端与工作区同机时为 true：可以「在文件夹中显示」而不必下载一份副本。 */
   canRevealFile?: boolean;
+  /** 桌面宿主顶栏（App.tsx 拖拽层 h-11 + 窗口控制按钮 z-[60]）存在时为 true：
+   * 面板整体下移 44px，避免头部关闭/下载按钮被顶栏遮挡、点击被拖拽层吞掉。 */
+  hostChromeActive?: boolean;
   onResizeStart?: (event: ReactPointerEvent<HTMLButtonElement>) => void;
   onClose: () => void;
 }
@@ -88,10 +97,12 @@ const FILE_ACTION_LABEL_CLASS = cn(
 export function FilePreviewPanel({
   sessionKey,
   path,
+  media = null,
   token,
   desktopWidth = 544,
   isClosing = false,
   canRevealFile = false,
+  hostChromeActive = false,
   onResizeStart,
   onClose,
 }: FilePreviewPanelProps) {
@@ -104,6 +115,9 @@ export function FilePreviewPanel({
   const [supportsHoverClose, setSupportsHoverClose] = useState(supportsHoverCloseControl);
   const downloading = busyAction === "download";
   const revealing = busyAction === "reveal";
+  /** media 模式：附件签名 URL 直渲染，不经过 file-preview API。 */
+  const isMediaMode = media !== null;
+  const mediaDocKind = isMediaMode ? getDocumentPreviewKind(media.name || media.url) : null;
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setEntered(true));
@@ -124,6 +138,7 @@ export function FilePreviewPanel({
   }, []);
 
   useEffect(() => {
+    if (isMediaMode || !path) return undefined;
     let cancelled = false;
     setState({ status: "loading" });
     setActionError(null);
@@ -152,15 +167,23 @@ export function FilePreviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [path, sessionKey, t, token]);
+  }, [isMediaMode, path, sessionKey, t, token]);
 
   // 懒加载：只有点下载才 staging 文件并签名，避免预览每个文件都往 media 目录拷一份。
+  // media 模式下签名 URL 已就绪，直接 fetch 字节确认后保存。
   const handleDownload = useCallback(async () => {
     if (busyAction) return;
     setBusyAction("download");
     setActionError(null);
     try {
-      const { url, name } = await fetchFileDownload(token, sessionKey, path);
+      let url: string;
+      let name: string;
+      if (media) {
+        url = media.url;
+        name = media.name;
+      } else {
+        ({ url, name } = await fetchFileDownload(token, sessionKey, path ?? ""));
+      }
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = name;
@@ -168,16 +191,21 @@ export function FilePreviewPanel({
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
+      // 签名 URL 已就绪并触发保存，给用户一个明确的成功反馈。
+      showToast(
+        t("downloadToast.success", { name, defaultValue: `《${name}》下载成功` }),
+        "success",
+      );
     } catch {
       setActionError(t("filePreview.downloadFailed", { defaultValue: "Download failed. Try again." }));
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, path, sessionKey, t, token]);
+  }, [busyAction, media, path, sessionKey, t, token]);
 
   // 同机时直接在文件管理器中定位原文件：不产生任何副本，也不执行文件本身。
   const handleReveal = useCallback(async () => {
-    if (busyAction) return;
+    if (busyAction || !path) return;
     setBusyAction("reveal");
     setActionError(null);
     try {
@@ -196,7 +224,11 @@ export function FilePreviewPanel({
     ? t("filePreview.revealing", { defaultValue: "Opening the file manager…" })
     : t("filePreview.reveal", { defaultValue: "Show in folder" });
 
-  const displayPath = state.status === "ready" ? state.payload.display_path : path;
+  const displayPath = isMediaMode
+    ? (media?.name ?? "")
+    : state.status === "ready"
+      ? state.payload.display_path
+      : (path ?? "");
   const previewPath = state.status === "ready" ? state.payload.path : displayPath;
   const normalizedPreviewPath = previewPath.replace(/\\/g, "/");
   const hasRootPrefix = normalizedPreviewPath.startsWith("/");
@@ -219,7 +251,11 @@ export function FilePreviewPanel({
         "--file-preview-slot-width": !entered || isClosing ? "0px" : `${desktopWidth}px`,
       } as CSSProperties}
       className={cn(
-        "absolute inset-y-0 right-0 z-30 w-[min(100vw,var(--file-preview-slot-width))] overflow-hidden",
+        "absolute right-0 z-30 w-[min(100vw,var(--file-preview-slot-width))] overflow-hidden",
+        // 宿主顶栏（44px 拖拽层 + 右上角窗口控制按钮）会盖住面板头部：
+        // 移动端覆盖层从顶栏下方开始；桌面端作为 flex 项用 margin-top 让出
+        // 标题栏高度（stretch 会自动减去 margin，底部不被裁切）。
+        hostChromeActive ? "top-11 bottom-0 md:top-auto md:mt-11" : "inset-y-0",
         "transition-[width] duration-300 ease-out will-change-[width]",
         "md:relative md:z-auto md:w-[var(--file-preview-slot-width)] md:min-w-0 md:shrink-0",
         isClosing && "pointer-events-none",
@@ -316,7 +352,7 @@ export function FilePreviewPanel({
               </>
             )}
             <div className="ml-auto flex flex-none items-center gap-1">
-              {canRevealFile ? (
+              {canRevealFile && !isMediaMode ? (
                 <FileActionButton
                   busy={revealing}
                   icon={<FolderOpen className="h-4 w-4" aria-hidden />}
@@ -383,7 +419,37 @@ export function FilePreviewPanel({
             ) : null}
 
             <div className="min-h-0 flex-1 overflow-auto">
-              {state.status === "loading" ? (
+              {isMediaMode ? (
+                mediaDocKind !== null && media ? (
+                  // 附件 media 模式：直接用签名 URL 渲染文档预览（docx/pptx/xlsx/csv/html 等）
+                  <DocumentPreview
+                    attachment={{ kind: "file", url: media.url, name: media.name }}
+                    kind={mediaDocKind}
+                  />
+                ) : (
+                  <div className="flex h-full items-center justify-center px-8 text-center text-sm text-muted-foreground">
+                    <div className="max-w-sm">
+                      <AlertCircle className="mx-auto mb-3 h-5 w-5 text-muted-foreground/70" aria-hidden />
+                      <p>
+                        {t("filePreview.binary", {
+                          defaultValue: "This file is binary and cannot be previewed. Download it to open it.",
+                        })}
+                      </p>
+                      <div className="mt-4 flex items-center justify-center gap-2">
+                        <FileActionButton
+                          busy={downloading}
+                          icon={<Download className="h-3.5 w-3.5" aria-hidden />}
+                          label={downloadLabel}
+                          onClick={() => void handleDownload()}
+                          showLabel
+                          spinnerClassName="h-3.5 w-3.5"
+                          className={FILE_ACTION_LABEL_CLASS}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )
+              ) : state.status === "loading" ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                   {t("filePreview.loading", { defaultValue: "Loading preview..." })}

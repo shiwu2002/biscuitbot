@@ -22,6 +22,7 @@ import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { ToastHost } from "@/components/ToastHost";
 import { WindowTitlebarControls } from "@/components/WindowTitlebarControls";
 
 import { useSessions } from "@/hooks/useSessions";
@@ -1673,6 +1674,7 @@ function Shell({
       theme,
       onToggleTheme: toggle,
       hideSidebarToggleForHostChrome: showHostChrome,
+      hostChromeActive: showHostChrome,
       hostChromeTitleInset: hostSidebarCollapsed,
       hideHeader: false,
       workspaceScope: activeWorkspaceScope,
@@ -1990,6 +1992,7 @@ function Shell({
             {restartToast}
           </div>
         ) : null}
+        <ToastHost />
       </div>
     </ThemeProvider>
   );

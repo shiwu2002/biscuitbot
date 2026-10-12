@@ -21,7 +21,7 @@ import {
   jumpToPrompt,
 } from "@/components/thread/promptNavigation";
 import { cn } from "@/lib/utils";
-import type { CliAppInfo, McpPresetInfo, UIMessage } from "@/lib/types";
+import type { CliAppInfo, McpPresetInfo, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 export interface ThreadViewportHandle {
   jumpToUserPrompt: (promptId: string) => void;
@@ -43,6 +43,7 @@ interface ThreadViewportProps {
   userMessageOffset?: number;
   onLoadOlder?: () => Promise<void> | void;
   onOpenFilePreview?: (path: string) => void;
+  onOpenAttachment?: (attachment: UIMediaAttachment) => void;
   onForkFromMessage?: (beforeUserIndex: number) => void;
 }
 
@@ -113,6 +114,7 @@ export const ThreadViewport = forwardRef<ThreadViewportHandle, ThreadViewportPro
   userMessageOffset = 0,
   onLoadOlder,
   onOpenFilePreview,
+  onOpenAttachment,
   onForkFromMessage,
 }, ref) {
   const { t } = useTranslation();
@@ -455,6 +457,7 @@ export const ThreadViewport = forwardRef<ThreadViewportHandle, ThreadViewportPro
                   mcpPresets={mcpPresets}
                   forkBoundaryMessageCount={visibleForkBoundaryMessageCount}
                   onOpenFilePreview={onOpenFilePreview}
+                  onOpenAttachment={onOpenAttachment}
                   onForkFromMessage={onForkFromMessage}
                 />
               </div>

@@ -38,6 +38,7 @@ import type {
   SkillSummary,
   SlashCommand,
   UIMessage,
+  UIMediaAttachment,
   WorkspaceScopePayload,
   WorkspacesPayload,
 } from "@/lib/types";
@@ -106,6 +107,9 @@ export interface ThreadShellProps {
   theme?: "light" | "dark";
   onToggleTheme?: () => void;
   hideSidebarToggleForHostChrome?: boolean;
+  /** 桌面宿主顶栏（拖拽层 + 窗口控制按钮）存在时为 true：
+   * 右侧文件预览面板需让出顶部 44px，避免头部按钮被遮挡。 */
+  hostChromeActive?: boolean;
   hostChromeTitleInset?: boolean;
   hideThemeButton?: boolean;
   hideHeader?: boolean;
@@ -262,6 +266,7 @@ export function ThreadShell({
   theme = "light",
   onToggleTheme = () => {},
   hideSidebarToggleForHostChrome = false,
+  hostChromeActive = false,
   hostChromeTitleInset = false,
   hideThemeButton = false,
   hideHeader = false,
@@ -310,6 +315,8 @@ export function ThreadShell({
   const [heroGreetingKey, setHeroGreetingKey] = useState(randomHeroGreetingKey);
   const [scrollToBottomSignal, setScrollToBottomSignal] = useState(0);
   const [filePreviewPath, setFilePreviewPath] = useState<string | null>(null);
+  /** 附件 media 模式：附件没有原始路径时用签名 URL 在面板中渲染文档预览。 */
+  const [filePreviewMedia, setFilePreviewMedia] = useState<{ url: string; name: string } | null>(null);
   const [filePreviewClosing, setFilePreviewClosing] = useState(false);
   const [filePreviewWidth, setFilePreviewWidth] = useState(FILE_PREVIEW_DEFAULT_WIDTH);
   const [tracePanelOpen, setTracePanelOpen] = useState(false);
@@ -364,6 +371,7 @@ export function ThreadShell({
     }
     setFilePreviewClosing(false);
     setFilePreviewPath(null);
+    setFilePreviewMedia(null);
   }, [historyKey]);
 
   useEffect(() => {
@@ -591,18 +599,38 @@ export function ThreadShell({
       filePreviewCloseTimerRef.current = null;
     }
     setFilePreviewClosing(false);
+    setFilePreviewMedia(null);
     setFilePreviewPath(path);
   }, []);
 
+  /** 点击消息里的生成物附件 chip：优先用原始路径走工作区预览；
+   * 没有路径但带签名 URL 时走 media 模式直渲染；面板提供下载/打开位置。 */
+  const handleOpenAttachment = useCallback((attachment: UIMediaAttachment) => {
+    if (filePreviewCloseTimerRef.current !== null) {
+      window.clearTimeout(filePreviewCloseTimerRef.current);
+      filePreviewCloseTimerRef.current = null;
+    }
+    setFilePreviewClosing(false);
+    if (attachment.path) {
+      setFilePreviewMedia(null);
+      setFilePreviewPath(attachment.path);
+    } else if (attachment.url) {
+      setFilePreviewPath(null);
+      setFilePreviewMedia({ url: attachment.url, name: attachment.name ?? "" });
+    }
+  }, []);
+
   const handleCloseFilePreview = useCallback(() => {
-    if (!filePreviewPath || filePreviewClosing) return;
+    if (!filePreviewPath && !filePreviewMedia) return;
+    if (filePreviewClosing) return;
     setFilePreviewClosing(true);
     filePreviewCloseTimerRef.current = window.setTimeout(() => {
       filePreviewCloseTimerRef.current = null;
       setFilePreviewPath(null);
+      setFilePreviewMedia(null);
       setFilePreviewClosing(false);
     }, FILE_PREVIEW_CLOSE_ANIMATION_MS);
-  }, [filePreviewClosing, filePreviewPath]);
+  }, [filePreviewClosing, filePreviewMedia, filePreviewPath]);
 
   const handleFilePreviewResizeStart = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -658,7 +686,7 @@ export function ThreadShell({
   }, []);
 
   useEffect(() => {
-    if (!filePreviewPath) return;
+    if (!filePreviewPath && !filePreviewMedia) return;
     const clampToShell = () => {
       const shellWidth = shellRef.current?.getBoundingClientRect().width ?? window.innerWidth;
       const maxWidth = maxFilePreviewWidth(shellWidth);
@@ -671,7 +699,7 @@ export function ThreadShell({
     return () => {
       window.removeEventListener("resize", clampToShell);
     };
-  }, [filePreviewPath]);
+  }, [filePreviewMedia, filePreviewPath]);
 
   const handleForkFromMessage = useCallback(
     async (beforeUserIndex: number) => {
@@ -839,17 +867,20 @@ export function ThreadShell({
           userMessageOffset={userMessageOffset}
           onLoadOlder={loadOlder}
           onOpenFilePreview={historyKey ? handleOpenFilePreview : undefined}
+          onOpenAttachment={historyKey ? handleOpenAttachment : undefined}
           onForkFromMessage={onForkChat ? handleForkFromMessage : undefined}
         />
       </div>
-      {filePreviewPath && historyKey ? (
+      {(filePreviewPath || filePreviewMedia) && historyKey ? (
         <FilePreviewPanel
           sessionKey={historyKey}
-          path={filePreviewPath}
+          path={filePreviewPath ?? undefined}
+          media={filePreviewMedia}
           token={token}
           desktopWidth={filePreviewWidth}
           isClosing={filePreviewClosing}
           canRevealFile={workspaceControls?.can_reveal_file === true}
+          hostChromeActive={hostChromeActive}
           onResizeStart={handleFilePreviewResizeStart}
           onClose={handleCloseFilePreview}
         />

@@ -1,27 +1,60 @@
-import { useState, type ReactNode } from "react";
-import { ChevronDown, Eye, FileIcon, ImageIcon, PlaySquare } from "lucide-react";
+import { useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { FileIcon, ImageIcon, Loader2, PlaySquare } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
+import { downloadUrlWithFeedback } from "@/lib/download";
 import { getDocumentPreviewKind } from "@/lib/file-preview";
+import { showToast } from "@/lib/toast";
 import type { UIMediaAttachment } from "@/lib/types";
-import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
 
 interface AttachmentTileProps {
   attachment: UIMediaAttachment;
   className?: string;
   inline?: boolean;
   variant?: "default" | "compact";
+  /**
+   * 主聊天视图传入：点击 chip 不再下载，而是在右侧预览面板打开生成物
+   * （能预览的渲染预览；不能预览的由面板提供「下载 / 打开所在位置」）。
+   * 未传时保持旧的下载 chip 行为（inline/compact 等场景）。
+   */
+  onOpenPreview?: (attachment: UIMediaAttachment) => void;
 }
 
-export function AttachmentTile({ attachment, className, inline = false, variant = "default" }: AttachmentTileProps) {
+export function AttachmentTile({
+  attachment,
+  className,
+  inline = false,
+  variant = "default",
+  onOpenPreview,
+}: AttachmentTileProps) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const hasUrl = typeof attachment.url === "string" && attachment.url.length > 0;
   const label = attachmentLabel(attachment, t);
   // 文档预览只作用于消息媒体路径（非 inline、非 compact）；其余调用点保持下载 chip。
   const docKind = getDocumentPreviewKind(attachment.name ?? attachment.url);
+
+  // 文件 chip 默认是 <a download> 静默下载，用户拿不到任何反馈。
+  // 改为 fetch 字节确认拿到文件后提示「下载成功」；失败回退原始链接并提示「已开始下载」。
+  const handleDownloadClick = (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (downloading || !attachment.url) return;
+    const url = attachment.url;
+    const name = attachment.name ?? label;
+    setDownloading(true);
+    void downloadUrlWithFeedback(url, name)
+      .then((outcome) => {
+        showToast(
+          outcome === "saved"
+            ? t("downloadToast.success", { name, defaultValue: `《${name}》下载成功` })
+            : t("downloadToast.started", { name, defaultValue: `已开始下载《${name}》` }),
+          outcome === "saved" ? "success" : "info",
+        );
+      })
+      .finally(() => setDownloading(false));
+  };
 
   if (attachment.kind === "image" && hasUrl && !failed) {
     return (
@@ -84,58 +117,41 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
       : FileIcon;
   const body = (
     <>
-      <Icon className="h-4 w-4 flex-none" aria-hidden />
+      {downloading ? (
+        <Loader2 className="h-4 w-4 flex-none animate-spin" aria-hidden />
+      ) : (
+        <Icon className="h-4 w-4 flex-none" aria-hidden />
+      )}
       <span className="min-w-0 truncate">{attachment.name ?? label}</span>
     </>
   );
 
-  // 文档类附件（pptx/docx/xlsx/csv/html）加一个「预览/收起预览」按钮，
-  // 点击后才 fetch 签名 URL 的字节（懒加载），折叠即卸载渲染器。
-  // inline/compact 路径保持纯下载 chip。
-  if (docKind !== null && hasUrl && !failed && !inline && variant !== "compact") {
+  // 主聊天视图：点击 chip 在右侧预览面板打开生成物（WorkBuddy 式），
+  // 不在消息内展开预览、也不触发下载；下载/打开位置由面板头部提供。
+  // 可预览 = 后端带了原始路径（工作区路径预览），或是面板可直接渲染的文档类型；
+  // 两者都不满足（如无路径的压缩包）保持下载 chip，避免打开后无法展示。
+  const canPreviewInPanel =
+    (typeof attachment.path === "string" && attachment.path.length > 0) || docKind !== null;
+  if (onOpenPreview && hasUrl && !failed && canPreviewInPanel && !inline && variant !== "compact") {
     return (
-      <div className={cn("flex max-w-full flex-col items-start gap-1.5", className)}>
-        <div className="flex items-center gap-1.5">
-          <a
-            href={attachment.url}
-            download={attachment.name ?? label}
-            title={attachment.name ?? undefined}
-            aria-label={label}
-            className={cn(
-              "flex max-w-[18rem] items-center gap-2 rounded-[14px]",
-              "border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground",
-              "transition-colors hover:bg-muted/55 hover:text-foreground",
-            )}
-          >
-            {body}
-          </a>
-          <button
-            type="button"
-            onClick={() => setPreviewOpen((v) => !v)}
-            aria-expanded={previewOpen}
-            aria-label={
-              previewOpen
-                ? t("documentPreview.collapse", { defaultValue: "收起预览" })
-                : t("documentPreview.preview", { defaultValue: "预览" })
-            }
-            className={cn(
-              "inline-flex items-center gap-1 rounded-[14px] px-2.5 py-2 text-xs",
-              "border border-border/60 bg-muted/40 text-muted-foreground",
-              "transition-colors hover:bg-muted/55 hover:text-foreground",
-            )}
-          >
-            <Eye className="h-4 w-4" aria-hidden />
-            {previewOpen
-              ? t("documentPreview.collapse", { defaultValue: "收起预览" })
-              : t("documentPreview.preview", { defaultValue: "预览" })}
-            <ChevronDown
-              className={cn("h-3.5 w-3.5 transition-transform", previewOpen && "rotate-180")}
-              aria-hidden
-            />
-          </button>
-        </div>
-        {previewOpen ? <DocumentPreview attachment={attachment} kind={docKind} /> : null}
-      </div>
+      <button
+        type="button"
+        onClick={() => onOpenPreview(attachment)}
+        title={attachment.path ?? attachment.name ?? undefined}
+        aria-label={t("documentPreview.openInPanel", {
+          defaultValue: "预览 {name}",
+          name: attachment.name ?? label,
+        })}
+        className={cn(
+          "flex max-w-[18rem] items-center gap-2 rounded-[14px]",
+          "border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground",
+          "transition-colors hover:bg-muted/55 hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          className,
+        )}
+      >
+        {body}
+      </button>
     );
   }
 
@@ -144,6 +160,8 @@ export function AttachmentTile({ attachment, className, inline = false, variant 
       <a
         href={attachment.url}
         download={attachment.name ?? label}
+        onClick={handleDownloadClick}
+        aria-busy={downloading}
         title={attachment.name ?? undefined}
         aria-label={label}
         className={cn(

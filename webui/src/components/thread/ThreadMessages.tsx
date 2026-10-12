@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { MessageBubble } from "@/components/MessageBubble";
 import { AgentActivityCluster } from "@/components/thread/AgentActivityCluster";
 import { normalizeActivityTimeline, type TurnUnit } from "@/lib/activity-timeline";
-import type { CliAppInfo, McpPresetInfo, UIMessage } from "@/lib/types";
+import type { CliAppInfo, McpPresetInfo, UIMediaAttachment, UIMessage } from "@/lib/types";
 
 interface ThreadMessagesProps {
   messages: UIMessage[];
@@ -14,6 +14,7 @@ interface ThreadMessagesProps {
   mcpPresets?: McpPresetInfo[];
   forkBoundaryMessageCount?: number | null;
   onOpenFilePreview?: (path: string) => void;
+  onOpenAttachment?: (attachment: UIMediaAttachment) => void;
   onForkFromMessage?: (beforeUserIndex: number) => void;
 }
 
@@ -68,6 +69,7 @@ export function ThreadMessages({
   mcpPresets = [],
   forkBoundaryMessageCount = null,
   onOpenFilePreview,
+  onOpenAttachment,
   onForkFromMessage,
 }: ThreadMessagesProps) {
   const { t } = useTranslation();
@@ -131,6 +133,7 @@ export function ThreadMessages({
                   cliApps={cliApps}
                   mcpPresets={mcpPresets}
                   onOpenFilePreview={onOpenFilePreview}
+                  onOpenAttachment={onOpenAttachment}
                   onForkFromHere={
                     onForkFromMessage && forkIndex !== undefined
                       ? () => onForkFromMessage(forkIndex)
