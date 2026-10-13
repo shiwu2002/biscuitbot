@@ -32,6 +32,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function renderPanel(path = "reports/报告.zip", canRevealFile = false) {
@@ -183,6 +184,76 @@ describe("FilePreviewPanel HTML rendering", () => {
     await waitFor(() => expect(mocks.fetchFilePreview).toHaveBeenCalled());
     expect(screen.queryByTitle("notes.md")).toBeNull();
     expect(screen.queryByRole("button", { name: "全屏查看" })).toBeNull();
+  });
+});
+
+describe("FilePreviewPanel 工作区路径下的文档", () => {
+  /** DocumentPreview 自己 fetch 签名地址取字节：这里让请求悬停，只看它有没有被挂起来。 */
+  function stubFetch(): ReturnType<typeof vi.fn> {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  it("docx 不再走文本预览，改为取签名地址交给客户端渲染器", async () => {
+    const fetchMock = stubFetch();
+    mocks.fetchFileDownload.mockResolvedValue({
+      url: "/api/media/sig/docx",
+      name: "内存价格研判.docx",
+    });
+
+    renderPanel("mem-report/内存价格研判.docx");
+
+    await waitFor(() =>
+      expect(mocks.fetchFileDownload).toHaveBeenCalledWith(
+        "tok",
+        "websocket:chat-1",
+        "mem-report/内存价格研判.docx",
+      ),
+    );
+    // 二进制容器的文本预览必然 415，这一枪根本不该发
+    expect(mocks.fetchFilePreview).not.toHaveBeenCalled();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/media/sig/docx"));
+    expect(screen.getByText("正在加载预览…")).toBeInTheDocument();
+  });
+
+  it("csv 与 xlsx 同样走客户端渲染器（表格而不是源码）", async () => {
+    const fetchMock = stubFetch();
+    mocks.fetchFileDownload.mockResolvedValue({ url: "/api/media/sig/sheet", name: "台账.csv" });
+
+    renderPanel("reports/台账.csv");
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/media/sig/sheet"));
+    expect(mocks.fetchFilePreview).not.toHaveBeenCalled();
+    expect(screen.getByText("正在加载预览…")).toBeInTheDocument();
+  });
+
+  it("文本文件仍走文本预览（不碰签名下载链路）", async () => {
+    mocks.fetchFilePreview.mockResolvedValue({
+      path: "E:/project/notes.md",
+      display_path: "notes.md",
+      project_path: "E:/project",
+      language: "markdown",
+      content: "# 标题",
+      size: 6,
+      truncated: false,
+    });
+
+    renderPanel("notes.md");
+
+    await waitFor(() => expect(mocks.fetchFilePreview).toHaveBeenCalled());
+    expect(mocks.fetchFileDownload).not.toHaveBeenCalled();
+  });
+
+  it("拿不到签名地址时给出可读的错误与下载出路", async () => {
+    mocks.fetchFileDownload.mockRejectedValue(new ApiError(404, "file not found"));
+
+    renderPanel("mem-report/缺失.docx");
+
+    await waitFor(() => expect(screen.getByText("file not found")).toBeInTheDocument());
+    // 头部仍有下载入口（文件不存在时定位原文件也没有意义）
+    expect(screen.getAllByRole("button", { name: "下载" })).toHaveLength(1);
+    expect(screen.queryByText("正在加载预览…")).toBeNull();
   });
 });
 

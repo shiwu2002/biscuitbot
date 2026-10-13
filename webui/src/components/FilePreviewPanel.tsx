@@ -8,7 +8,7 @@ import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
 import { FullscreenHtmlViewer } from "@/components/document-preview/FullscreenHtmlViewer";
 import { HtmlViewer } from "@/components/document-preview/HtmlViewer";
 import { splitFilePath } from "@/components/FileReferenceChip";
-import { getDocumentPreviewKind } from "@/lib/file-preview";
+import { getDocumentPreviewKind, type DocumentPreviewKind } from "@/lib/file-preview";
 import {
   ApiError,
   fetchFileDownload,
@@ -22,7 +22,8 @@ import { cn } from "@/lib/utils";
 
 interface FilePreviewPanelProps {
   sessionKey: string;
-  /** 工作区路径预览模式：走 file-preview API（与 ``media`` 二选一）。 */
+  /** 工作区路径预览模式（与 ``media`` 二选一）：文本走 file-preview API 取内容，
+   * 文档（docx/pptx/xlsx/csv）另取签名地址后交客户端渲染器。 */
   path?: string;
   /** 消息附件 media 模式：附件没有原始路径时用签名 URL 直接渲染 DocumentPreview。 */
   media?: { url: string; name: string } | null;
@@ -44,7 +45,21 @@ interface FilePreviewPanelProps {
 type PreviewState =
   | { status: "loading" }
   | { status: "error"; message: string; code?: number }
-  | { status: "ready"; payload: FilePreviewPayload };
+  | { status: "ready"; payload: FilePreviewPayload }
+  | { status: "document"; url: string; name: string; kind: DocumentPreviewKind };
+
+/**
+ * 工作区路径模式下需要客户端渲染的文档类型；非文档（或 html）返回 null。
+ *
+ * docx/pptx/xlsx 是二进制容器，`/file-preview` 的文本预览对它们只会回 415；csv 虽是
+ * 文本，但资产面板与消息附件都用表格渲染器呈现，这里保持同一条渲染链。html 不在此列
+ * ——路径模式下由 iframe 渲染（与 DocumentPreview 的 html 分支对齐）。
+ */
+function clientRenderedDocKind(target: string | null | undefined): DocumentPreviewKind | null {
+  if (!target) return null;
+  const kind = getDocumentPreviewKind(target);
+  return kind === null || kind === "html" ? null : kind;
+}
 
 function supportsHoverCloseControl(): boolean {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
@@ -126,6 +141,8 @@ export function FilePreviewPanel({
   /** media 模式：附件签名 URL 直渲染，不经过 file-preview API。 */
   const isMediaMode = media !== null;
   const mediaDocKind = isMediaMode ? getDocumentPreviewKind(media.name || media.url) : null;
+  /** 路径模式下的文档类型（docx/pptx/xlsx/csv）：文本预览走不通，改交客户端渲染。 */
+  const pathDocKind = isMediaMode ? null : clientRenderedDocKind(path);
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setEntered(true));
@@ -145,8 +162,40 @@ export function FilePreviewPanel({
     return () => query.removeListener(update);
   }, []);
 
+  /** 预览失败→面板文案：二进制 415 与「网关太旧」各给一句能指路的话，其余原样透出。 */
+  const describePreviewError = useCallback(
+    (error: unknown): { message: string; code?: number } => {
+      const code = error instanceof ApiError ? error.status : undefined;
+      if (code === 415) {
+        // 二进制文件（压缩包/可执行文件等）：预览走不通，直接指向下载
+        return {
+          code,
+          message: t("filePreview.binary", {
+            defaultValue: "This file is binary and cannot be previewed. Download it to open it.",
+          }),
+        };
+      }
+      if (error instanceof ApiError) {
+        return {
+          code,
+          message:
+            error.status === 404 && /API route not found/i.test(error.message)
+              ? t("filePreview.routeMissing", {
+                defaultValue: "File preview needs the latest gateway. Restart 夏奈儿 gateway and try again.",
+              })
+              : error.message,
+        };
+      }
+      return {
+        code,
+        message: t("filePreview.failed", { defaultValue: "Could not preview this file." }),
+      };
+    },
+    [t],
+  );
+
   useEffect(() => {
-    if (isMediaMode || !path) return undefined;
+    if (isMediaMode || !path || pathDocKind !== null) return undefined;
     let cancelled = false;
     setState({ status: "loading" });
     setActionError(null);
@@ -156,26 +205,33 @@ export function FilePreviewPanel({
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        const code = error instanceof ApiError ? error.status : undefined;
-        let message = t("filePreview.failed", { defaultValue: "Could not preview this file." });
-        if (code === 415) {
-          // 二进制文件（压缩包/可执行文件等）：预览走不通，直接指向下载
-          message = t("filePreview.binary", {
-            defaultValue: "This file is binary and cannot be previewed. Download it to open it.",
-          });
-        } else if (error instanceof ApiError) {
-          message = error.status === 404 && /API route not found/i.test(error.message)
-            ? t("filePreview.routeMissing", {
-              defaultValue: "File preview needs the latest gateway. Restart 夏奈儿 gateway and try again.",
-            })
-            : error.message;
-        }
-        setState({ status: "error", message, code });
+        setState({ status: "error", ...describePreviewError(error) });
       });
     return () => {
       cancelled = true;
     };
-  }, [isMediaMode, path, sessionKey, t, token]);
+  }, [describePreviewError, isMediaMode, path, pathDocKind, sessionKey, token]);
+
+  // 路径模式下的文档（docx/pptx/xlsx/csv）：文本预览是死路（二进制容器 415，csv 想
+  // 要的是表格），改借「下载即签名」那条既有链路取一个签名地址，把原始字节交给客户端
+  // 渲染器。于是消息里的文件点击、消息附件、会话资产三个入口汇到同一条渲染链。
+  useEffect(() => {
+    if (isMediaMode || !path || pathDocKind === null) return undefined;
+    let cancelled = false;
+    setState({ status: "loading" });
+    setActionError(null);
+    fetchFileDownload(token, sessionKey, path)
+      .then(({ url, name }) => {
+        if (!cancelled) setState({ status: "document", url, name, kind: pathDocKind });
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setState({ status: "error", ...describePreviewError(error) });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [describePreviewError, isMediaMode, path, pathDocKind, sessionKey, token]);
 
   // 懒加载：只有点下载才 staging 文件并签名，避免预览每个文件都往 media 目录拷一份。
   // media 模式下签名 URL 已就绪，直接 fetch 字节确认后保存。
@@ -497,6 +553,12 @@ export function FilePreviewPanel({
                     </div>
                   </div>
                 )
+              ) : state.status === "document" ? (
+                // 路径模式下的文档：与原文件同源的签名地址交给客户端渲染器
+                <DocumentPreview
+                  attachment={{ kind: "file", url: state.url, name: state.name }}
+                  kind={state.kind}
+                />
               ) : state.status === "loading" ? (
                 <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
