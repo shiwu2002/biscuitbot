@@ -369,6 +369,12 @@ class WebSocketChannel(BaseChannel):
         self._workspaces = gateway.workspaces
 
         self._stream_text_buffers: dict[tuple[str, str], list[str]] = {}
+        # 内置浏览器：连接 -> 截图帧队列 / 推流泵任务
+        self._conn_browser: dict[Any, asyncio.Queue[dict[str, Any] | None]] = {}
+        self._conn_browser_tasks: dict[Any, asyncio.Task[None]] = {}
+        # 内置浏览器活动事件（智能体操作时自动弹出面板）的后台发送任务
+        self._browser_activity_tasks: set[asyncio.Task[None]] = set()
+        self._hook_browser_activity_notifier()
 
     # -- 订阅簿记 -----------------------------------------------------------
 
@@ -392,6 +398,7 @@ class WebSocketChannel(BaseChannel):
             if not subs:
                 self._subs.pop(cid, None)
         self._conn_default.pop(connection, None)
+        self._browser_detach(connection)
 
     async def _maybe_push_active_goal_state(self, chat_id: str) -> None:
         """在 *chat_id* 被订阅后，从会话元数据重放活动的持续目标。
@@ -434,6 +441,126 @@ class WebSocketChannel(BaseChannel):
             self._cleanup_connection(connection)
         except Exception as e:
             self.logger.warning("failed to send {} event: {}", event, e)
+
+    # -- 内置浏览器（截图流 + 遥控） ------------------------------------------
+
+    def _hook_browser_activity_notifier(self) -> None:
+        """把浏览器管理器的活动回调挂到本通道：activity 事件广播给所有连接。"""
+        try:
+            from xianaibot.browser import get_browser_manager
+
+            get_browser_manager().set_activity_notifier(self._on_browser_activity)
+        except Exception as exc:  # noqa: BLE001 - 钩子失败只影响自动弹出面板
+            self.logger.debug("browser activity hook failed: {}", exc)
+
+    def _on_browser_activity(self, item: dict[str, Any]) -> None:
+        """浏览器活动回调（管理器同步调用）：投递后台广播任务。"""
+        connections = tuple(self._conn_chats)
+        if not connections:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = loop.create_task(self._send_browser_activity(connections, item))
+        self._browser_activity_tasks.add(task)
+        task.add_done_callback(self._browser_activity_tasks.discard)
+
+    async def _send_browser_activity(
+        self,
+        connections: tuple[Any, ...],
+        item: dict[str, Any],
+    ) -> None:
+        url = str(item.get("url") or "")
+        for connection in connections:
+            await self._send_event(connection, "browser_activity", url=url)
+
+    async def _browser_attach(self, connection: Any) -> None:
+        """订阅内置浏览器的截图流（按需开启 CDP 推流）。"""
+        from xianaibot.browser import get_browser_manager
+
+        manager = get_browser_manager()
+        self._browser_detach(connection)  # 幂等：重复 attach 先清理旧订阅
+        queue = manager.subscribe()
+        self._conn_browser[connection] = queue
+        task = asyncio.create_task(self._browser_frame_pump(connection, queue))
+        self._conn_browser_tasks[connection] = task
+        status = await manager.status()
+        await self._send_event(connection, "browser_status", **status)
+        frame = manager.latest_frame()
+        if frame:
+            await self._send_event(connection, "browser_frame", **frame)
+
+    def _browser_detach(self, connection: Any) -> None:
+        queue = self._conn_browser.pop(connection, None)
+        if queue is not None:
+            from xianaibot.browser import get_browser_manager
+
+            get_browser_manager().unsubscribe(queue)
+        task = self._conn_browser_tasks.pop(connection, None)
+        if task is not None and not task.done():
+            task.cancel()
+
+    async def _browser_frame_pump(
+        self, connection: Any, queue: "asyncio.Queue[dict[str, Any] | None]"
+    ) -> None:
+        """把管理器广播的帧/状态转发给单个连接，直到退订或连接关闭。"""
+        try:
+            while True:
+                item = await queue.get()
+                if item is None:
+                    break
+                event = "browser_frame" if item.get("type") == "frame" else "browser_status"
+                await self._send_event(connection, event, **item)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            pass
+        finally:
+            self._browser_detach(connection)
+
+    async def _browser_action(self, connection: Any, action: str, envelope: dict[str, Any]) -> None:
+        """处理内置浏览器的控制信封（启停/导航/输入/标签页）。"""
+        from xianaibot.browser import BrowserError, get_browser_manager
+
+        manager = get_browser_manager()
+        try:
+            if action == "browser_start":
+                status = await manager.ensure_started()
+            elif action == "browser_stop":
+                status = await manager.stop()
+            elif action == "browser_input":
+                await manager.dispatch_input(
+                    str(envelope.get("action", "")), envelope.get("params") or {}
+                )
+                return
+            elif action == "browser_navigate":
+                url = str(envelope.get("url") or "").strip()
+                if not url:
+                    await self._send_event(connection, "browser_error", detail="missing_url")
+                    return
+                status = await manager.navigate(url)
+            elif action == "browser_reload":
+                status = await manager.reload()
+            elif action == "browser_tabs":
+                await self._send_event(connection, "browser_tabs", pages=await manager.list_pages())
+                return
+            elif action == "browser_select_tab":
+                target_id = str(envelope.get("target_id") or "")
+                if not target_id:
+                    await self._send_event(connection, "browser_error", detail="missing_target_id")
+                    return
+                status = await manager.select_page(target_id)
+            elif action == "browser_open_tab":
+                status = await manager.open_page(str(envelope.get("url") or "about:blank"))
+            else:
+                return
+            await self._send_event(connection, "browser_status", **status)
+        except BrowserError as exc:
+            await self._send_event(connection, "browser_error", detail=exc.code)
+        except Exception as exc:
+            self.logger.warning("browser action {} failed: {}", action, exc)
+            await self._send_event(connection, "browser_error", detail="browser_action_failed")
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
@@ -877,6 +1004,15 @@ class WebSocketChannel(BaseChannel):
         if t == "transcribe_audio":
             event, payload = await webui_transcription_event(envelope)
             await self._send_event(connection, event, **payload)
+            return
+        if t == "browser_attach":
+            await self._browser_attach(connection)
+            return
+        if t == "browser_detach":
+            self._browser_detach(connection)
+            return
+        if t in {"browser_start", "browser_stop", "browser_input", "browser_navigate", "browser_reload", "browser_tabs", "browser_select_tab", "browser_open_tab"}:
+            await self._browser_action(connection, t, envelope)
             return
         if t == "knowledge_upload":
             event, payload = await webui_knowledge_upload_event(envelope)

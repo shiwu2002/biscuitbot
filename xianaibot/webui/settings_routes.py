@@ -32,6 +32,7 @@ from xianaibot.webui.settings_api import (
     settings_payload,
     settings_usage_payload,
     update_agent_settings,
+    update_browser_service_settings,
     update_channel_settings,
     update_image_generation_settings,
     update_model_configuration,
@@ -114,6 +115,8 @@ class WebUISettingsRouter:
             return self._handle_settings_screenshot_update(request)
         if path == "/api/settings/system-io/update":
             return self._handle_settings_system_io_update(request)
+        if path == "/api/settings/browser-service/update":
+            return self._handle_settings_browser_service_update(request)
         if path == "/api/settings/transcription/update":
             return self._handle_settings_transcription_update(request)
         if path == "/api/settings/tts/update":
@@ -322,6 +325,15 @@ class WebUISettingsRouter:
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(self._with_restart_state(payload, section="systemIo"))
+
+    def _handle_settings_browser_service_update(self, request: WsRequest) -> Response:
+        if not self._authorized(request):
+            return self._unauthorized()
+        try:
+            payload = update_browser_service_settings(self._query(request))
+        except WebUISettingsError as e:
+            return self._error_response(e.status, e.message)
+        return self._json_response(self._with_restart_state(payload, section="browser"))
 
     def _handle_settings_transcription_update(self, request: WsRequest) -> Response:
         if not self._authorized(request):

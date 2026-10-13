@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity, Package } from "lucide-react";
+import { Activity, Globe, Package } from "lucide-react";
 
+import { BrowserPanel } from "@/components/BrowserPanel";
 import { FilePreviewPanel } from "@/components/FilePreviewPanel";
 import { Button } from "@/components/ui/button";
 import { PromptNavigator } from "@/components/thread/PromptNavigator";
@@ -33,6 +34,7 @@ import {
 } from "@/lib/mcp-preset-events";
 import { getDocumentPreviewKind } from "@/lib/file-preview";
 import { inferProviderFromModelName, providerDisplayLabel } from "@/lib/provider-brand";
+import { cn } from "@/lib/utils";
 import type {
   Asset,
   ChatSummary,
@@ -72,6 +74,9 @@ const FILE_PREVIEW_MIN_WIDTH = 360;
 const FILE_PREVIEW_MAX_WIDTH = 860;
 const FILE_PREVIEW_MIN_MAIN_WIDTH = 420;
 const FILE_PREVIEW_CLOSE_ANIMATION_MS = 320;
+/** 内置浏览器面板：右侧抽屉默认宽度与收起动画。 */
+const BROWSER_PANEL_DEFAULT_WIDTH = 640;
+const BROWSER_PANEL_CLOSE_ANIMATION_MS = 320;
 
 function clampFilePreviewWidth(width: number, maxWidth: number): number {
   return Math.min(Math.max(width, FILE_PREVIEW_MIN_WIDTH), maxWidth);
@@ -326,6 +331,10 @@ export function ThreadShell({
   const [filePreviewWidth, setFilePreviewWidth] = useState(FILE_PREVIEW_DEFAULT_WIDTH);
   const [tracePanelOpen, setTracePanelOpen] = useState(false);
   const [assetsPanelOpen, setAssetsPanelOpen] = useState(false);
+  /** 内置浏览器抽屉：与文件预览面板互斥（共用右侧槽位）。 */
+  const [browserOpen, setBrowserOpen] = useState(false);
+  const [browserClosing, setBrowserClosing] = useState(false);
+  const browserCloseTimerRef = useRef<number | null>(null);
   const shellRef = useRef<HTMLElement | null>(null);
   const filePreviewWidthRef = useRef(FILE_PREVIEW_DEFAULT_WIDTH);
   const filePreviewCloseTimerRef = useRef<number | null>(null);
@@ -385,6 +394,9 @@ export function ThreadShell({
     return () => {
       if (filePreviewCloseTimerRef.current !== null) {
         window.clearTimeout(filePreviewCloseTimerRef.current);
+      }
+      if (browserCloseTimerRef.current !== null) {
+        window.clearTimeout(browserCloseTimerRef.current);
       }
     };
   }, []);
@@ -607,6 +619,13 @@ export function ThreadShell({
       filePreviewCloseTimerRef.current = null;
     }
     setFilePreviewClosing(false);
+    // 右侧槽位与内置浏览器互斥：打开文件预览即收起浏览器面板
+    if (browserCloseTimerRef.current !== null) {
+      window.clearTimeout(browserCloseTimerRef.current);
+      browserCloseTimerRef.current = null;
+    }
+    setBrowserClosing(false);
+    setBrowserOpen(false);
   }, []);
 
   const handleOpenFilePreview = useCallback(
@@ -675,6 +694,46 @@ export function ThreadShell({
       setFilePreviewClosing(false);
     }, FILE_PREVIEW_CLOSE_ANIMATION_MS);
   }, [filePreviewClosing, filePreviewMedia, filePreviewPath]);
+
+  /** 打开浏览器面板：收起文件预览（右侧槽位互斥）。 */
+  const openBrowserPanel = useCallback(() => {
+    if (filePreviewCloseTimerRef.current !== null) {
+      window.clearTimeout(filePreviewCloseTimerRef.current);
+      filePreviewCloseTimerRef.current = null;
+    }
+    setFilePreviewClosing(false);
+    setFilePreviewPath(null);
+    setFilePreviewMedia(null);
+    setFilePreviewAssetId(null);
+    setBrowserClosing(false);
+    setBrowserOpen(true);
+  }, []);
+
+  const handleToggleBrowser = useCallback(() => {
+    if (browserOpen) {
+      if (browserClosing) return;
+      setBrowserClosing(true);
+      browserCloseTimerRef.current = window.setTimeout(() => {
+        browserCloseTimerRef.current = null;
+        setBrowserOpen(false);
+        setBrowserClosing(false);
+      }, BROWSER_PANEL_CLOSE_ANIMATION_MS);
+      return;
+    }
+    openBrowserPanel();
+  }, [browserClosing, browserOpen, openBrowserPanel]);
+
+  /** 智能体开始操作内置浏览器时自动弹出面板（面板已开则不打扰）。 */
+  const browserPanelVisibleRef = useRef(false);
+  useEffect(() => {
+    browserPanelVisibleRef.current = browserOpen && !browserClosing;
+  }, [browserOpen, browserClosing]);
+  useEffect(() => {
+    return client.onBrowserActivity(() => {
+      if (browserPanelVisibleRef.current) return;
+      openBrowserPanel();
+    });
+  }, [client, openBrowserPanel]);
 
   const handleFilePreviewResizeStart = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
@@ -874,6 +933,21 @@ export function ThreadShell({
       <Package className="h-4 w-4" aria-hidden />
     </Button>
   ) : undefined;
+  const browserAction = (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={t("thread.header.browser", { defaultValue: "内置浏览器" })}
+      title={t("thread.header.browser", { defaultValue: "内置浏览器" })}
+      onClick={handleToggleBrowser}
+      className={cn(
+        "host-no-drag h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground",
+        browserOpen && !browserClosing && "bg-accent/60 text-foreground",
+      )}
+    >
+      <Globe className="h-4 w-4" aria-hidden />
+    </Button>
+  );
 
   return (
     <section
@@ -894,6 +968,7 @@ export function ThreadShell({
             promptNavigatorAction={promptNavigatorAction}
             sessionInfoAction={sessionInfoAction}
             assetsAction={assetsAction}
+            browserAction={browserAction}
             traceAction={
               <Button
                 variant="ghost"
@@ -942,6 +1017,15 @@ export function ThreadShell({
           hostChromeActive={hostChromeActive}
           onResizeStart={handleFilePreviewResizeStart}
           onClose={handleCloseFilePreview}
+        />
+      ) : null}
+      {browserOpen ? (
+        <BrowserPanel
+          token={token}
+          desktopWidth={BROWSER_PANEL_DEFAULT_WIDTH}
+          isClosing={browserClosing}
+          hostChromeActive={hostChromeActive}
+          onClose={handleToggleBrowser}
         />
       ) : null}
       <TraceLogPanel

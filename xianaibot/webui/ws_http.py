@@ -1098,7 +1098,44 @@ class GatewayHTTPHandler:
             return await asyncio.to_thread(self._handle_desktop_open_logs, request)
         if got == "/api/desktop/export-diagnostics":
             return self._handle_desktop_export_diagnostics(request)
+        # 内置浏览器服务
+        if got == "/api/browser/status":
+            return await self._handle_browser_status(request)
+        if got == "/api/browser/start":
+            return await self._handle_browser_start(request)
+        if got == "/api/browser/stop":
+            return await self._handle_browser_stop(request)
         return None
+
+    async def _handle_browser_status(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from xianaibot.browser import get_browser_manager
+
+        return _http_json_response(await get_browser_manager().status())
+
+    async def _handle_browser_start(self, request: WsRequest) -> Response:
+        """确保浏览器服务就绪（复用用户的 / 拉起常驻实例），可选 ?url= 直接开页。"""
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from xianaibot.browser import get_browser_manager
+
+        manager = get_browser_manager()
+        status = await manager.ensure_started()
+        url = (_query_first(_parse_query(request.path), "url") or "").strip()
+        if url and status.get("running"):
+            try:
+                status = await manager.open_page(url)
+            except Exception:
+                pass  # 开页失败不阻塞启动结果
+        return _http_json_response(status)
+
+    async def _handle_browser_stop(self, request: WsRequest) -> Response:
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        from xianaibot.browser import get_browser_manager
+
+        return _http_json_response(await get_browser_manager().stop())
 
     def _handle_desktop_restart(self, request: WsRequest) -> Response:
         """打包桌面端：请求重启无头 gateway（引擎重启兜底通道）。

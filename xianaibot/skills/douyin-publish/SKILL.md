@@ -129,14 +129,15 @@ if __name__ == "__main__":
 
 ---
 
-## macOS 流程（Playwright + Chromium 反检测）
+## macOS 流程（Playwright + 共享浏览器）
 
-通过 Playwright 驱动 Chromium 持久化浏览器，自动完成抖音创作者中心图文发布全流程。
+通过 Playwright CDP 连接内置浏览器服务的常驻实例，自动完成抖音创作者中心图文发布全流程。
 
 ### 前置条件
 
-1. **Python 环境**：需要 `playwright` + `playwright-stealth`，Chromium 浏览器已安装
-2. **浏览器 Profile**：`~/.xianaibot/workspace/douyin_profile/` 中保存登录态（首次需手动扫码登录）
+1. **Python 环境**：需要 `playwright` + `playwright-stealth`
+2. **登录态**：与内置浏览器服务共享 profile（`~/.xianaibot/browser-profile/`），
+   首次需手动扫码登录一次，之后智能体与 WebUI 内置面板共用该登录态
 3. **图片**：1-N 张本地图片，格式 jpg/png/webp
 
 ### 使用方法
@@ -152,7 +153,7 @@ python3 "<技能目录>/douyin_playwright.py" <图片1> <图片2> ... -t "标题
 | `images` | 图片路径（必填，1-N 个） |
 | `-t / --title` | 标题文案（默认 "测试作品"） |
 | `-s / --sms-code` | 短信验证码（可选，遇到二次验证时自动填入） |
-| `--headless` | 无头模式（不推荐，验证码无法手动处理） |
+| `--headless` | 仅在脚本需要自行拉起共享浏览器时生效（不推荐，验证码无法手动处理） |
 
 #### 示例
 

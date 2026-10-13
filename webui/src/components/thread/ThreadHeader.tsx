@@ -18,6 +18,7 @@ interface ThreadHeaderProps {
   sessionInfoAction?: ReactNode;
   traceAction?: ReactNode;
   assetsAction?: ReactNode;
+  browserAction?: ReactNode;
 }
 
 export function ThreadHeader({
@@ -33,6 +34,7 @@ export function ThreadHeader({
   sessionInfoAction,
   traceAction,
   assetsAction,
+  browserAction,
 }: ThreadHeaderProps) {
   const { t } = useTranslation();
 
@@ -87,6 +89,7 @@ export function ThreadHeader({
         {sessionInfoAction}
         {promptNavigatorAction}
         {assetsAction}
+        {browserAction}
         {traceAction}
         {!hideThemeButton ? (
           <ThemeButton

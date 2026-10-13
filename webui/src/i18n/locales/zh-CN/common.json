@@ -167,6 +167,7 @@
       "visionCapture": "截图",
       "webSearch": "网页搜索",
       "webBehavior": "行为",
+      "browserService": "内置浏览器服务",
       "cliApps": "CLI 应用",
       "mcp": "MCP 服务",
       "identity": "身份",
@@ -232,6 +233,8 @@
       "maxResults": "最大结果数",
       "timeout": "超时",
       "jinaReader": "Jina 阅读器",
+      "browserServicePort": "CDP 调试端口",
+      "browserServiceVisible": "启动时显示浏览器窗口",
       "imageGeneration": "图片生成",
       "imageProvider": "图片提供商",
       "imageProviderStatus": "提供商状态",
@@ -305,6 +308,9 @@
       "maxResults": "每次 web_search 调用返回的结果数。",
       "timeout": "搜索提供商请求超时前的秒数。",
       "jinaReader": "可用时为 web_fetch 使用 Jina Reader。",
+      "browserServicePort": "智能体与内置浏览器面板共用的浏览器调试端口；留空使用默认 9222（被占用时自动顺延）。",
+      "browserServiceVisible": "关闭时浏览器在后台无头运行；开启后可看到智能体操作浏览器的真实窗口。",
+      "browserServiceSaveHint": "保存后重启引擎生效（正在运行的浏览器实例不受影响）。",
       "imageGeneration": "配置图片提供商后，在聊天中开放 generate_image。",
       "imageProvider": "选择 generate_image 使用的注册提供商。",
       "imageProviderStatus": "图片生成会复用「提供商」里的凭据。",
@@ -470,6 +476,7 @@
       "expanded": "展开",
       "on": "开启",
       "off": "关闭",
+      "browserServicePortDefault": "默认 9222",
       "defaultPermission": "默认权限",
       "fullAccess": "完全访问权限",
       "guardStandard": "标准",
@@ -1037,7 +1044,8 @@
       "toggleTheme": "从顶部切换主题",
       "settings": "打开设置",
       "sessionInfo": "会话详情",
-      "assets": "会话资产"
+      "assets": "会话资产",
+      "browser": "内置浏览器"
     },
     "sessionInfo": {
       "title": "会话",
@@ -1287,6 +1295,27 @@
   "downloadToast": {
     "success": "《{{name}}》下载成功",
     "started": "已开始下载《{{name}}》"
+  },
+  "browserPanel": {
+    "aria": "内置浏览器",
+    "close": "关闭内置浏览器",
+    "statusExternal": "已连接你的浏览器",
+    "statusManaged": "内置浏览器",
+    "statusStopped": "未启动",
+    "start": "启动内置浏览器",
+    "startFailed": "浏览器启动失败",
+    "stop": "停止",
+    "startHint": "启动内置浏览器后，智能体的浏览器操作将在这里实时展示；已开启调试端口的浏览器会被直接复用。",
+    "addressPlaceholder": "输入网址…",
+    "reload": "刷新页面",
+    "newTab": "新建标签页",
+    "untitledTab": "空白页",
+    "screenAria": "浏览器画面（点击后可遥控）",
+    "reusedHint": "复用用户浏览器 · 不会关闭它",
+    "managedHint": "应用专属实例 · 登录态持久",
+    "readyTitle": "内置浏览器已就绪",
+    "readyHint": "在上方地址栏输入网址开始浏览；智能体做浏览器操作时，画面也会实时显示在这里。",
+    "errorToast": "浏览器面板错误：{{detail}}"
   },
   "filePreview": {
     "aria": "文件预览",

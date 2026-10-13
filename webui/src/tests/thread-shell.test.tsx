@@ -46,6 +46,7 @@ function makeClient() {
         sessionUpdateHandlers.delete(handler);
       };
     },
+    onBrowserActivity: () => () => {},
     _emitError(err: { kind: string }) {
       for (const h of errorHandlers) h(err);
     },

@@ -712,6 +712,10 @@ export interface SettingsPayload {
       write: boolean;
     }>;
   };
+  browser_service?: {
+    cdp_port: number | null;
+    headless: boolean;
+  };
   transcription?: {
     enabled: boolean;
     provider: string;
@@ -1146,6 +1150,11 @@ export interface SystemIoSettingsUpdate {
   allowActions: string[];
 }
 
+export interface BrowserServiceSettingsUpdate {
+  cdpPort: number | null;
+  headless: boolean;
+}
+
 export interface TranscriptionSettingsUpdate {
   enabled: boolean;
   provider: string;
@@ -1183,6 +1192,38 @@ export interface InboundTurnMetadata {
   turn_id?: string;
   turn_phase?: UITurnPhase;
   turn_seq?: number;
+}
+
+/** 内置浏览器：输入动作类别（与后端 BrowserServiceManager.dispatch_input 对应）。 */
+export type BrowserInputAction = "mouse" | "wheel" | "key" | "insertText";
+
+/** 内置浏览器服务状态（WS browser_status / REST /api/browser/status 共用）。 */
+export interface BrowserStatusPayload {
+  running: boolean;
+  /** external = 复用用户已启动的浏览器；managed = 应用拉起的常驻实例。 */
+  mode: "external" | "managed" | "stopped";
+  port: number | null;
+  endpoint: string | null;
+  url: string | null;
+  has_frame?: boolean;
+  type?: "status";
+}
+
+/** CDP screencast 帧元数据（坐标换算需要 deviceWidth/deviceHeight）。 */
+export interface BrowserFrameMetadata {
+  offsetTop?: number;
+  pageScaleFactor?: number;
+  deviceWidth?: number;
+  deviceHeight?: number;
+  scrollOffsetX?: number;
+  scrollOffsetY?: number;
+}
+
+/** 内置浏览器标签页条目。 */
+export interface BrowserPageInfo {
+  id: string;
+  title?: string | null;
+  url?: string | null;
 }
 
 export type InboundEvent =
@@ -1238,6 +1279,36 @@ export type InboundEvent =
       event: "runtime_model_updated";
       model_name: string;
       model_preset?: string | null;
+    }
+  | {
+      event: "browser_status";
+      running: boolean;
+      mode: BrowserStatusPayload["mode"];
+      port: number | null;
+      endpoint: string | null;
+      url: string | null;
+      has_frame?: boolean;
+      type?: "status";
+    }
+  | {
+      event: "browser_frame";
+      type: "frame";
+      /** base64 JPEG（CDP screencast 原样转发）。 */
+      data: string;
+      metadata: BrowserFrameMetadata;
+    }
+  | {
+      event: "browser_tabs";
+      pages: BrowserPageInfo[];
+    }
+  | {
+      event: "browser_error";
+      detail: string;
+    }
+  | {
+      event: "browser_activity";
+      /** 触发活动的页面 URL（托管实例里智能体正在操作的标签页）。 */
+      url: string;
     }
   | ({
       event: "turn_end";
@@ -1426,6 +1497,16 @@ export type Outbound =
   | { type: "set_employee"; chat_id: string; employee?: string }
   | { type: "transcribe_audio"; request_id: string; data_url: string; duration_ms?: number }
   | { type: "knowledge_upload"; request_id: string; filename: string; data_url: string }
+  | { type: "browser_attach" }
+  | { type: "browser_detach" }
+  | { type: "browser_start" }
+  | { type: "browser_stop" }
+  | { type: "browser_navigate"; url: string }
+  | { type: "browser_reload" }
+  | { type: "browser_tabs" }
+  | { type: "browser_select_tab"; target_id: string }
+  | { type: "browser_open_tab"; url?: string }
+  | { type: "browser_input"; action: BrowserInputAction; params: Record<string, unknown> }
   | {
       type: "message";
       chat_id: string;

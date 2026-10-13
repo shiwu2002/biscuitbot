@@ -1,4 +1,7 @@
 import type {
+  BrowserFrameMetadata,
+  BrowserPageInfo,
+  BrowserStatusPayload,
   ConnectionStatus,
   InboundEvent,
   KnowledgeDocument,
@@ -76,6 +79,14 @@ type SessionUpdateHandler = (
   employee?: string,
 ) => void;
 type RunStatusHandler = (chatId: string, startedAt: number | null) => void;
+type BrowserFrameHandler = (frame: {
+  data: string;
+  metadata: BrowserFrameMetadata;
+}) => void;
+type BrowserStatusHandler = (status: BrowserStatusPayload) => void;
+type BrowserTabsHandler = (pages: BrowserPageInfo[]) => void;
+type BrowserErrorHandler = (detail: string) => void;
+type BrowserActivityHandler = (activity: { url: string }) => void;
 
 /** Structured errors surfaced to the UI.
  *
@@ -135,6 +146,13 @@ export class XianaibotClient {
   private sessionUpdateHandlers = new Set<SessionUpdateHandler>();
   private runStatusHandlers = new Set<RunStatusHandler>();
   private errorHandlers = new Set<ErrorHandler>();
+  private browserFrameHandlers = new Set<BrowserFrameHandler>();
+  private browserStatusHandlers = new Set<BrowserStatusHandler>();
+  private browserTabsHandlers = new Set<BrowserTabsHandler>();
+  private browserErrorHandlers = new Set<BrowserErrorHandler>();
+  private browserActivityHandlers = new Set<BrowserActivityHandler>();
+  /** 面板开着时为 true：断线重连后自动重新订阅截图流。 */
+  private browserStreamWanted = false;
   // chat_id -> handlers listening on it
   private chatHandlers = new Map<string, Set<EventHandler>>();
   /** Inbound frames received while no subscriber is registered (e.g. user switched away). */
@@ -466,6 +484,61 @@ export class XianaibotClient {
     });
   }
 
+  // -- 内置浏览器 ---------------------------------------------------------
+
+  /** 订阅内置浏览器截图流；断线重连后自动恢复订阅。 */
+  browserAttach(): void {
+    this.browserStreamWanted = true;
+    this.queueSend({ type: "browser_attach" });
+  }
+
+  /** 退订截图流（面板关闭时调用）。 */
+  browserDetach(): void {
+    this.browserStreamWanted = false;
+    this.queueSend({ type: "browser_detach" });
+  }
+
+  /** 发送浏览器控制信封（启停/导航/输入/标签页）。 */
+  sendBrowserControl(frame: Extract<Outbound, { type: `browser_${string}` }>): void {
+    this.queueSend(frame);
+  }
+
+  onBrowserFrame(handler: BrowserFrameHandler): Unsubscribe {
+    this.browserFrameHandlers.add(handler);
+    return () => {
+      this.browserFrameHandlers.delete(handler);
+    };
+  }
+
+  onBrowserStatus(handler: BrowserStatusHandler): Unsubscribe {
+    this.browserStatusHandlers.add(handler);
+    return () => {
+      this.browserStatusHandlers.delete(handler);
+    };
+  }
+
+  onBrowserTabs(handler: BrowserTabsHandler): Unsubscribe {
+    this.browserTabsHandlers.add(handler);
+    return () => {
+      this.browserTabsHandlers.delete(handler);
+    };
+  }
+
+  onBrowserError(handler: BrowserErrorHandler): Unsubscribe {
+    this.browserErrorHandlers.add(handler);
+    return () => {
+      this.browserErrorHandlers.delete(handler);
+    };
+  }
+
+  /** 订阅浏览器活动事件（智能体操作共享浏览器时触发，用于自动弹出面板）。 */
+  onBrowserActivity(handler: BrowserActivityHandler): Unsubscribe {
+    this.browserActivityHandlers.add(handler);
+    return () => {
+      this.browserActivityHandlers.delete(handler);
+    };
+  }
+
   // -- internals ---------------------------------------------------------
 
   private setStatus(status: ConnectionStatus): void {
@@ -480,6 +553,10 @@ export class XianaibotClient {
     // Re-attach every known chat_id so deliveries continue routing after a drop.
     for (const chatId of this.knownChats) {
       this.rawSend({ type: "attach", chat_id: chatId });
+    }
+    // 内置浏览器截图流订阅在重连后恢复（服务端连接级订阅随之失效）。
+    if (this.browserStreamWanted) {
+      this.rawSend({ type: "browser_attach" });
     }
     // Flush anything queued during reconnect.
     const queued = this.sendQueue.splice(0);
@@ -554,6 +631,40 @@ export class XianaibotClient {
         parsed.workspace_scope,
         parsed.employee,
       );
+      return;
+    }
+
+    if (parsed.event === "browser_frame") {
+      for (const handler of this.browserFrameHandlers) {
+        handler({ data: parsed.data, metadata: parsed.metadata });
+      }
+      return;
+    }
+    if (parsed.event === "browser_status") {
+      const status: BrowserStatusPayload = {
+        running: parsed.running,
+        mode: parsed.mode,
+        port: parsed.port,
+        endpoint: parsed.endpoint,
+        url: parsed.url,
+        has_frame: parsed.has_frame,
+      };
+      for (const handler of this.browserStatusHandlers) handler(status);
+      return;
+    }
+    if (parsed.event === "browser_tabs") {
+      for (const handler of this.browserTabsHandlers) handler(parsed.pages ?? []);
+      return;
+    }
+    if (parsed.event === "browser_error") {
+      for (const handler of this.browserErrorHandlers) {
+        handler(typeof parsed.detail === "string" ? parsed.detail : "error");
+      }
+      return;
+    }
+    if (parsed.event === "browser_activity") {
+      const url = typeof parsed.url === "string" ? parsed.url : "";
+      for (const handler of this.browserActivityHandlers) handler({ url });
       return;
     }
 

@@ -167,6 +167,7 @@
       "visionCapture": "截圖",
       "webSearch": "網頁搜尋",
       "webBehavior": "行為",
+      "browserService": "內建瀏覽器服務",
       "identity": "身分",
       "webuiSafety": "WebUI 安全",
       "capabilities": "能力",
@@ -211,6 +212,8 @@
       "maxResults": "最大結果數",
       "timeout": "逾時",
       "jinaReader": "Jina 閱讀器",
+      "browserServicePort": "CDP 偵錯連接埠",
+      "browserServiceVisible": "啟動時顯示瀏覽器視窗",
       "imageGeneration": "圖片生成",
       "imageProvider": "圖片供應商",
       "imageProviderStatus": "供應商狀態",
@@ -282,6 +285,9 @@
       "maxResults": "每次 web_search 呼叫返回的結果數。",
       "timeout": "搜尋供應商請求逾時前的秒數。",
       "jinaReader": "可用時為 web_fetch 使用 Jina Reader。",
+      "browserServicePort": "智慧代理人與內建瀏覽器面板共用的瀏覽器偵錯連接埠；留空使用預設 9222（被佔用時自動順延）。",
+      "browserServiceVisible": "關閉時瀏覽器在背景無頭執行；開啟後可看到智慧代理人操作瀏覽器的真實視窗。",
+      "browserServiceSaveHint": "儲存後重啟引擎生效（正在執行的瀏覽器實例不受影響）。",
       "imageGeneration": "配置圖片供應商後，在聊天中開放 generate_image。",
       "imageProvider": "選擇 generate_image 使用的註冊供應商。",
       "imageProviderStatus": "圖片生成會重用「供應商」中的憑證。",
@@ -355,6 +361,7 @@
       "expanded": "展開",
       "on": "開啟",
       "off": "關閉",
+      "browserServicePortDefault": "預設 9222",
       "defaultPermission": "預設權限",
       "fullAccess": "完全訪問權限",
       "guardStandard": "標準",
@@ -1037,7 +1044,8 @@
       "toggleTheme": "從頂部切換主題",
       "settings": "開啟設定",
       "sessionInfo": "會話詳情",
-      "assets": "會話資產"
+      "assets": "會話資產",
+      "browser": "內建瀏覽器"
     },
     "sessionInfo": {
       "title": "會話",
@@ -1287,6 +1295,27 @@
   "downloadToast": {
     "success": "《{{name}}》下載成功",
     "started": "已開始下載《{{name}}》"
+  },
+  "browserPanel": {
+    "aria": "內建瀏覽器",
+    "close": "關閉內建瀏覽器",
+    "statusExternal": "已連接你的瀏覽器",
+    "statusManaged": "內建瀏覽器",
+    "statusStopped": "未啟動",
+    "start": "啟動內建瀏覽器",
+    "startFailed": "瀏覽器啟動失敗",
+    "stop": "停止",
+    "startHint": "啟動內建瀏覽器後，智慧代理的瀏覽器操作將在這裡即時展示；已開啟除錯連接埠的瀏覽器會被直接複用。",
+    "addressPlaceholder": "輸入網址…",
+    "reload": "重新整理頁面",
+    "newTab": "新增分頁",
+    "untitledTab": "空白頁",
+    "screenAria": "瀏覽器畫面（點擊後可遙控）",
+    "reusedHint": "複用使用者瀏覽器 · 不會關閉它",
+    "managedHint": "應用專屬實例 · 登入狀態持久",
+    "readyTitle": "內建瀏覽器已就緒",
+    "readyHint": "在上方地址欄輸入網址開始瀏覽；智慧代理做瀏覽器操作時，畫面也會即時顯示在這裡。",
+    "errorToast": "瀏覽器面板錯誤：{{detail}}"
   },
   "filePreview": {
     "aria": "檔案預覽",

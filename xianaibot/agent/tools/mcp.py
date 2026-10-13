@@ -771,6 +771,32 @@ class MCPPromptWrapper(_MCPWrapperBase):
         return "(MCP prompt call failed)"  # 不可达
 
 
+async def _maybe_inject_browser_cdp_endpoint(args: list[str]) -> list[str]:
+    """playwright MCP 挂到常驻浏览器服务，避免每次连接都新起一个浏览器实例。
+
+    内置浏览器服务（``xianaibot.browser``）会优先复用用户已启动的带调试端口
+    的浏览器，否则拉起本应用专属的常驻实例；``@playwright/mcp`` 原生支持
+    ``--cdp-endpoint``，挂上去之后所有 MCP 浏览器工具都作用在同一实例上，
+    登录态也随之共享。用户显式配置了 ``--cdp-endpoint`` 时不覆盖。
+    """
+    if not any("@playwright/mcp" in str(a) for a in args):
+        return args
+    if any(str(a).startswith("--cdp-endpoint") for a in args):
+        return args
+    try:
+        from xianaibot.browser import get_browser_manager
+
+        status = await get_browser_manager().ensure_started()
+    except Exception as exc:
+        logger.warning("browser service unavailable for playwright MCP: {}", exc)
+        return args
+    port = status.get("port")
+    if status.get("running") and port:
+        logger.info("playwright MCP: attaching to browser service on port {}", port)
+        return [*args, "--cdp-endpoint", f"http://127.0.0.1:{port}"]
+    return args
+
+
 async def connect_mcp_servers(
     mcp_servers: dict, registry: ToolRegistry
 ) -> dict[str, AsyncExitStack]:
@@ -827,6 +853,7 @@ async def connect_mcp_servers(
                     cfg.args,
                     cfg.env or None,
                 )
+                args = await _maybe_inject_browser_cdp_endpoint(args)
                 params = StdioServerParameters(
                     command=command,
                     args=args,

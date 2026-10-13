@@ -215,6 +215,7 @@ vi.mock("@/lib/xianaibot-client", () => {
       sessionUpdateHandlers.add(handler);
       return () => sessionUpdateHandlers.delete(handler);
     };
+    onBrowserActivity = () => () => {};
     onRunStatus = (handler: (chatId: string, startedAt: number | null) => void) => {
       runStatusHandlers.add(handler);
       return () => runStatusHandlers.delete(handler);

@@ -36,6 +36,7 @@ vi.mock("@/lib/xianaibot-client", () => {
       sessionUpdateHandlers.add(handler);
       return () => sessionUpdateHandlers.delete(handler);
     };
+    onBrowserActivity = () => () => {};
     onRunStatus = () => () => {};
     getRunStartedAt = () => null;
     getGoalState = () => undefined;
