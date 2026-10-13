@@ -1,4 +1,4 @@
-import type { VideoGenerationSettings } from "@/lib/types";
+import type { VideoGenerationSettings, VideoGenerationVendorSettings } from "@/lib/types";
 
 /**
  * 视频生成 payload 测试夹具（厂商自包含结构）。
@@ -8,7 +8,7 @@ import type { VideoGenerationSettings } from "@/lib/types";
  * resolution_optional）。`overrides` 可按厂商局部覆盖 vendors 段。
  */
 export function videoGenerationPayload(
-  overrides: Partial<VideoGenerationSettings["vendors"]> = {},
+  overrides: Record<string, Partial<VideoGenerationVendorSettings>> = {},
 ): VideoGenerationSettings {
   return {
     vendors: {

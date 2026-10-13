@@ -108,7 +108,12 @@ describe("SessionAssetsPanel 会话资产面板", () => {
     vi.mocked(fetchAssets).mockResolvedValue({ assets: [] });
     rerender(
       <ClientProvider client={{} as never} token="tok">
-        <SessionAssetsPanel open onOpenChange={vi.fn()} sessionKey="websocket:chat-2" />
+        <SessionAssetsPanel
+          open
+          onOpenChange={vi.fn()}
+          sessionKey="websocket:chat-2"
+          onOpenAsset={vi.fn()}
+        />
       </ClientProvider>,
     );
 
