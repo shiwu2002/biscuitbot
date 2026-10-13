@@ -1313,6 +1313,15 @@ export interface Asset {
   media_url: string;
   /** 渠道入站媒体所属渠道（如 weixin/feishu/email）；生成资产为空字符串。 */
   channel?: string;
+  /** 该文件是智能体在会话里真正交付给用户的（会话记录里的出站 ``media``）。
+   *
+   * 交付过的文件无条件出现在资产列表里，工作区外的也能看/删；扫描到的普通产出
+   * 为 ``false``。旧的全局资产接口不返回该字段，故可选。 */
+  delivered?: boolean;
+  /** 工作区**相对**路径（posix 写法）。工作区外的交付件为空串 —— 文件预览面板据此
+   * 选口径：有路径走 ``file-preview``/``file-reveal``（可定位原文件），没有则退化成
+   * 按签名 URL 预览。 */
+  path?: string;
 }
 
 /** One attachment on an outbound ``message`` envelope.

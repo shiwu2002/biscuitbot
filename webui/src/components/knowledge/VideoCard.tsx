@@ -60,7 +60,7 @@ export function VideoCard({ asset }: { asset: Asset }) {
   };
 
   return (
-    <div className="relative aspect-square w-full overflow-hidden bg-black">
+    <div className="relative aspect-[4/3] w-full overflow-hidden bg-black">
       {/* 抓帧用；播放时显示并接管 */}
       <video
         ref={videoRef}

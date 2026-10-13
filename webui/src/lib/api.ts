@@ -1127,37 +1127,93 @@ export async function deleteKnowledgeDocument(
   );
 }
 
-/** 生成资产（图片/视频/音频）列表载荷。 */
+/** 会话资产（图片/视频/音频/文档）列表载荷。 */
 export interface AssetsPayload {
   assets: Asset[];
+  /** 工作区文件数触及后端遍历上限，列表被截断。 */
+  truncated?: boolean;
+}
+
+/**
+ * 资产口径：``session`` = 本会话（写过的 ∪ 交付给你的），``workspace`` = 整个工作区。
+ * 缺省是本会话 —— 多个会话共用一个工作区时，工作区口径下每个会话看到的是同一份清单。
+ */
+export type AssetsScope = "session" | "workspace";
+
+/** 资产接口挂在会话下：扫描根就是该会话的工作区（project_path）。 */
+function sessionAssetsUrl(
+  key: string,
+  base: string,
+  suffix = "",
+  query: URLSearchParams | null = null,
+  scope: AssetsScope = "session",
+): string {
+  const params = new URLSearchParams(query ?? undefined);
+  if (scope === "workspace") params.set("scope", "workspace");
+  const qs = params.toString();
+  return `${base}/api/sessions/${encodeURIComponent(key)}/assets${suffix}${qs ? `?${qs}` : ""}`;
 }
 
 export async function fetchAssets(
   token: string,
+  sessionKey: string,
+  scope: AssetsScope = "session",
   base: string = "",
 ): Promise<AssetsPayload> {
-  return request<AssetsPayload>(`${base}/api/settings/assets`, token);
+  return request<AssetsPayload>(
+    sessionAssetsUrl(sessionKey, base, "", null, scope),
+    token,
+  );
 }
 
 export async function deleteAsset(
   token: string,
+  sessionKey: string,
   id: string,
+  scope: AssetsScope = "session",
   base: string = "",
 ): Promise<AssetsPayload> {
   const query = new URLSearchParams();
   query.set("id", id);
-  return request<AssetsPayload>(`${base}/api/settings/assets/delete?${query}`, token);
+  return request<AssetsPayload>(
+    sessionAssetsUrl(sessionKey, base, "/delete", query, scope),
+    token,
+  );
+}
+
+/**
+ * 在系统文件管理器中定位一个资产的原文件（只选中，不执行）。
+ *
+ * 与 ``revealWorkspaceFile`` 的区别是入参用资产 id 而不是工作区路径：工作区**外**
+ * 的交付件也能定位（那正是预览不了、最需要知道文件在哪的一类）。同样只有与工作区
+ * 同机的客户端可用。
+ */
+export async function revealAsset(
+  token: string,
+  sessionKey: string,
+  id: string,
+  base: string = "",
+): Promise<{ ok: boolean; path: string }> {
+  const query = new URLSearchParams();
+  query.set("id", id);
+  return request<{ ok: boolean; path: string }>(
+    sessionAssetsUrl(sessionKey, base, "/reveal", query),
+    token,
+    undefined,
+    API_READ_TIMEOUT_MS,
+  );
 }
 
 export async function fetchDocumentPreview(
   token: string,
+  sessionKey: string,
   id: string,
   base: string = "",
 ): Promise<DocumentPreviewPayload> {
   const query = new URLSearchParams();
   query.set("id", id);
   return request<DocumentPreviewPayload>(
-    `${base}/api/settings/assets/preview?${query}`,
+    sessionAssetsUrl(sessionKey, base, `-preview?${query}`),
     token,
     undefined,
     API_READ_TIMEOUT_MS,

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
-import { FileText, Loader2, X } from "lucide-react";
+import { Download, FileText, Loader2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { fetchDocumentPreview } from "@/lib/api";
@@ -17,10 +17,13 @@ import { cn } from "@/lib/utils";
 export function DocumentPreviewDialog({
   asset,
   token,
+  sessionKey,
   onOpenChange,
 }: {
   asset: Asset | null;
   token: string;
+  /** 资产归属的会话：文档预览也按该会话的工作区解析。 */
+  sessionKey: string;
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -38,7 +41,7 @@ export function DocumentPreviewDialog({
     setPreview(null);
     (async () => {
       try {
-        const payload = await fetchDocumentPreview(token, asset.id);
+        const payload = await fetchDocumentPreview(token, sessionKey, asset.id);
         if (!cancelled) setPreview(payload);
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
@@ -49,7 +52,7 @@ export function DocumentPreviewDialog({
     return () => {
       cancelled = true;
     };
-  }, [asset, token]);
+  }, [asset, sessionKey, token]);
 
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
@@ -97,8 +100,28 @@ export function DocumentPreviewDialog({
                 {t("filePreview.loading", { defaultValue: "正在加载预览..." })}
               </div>
             ) : error ? (
-              <div className="rounded-[14px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
-                {error}
+              <div className="space-y-3">
+                <div className="rounded-[14px] border border-destructive/20 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+                  {error}
+                </div>
+                {/* 文本预览只服务文档类型：交付来的 `.zip` 之类会走到这里。签名地址
+                    仍然能拿到原件（非媒体类型降级为 octet-stream 下载），别让
+                    卡片变成死路。 */}
+                {asset?.media_url ? (
+                  <a
+                    href={asset.media_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-[10px] border border-border/60 px-3 py-1.5",
+                      "text-[12.5px] text-foreground transition-colors hover:bg-muted",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                    )}
+                  >
+                    <Download className="h-3.5 w-3.5" aria-hidden />
+                    {t("knowledge.assets.openOriginal", { defaultValue: "打开原件" })}
+                  </a>
+                ) : null}
               </div>
             ) : preview ? (
               <>

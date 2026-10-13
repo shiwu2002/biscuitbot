@@ -1,4 +1,4 @@
-﻿﻿"""MiniMax H3 视频生成工具 / 客户端测试。
+"""MiniMax H3 视频生成工具 / 客户端测试。
 
 覆盖：base URL 归一化、build_request 的模式判定与角色映射、三道互斥/上限校验、
 create_task 的 base_resp 业务错误、poll 的双路径双词表容错、file_id → download_url

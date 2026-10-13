@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any
 
 from websockets.http11 import Request as WsRequest
@@ -18,7 +17,6 @@ from websockets.http11 import Response
 
 from xianaibot.agent.tools.mcp import request_mcp_reload
 from xianaibot.bus.queue import MessageBus
-from xianaibot.webui.assets_api import assets_payload, delete_asset, document_preview
 from xianaibot.webui.cli_apps_api import cli_apps_action, cli_apps_payload
 from xianaibot.webui.http_utils import query_first as _query_first
 from xianaibot.webui.mcp_presets_api import mcp_presets_settings_action
@@ -78,7 +76,6 @@ class WebUISettingsRouter:
         error_response: Callable[[int, str | None], Response],
         runtime_surface: str,
         runtime_capabilities: dict[str, Any],
-        sign_media: Callable[[Path], str | None] | None = None,
     ) -> None:
         self.bus = bus
         self.logger = logger
@@ -88,7 +85,6 @@ class WebUISettingsRouter:
         self._error_response = error_response
         self._runtime_surface = runtime_surface
         self._runtime_capabilities = runtime_capabilities
-        self._sign_media = sign_media
         self._restart_sections: set[str] = set()
 
     async def dispatch(self, request: WsRequest, path: str) -> Response | None:
@@ -132,12 +128,6 @@ class WebUISettingsRouter:
             return await self._handle_settings_knowledge(request)
         if path == "/api/settings/knowledge/delete":
             return self._handle_settings_knowledge_delete(request)
-        if path == "/api/settings/assets":
-            return await self._handle_settings_assets(request)
-        if path == "/api/settings/assets/preview":
-            return await self._handle_settings_assets_preview(request)
-        if path == "/api/settings/assets/delete":
-            return self._handle_settings_assets_delete(request)
         if path == "/api/settings/cli-apps":
             return await self._handle_settings_cli_apps(request)
         if path == "/api/settings/cli-apps/install":
@@ -388,36 +378,6 @@ class WebUISettingsRouter:
             return self._unauthorized()
         try:
             payload = delete_knowledge_document(self._query(request))
-        except WebUISettingsError as e:
-            return self._error_response(e.status, e.message)
-        return self._json_response(payload)
-
-    async def _handle_settings_assets(self, request: WsRequest) -> Response:
-        if not self._authorized(request):
-            return self._unauthorized()
-        if self._sign_media is None:
-            return self._error_response(500, "media signing unavailable")
-        # assets_payload 扫描 media 目录树（同步重 IO），放到线程池执行
-        payload = await asyncio.to_thread(assets_payload, self._sign_media)
-        return self._json_response(payload)
-
-    async def _handle_settings_assets_preview(self, request: WsRequest) -> Response:
-        if not self._authorized(request):
-            return self._unauthorized()
-        try:
-            # document_preview 内含文档文本抽取（extract_text，同步重 IO），放到线程池执行
-            payload = await asyncio.to_thread(document_preview, self._query(request))
-        except WebUISettingsError as e:
-            return self._error_response(e.status, e.message)
-        return self._json_response(payload)
-
-    def _handle_settings_assets_delete(self, request: WsRequest) -> Response:
-        if not self._authorized(request):
-            return self._unauthorized()
-        if self._sign_media is None:
-            return self._error_response(500, "media signing unavailable")
-        try:
-            payload = delete_asset(self._query(request), self._sign_media)
         except WebUISettingsError as e:
             return self._error_response(e.status, e.message)
         return self._json_response(payload)

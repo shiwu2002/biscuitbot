@@ -3328,6 +3328,94 @@ def test_handle_file_reveal_rejects_paths_outside_workspace(tmp_path) -> None:
     assert unauthorized.status_code == 401
 
 
+def _assets_reveal_request(enc: str, asset_id: str, *, token: str = "tok"):
+    from urllib.parse import quote
+
+    from websockets.datastructures import Headers
+    from websockets.http11 import Request
+
+    return Request(
+        f"/api/sessions/{enc}/assets/reveal?id={quote(asset_id, safe='')}",
+        Headers([("Authorization", f"Bearer {token}")]),
+    )
+
+
+def test_handle_session_assets_reveal_selects_workspace_output(monkeypatch, tmp_path) -> None:
+    """资产面板的「在文件夹中显示」：按资产 id 定位工作区里的原文件。"""
+    from urllib.parse import quote
+
+    from xianaibot.webui.assets_api import _encode_asset_id
+
+    workspace = tmp_path / "workspace"
+    target = workspace / "generated" / "img_abcd1234.png"
+    target.parent.mkdir(parents=True)
+    target.write_bytes(b"\x89PNG")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:assets-reveal", safe="")
+    revealed = _stub_reveal(monkeypatch, gateway)
+
+    resp = gateway.http._handle_session_assets_reveal(
+        _local_connection(),
+        _assets_reveal_request(enc, _encode_asset_id(Path("generated/img_abcd1234.png"))),
+        enc,
+    )
+
+    assert resp.status_code == 200
+    assert revealed == [target.resolve()]
+
+
+def test_handle_session_assets_reveal_is_same_machine_only(monkeypatch, tmp_path) -> None:
+    from urllib.parse import quote
+
+    from xianaibot.webui.assets_api import _encode_asset_id
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "out.png").write_bytes(b"\x89PNG")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:assets-reveal", safe="")
+    revealed = _stub_reveal(monkeypatch, gateway)
+
+    remote = gateway.http._handle_session_assets_reveal(
+        _remote_connection(),
+        _assets_reveal_request(enc, _encode_asset_id(Path("out.png"))),
+        enc,
+    )
+
+    assert remote.status_code == 403
+    assert revealed == []
+
+
+def test_handle_session_assets_reveal_refuses_unknown_external_paths(tmp_path) -> None:
+    """``@:`` 编码不是授权：台账里没有的绝对路径，构造出来也不给定位。"""
+    from urllib.parse import quote
+
+    from xianaibot.webui.assets_api import _encode_external_asset_id
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    victim = tmp_path / "victim.png"
+    victim.write_bytes(b"\x89PNG")
+
+    gateway = _basic_handler(MagicMock(), workspace_path=workspace)
+    gateway.tokens.api_tokens["tok"] = time.monotonic() + 300.0
+    enc = quote("websocket:assets-reveal", safe="")
+
+    resp = gateway.http._handle_session_assets_reveal(
+        _local_connection(),
+        _assets_reveal_request(enc, _encode_external_asset_id(victim)),
+        enc,
+    )
+
+    # 与删除同一口径：工作区外且不在台账的路径按「越界」拒绝。
+    assert resp.status_code == 400
+    assert b"outside the workspace" in resp.body
+
+
 @pytest.mark.asyncio
 async def test_session_route_dispatches_file_reveal(monkeypatch, tmp_path) -> None:
     """路由表必须挂上 file-reveal，否则前端只会拿到 404。"""

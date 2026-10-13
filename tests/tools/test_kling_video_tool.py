@@ -1,4 +1,4 @@
-﻿﻿"""可灵（Kling）视频生成工具 / 客户端测试。
+"""可灵（Kling）视频生成工具 / 客户端测试。
 
 覆盖：JWT 构造、Authorization 两种形态、build_request 端点与参数映射、
 create_task/poll/extract_video_url 的响应处理，以及厂商自包含的
@@ -17,6 +17,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from xianaibot.agent.tools import kling_video
 from xianaibot.agent.tools.kling_video import (
     _DEFAULT_BASE_URL,
     _KLING_DEFAULT_MODEL,
@@ -288,7 +289,7 @@ def test_extract_video_url_missing_raises() -> None:
         )
 
 
-# ---- 工具分流：kling vs volcengine -------------------------------------------
+# ---- 注册表与工具构造 --------------------------------------------------------
 
 
 def test_registry_exposes_kling() -> None:
@@ -297,89 +298,57 @@ def test_registry_exposes_kling() -> None:
 
 
 def test_kling_model_fallback_off_seedance_names(tmp_path: Path) -> None:
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling"),
-    )
+    tool = KlingVideoTool(workspace=tmp_path, config=KlingVideoToolConfig())
     # 未传 model 且配置里仍是 Seedance 默认模型 → 回退可灵默认
-    assert tool._kling_model(None) == _KLING_DEFAULT_MODEL
-    assert tool._kling_model("doubao-seedance-2-0-260128") == _KLING_DEFAULT_MODEL
+    assert tool._resolve_model(None) == _KLING_DEFAULT_MODEL
+    assert tool._resolve_model("doubao-seedance-2-0-260128") == _KLING_DEFAULT_MODEL
+    assert tool._resolve_model("minimax-video-01") == _KLING_DEFAULT_MODEL
     # 显式自定义模型保留
-    assert tool._kling_model("custom-kling-model") == "custom-kling-model"
+    assert tool._resolve_model("custom-kling-model") == "custom-kling-model"
 
 
 def test_create_takes_kling_key_and_api_base(tmp_path: Path) -> None:
     ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SimpleNamespace(
-            seedance_video=SeedanceVideoToolConfig(enabled=True, provider="kling")
-        ),
+        config=SimpleNamespace(kling_video=KlingVideoToolConfig()),
         provider_configs={
             "kling": SimpleNamespace(
                 api_key="AK123:SK456", api_base="https://relay.example/v1"
             )
         },
     )
-    tool = SeedanceVideoTool.create(ctx)
-    assert tool._ark_api_key == "AK123:SK456"
-    assert tool.provider_api_base == "https://relay.example/v1"
+    tool = KlingVideoTool.create(ctx)
+    assert tool._api_key() == "AK123:SK456"
+    assert tool._api_base() == "https://relay.example/v1"
 
 
-@pytest.mark.asyncio
-async def test_execute_dispatches_to_kling_path(tmp_path: Path, monkeypatch) -> None:
-    """provider=kling 时 execute 走 _execute_kling，其余参数透传。"""
-    tool = SeedanceVideoTool(
+def test_create_falls_back_to_official_base_and_explicit_key(tmp_path: Path) -> None:
+    """「模型厂商」页没配 kling 时，回落到官方 base 与配置里的显式 apiKey。"""
+    ctx = SimpleNamespace(
         workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+        config=SimpleNamespace(kling_video=KlingVideoToolConfig(api_key="AK:SK")),
+        provider_configs={},
     )
-    captured: dict = {}
-
-    async def fake_kling(self, **kwargs):
-        captured.update(kwargs)
-        return '{"video": "ok"}'
-
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_kling", fake_kling)
-    result = await tool.execute(prompt="hello", image_urls=["https://a.example/img.jpg"])
-    assert json.loads(result) == {"video": "ok"}
-    assert captured["prompt"] == "hello"
-    assert captured["image_urls"] == ["https://a.example/img.jpg"]
+    tool = KlingVideoTool.create(ctx)
+    assert tool._api_key() == "AK:SK"
+    assert tool._api_base() == _DEFAULT_BASE_URL
 
 
-@pytest.mark.asyncio
-async def test_volcengine_path_does_not_call_kling(tmp_path: Path, monkeypatch) -> None:
-    """默认厂商走方舟路径，_execute_kling 不应被调用（防回归）。"""
-    tool = SeedanceVideoTool(
+def test_provider_page_key_wins_over_residual_config_key(tmp_path: Path) -> None:
+    """配置里残留的别家 key（如 ark- 前缀）不能盖过「模型厂商」页的 kling 密钥。"""
+    tool = KlingVideoTool(
         workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="volcengine", api_key="ark-test"),
+        config=KlingVideoToolConfig(api_key="ark-residual"),
+        provider_api_key="AK:SK",
     )
-
-    def fail(**kwargs):
-        raise AssertionError("_execute_kling 不应在 volcengine 路径被调用")
-
-    async def fake_create(self, client, body):
-        return "task-1"
-
-    async def fake_poll(self, client, task_id):
-        return {"content": {"video_url": "https://example.com/out.mp4"}}
-
-    async def fake_download(self, client, video_url, **kwargs):
-        return {"path": str(tmp_path / "out.mp4")}
-
-    monkeypatch.setattr(SeedanceVideoTool, "_execute_kling", fail)
-    monkeypatch.setattr(SeedanceVideoTool, "_create_task", fake_create)
-    monkeypatch.setattr(SeedanceVideoTool, "_poll_until_done", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
-
-    result = await tool.execute(prompt="hello")
-    assert result.startswith('{"video":')
+    assert tool._api_key() == "AK:SK"
 
 
 @pytest.mark.asyncio
 async def test_execute_kling_full_flow(tmp_path: Path, monkeypatch) -> None:
     """kling 全流程：建任务 → 轮询 → 取 URL → 落盘，返回 JSON 元数据。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+    tool = KlingVideoTool(
+        workspace=tmp_path, config=KlingVideoToolConfig(api_key="AK:SK")
     )
     captured: dict = {}
 
@@ -398,12 +367,12 @@ async def test_execute_kling_full_flow(tmp_path: Path, monkeypatch) -> None:
             },
         }
 
-    async def fake_download(self, client, video_url, *, model=None):
-        return {"path": str(tmp_path / "out.mp4"), "model": model}
+    async def fake_download(client, video_url, **kwargs):
+        return {"path": str(tmp_path / "out.mp4"), "model": kwargs.get("model")}
 
     monkeypatch.setattr(KlingVideoClient, "create_task", fake_create)
     monkeypatch.setattr(KlingVideoClient, "poll", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    monkeypatch.setattr(kling_video, "download_and_store", fake_download)
 
     result = await tool.execute(
         prompt="让照片动起来",
@@ -428,10 +397,7 @@ async def test_execute_kling_full_flow(tmp_path: Path, monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_execute_kling_missing_key_returns_error(tmp_path: Path) -> None:
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling"),
-    )
+    tool = KlingVideoTool(workspace=tmp_path, config=KlingVideoToolConfig())
     result = await tool.execute(prompt="hello")
     assert result.startswith("Error: 可灵 API key 未配置")
 
@@ -439,9 +405,8 @@ async def test_execute_kling_missing_key_returns_error(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_execute_kling_local_image_auto_base64(tmp_path: Path, monkeypatch) -> None:
     """本地参考图自动转 base64 data URL（官方 kling-3.0 实测接受 base64）。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+    tool = KlingVideoTool(
+        workspace=tmp_path, config=KlingVideoToolConfig(api_key="AK:SK")
     )
     img = tmp_path / "cat.jpg"
     img.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF" + b"\x00" * 64)  # JPEG 魔数
@@ -462,12 +427,12 @@ async def test_execute_kling_local_image_auto_base64(tmp_path: Path, monkeypatch
             },
         }
 
-    async def fake_download(self, client, video_url, *, model=None):
-        return {"path": str(tmp_path / "out.mp4"), "model": model}
+    async def fake_download(client, video_url, **kwargs):
+        return {"path": str(tmp_path / "out.mp4"), "model": kwargs.get("model")}
 
     monkeypatch.setattr(KlingVideoClient, "create_task", fake_create)
     monkeypatch.setattr(KlingVideoClient, "poll", fake_poll)
-    monkeypatch.setattr(SeedanceVideoTool, "_download_and_store", fake_download)
+    monkeypatch.setattr(kling_video, "download_and_store", fake_download)
 
     result = await tool.execute(prompt="hello", image_urls=[str(img)])
     assert json.loads(result)["video"]["model"] == _KLING_DEFAULT_MODEL
@@ -479,9 +444,8 @@ async def test_execute_kling_local_image_auto_base64(tmp_path: Path, monkeypatch
 @pytest.mark.asyncio
 async def test_execute_kling_missing_local_image_errors(tmp_path: Path) -> None:
     """本地参考图不存在时报错（复用 _resolve_image_ref 校验）。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+    tool = KlingVideoTool(
+        workspace=tmp_path, config=KlingVideoToolConfig(api_key="AK:SK")
     )
     result = await tool.execute(prompt="hello", image_urls=[str(tmp_path / "missing.jpg")])
     assert result.startswith("Error:")
@@ -491,9 +455,8 @@ async def test_execute_kling_missing_local_image_errors(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_execute_kling_poll_failure_returns_error(tmp_path: Path, monkeypatch) -> None:
     """轮询阶段失败时错误被捕获并以 Error: 前缀返回。"""
-    tool = SeedanceVideoTool(
-        workspace=tmp_path,
-        config=SeedanceVideoToolConfig(enabled=True, provider="kling", api_key="AK:SK"),
+    tool = KlingVideoTool(
+        workspace=tmp_path, config=KlingVideoToolConfig(api_key="AK:SK")
     )
 
     async def fake_create(self, client, endpoint, body):

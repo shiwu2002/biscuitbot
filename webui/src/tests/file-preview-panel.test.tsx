@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   fetchFilePreview: vi.fn(),
   fetchFileDownload: vi.fn(),
   revealWorkspaceFile: vi.fn(),
+  revealAsset: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({
@@ -19,6 +20,7 @@ vi.mock("@/lib/api", () => ({
   fetchFilePreview: mocks.fetchFilePreview,
   fetchFileDownload: mocks.fetchFileDownload,
   revealWorkspaceFile: mocks.revealWorkspaceFile,
+  revealAsset: mocks.revealAsset,
 }));
 
 import { FilePreviewPanel } from "@/components/FilePreviewPanel";
@@ -118,6 +120,72 @@ describe("FilePreviewPanel download", () => {
   });
 });
 
+describe("FilePreviewPanel HTML rendering", () => {
+  function resolvedHtmlPreview(overrides: Record<string, unknown> = {}) {
+    mocks.fetchFilePreview.mockResolvedValue({
+      path: "E:/project/reports/report.html",
+      display_path: "reports/report.html",
+      project_path: "E:/project",
+      language: "html",
+      content: "<!doctype html><html><body><h1>销售报告</h1></body></html>",
+      size: 54,
+      truncated: false,
+      ...overrides,
+    });
+  }
+
+  it("renders HTML in a sandboxed iframe instead of syntax-highlighted source", async () => {
+    resolvedHtmlPreview();
+
+    renderPanel("reports/report.html");
+
+    const frame = await screen.findByTitle("report.html");
+    expect(frame.tagName).toBe("IFRAME");
+    // 允许页面自身脚本渲染交互界面，但不给 allow-same-origin（来源不透明）
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(frame.getAttribute("srcdoc")).toContain("销售报告");
+    // 渲染模式下不再把源码铺成代码视图
+    expect(screen.queryByText(/<!doctype html>/i)).toBeNull();
+  });
+
+  it("offers fullscreen viewing for rendered HTML", async () => {
+    resolvedHtmlPreview();
+
+    renderPanel("reports/report.html");
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "全屏查看" })).toBeInTheDocument());
+  });
+
+  it("keeps showing the source when the preview is truncated", async () => {
+    // 截断的文件渲染出来只是残缺页面，不如保留源码 + 截断提示
+    resolvedHtmlPreview({ truncated: true });
+
+    renderPanel("reports/report.html");
+
+    await waitFor(() => expect(mocks.fetchFilePreview).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByTitle("report.html")).toBeNull());
+    expect(screen.queryByRole("button", { name: "全屏查看" })).toBeNull();
+  });
+
+  it("keeps syntax-highlighted source for non-HTML text files", async () => {
+    mocks.fetchFilePreview.mockResolvedValue({
+      path: "E:/project/reports/notes.md",
+      display_path: "reports/notes.md",
+      project_path: "E:/project",
+      language: "markdown",
+      content: "# 标题",
+      size: 6,
+      truncated: false,
+    });
+
+    renderPanel("reports/notes.md");
+
+    await waitFor(() => expect(mocks.fetchFilePreview).toHaveBeenCalled());
+    expect(screen.queryByTitle("notes.md")).toBeNull();
+    expect(screen.queryByRole("button", { name: "全屏查看" })).toBeNull();
+  });
+});
+
 describe("FilePreviewPanel reveal in file manager", () => {
   it("is hidden when the client is not on the workspace machine", async () => {
     resolvedPreview();
@@ -175,5 +243,62 @@ describe("FilePreviewPanel reveal in file manager", () => {
     // 头部图标按钮 + 错误态带文字按钮，两个动作各自成对
     expect(screen.getAllByRole("button", { name: "在文件夹中显示" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "下载" })).toHaveLength(2);
+  });
+});
+
+describe("FilePreviewPanel 会话资产（媒体模式）定位原文件", () => {
+  const ASSET_ID = "QDoL3RtcC9kZWxpdmVyZWQv5oql5ZGK5omT5YyFLnppcA";
+
+  function renderAsset(
+    { assetId = ASSET_ID as string | null, name = "报告打包.zip", canRevealFile = true } = {},
+  ) {
+    return render(
+      <FilePreviewPanel
+        sessionKey="websocket:chat-1"
+        media={{ url: `/api/media/sig/${name}`, name }}
+        assetId={assetId}
+        token="tok"
+        canRevealFile={canRevealFile}
+        onClose={() => {}}
+      />,
+    );
+  }
+
+  it("带资产 id 时按资产路由定位原文件（不 staging 副本）", async () => {
+    mocks.revealAsset.mockResolvedValue({ ok: true, path: "E:/tmp/delivered/报告.docx" });
+
+    renderAsset({ name: "报告.docx" });
+
+    fireEvent.click(screen.getByRole("button", { name: "在文件夹中显示" }));
+
+    await waitFor(() =>
+      expect(mocks.revealAsset).toHaveBeenCalledWith("tok", "websocket:chat-1", ASSET_ID),
+    );
+    // 走的是资产 id 而不是相对路径：工作区外的交付件没有相对路径可用。
+    expect(mocks.revealWorkspaceFile).not.toHaveBeenCalled();
+    expect(mocks.fetchFileDownload).not.toHaveBeenCalled();
+  });
+
+  it("media 模式没有资产 id（真·附件）时不提供定位入口", async () => {
+    renderAsset({ assetId: null, name: "报告.docx" });
+
+    expect(screen.queryByRole("button", { name: "在文件夹中显示" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "下载" })).toHaveLength(1);
+  });
+
+  it("预览不了的交付件在兜底态也给「在文件夹中显示」", async () => {
+    mocks.revealAsset.mockResolvedValue({ ok: true, path: "E:/tmp/delivered/报告打包.zip" });
+
+    renderAsset();
+
+    // `.zip` 没有文档预览类型 → 走二进制兜底，出路不能只有下载
+    await waitFor(() => expect(screen.getByText(/二进制文件/)).toBeInTheDocument());
+    expect(screen.getAllByRole("button", { name: "在文件夹中显示" })).toHaveLength(2);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "在文件夹中显示" })[1]);
+
+    await waitFor(() =>
+      expect(mocks.revealAsset).toHaveBeenCalledWith("tok", "websocket:chat-1", ASSET_ID),
+    );
   });
 });

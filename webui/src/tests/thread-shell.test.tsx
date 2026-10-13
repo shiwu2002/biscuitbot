@@ -1523,3 +1523,106 @@ describe("ThreadShell", () => {
     });
   });
 });
+
+describe("ThreadShell 会话资产 → 右侧预览框", () => {
+  const MEDIA_URL =
+    "/api/sessions/websocket%3Achat-a/workspace-media/sig/cGF5bG9hZA";
+
+  function asset(overrides: Partial<import("@/lib/types").Asset>) {
+    return {
+      id: "cmVwb3J0cy9hbnN3ZXI",
+      name: "报告.docx",
+      kind: "document" as const,
+      size: 2048,
+      created_at: "2026-08-17T13:00:00+08:00",
+      caption: "",
+      media_url: MEDIA_URL,
+      path: "reports/报告.docx",
+      ...overrides,
+    };
+  }
+
+  function mediaResponse() {
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+      json: async () => ({}),
+    };
+  }
+
+  function renderShell(fetchMock: ReturnType<typeof vi.fn>) {
+    vi.stubGlobal("fetch", fetchMock);
+    const client = makeClient();
+    return render(
+      wrap(
+        client,
+        <ThreadShell
+          session={session("chat-a")}
+          title="Chat chat-a"
+          onToggleSidebar={() => {}}
+          onGoHome={() => {}}
+        />,
+      ),
+    );
+  }
+
+  function stub(assetRow: ReturnType<typeof asset>) {
+    return vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/assets")) return httpJson({ assets: [assetRow] });
+      if (url.startsWith(MEDIA_URL)) return mediaResponse();
+      if (url.includes("/file-preview")) {
+        return httpJson({
+          path: "reports/notes.md",
+          display_path: "reports/notes.md",
+          project_path: "reports",
+          language: "markdown",
+          content: "Total revenue: $5,000,000",
+          size: 2048,
+          truncated: false,
+        });
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    });
+  }
+
+  it("点 docx 交付件：关掉抽屉、按 media 模式在右侧预览框里渲染", async () => {
+    const fetchMock = stub(asset({}));
+    renderShell(fetchMock);
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "会话资产" }));
+    fireEvent.click(await screen.findByRole("button", { name: "报告.docx" }));
+
+    await waitFor(() => expect(screen.getByTestId("file-preview-panel")).toBeInTheDocument());
+    // docx 是二进制：file-preview 路由只出文本（会 415），必须走 media 链路由客户端解析
+    // —— 与聊天里点附件同一条路，工作区里的资产也一样。
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(MEDIA_URL));
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input).includes("/file-preview")),
+    ).toBe(false);
+    // 抽屉要收起来：预览框在右侧，同时挂着资产列表是重复信息。
+    await waitFor(() => expect(screen.queryByTestId("assets-view")).not.toBeInTheDocument());
+  });
+
+  it("点文本类交付件：走 file-preview 路径链路（高亮 + 面包屑）", async () => {
+    const fetchMock = stub(
+      asset({ id: "cmVwb3J0cy9ub3Rlcy5tZA", name: "notes.md", path: "reports/notes.md" }),
+    );
+    renderShell(fetchMock);
+    await act(async () => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "会话资产" }));
+    fireEvent.click(await screen.findByRole("button", { name: "notes.md" }));
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/sessions/websocket%3Achat-a/file-preview?path=reports%2F"),
+        expect.anything(),
+      ),
+    );
+    expect(await screen.findByText("Total revenue: $5,000,000")).toBeInTheDocument();
+  });
+});

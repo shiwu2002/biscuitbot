@@ -20,9 +20,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { DocumentPreviewDialog } from "@/components/knowledge/DocumentPreviewDialog";
+import { AudioCard } from "@/components/knowledge/AudioCard";
 import { VideoCard } from "@/components/knowledge/VideoCard";
-import { deleteAsset, fetchAssets } from "@/lib/api";
+import { deleteAsset, fetchAssets, type AssetsScope } from "@/lib/api";
+import { fmtDateTime, relativeTime } from "@/lib/format";
 import type { Asset, UIImage } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useClient } from "@/providers/ClientProvider";
@@ -44,18 +45,19 @@ const FILTERS: { key: FilterKind; labelKey: string; fallback: string }[] = [
   { key: "audio", labelKey: "knowledge.assets.kind.audio", fallback: "音频" },
 ];
 
-const KIND_BADGE: Record<Asset["kind"], string> = {
-  image: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
-  video: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
-  audio: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-  document: "bg-violet-500/10 text-violet-700 dark:text-violet-300",
+const SCOPES: { key: AssetsScope; labelKey: string; fallback: string }[] = [
+  { key: "session", labelKey: "knowledge.assets.scope.session", fallback: "本会话" },
+  { key: "workspace", labelKey: "knowledge.assets.scope.workspace", fallback: "整个工作区" },
+];
+
+const SCOPE_HINT_KEY: Record<AssetsScope, string> = {
+  session: "knowledge.assets.scope.sessionHint",
+  workspace: "knowledge.assets.scope.workspaceHint",
 };
 
-const KIND_FALLBACK: Record<Asset["kind"], string> = {
-  image: "图片",
-  video: "视频",
-  audio: "音频",
-  document: "文档",
+const SCOPE_HINT_FALLBACK: Record<AssetsScope, string> = {
+  session: "智能体在本会话里写过的、交付给你的文件。",
+  workspace: "这个会话的工作区里全部的产出。",
 };
 
 // 渠道入站媒体的渠道名 → 中文展示名（未知渠道回退为原始 id）。
@@ -70,65 +72,103 @@ const CHANNEL_LABEL: Record<string, string> = {
   websocket: "WebSocket",
 };
 
-function ImageThumb({
-  asset,
-  onOpen,
-}: {
-  asset: Asset;
-  onOpen: () => void;
-}) {
+/** 文件名切成「主干 + 后缀」：卡面上后缀要始终露出来，不能被 truncate 吃掉。 */
+function splitAssetName(name: string): { stem: string; ext: string } {
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0 || dot === name.length - 1) return { stem: name, ext: "" };
+  return { stem: name.slice(0, dot), ext: name.slice(dot + 1).toUpperCase() };
+}
+
+/** 图片卡面：铺满裁切 + 悬停放大，有 caption（生成的提示词）时在底部浮出。 */
+function ImageTile({ asset }: { asset: Asset }) {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="flex aspect-square w-full flex-col items-center justify-center gap-1.5 bg-muted/40 px-3 text-center text-muted-foreground">
+      <div className="flex h-full w-full items-center justify-center bg-muted/40 text-muted-foreground">
         <ImageIcon className="h-5 w-5 opacity-50" aria-hidden />
-        <span className="truncate text-[11px]">{asset.name}</span>
       </div>
     );
   }
   return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className="group block w-full"
-      aria-label={`${asset.name}`}
-    >
+    <div className="relative h-full w-full overflow-hidden bg-muted/40">
       <img
         src={asset.media_url}
         alt={asset.caption || asset.name}
         loading="lazy"
         onError={() => setFailed(true)}
-        className="aspect-square w-full object-cover transition-transform group-hover:scale-[1.02]"
+        className="h-full w-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]"
       />
-    </button>
+      {asset.caption ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent px-2.5 pb-2 pt-7 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          <p className="line-clamp-2 text-[10.5px] leading-4 text-white/95">{asset.caption}</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** 文档卡面：图标 + 后缀大字，让 docx/xlsx/zip 在缩略图网格里一眼可辨。 */
+function DocumentTile({ asset }: { asset: Asset }) {
+  const { ext } = splitAssetName(asset.name);
+  return (
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-violet-500/10 via-muted/30 to-muted/50 transition-colors duration-200 group-hover:from-violet-500/18">
+      <div className="flex h-10 w-10 items-center justify-center rounded-[12px] bg-background/75 text-violet-600 shadow-sm ring-1 ring-border/60 dark:text-violet-300">
+        <FileText className="h-5 w-5" aria-hidden />
+      </div>
+      <span className="rounded-full bg-background/70 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground ring-1 ring-border/50">
+        {ext || "FILE"}
+      </span>
+    </div>
   );
 }
 
 /**
- * 生成资产视图（知识库页「资产」Tab）：展示智能体生成的图片/文档/视频/音频，
- * 支持分类筛选、点击放大预览与删除清理。
+ * 会话资产视图：展示该会话产出的图片/文档/视频/音频（由会话视图的资产面板承载），
+ * 支持两种口径切换、分类筛选、点击放大预览与删除清理。
+ *
+ * - **本会话**（默认）：智能体在本会话里写过的 + 交付给你的文件。口径由会话记录
+ *   派生（``file_edit`` / 出站 ``media``），与工作区是否被多个会话共用无关。
+ * - **整个工作区**：扫描会话工作区里所有产出 —— 会话不设独立工作区时，各会话看到
+ *   的是同一份清单。
  */
-export function AssetsView() {
+export function AssetsView({
+  sessionKey,
+  onOpenAsset,
+}: {
+  sessionKey: string;
+  /** 点开文档类资产（含预览不了的交付件）：交给宿主在**右侧预览框**里打开。
+   *
+   * 不在卡片里就地渲染预览，是为了和聊天里的附件/文件引用一致：同一个右侧预览框，
+   * 预览不了时给出「在文件夹中显示」/下载 —— 交付件的意义就是最终能拿到那个文件。
+   */
+  onOpenAsset: (asset: Asset) => void;
+}) {
   const { t } = useTranslation();
   const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
   const { token } = useClient();
 
   const [assets, setAssets] = useState<Asset[] | null>(null);
   const [loading, setLoading] = useState(true);
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [previewAsset, setPreviewAsset] = useState<Asset | null>(null);
   const [filter, setFilter] = useState<FilterKind>("all");
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [pendingAsset, setPendingAsset] = useState<Asset | null>(null);
+  const [scope, setScope] = useState<AssetsScope>("session");
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       try {
-        const payload = await fetchAssets(token);
-        if (!cancelled) setAssets(payload.assets);
+        const payload = await fetchAssets(token, sessionKey, scope);
+        if (!cancelled) {
+          setAssets(payload.assets);
+          setTruncated(Boolean(payload.truncated));
+          setError(null);
+        }
       } catch (e) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -138,15 +178,16 @@ export function AssetsView() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [token, sessionKey, scope]);
 
   const handleDelete = async () => {
     const asset = pendingAsset;
     if (!asset || deleting) return;
     setDeleting(asset.id);
     try {
-      const payload = await deleteAsset(token, asset.id);
+      const payload = await deleteAsset(token, sessionKey, asset.id, scope);
       setAssets(payload.assets);
+      setTruncated(Boolean(payload.truncated));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -176,6 +217,35 @@ export function AssetsView() {
 
   return (
     <div data-testid="assets-view">
+      <div className="mb-4 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        <div
+          role="tablist"
+          aria-label={tx("knowledge.assets.scope.label", "资产范围")}
+          className="inline-flex rounded-[12px] border border-border/60 bg-muted/40 p-0.5"
+        >
+          {SCOPES.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="tab"
+              aria-selected={scope === item.key}
+              onClick={() => setScope(item.key)}
+              className={cn(
+                "rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-[color,background-color,box-shadow] duration-200",
+                scope === item.key
+                  ? "bg-background text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.42)]"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tx(item.labelKey, item.fallback)}
+            </button>
+          ))}
+        </div>
+        <span className="text-[11.5px] leading-4 text-muted-foreground">
+          {tx(SCOPE_HINT_KEY[scope], SCOPE_HINT_FALLBACK[scope])}
+        </span>
+      </div>
+
       {loading ? (
         <div className="cyber-glass-panel relative flex h-48 items-center justify-center overflow-hidden rounded-[24px] text-sm text-muted-foreground">
           <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
@@ -193,13 +263,27 @@ export function AssetsView() {
         </div>
       ) : null}
 
-      {!loading && (assets?.length ?? 0) === 0 ? (
-        <div className="cyber-glass-panel relative flex h-48 flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border border-dashed border-border/60 text-sm text-muted-foreground">
-          <Package className="h-8 w-8 opacity-40" aria-hidden />
+      {truncated ? (
+        <div className="mb-4 rounded-[18px] border border-border/60 bg-muted/40 px-4 py-3 text-[12.5px] text-muted-foreground">
           {tx(
-            "knowledge.assets.empty",
-            "还没有生成任何资产。智能体生成的图片、文档、视频、音频会出现在这里。",
+            "knowledge.assets.truncated",
+            "工作区文件过多，这里只显示了最近的一部分。",
           )}
+        </div>
+      ) : null}
+
+      {!loading && (assets?.length ?? 0) === 0 ? (
+        <div className="cyber-glass-panel relative flex h-48 flex-col items-center justify-center gap-2 overflow-hidden rounded-[24px] border border-dashed border-border/60 px-6 text-center text-sm text-muted-foreground">
+          <Package className="h-8 w-8 opacity-40" aria-hidden />
+          {scope === "session"
+            ? tx(
+                "knowledge.assets.emptySession",
+                "这个会话还没有产出。智能体在这里写过的、交付给你的文件会出现在这里。",
+              )
+            : tx(
+                "knowledge.assets.empty",
+                "这个会话的工作区里还没有产出。智能体生成的图片、文档、视频、音频会出现在这里。",
+              )}
         </div>
       ) : null}
 
@@ -267,90 +351,134 @@ export function AssetsView() {
               {tx("knowledge.assets.filterEmpty", "该分类暂无资产。")}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {visibleAssets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="cyber-glass-panel group relative overflow-hidden rounded-[18px]"
-                >
-                  {asset.kind === "image" ? (
-                    <ImageThumb
-                      asset={asset}
-                      onOpen={() =>
-                        setLightboxIndex(
-                          lightboxImages.findIndex((im) => im.url === asset.media_url),
-                        )
-                      }
-                    />
-                  ) : asset.kind === "video" ? (
-                    <VideoCard asset={asset} />
-                  ) : asset.kind === "document" ? (
-                    <button
-                      type="button"
-                      onClick={() => setPreviewAsset(asset)}
-                      aria-label={`${asset.name}`}
-                      className="group/doc block w-full"
-                    >
-                      <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1.5 bg-muted/40 px-3 text-center text-muted-foreground transition-colors group-hover/doc:bg-muted/60">
-                        <FileText className="h-6 w-6 opacity-50" aria-hidden />
-                        <span className="text-[11px] font-semibold tracking-wide">
-                          {asset.name.includes(".")
-                            ? asset.name.split(".").pop()!.toUpperCase()
-                            : "FILE"}
-                        </span>
-                      </div>
-                    </button>
-                  ) : (
-                    <div className="flex items-center justify-center bg-muted/40 px-4 py-6">
-                      <audio src={asset.media_url} controls className="w-full" />
-                    </div>
-                  )}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {visibleAssets.map((asset) => {
+                const { stem, ext } = splitAssetName(asset.name);
+                // 图片点开灯箱、文档点开右侧预览框：整张卡都是热区，吞掉缩略图那点
+                // 小目标。音视频要能在卡面里就地播放，控件不能被包进按钮（嵌套无效
+                // HTML），所以它们只有各自的播放键响应点击。
+                const openable = asset.kind === "image" || asset.kind === "document";
+                const open = () =>
+                  asset.kind === "image"
+                    ? setLightboxIndex(
+                        lightboxImages.findIndex((im) => im.url === asset.media_url),
+                      )
+                    : onOpenAsset(asset);
 
-                  <div className="flex flex-col gap-2 px-3 py-2.5">
-                    <div className="min-w-0">
-                      <div className="truncate text-[12.5px] font-medium leading-5 text-foreground">
-                        {asset.name}
-                      </div>
-                      <div className="mt-0.5 flex items-center gap-2 text-[11px] leading-4 text-muted-foreground">
-                        <span
-                          className={cn(
-                            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none",
-                            KIND_BADGE[asset.kind],
-                          )}
-                        >
-                          {tx(`knowledge.assets.kind.${asset.kind}`, KIND_FALLBACK[asset.kind])}
+                const tile = (
+                  <div className="relative aspect-[4/3] w-full overflow-hidden">
+                    {asset.kind === "image" ? (
+                      <ImageTile asset={asset} />
+                    ) : asset.kind === "video" ? (
+                      <VideoCard asset={asset} />
+                    ) : asset.kind === "document" ? (
+                      <DocumentTile asset={asset} />
+                    ) : (
+                      <AudioCard asset={asset} />
+                    )}
+                  </div>
+                );
+
+                const caption = (
+                  <div className="flex min-w-0 flex-1 flex-col gap-1.5 px-3 py-2.5">
+                    <div
+                      className="flex min-w-0 items-baseline gap-0.5"
+                      title={asset.name}
+                    >
+                      <span className="min-w-0 truncate text-[12.5px] font-medium leading-5 text-foreground">
+                        {stem}
+                      </span>
+                      {ext ? (
+                        <span className="shrink-0 text-[10.5px] leading-5 text-muted-foreground">
+                          .{ext.toLowerCase()}
                         </span>
-                        {asset.channel ? (
-                          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold leading-none bg-blue-500/10 text-blue-700 dark:text-blue-300">
-                            {CHANNEL_LABEL[asset.channel] ?? asset.channel}
-                          </span>
-                        ) : null}
-                        <span>{formatBytes(asset.size)}</span>
-                      </div>
+                      ) : null}
                     </div>
+                    <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px] leading-4 text-muted-foreground">
+                      <span>{formatBytes(asset.size)}</span>
+                      {asset.created_at ? (
+                        <>
+                          <span aria-hidden className="opacity-40">
+                            ·
+                          </span>
+                          <span title={fmtDateTime(asset.created_at)}>
+                            {relativeTime(asset.created_at)}
+                          </span>
+                        </>
+                      ) : null}
+                      {asset.channel ? (
+                        <span className="rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-blue-700 dark:text-blue-300">
+                          {CHANNEL_LABEL[asset.channel] ?? asset.channel}
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+
+                return (
+                  <div
+                    key={asset.id}
+                    title={asset.path || asset.name}
+                    className={cn(
+                      "cyber-glass-panel group relative flex flex-col overflow-hidden rounded-[18px]",
+                      "transition-[border-color,box-shadow] duration-200",
+                      "hover:border-[hsl(var(--cyber-glow)/0.35)] hover:shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.22),0_12px_30px_-20px_hsl(var(--cyber-glow)/0.6)]",
+                    )}
+                  >
+                    {asset.delivered ? (
+                      <span
+                        className="absolute left-2 top-2 z-20 rounded-full bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white shadow-sm backdrop-blur-sm"
+                        title={tx(
+                          "knowledge.assets.deliveredHint",
+                          "这个文件已经在会话里交付给你了。",
+                        )}
+                      >
+                        {tx("knowledge.assets.delivered", "已交付")}
+                      </span>
+                    ) : null}
+
+                    {openable ? (
+                      <button
+                        type="button"
+                        onClick={open}
+                        aria-label={asset.name}
+                        className="flex min-w-0 flex-1 flex-col rounded-[18px] text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {tile}
+                        {caption}
+                      </button>
+                    ) : (
+                      <div className="flex min-w-0 flex-1 flex-col">
+                        {tile}
+                        {caption}
+                      </div>
+                    )}
+
                     <Button
                       type="button"
-                      size="sm"
+                      size="icon"
                       variant="outline"
                       onClick={() => setPendingAsset(asset)}
                       disabled={deleting === asset.id}
+                      aria-label={tx("knowledge.delete", "删除")}
+                      title={tx("knowledge.delete", "删除")}
                       className={cn(
-                        "h-8 rounded-[9px] text-[12.5px] text-destructive",
-                        // hover/聚焦时显示删除按钮；触屏（sm 以下）常显
+                        "absolute right-2 top-2 z-20 h-7 w-7 rounded-full border-0 bg-background/85 p-0 text-destructive shadow-sm backdrop-blur-sm",
+                        "hover:bg-destructive hover:text-destructive-foreground",
+                        // hover/聚焦时显示；触屏（sm 以下）常显
                         "opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 max-sm:opacity-100",
                         deleting === asset.id && "opacity-100",
                       )}
                     >
                       {deleting === asset.id ? (
-                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
                       ) : (
-                        <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                        <Trash2 className="h-3.5 w-3.5" aria-hidden />
                       )}
-                      {tx("knowledge.delete", "删除")}
                     </Button>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -406,13 +534,6 @@ export function AssetsView() {
         onIndexChange={setLightboxIndex}
         onOpenChange={(open) => {
           if (!open) setLightboxIndex(null);
-        }}
-      />
-      <DocumentPreviewDialog
-        asset={previewAsset}
-        token={token}
-        onOpenChange={(open) => {
-          if (!open) setPreviewAsset(null);
         }}
       />
     </div>

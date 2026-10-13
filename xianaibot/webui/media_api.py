@@ -79,6 +79,10 @@ _SVG_MEDIA_HEADERS: tuple[tuple[str, str], ...] = (
 
 _BYTE_RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
+# 工作区签名路由（``/api/sessions/<key>/workspace-media/...``）的负载命名空间。
+# media 根路由的负载不带前缀，两条路由因此无法互相复用签名 URL。
+WORKSPACE_MEDIA_PAYLOAD_TAG = "w:"
+
 
 def _parse_single_byte_range(range_header: str, size: int) -> tuple[int, int]:
     """Parse a single HTTP byte range for signed media responses."""
@@ -110,16 +114,23 @@ def sign_media_path(
     *,
     secret: bytes,
     media_dir: MediaDirProvider = _default_media_dir,
+    payload_tag: str = "",
+    url_prefix: str = "/api/media",
 ) -> str | None:
-    """Return a signed ``/api/media/<sig>/<payload>`` URL for a media-root path."""
+    """Return a signed ``<url_prefix>/<sig>/<payload>`` URL for a ``media_dir`` path.
+
+    ``payload_tag`` 是**路由命名空间**，会进入 base64 负载（因而进入 MAC 的输入）：
+    同一把 secret 服务多个签名根时（media 根 / 会话工作区根），tag 让两条路由的
+    URL 互不通用——拿 A 路由的 URL 去 B 路由会被 MAC 或 tag 校验挡下。
+    """
     try:
         media_root = media_dir(None).resolve()
         rel = abs_path.resolve().relative_to(media_root)
     except (OSError, ValueError):
         return None
-    payload = b64url_encode(rel.as_posix().encode("utf-8"))
+    payload = b64url_encode((payload_tag + rel.as_posix()).encode("utf-8"))
     mac = hmac.new(secret, payload.encode("ascii"), hashlib.sha256).digest()[:16]
-    return f"/api/media/{b64url_encode(mac)}/{payload}"
+    return f"{url_prefix}/{b64url_encode(mac)}/{payload}"
 
 
 def stable_staged_path(path: Path, target_dir: Path, *, prefix: str) -> Path:
@@ -249,8 +260,13 @@ def serve_signed_media(
     secret: bytes,
     request: WsRequest | None = None,
     media_dir: MediaDirProvider = _default_media_dir,
+    payload_tag: str = "",
 ) -> Response:
-    """Serve a signed media URL, including browser-friendly byte ranges."""
+    """Serve a signed media URL, including browser-friendly byte ranges.
+
+    ``payload_tag`` 与 :func:`sign_media_path` 的同名参数成对使用：校验前先要求
+    负载带该路由的命名空间前缀，借此拒绝把另一条签名路由的 URL 拿来复用。
+    """
     try:
         provided_mac = b64url_decode(sig)
     except (ValueError, binascii.Error):
@@ -263,6 +279,10 @@ def serve_signed_media(
         rel_str = rel_bytes.decode("utf-8")
     except (ValueError, binascii.Error, UnicodeDecodeError):
         return _http_error(400, "invalid payload")
+    if payload_tag:
+        if not rel_str.startswith(payload_tag):
+            return _http_error(404, "not found")
+        rel_str = rel_str[len(payload_tag):]
     try:
         media_root = media_dir(None).resolve()
         candidate = (media_root / rel_str).resolve()

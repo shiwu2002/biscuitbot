@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Activity } from "lucide-react";
+import { Activity, Package } from "lucide-react";
 
 import { FilePreviewPanel } from "@/components/FilePreviewPanel";
 import { Button } from "@/components/ui/button";
 import { PromptNavigator } from "@/components/thread/PromptNavigator";
+import { SessionAssetsPanel } from "@/components/thread/SessionAssetsPanel";
 import { SessionInfoPopover } from "@/components/thread/SessionInfoPopover";
 import { ThreadComposer } from "@/components/thread/ThreadComposer";
 import { ThreadHeader } from "@/components/thread/ThreadHeader";
@@ -30,8 +31,10 @@ import {
   installedMcpPresetsFromPayload,
   isMcpPresetsPayload,
 } from "@/lib/mcp-preset-events";
+import { getDocumentPreviewKind } from "@/lib/file-preview";
 import { inferProviderFromModelName, providerDisplayLabel } from "@/lib/provider-brand";
 import type {
+  Asset,
   ChatSummary,
   Employee,
   SettingsPayload,
@@ -317,9 +320,12 @@ export function ThreadShell({
   const [filePreviewPath, setFilePreviewPath] = useState<string | null>(null);
   /** 附件 media 模式：附件没有原始路径时用签名 URL 在面板中渲染文档预览。 */
   const [filePreviewMedia, setFilePreviewMedia] = useState<{ url: string; name: string } | null>(null);
+  /** media 模式下要「在文件夹中显示」的资产 id（附件没有，会话资产有）。 */
+  const [filePreviewAssetId, setFilePreviewAssetId] = useState<string | null>(null);
   const [filePreviewClosing, setFilePreviewClosing] = useState(false);
   const [filePreviewWidth, setFilePreviewWidth] = useState(FILE_PREVIEW_DEFAULT_WIDTH);
   const [tracePanelOpen, setTracePanelOpen] = useState(false);
+  const [assetsPanelOpen, setAssetsPanelOpen] = useState(false);
   const shellRef = useRef<HTMLElement | null>(null);
   const filePreviewWidthRef = useRef(FILE_PREVIEW_DEFAULT_WIDTH);
   const filePreviewCloseTimerRef = useRef<number | null>(null);
@@ -372,6 +378,7 @@ export function ThreadShell({
     setFilePreviewClosing(false);
     setFilePreviewPath(null);
     setFilePreviewMedia(null);
+    setFilePreviewAssetId(null);
   }, [historyKey]);
 
   useEffect(() => {
@@ -593,32 +600,68 @@ export function ThreadShell({
     [send, withWorkspaceScope],
   );
 
-  const handleOpenFilePreview = useCallback((path: string) => {
+  /** 打开预览框的公共前置：取消收尾动画（连点两个文件时别把新的又关掉）。 */
+  const beginFilePreviewOpen = useCallback(() => {
     if (filePreviewCloseTimerRef.current !== null) {
       window.clearTimeout(filePreviewCloseTimerRef.current);
       filePreviewCloseTimerRef.current = null;
     }
     setFilePreviewClosing(false);
-    setFilePreviewMedia(null);
-    setFilePreviewPath(path);
   }, []);
+
+  const handleOpenFilePreview = useCallback(
+    (path: string) => {
+      beginFilePreviewOpen();
+      setFilePreviewMedia(null);
+      setFilePreviewAssetId(null);
+      setFilePreviewPath(path);
+    },
+    [beginFilePreviewOpen],
+  );
 
   /** 点击消息里的生成物附件 chip：优先用原始路径走工作区预览；
    * 没有路径但带签名 URL 时走 media 模式直渲染；面板提供下载/打开位置。 */
-  const handleOpenAttachment = useCallback((attachment: UIMediaAttachment) => {
-    if (filePreviewCloseTimerRef.current !== null) {
-      window.clearTimeout(filePreviewCloseTimerRef.current);
-      filePreviewCloseTimerRef.current = null;
-    }
-    setFilePreviewClosing(false);
-    if (attachment.path) {
-      setFilePreviewMedia(null);
-      setFilePreviewPath(attachment.path);
-    } else if (attachment.url) {
+  const handleOpenAttachment = useCallback(
+    (attachment: UIMediaAttachment) => {
+      beginFilePreviewOpen();
+      setFilePreviewAssetId(null);
+      if (attachment.path) {
+        setFilePreviewMedia(null);
+        setFilePreviewPath(attachment.path);
+      } else if (attachment.url) {
+        setFilePreviewPath(null);
+        setFilePreviewMedia({ url: attachment.url, name: attachment.name ?? "" });
+      }
+    },
+    [beginFilePreviewOpen],
+  );
+
+  /** 点开会话资产面板里的文档类资产：与聊天里的附件同款出口 —— 关掉资产抽屉，
+   * 在右侧预览框里打开。
+   *
+   * 两条路：docx/pptx/xlsx/csv 是二进制，`file-preview` 路由只出文本，按路径读会 415，
+   * 所以这几类走 media 模式（客户端拉字节自己渲染，与点附件一致）；其余按工作区相对
+   * 路径走 file-preview（文本/HTML/源码有高亮与面包屑）。工作区外的交付件没有相对
+   * 路径，一律 media 模式，并把资产 id 带过去让「在文件夹中显示」可用。 */
+  const handleOpenAsset = useCallback(
+    (asset: Asset) => {
+      setAssetsPanelOpen(false);
+      beginFilePreviewOpen();
+      const docKind = getDocumentPreviewKind(asset.name);
+      const renderInBrowser =
+        Boolean(asset.media_url) && docKind !== null && docKind !== "html";
+      if (asset.path && !renderInBrowser) {
+        setFilePreviewMedia(null);
+        setFilePreviewAssetId(null);
+        setFilePreviewPath(asset.path);
+        return;
+      }
       setFilePreviewPath(null);
-      setFilePreviewMedia({ url: attachment.url, name: attachment.name ?? "" });
-    }
-  }, []);
+      setFilePreviewMedia({ url: asset.media_url, name: asset.name });
+      setFilePreviewAssetId(asset.id);
+    },
+    [beginFilePreviewOpen],
+  );
 
   const handleCloseFilePreview = useCallback(() => {
     if (!filePreviewPath && !filePreviewMedia) return;
@@ -628,6 +671,7 @@ export function ThreadShell({
       filePreviewCloseTimerRef.current = null;
       setFilePreviewPath(null);
       setFilePreviewMedia(null);
+      setFilePreviewAssetId(null);
       setFilePreviewClosing(false);
     }, FILE_PREVIEW_CLOSE_ANIMATION_MS);
   }, [filePreviewClosing, filePreviewMedia, filePreviewPath]);
@@ -817,6 +861,19 @@ export function ThreadShell({
       onJumpToPrompt={(promptId) => viewportRef.current?.jumpToUserPrompt(promptId)}
     />
   ) : undefined;
+  // 资产按会话工作区扫，没有会话就没有可扫的根，所以无 historyKey 时不显示入口。
+  const assetsAction = historyKey ? (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label={t("thread.header.assets", { defaultValue: "会话资产" })}
+      title={t("thread.header.assets", { defaultValue: "会话资产" })}
+      onClick={() => setAssetsPanelOpen(true)}
+      className="host-no-drag h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground"
+    >
+      <Package className="h-4 w-4" aria-hidden />
+    </Button>
+  ) : undefined;
 
   return (
     <section
@@ -836,6 +893,7 @@ export function ThreadShell({
             minimal={!session && !loading}
             promptNavigatorAction={promptNavigatorAction}
             sessionInfoAction={sessionInfoAction}
+            assetsAction={assetsAction}
             traceAction={
               <Button
                 variant="ghost"
@@ -876,6 +934,7 @@ export function ThreadShell({
           sessionKey={historyKey}
           path={filePreviewPath ?? undefined}
           media={filePreviewMedia}
+          assetId={filePreviewAssetId}
           token={token}
           desktopWidth={filePreviewWidth}
           isClosing={filePreviewClosing}
@@ -891,6 +950,14 @@ export function ThreadShell({
         traces={traces}
         onClear={clearTraces}
       />
+      {historyKey ? (
+        <SessionAssetsPanel
+          open={assetsPanelOpen}
+          onOpenChange={setAssetsPanelOpen}
+          sessionKey={historyKey}
+          onOpenAsset={handleOpenAsset}
+        />
+      ) : null}
     </section>
   );
 }

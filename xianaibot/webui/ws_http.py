@@ -22,7 +22,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import unquote
+from urllib.parse import quote, unquote
 
 from loguru import logger
 from websockets.http11 import Request as WsRequest
@@ -36,6 +36,15 @@ from xianaibot.command.builtin import builtin_command_palette
 from xianaibot.cron.session_turns import is_bound_cron_job
 from xianaibot.cron.types import CronJob, CronSchedule
 from xianaibot.utils.subagent_channel_display import scrub_subagent_messages_for_channel
+from xianaibot.webui.assets_api import (
+    asset_path_key,
+    assets_payload,
+    delete_asset,
+    document_preview,
+    reveal_asset_path,
+    session_ledger_keys,
+    workspace_media_allowed,
+)
 from xianaibot.webui.capabilities_api import (
     capabilities_payload,
     capability_detail_payload,
@@ -90,7 +99,9 @@ from xianaibot.webui.session_automations import (
     session_automation_jobs,
     session_automations_payload,
 )
+from xianaibot.webui.session_deliveries import SessionPaths, iter_session_paths
 from xianaibot.webui.session_list_index import list_webui_sessions
+from xianaibot.webui.settings_api import WebUISettingsError
 from xianaibot.webui.sidebar_state import (
     read_webui_sidebar_state,
     write_webui_sidebar_state,
@@ -262,7 +273,6 @@ class GatewayHTTPHandler:
             error_response=_http_error,
             runtime_surface=runtime_surface,
             runtime_capabilities=self._capabilities,
-            sign_media=self.media.sign_media_path,
         )
 
     def workspace_controls_available(self, connection: Any) -> bool:
@@ -462,6 +472,33 @@ class GatewayHTTPHandler:
             # explorer /select 与 open -R 都是阻塞系统调用，放到线程池执行
             return await asyncio.to_thread(self._handle_file_reveal, connection, request, m.group(1))
 
+        m = re.match(r"^/api/sessions/([^/]+)/assets$", got)
+        if m:
+            # 遍历会话工作区（同步磁盘 IO），放到线程池执行
+            return await asyncio.to_thread(self._handle_session_assets, request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/assets-preview$", got)
+        if m:
+            # 文档文本抽取是同步重 IO，放到线程池执行
+            return await asyncio.to_thread(self._handle_session_assets_preview, request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/assets/delete$", got)
+        if m:
+            return await asyncio.to_thread(self._handle_session_assets_delete, request, m.group(1))
+
+        m = re.match(r"^/api/sessions/([^/]+)/assets/reveal$", got)
+        if m:
+            # explorer /select 与 open -R 都是阻塞系统调用，放到线程池执行
+            return await asyncio.to_thread(
+                self._handle_session_assets_reveal, connection, request, m.group(1)
+            )
+
+        # 会话工作区文件的签名直出。签名本身就是凭证（<img>/<video> 带不了请求头），
+        # 与 /api/media 同样不做 token 校验；根由会话键派生，不从负载里读。
+        m = re.match(r"^/api/sessions/([^/]+)/workspace-media/([A-Za-z0-9_-]+)/([A-Za-z0-9_-]+)$", got)
+        if m:
+            return self._handle_session_workspace_media(request, m.group(1), m.group(2), m.group(3))
+
         m = re.match(r"^/api/sessions/([^/]+)/automations$", got)
         if m:
             return self._handle_session_automations(request, m.group(1))
@@ -471,6 +508,178 @@ class GatewayHTTPHandler:
             return self._handle_session_delete(request, m.group(1))
 
         return None
+
+    def _session_scope_or_error(
+        self, request: WsRequest, key: str
+    ) -> tuple[Any, Response | None]:
+        """校验会话键并解析其工作区作用域；失败时第二个元素是错误响应。"""
+        if not self.check_api_token(request):
+            return None, _http_error(401, "Unauthorized")
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return None, _http_error(400, "invalid session key")
+        if not _is_websocket_channel_session_key(decoded_key):
+            return None, _http_error(404, "session not found")
+        return (decoded_key, self.workspaces.scope_for_session_key(decoded_key)), None
+
+    def _workspace_media_signer(
+        self,
+        session_key: str,
+        root: Path,
+        ledger_keys: frozenset[str],
+    ) -> Callable[[Path], str | None]:
+        """资产列表用的签名函数：把工作区文件签成该会话的工作区媒体 URL。
+
+        签名前先过一遍准入（白名单产出，或本会话台账里的文件）：签名本身就是读取
+        权限，不该由调用方是否过滤来保证。
+        """
+        prefix = f"/api/sessions/{quote(session_key, safe='')}/workspace-media"
+
+        def _sign(path: Path) -> str | None:
+            if not workspace_media_allowed(path, ledger_keys):
+                return None
+            return self.media.sign_workspace_media_path(path, root=root, url_prefix=prefix)
+
+        return _sign
+
+    def _external_media_signer(self, ledger_keys: frozenset[str]) -> Callable[[Path], str | None]:
+        """工作区**外**交付文件的展示地址：走 media 根的签名/稳定 staging。
+
+        与交付那一刻发给用户的地址同源（``sign_or_stage_media_path``），副本按
+        源路径 + mtime 稳定命名，所以这里不会复制新副本。准入同理只看台账。
+        """
+
+        def _sign(path: Path) -> str | None:
+            if asset_path_key(path) not in ledger_keys:
+                return None
+            return self.media.sign_or_stage_media_url(path)
+
+        return _sign
+
+    def _session_ledger(self, session_key: str, workspace: Path) -> SessionPaths:
+        """该会话的台账：交付给用户的 + 写过的（来自会话记录，见 session_deliveries）。"""
+        return iter_session_paths(session_key, workspace=workspace)
+
+    @staticmethod
+    def _scan_workspace(query: dict[str, list[str]]) -> bool:
+        """``?scope=workspace`` → 扫整个工作区；缺省/其它 → 本会话台账。
+
+        默认「本会话」：同一工作区被多个会话共用时，工作区口径下每个会话看到的都是
+        同一份清单，那不叫会话资产（这正是引入这个参数的原因）。
+        """
+        return (_query_first(query, "scope") or "").strip().lower() == "workspace"
+
+    def _handle_session_assets(self, request: WsRequest, key: str) -> Response:
+        """列出该会话的资产：本会话产出（默认）或整个工作区（``?scope=workspace``）。"""
+        resolved, error = self._session_scope_or_error(request, key)
+        if error is not None:
+            return error
+        decoded_key, scope = resolved
+        workspace = scope.project_path
+        ledger = self._session_ledger(decoded_key, workspace)
+        ledger_keys = session_ledger_keys(ledger.delivered, ledger.written)
+        payload = assets_payload(
+            workspace=workspace,
+            delivered=ledger.delivered,
+            written=ledger.written,
+            scan_workspace=self._scan_workspace(_parse_query(request.path)),
+            sign_media=self._workspace_media_signer(decoded_key, workspace, ledger_keys),
+            sign_external=self._external_media_signer(ledger_keys),
+        )
+        return _http_json_response(payload)
+
+    def _handle_session_assets_preview(self, request: WsRequest, key: str) -> Response:
+        resolved, error = self._session_scope_or_error(request, key)
+        if error is not None:
+            return error
+        decoded_key, scope = resolved
+        ledger = self._session_ledger(decoded_key, scope.project_path)
+        try:
+            payload = document_preview(
+                _parse_query(request.path),
+                workspace=scope.project_path,
+                delivered=ledger.delivered,
+                written=ledger.written,
+            )
+        except WebUISettingsError as e:
+            return _http_error(e.status, e.message)
+        return _http_json_response(payload)
+
+    def _handle_session_assets_delete(self, request: WsRequest, key: str) -> Response:
+        resolved, error = self._session_scope_or_error(request, key)
+        if error is not None:
+            return error
+        decoded_key, scope = resolved
+        workspace = scope.project_path
+        query = _parse_query(request.path)
+        ledger = self._session_ledger(decoded_key, workspace)
+        ledger_keys = session_ledger_keys(ledger.delivered, ledger.written)
+        try:
+            payload = delete_asset(
+                query,
+                workspace=workspace,
+                delivered=ledger.delivered,
+                written=ledger.written,
+                scan_workspace=self._scan_workspace(query),
+                sign_media=self._workspace_media_signer(decoded_key, workspace, ledger_keys),
+                sign_external=self._external_media_signer(ledger_keys),
+            )
+        except WebUISettingsError as e:
+            return _http_error(e.status, e.message)
+        return _http_json_response(payload)
+
+    def _handle_session_assets_reveal(
+        self, connection: Any, request: WsRequest, key: str
+    ) -> Response:
+        """在系统文件管理器中定位资产原文件（只选中，不执行文件本身）。
+
+        与 ``file-reveal`` 一样只在同机客户端可用（异地浏览器没有这台机器）。授权口径
+        与删除一致：工作区内的产出型文件，或本会话台账里交付过/写过的文件 —— 工作区
+        **外**的交付件因此也能定位，而那正是预览不了、最需要知道文件在哪的一类。
+        """
+        if not self.check_api_token(request):
+            return _http_error(401, "Unauthorized")
+        if not self.workspace_controls_available(connection):
+            return _http_error(
+                403, "revealing files is only available on the machine running the workspace"
+            )
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not _is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        workspace = self.workspaces.scope_for_session_key(decoded_key).project_path
+        ledger = self._session_ledger(decoded_key, workspace)
+        try:
+            resolved = reveal_asset_path(
+                _parse_query(request.path),
+                workspace=workspace,
+                delivered=ledger.delivered,
+                written=ledger.written,
+            )
+        except WebUISettingsError as e:
+            return _http_error(e.status, e.message)
+        try:
+            self._reveal_in_file_manager(resolved)
+        except OSError as exc:
+            return _http_error(500, f"failed to reveal file: {exc}")
+        return _http_json_response({"ok": True, "path": str(resolved)})
+
+    def _handle_session_workspace_media(
+        self, request: WsRequest, key: str, sig: str, payload: str
+    ) -> Response:
+        decoded_key = _decode_api_key(key)
+        if decoded_key is None:
+            return _http_error(400, "invalid session key")
+        if not _is_websocket_channel_session_key(decoded_key):
+            return _http_error(404, "session not found")
+        scope = self.workspaces.scope_for_session_key(decoded_key)
+        return self.media.serve_signed_workspace_media(
+            sig,
+            payload,
+            root=scope.project_path,
+            request=request,
+        )
 
     async def _handle_sessions_list(self, request: WsRequest) -> Response:
         if not self.check_api_token(request):

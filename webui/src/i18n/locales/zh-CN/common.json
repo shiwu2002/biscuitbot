@@ -951,6 +951,9 @@
   },
   "thread": {
     "loadingConversation": "正在加载对话…",
+    "assets": {
+      "title": "会话资产"
+    },
     "empty": {
       "greetings": {
         "workOn": "我们要一起做点什么？",
@@ -1033,7 +1036,8 @@
       "newChat": "从顶部新建对话",
       "toggleTheme": "从顶部切换主题",
       "settings": "打开设置",
-      "sessionInfo": "会话详情"
+      "sessionInfo": "会话详情",
+      "assets": "会话资产"
     },
     "sessionInfo": {
       "title": "会话",
@@ -1360,9 +1364,21 @@
     },
     "assets": {
       "loading": "加载资产…",
-      "empty": "还没有生成任何资产。智能体生成的图片、文档、视频、音频会出现在这里。",
+      "empty": "这个会话的工作区里还没有产出。智能体生成的图片、文档、视频、音频会出现在这里。",
+      "emptySession": "这个会话还没有产出。智能体在这里写过的、交付给你的文件会出现在这里。",
+      "truncated": "工作区文件过多，这里只显示了最近的一部分。",
       "deleteConfirm": "确认删除「{{name}}」？",
       "filterEmpty": "该分类暂无资产。",
+      "delivered": "已交付",
+      "deliveredHint": "这个文件已经在会话里交付给你了。",
+      "openOriginal": "打开原件",
+      "scope": {
+        "label": "资产范围",
+        "session": "本会话",
+        "workspace": "整个工作区",
+        "sessionHint": "智能体在本会话里写过的、交付给你的文件。",
+        "workspaceHint": "这个会话的工作区里全部的产出。"
+      },
       "filter": {
         "all": "全部"
       },

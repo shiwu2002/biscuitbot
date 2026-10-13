@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { AlertCircle, ChevronRight, Download, FileText, FolderOpen, Loader2, X } from "lucide-react";
+import { AlertCircle, ChevronRight, Download, FileText, FolderOpen, Loader2, Maximize2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { CodeBlock } from "@/components/CodeBlock";
 import { DocumentPreview } from "@/components/document-preview/DocumentPreview";
+import { FullscreenHtmlViewer } from "@/components/document-preview/FullscreenHtmlViewer";
+import { HtmlViewer } from "@/components/document-preview/HtmlViewer";
 import { splitFilePath } from "@/components/FileReferenceChip";
 import { getDocumentPreviewKind } from "@/lib/file-preview";
 import {
   ApiError,
   fetchFileDownload,
   fetchFilePreview,
+  revealAsset,
   revealWorkspaceFile,
 } from "@/lib/api";
 import type { FilePreviewPayload } from "@/lib/types";
@@ -23,6 +26,9 @@ interface FilePreviewPanelProps {
   path?: string;
   /** 消息附件 media 模式：附件没有原始路径时用签名 URL 直接渲染 DocumentPreview。 */
   media?: { url: string; name: string } | null;
+  /** media 模式下的会话资产 id：工作区**外**的交付件没有相对路径，定位原文件只能
+   * 按资产 id 走资产路由（附件没有这个 id，值为 null）。 */
+  assetId?: string | null;
   token: string;
   desktopWidth?: number;
   isClosing?: boolean;
@@ -98,6 +104,7 @@ export function FilePreviewPanel({
   sessionKey,
   path,
   media = null,
+  assetId = null,
   token,
   desktopWidth = 544,
   isClosing = false,
@@ -112,6 +119,7 @@ export function FilePreviewPanel({
   // 两个操作共用一个 busy 槽位：任一进行中都禁用另一个，避免重复触发系统调用。
   const [busyAction, setBusyAction] = useState<"download" | "reveal" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [fullscreenOpen, setFullscreenOpen] = useState(false);
   const [supportsHoverClose, setSupportsHoverClose] = useState(supportsHoverCloseControl);
   const downloading = busyAction === "download";
   const revealing = busyAction === "reveal";
@@ -204,18 +212,22 @@ export function FilePreviewPanel({
   }, [busyAction, media, path, sessionKey, t, token]);
 
   // 同机时直接在文件管理器中定位原文件：不产生任何副本，也不执行文件本身。
+  // media 模式（工作区外的交付件）没有相对路径，改按资产 id 走资产路由 ——
+  // 传不进来的路径就是没法定位的，所以这里两种入口只能二选一。
+  const canReveal = canRevealFile && (Boolean(assetId) || !isMediaMode);
   const handleReveal = useCallback(async () => {
-    if (busyAction || !path) return;
+    if (busyAction || (!path && !assetId)) return;
     setBusyAction("reveal");
     setActionError(null);
     try {
-      await revealWorkspaceFile(token, sessionKey, path);
+      if (assetId) await revealAsset(token, sessionKey, assetId);
+      else await revealWorkspaceFile(token, sessionKey, path ?? "");
     } catch {
       setActionError(t("filePreview.revealFailed", { defaultValue: "Could not show this file in the file manager." }));
     } finally {
       setBusyAction(null);
     }
-  }, [busyAction, path, sessionKey, t, token]);
+  }, [assetId, busyAction, path, sessionKey, t, token]);
 
   const downloadLabel = downloading
     ? t("filePreview.downloading", { defaultValue: "Preparing download…" })
@@ -230,6 +242,15 @@ export function FilePreviewPanel({
       ? state.payload.display_path
       : (path ?? "");
   const previewPath = state.status === "ready" ? state.payload.path : displayPath;
+  /** 路径模式下的 HTML：iframe 渲染而不是代码高亮（与 media 模式 DocumentPreview
+   * 的 html 分支对齐）。被截断的文件不渲染 —— 半份页面只会排成残缺的排版，
+   * 不如保留源码 + 既有的截断提示。 */
+  const htmlSource =
+    state.status === "ready" &&
+    !state.payload.truncated &&
+    getDocumentPreviewKind(previewPath) === "html"
+      ? state.payload.content
+      : null;
   const normalizedPreviewPath = previewPath.replace(/\\/g, "/");
   const hasRootPrefix = normalizedPreviewPath.startsWith("/");
   const { name } = splitFilePath(displayPath);
@@ -352,7 +373,7 @@ export function FilePreviewPanel({
               </>
             )}
             <div className="ml-auto flex flex-none items-center gap-1">
-              {canRevealFile && !isMediaMode ? (
+              {canReveal ? (
                 <FileActionButton
                   busy={revealing}
                   icon={<FolderOpen className="h-4 w-4" aria-hidden />}
@@ -410,6 +431,20 @@ export function FilePreviewPanel({
                   <span className="truncate">{previewPath}</span>
                 )}
               </div>
+              {htmlSource !== null ? (
+                <button
+                  type="button"
+                  onClick={() => setFullscreenOpen(true)}
+                  className={cn(
+                    "ml-auto inline-flex flex-none items-center gap-1 rounded-md px-2 py-1 text-xs",
+                    "text-muted-foreground transition-colors hover:bg-muted/55 hover:text-foreground",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
+                >
+                  <Maximize2 className="h-3.5 w-3.5" aria-hidden />
+                  {t("documentPreview.openFullscreen", { defaultValue: "全屏查看" })}
+                </button>
+              ) : null}
             </div>
 
             {actionError ? (
@@ -435,7 +470,20 @@ export function FilePreviewPanel({
                           defaultValue: "This file is binary and cannot be previewed. Download it to open it.",
                         })}
                       </p>
+                      {/* 预览不了就得能拿到文件：同机优先定位原文件（不产生副本），
+                          异地浏览器只能下载。 */}
                       <div className="mt-4 flex items-center justify-center gap-2">
+                        {canReveal ? (
+                          <FileActionButton
+                            busy={revealing}
+                            icon={<FolderOpen className="h-3.5 w-3.5" aria-hidden />}
+                            label={revealLabel}
+                            onClick={() => void handleReveal()}
+                            showLabel
+                            spinnerClassName="h-3.5 w-3.5"
+                            className={FILE_ACTION_LABEL_CLASS}
+                          />
+                        ) : null}
                         <FileActionButton
                           busy={downloading}
                           icon={<Download className="h-3.5 w-3.5" aria-hidden />}
@@ -462,7 +510,7 @@ export function FilePreviewPanel({
                     {/* 二进制文件预览不了，但仍应能拿到文件 */}
                     {state.code === 415 ? (
                       <div className="mt-4 flex items-center justify-center gap-2">
-                        {canRevealFile ? (
+                        {canReveal ? (
                           <FileActionButton
                             busy={revealing}
                             icon={<FolderOpen className="h-3.5 w-3.5" aria-hidden />}
@@ -495,14 +543,30 @@ export function FilePreviewPanel({
                       })}
                     </div>
                   ) : null}
-                  <CodeBlock
-                    language={state.payload.language}
-                    code={state.payload.content}
-                    chrome="none"
-                    showLineNumbers
-                    wrapLongLines={false}
-                    className="min-h-full"
-                  />
+                  {htmlSource !== null ? (
+                    <>
+                      <HtmlViewer
+                        src={htmlSource}
+                        name={name}
+                        className="h-[min(72vh,44rem)] w-full"
+                      />
+                      <FullscreenHtmlViewer
+                        open={fullscreenOpen}
+                        onOpenChange={setFullscreenOpen}
+                        src={htmlSource}
+                        name={name}
+                      />
+                    </>
+                  ) : (
+                    <CodeBlock
+                      language={state.payload.language}
+                      code={state.payload.content}
+                      chrome="none"
+                      showLineNumbers
+                      wrapLongLines={false}
+                      className="min-h-full"
+                    />
+                  )}
                 </div>
               )}
           </div>
