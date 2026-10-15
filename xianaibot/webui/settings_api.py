@@ -1445,6 +1445,7 @@ def settings_payload(
         restrict_to_workspace=config.tools.restrict_to_workspace,
         workspace=config.workspace_path,
     )
+    browser_service = getattr(config.tools, "browser_service", None)
     payload = {
         "agent": {
             "model": effective_preset.model,
@@ -1541,6 +1542,10 @@ def settings_payload(
             "enabled": config.tools.system_io.enable,
             "allow_actions": list(config.tools.system_io.allow_actions),
             "available_actions": _SYSTEM_IO_ACTIONS,
+        },
+        "browser_service": {
+            "cdp_port": getattr(browser_service, "cdp_port", None),
+            "headless": bool(getattr(browser_service, "headless", True)),
         },
         "transcription": {
             "enabled": transcription.enabled,
@@ -2545,6 +2550,45 @@ def update_system_io_settings(query: QueryParams) -> dict[str, Any]:
                 system_io_config.allow_actions = actions
                 changed = True
 
+    return settings_payload(requires_restart=changed)
+
+
+def update_browser_service_settings(query: QueryParams) -> dict[str, Any]:
+    """Update built-in browser service settings (CDP port + headless flag).
+
+    修改在浏览器服务下次启动时生效（已运行实例不受影响），因此保存后标记
+    requires_restart 提示用户择机重启引擎。
+    """
+    raw_port = _query_first_alias(query, "cdp_port", "cdpPort")
+    raw_headless = _query_first_alias(query, "headless", "headless")
+    if raw_port is None and raw_headless is None:
+        raise WebUISettingsError("cdp_port or headless is required")
+
+    port: int | None = None
+    if raw_port is not None:
+        text = raw_port.strip()
+        if text:
+            try:
+                port = int(text)
+            except ValueError:
+                raise WebUISettingsError("cdp_port must be an integer") from None
+            if not 1024 <= port <= 65535:
+                raise WebUISettingsError("cdp_port must be between 1024 and 65535")
+
+    headless: bool | None = None
+    if raw_headless is not None:
+        headless = _parse_bool(raw_headless, "headless")
+
+    # 在锁内完成「load → 修改 → save」读改写，避免与其他线程写配置交错丢失更新。
+    with update_config() as config:
+        service = config.tools.browser_service
+        changed = False
+        if raw_port is not None and service.cdp_port != port:
+            service.cdp_port = port
+            changed = True
+        if headless is not None and service.headless != headless:
+            service.headless = headless
+            changed = True
     return settings_payload(requires_restart=changed)
 
 

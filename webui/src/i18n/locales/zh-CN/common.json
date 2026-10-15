@@ -167,6 +167,7 @@
       "visionCapture": "截图",
       "webSearch": "网页搜索",
       "webBehavior": "行为",
+      "browserService": "内置浏览器服务",
       "cliApps": "CLI 应用",
       "mcp": "MCP 服务",
       "identity": "身份",
@@ -232,6 +233,8 @@
       "maxResults": "最大结果数",
       "timeout": "超时",
       "jinaReader": "Jina 阅读器",
+      "browserServicePort": "CDP 调试端口",
+      "browserServiceVisible": "启动时显示浏览器窗口",
       "imageGeneration": "图片生成",
       "imageProvider": "图片提供商",
       "imageProviderStatus": "提供商状态",
@@ -305,6 +308,9 @@
       "maxResults": "每次 web_search 调用返回的结果数。",
       "timeout": "搜索提供商请求超时前的秒数。",
       "jinaReader": "可用时为 web_fetch 使用 Jina Reader。",
+      "browserServicePort": "托管实例的浏览器调试端口；留空使用默认 9222（被占用时自动顺延）。桌面端优先使用内嵌浏览器窗口，此端口仅作兜底。",
+      "browserServiceVisible": "关闭时浏览器在后台无头运行；开启后可看到智能体操作浏览器的真实窗口。",
+      "browserServiceSaveHint": "保存后重启引擎生效（正在运行的浏览器实例不受影响）。",
       "imageGeneration": "配置图片提供商后，在聊天中开放 generate_image。",
       "imageProvider": "选择 generate_image 使用的注册提供商。",
       "imageProviderStatus": "图片生成会复用「提供商」里的凭据。",
@@ -470,6 +476,7 @@
       "expanded": "展开",
       "on": "开启",
       "off": "关闭",
+      "browserServicePortDefault": "默认 9222",
       "defaultPermission": "默认权限",
       "fullAccess": "完全访问权限",
       "guardStandard": "标准",
@@ -1037,7 +1044,8 @@
       "toggleTheme": "从顶部切换主题",
       "settings": "打开设置",
       "sessionInfo": "会话详情",
-      "assets": "会话资产"
+      "assets": "会话资产",
+      "browser": "内置浏览器"
     },
     "sessionInfo": {
       "title": "会话",
@@ -1287,6 +1295,33 @@
   "downloadToast": {
     "success": "《{{name}}》下载成功",
     "started": "已开始下载《{{name}}》"
+  },
+  "browser": {
+    "title": "内置浏览器",
+    "subtitle": "应用内访问网址；智能体自动化默认使用同一浏览器实例",
+    "back": "返回会话",
+    "refresh": "刷新状态",
+    "statusTitle": "浏览器服务",
+    "mode": {
+      "embedded": "内嵌窗口",
+      "external": "复用本机浏览器",
+      "managed": "托管实例",
+      "stopped": "未运行"
+    },
+    "state": "状态",
+    "stateRunning": "运行中",
+    "stateStopped": "未运行",
+    "endpoint": "CDP 端点",
+    "currentUrl": "当前页面",
+    "agentSharing": "智能体自动化正共享此浏览器实例，操作实时可见。",
+    "openUrl": "打开网址",
+    "urlPlaceholder": "https://example.com",
+    "openAction": "打开",
+    "desktopHint": "将在应用内嵌浏览器窗口中打开（独立于主界面，登录态持久保存）。",
+    "remoteHint": "当前为浏览器访问模式：将启动/复用托管常驻浏览器实例。",
+    "focusWindow": "打开 / 聚焦浏览器窗口",
+    "closeWindow": "关闭",
+    "externalNote": "正在复用你自己启动的浏览器，不会替你关闭。"
   },
   "filePreview": {
     "aria": "文件预览",

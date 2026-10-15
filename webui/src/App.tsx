@@ -18,6 +18,7 @@ import { TalentMarketView } from "@/components/settings/TalentMarketView";
 import { SkillHubView } from "@/components/settings/SkillHubView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
+import { BrowserView } from "@/components/browser/BrowserView";
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
@@ -86,7 +87,7 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
-type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "skill-hub" | "knowledge";
+type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "skill-hub" | "knowledge" | "browser";
 type ShellRoute = {
   view: ShellView;
   activeKey: string | null;
@@ -151,6 +152,9 @@ function readShellRoute(): ShellRoute {
   }
   if (path === "/knowledge") {
     return { view: "knowledge", activeKey, settingsSection: "overview" };
+  }
+  if (path === "/browser") {
+    return { view: "browser", activeKey, settingsSection: "overview" };
   }
   if (path === "/settings") {
     return {
@@ -1351,6 +1355,29 @@ function Shell({
     navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
   }, [activeKey, navigate]);
 
+  const onOpenBrowser = useCallback(() => {
+    setSessionSearchOpen(false);
+    navigate({ view: "browser", activeKey, settingsSection: "overview" });
+    setMobileSidebarOpen(false);
+  }, [activeKey, navigate]);
+
+  /** 智能体请求浏览器（browser_request）：桌面端自动唤起内嵌浏览器窗口。 */
+  const openBrowserWindowRef = useRef<(url?: string) => Promise<void>>(async () => {});
+  openBrowserWindowRef.current = async (url?: string) => {
+    const invoke = window.__TAURI__?.core?.invoke;
+    if (!invoke) return;
+    try {
+      await invoke("open_browser_window", { url: url ?? null });
+    } catch (err) {
+      console.warn("open_browser_window failed", err);
+    }
+  };
+  useEffect(() => {
+    return client.onBrowserRequest(() => {
+      void openBrowserWindowRef.current();
+    });
+  }, [client]);
+
   const onOpenAutomations = useCallback(() => {
     setSessionSearchOpen(false);
     navigate({ view: "automations", activeKey, settingsSection: "automations" });
@@ -1609,6 +1636,12 @@ function Shell({
       });
       return;
     }
+    if (view === "browser") {
+      document.title = t("app.documentTitle.chat", {
+        title: t("sidebar.browser", { defaultValue: "内置浏览器" }),
+      });
+      return;
+    }
     if (view === "employee-chat") {
       const employee = employees.find((e) => e.id === activeKey);
       document.title = t("app.documentTitle.chat", {
@@ -1642,10 +1675,11 @@ function Shell({
     onOpenEmployees,
     onOpenKnowledge,
     onOpenDashboard,
+    onOpenBrowser,
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
-      view === "automations" || view === "skills" || view === "capabilities" || view === "employees" || view === "employee-chat" || view === "dashboard" || view === "knowledge"
+      view === "automations" || view === "skills" || view === "capabilities" || view === "employees" || view === "employee-chat" || view === "dashboard" || view === "knowledge" || view === "browser"
         ? view === "employee-chat" ? "employees" : view
         : null,
     onToggleArchived,
@@ -1930,6 +1964,13 @@ function Shell({
             ) : view === "knowledge" ? (
               <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <KnowledgeView
+                  onBackToChat={onBackToChat}
+                  hostChromeInset={showHostChrome}
+                />
+              </div>
+            ) : view === "browser" ? (
+              <div className="absolute inset-0 flex flex-col cyber-shell-bg">
+                <BrowserView
                   onBackToChat={onBackToChat}
                   hostChromeInset={showHostChrome}
                 />

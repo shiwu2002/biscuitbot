@@ -105,6 +105,7 @@ import {
   runAutomationAction,
   selfUpdate,
   updateAutomation,
+  updateBrowserServiceSettings,
   updateChannelSettings,
   updateImageGenerationSettings,
   updateModelConfiguration,
@@ -131,6 +132,7 @@ import { useClient } from "@/providers/ClientProvider";
 import type {
   AutomationsPayload,
   AutomationUpdatePayload,
+  BrowserServiceSettingsUpdate,
   GuardLevel,
   ImageGenerationSettingsUpdate,
   NetworkSafetySettingsUpdate,
@@ -438,6 +440,20 @@ const DEFAULT_SYSTEM_IO_FORM: SystemIoSettingsUpdate = {
   allowActions: [],
 };
 
+const DEFAULT_BROWSER_SERVICE_FORM: BrowserServiceSettingsUpdate = {
+  cdpPort: null,
+  headless: true,
+};
+
+/** 内置浏览器服务设置草稿：cdpPort null = 默认端口（9222，占用时顺延）。 */
+function browserServiceFormFromPayload(payload: SettingsPayload): BrowserServiceSettingsUpdate {
+  const service = payload.browser_service;
+  return {
+    cdpPort: service?.cdp_port ?? null,
+    headless: service?.headless ?? true,
+  };
+}
+
 const DEFAULT_TRANSCRIPTION_FORM: TranscriptionSettingsUpdate = {
   enabled: true,
   provider: "dashscope",
@@ -707,6 +723,10 @@ export function SettingsView({
   const [systemIoForm, setSystemIoForm] = useState<SystemIoSettingsUpdate>(() =>
     initialSettings ? systemIoFormFromPayload(initialSettings) : DEFAULT_SYSTEM_IO_FORM,
   );
+  const [browserServiceForm, setBrowserServiceForm] = useState<BrowserServiceSettingsUpdate>(
+    () => (initialSettings ? browserServiceFormFromPayload(initialSettings) : DEFAULT_BROWSER_SERVICE_FORM),
+  );
+  const [browserServiceSaving, setBrowserServiceSaving] = useState(false);
   const [transcriptionForm, setTranscriptionForm] = useState<TranscriptionSettingsUpdate>(
     () => initialSettings ? transcriptionFormFromPayload(initialSettings) : DEFAULT_TRANSCRIPTION_FORM,
   );
@@ -748,6 +768,7 @@ export function SettingsView({
     setVideoGenerationForm(videoGenerationFormFromPayload(payload));
     setScreenshotForm(screenshotFormFromPayload(payload));
     setSystemIoForm(systemIoFormFromPayload(payload));
+    setBrowserServiceForm(browserServiceFormFromPayload(payload));
     setTranscriptionForm(transcriptionFormFromPayload(payload));
     setTtsForm(ttsFormFromPayload(payload));
     setNetworkSafetyForm(networkSafetyFormFromPayload(payload));
@@ -950,6 +971,15 @@ export function SettingsView({
       systemIoForm.enabled !== settings.system_io.enabled || current !== form
     );
   }, [systemIoForm, settings]);
+
+  const browserServiceDirty = useMemo(() => {
+    if (!settings) return false;
+    const service = settings.browser_service;
+    return (
+      (browserServiceForm.cdpPort ?? null) !== (service?.cdp_port ?? null) ||
+      browserServiceForm.headless !== (service?.headless ?? true)
+    );
+  }, [browserServiceForm, settings]);
 
   const transcriptionDirty = useMemo(() => {
     if (!settings) return false;
@@ -1237,6 +1267,24 @@ export function SettingsView({
       setError((err as Error).message);
     } finally {
       setSystemIoSaving(false);
+    }
+  };
+
+  const saveBrowserServiceSettings = async () => {
+    if (!settings || !browserServiceDirty || browserServiceSaving) return;
+    setBrowserServiceSaving(true);
+    try {
+      const payload = await updateBrowserServiceSettings(token, browserServiceForm);
+      applyPayload(payload);
+      if (payload.requires_restart) {
+        setPendingRestartSections((prev) => ({ ...prev, browser: true }));
+      }
+      await maybeRestartHostEngine(payload);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBrowserServiceSaving(false);
     }
   };
 
@@ -1615,27 +1663,39 @@ export function SettingsView({
         return renderModelsTab(activeSection, settings);
       case "browser":
         return (
-          <WebSettings
-            settings={settings}
-            form={webSearchForm}
-            keyVisible={webSearchKeyVisible}
-            keyEditing={webSearchKeyEditing}
-            saving={webSearchSaving}
-            onChangeForm={setWebSearchForm}
-            onChangeProvider={handleWebSearchProviderChange}
-            onToggleKey={() => setWebSearchKeyVisible((visible) => !visible)}
-            onToggleKeyEditing={() => {
-              setWebSearchKeyEditing((editing) => !editing);
-              setWebSearchKeyVisible(false);
-              setWebSearchForm((prev) => ({ ...prev, apiKey: "" }));
-            }}
-            onReset={resetWebSearchDraft}
-            onSave={saveWebSearch}
-            showBrandLogos={localPrefs.brandLogos}
-            onRestart={restartViaSettingsSurface}
-            isRestarting={isRestarting || hostEngineApplying}
-            requiresRestartPending={pendingRestartSections.browser}
-          />
+          <div className="space-y-8">
+            <WebSettings
+              settings={settings}
+              form={webSearchForm}
+              keyVisible={webSearchKeyVisible}
+              keyEditing={webSearchKeyEditing}
+              saving={webSearchSaving}
+              onChangeForm={setWebSearchForm}
+              onChangeProvider={handleWebSearchProviderChange}
+              onToggleKey={() => setWebSearchKeyVisible((visible) => !visible)}
+              onToggleKeyEditing={() => {
+                setWebSearchKeyEditing((editing) => !editing);
+                setWebSearchKeyVisible(false);
+                setWebSearchForm((prev) => ({ ...prev, apiKey: "" }));
+              }}
+              onReset={resetWebSearchDraft}
+              onSave={saveWebSearch}
+              showBrandLogos={localPrefs.brandLogos}
+              onRestart={restartViaSettingsSurface}
+              isRestarting={isRestarting || hostEngineApplying}
+              requiresRestartPending={pendingRestartSections.browser}
+            />
+            <BrowserServiceSettings
+              form={browserServiceForm}
+              dirty={browserServiceDirty}
+              saving={browserServiceSaving}
+              onChangeForm={setBrowserServiceForm}
+              onSave={saveBrowserServiceSettings}
+              onRestart={restartViaSettingsSurface}
+              isRestarting={isRestarting || hostEngineApplying}
+              requiresRestartPending={pendingRestartSections.browser}
+            />
+          </div>
         );
       case "automations":
         return (
@@ -4387,6 +4447,92 @@ function WebSettings({
         </SettingsGroup>
       </section>
     </div>
+  );
+}
+
+function BrowserServiceSettings({
+  form,
+  dirty,
+  saving,
+  onChangeForm,
+  onSave,
+  onRestart,
+  isRestarting,
+  requiresRestartPending,
+}: {
+  form: BrowserServiceSettingsUpdate;
+  dirty: boolean;
+  saving: boolean;
+  onChangeForm: Dispatch<SetStateAction<BrowserServiceSettingsUpdate>>;
+  onSave: () => void;
+  onRestart?: () => void;
+  isRestarting?: boolean;
+  requiresRestartPending: boolean;
+}) {
+  const { t } = useTranslation();
+  const tx = (key: string, fallback: string) => t(key, { defaultValue: fallback });
+  return (
+    <section>
+      <SettingsSectionTitle>{tx("settings.sections.browserService", "内置浏览器服务")}</SettingsSectionTitle>
+      <SettingsGroup>
+        <SettingsRow
+          title={tx("settings.rows.browserServicePort", "CDP 调试端口")}
+          description={tx(
+            "settings.help.browserServicePort",
+            "智能体与内置面板共用的浏览器调试端口；留空使用默认 9222（被占用时自动顺延）。",
+          )}
+        >
+          <Input
+            type="number"
+            min={1024}
+            max={65535}
+            value={form.cdpPort ?? ""}
+            placeholder={tx("settings.values.browserServicePortDefault", "默认 9222")}
+            onChange={(event) => {
+              const text = event.target.value.trim();
+              if (!text) {
+                onChangeForm((prev) => ({ ...prev, cdpPort: null }));
+                return;
+              }
+              const parsed = Number(text);
+              if (Number.isFinite(parsed)) {
+                onChangeForm((prev) => ({ ...prev, cdpPort: Math.trunc(parsed) }));
+              }
+            }}
+            className="h-9 w-[280px] max-w-full rounded-full text-[13px]"
+          />
+        </SettingsRow>
+        <SettingsRow
+          title={tx("settings.rows.browserServiceVisible", "启动时显示浏览器窗口")}
+          description={tx(
+            "settings.help.browserServiceVisible",
+            "关闭时浏览器在后台无头运行；开启后可看到智能体操作浏览器的真实窗口。",
+          )}
+        >
+          <ToggleButton
+            checked={!form.headless}
+            onChange={(visible) => onChangeForm((prev) => ({ ...prev, headless: !visible }))}
+            ariaLabel={tx("settings.rows.browserServiceVisible", "启动时显示浏览器窗口")}
+            label={!form.headless ? tx("settings.values.on", "On") : tx("settings.values.off", "Off")}
+          />
+        </SettingsRow>
+        <RestartSettingsFooter
+          dirty={dirty}
+          saving={saving}
+          pendingRestart={requiresRestartPending}
+          message={
+            requiresRestartPending && !dirty
+              ? tx("settings.status.savedRestartApply", "Saved. Restart when ready.")
+              : dirty
+                ? tx("settings.help.browserServiceSaveHint", "保存后重启引擎生效（正在运行的浏览器实例不受影响）。")
+                : undefined
+          }
+          onSave={onSave}
+          onRestart={onRestart}
+          isRestarting={isRestarting}
+        />
+      </SettingsGroup>
+    </section>
   );
 }
 

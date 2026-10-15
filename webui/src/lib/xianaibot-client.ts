@@ -1,4 +1,6 @@
 import type {
+  BrowserPageInfo,
+  BrowserStatusPayload,
   ConnectionStatus,
   InboundEvent,
   KnowledgeDocument,
@@ -76,6 +78,11 @@ type SessionUpdateHandler = (
   employee?: string,
 ) => void;
 type RunStatusHandler = (chatId: string, startedAt: number | null) => void;
+type BrowserStatusHandler = (status: BrowserStatusPayload) => void;
+type BrowserTabsHandler = (pages: BrowserPageInfo[]) => void;
+type BrowserErrorHandler = (detail: string) => void;
+type BrowserActivityHandler = (activity: { url: string }) => void;
+type BrowserRequestHandler = () => void;
 
 /** Structured errors surfaced to the UI.
  *
@@ -135,6 +142,11 @@ export class XianaibotClient {
   private sessionUpdateHandlers = new Set<SessionUpdateHandler>();
   private runStatusHandlers = new Set<RunStatusHandler>();
   private errorHandlers = new Set<ErrorHandler>();
+  private browserStatusHandlers = new Set<BrowserStatusHandler>();
+  private browserTabsHandlers = new Set<BrowserTabsHandler>();
+  private browserErrorHandlers = new Set<BrowserErrorHandler>();
+  private browserActivityHandlers = new Set<BrowserActivityHandler>();
+  private browserRequestHandlers = new Set<BrowserRequestHandler>();
   // chat_id -> handlers listening on it
   private chatHandlers = new Map<string, Set<EventHandler>>();
   /** Inbound frames received while no subscriber is registered (e.g. user switched away). */
@@ -466,6 +478,50 @@ export class XianaibotClient {
     });
   }
 
+  // -- 内置浏览器 ---------------------------------------------------------
+
+  /** 发送浏览器控制信封（启停/导航/标签页；输入遥控已随截图流面板移除）。 */
+  sendBrowserControl(frame: Extract<Outbound, { type: `browser_${string}` }>): void {
+    this.queueSend(frame);
+  }
+
+  onBrowserStatus(handler: BrowserStatusHandler): Unsubscribe {
+    this.browserStatusHandlers.add(handler);
+    return () => {
+      this.browserStatusHandlers.delete(handler);
+    };
+  }
+
+  onBrowserTabs(handler: BrowserTabsHandler): Unsubscribe {
+    this.browserTabsHandlers.add(handler);
+    return () => {
+      this.browserTabsHandlers.delete(handler);
+    };
+  }
+
+  onBrowserError(handler: BrowserErrorHandler): Unsubscribe {
+    this.browserErrorHandlers.add(handler);
+    return () => {
+      this.browserErrorHandlers.delete(handler);
+    };
+  }
+
+  /** 订阅浏览器活动事件（智能体操作共享浏览器时触发）。 */
+  onBrowserActivity(handler: BrowserActivityHandler): Unsubscribe {
+    this.browserActivityHandlers.add(handler);
+    return () => {
+      this.browserActivityHandlers.delete(handler);
+    };
+  }
+
+  /** 订阅浏览器打开请求（桌面端智能体需要浏览器而内嵌窗口未开）。 */
+  onBrowserRequest(handler: BrowserRequestHandler): Unsubscribe {
+    this.browserRequestHandlers.add(handler);
+    return () => {
+      this.browserRequestHandlers.delete(handler);
+    };
+  }
+
   // -- internals ---------------------------------------------------------
 
   private setStatus(status: ConnectionStatus): void {
@@ -554,6 +610,38 @@ export class XianaibotClient {
         parsed.workspace_scope,
         parsed.employee,
       );
+      return;
+    }
+
+    if (parsed.event === "browser_status") {
+      const status: BrowserStatusPayload = {
+        running: parsed.running,
+        mode: parsed.mode,
+        port: parsed.port,
+        endpoint: parsed.endpoint,
+        url: parsed.url,
+        has_frame: parsed.has_frame,
+      };
+      for (const handler of this.browserStatusHandlers) handler(status);
+      return;
+    }
+    if (parsed.event === "browser_tabs") {
+      for (const handler of this.browserTabsHandlers) handler(parsed.pages ?? []);
+      return;
+    }
+    if (parsed.event === "browser_error") {
+      for (const handler of this.browserErrorHandlers) {
+        handler(typeof parsed.detail === "string" ? parsed.detail : "error");
+      }
+      return;
+    }
+    if (parsed.event === "browser_activity") {
+      const url = typeof parsed.url === "string" ? parsed.url : "";
+      for (const handler of this.browserActivityHandlers) handler({ url });
+      return;
+    }
+    if (parsed.event === "browser_request") {
+      for (const handler of this.browserRequestHandlers) handler();
       return;
     }
 

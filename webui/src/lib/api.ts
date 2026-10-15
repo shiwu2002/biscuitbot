@@ -39,6 +39,7 @@ import type {
   SkillHubVerifyPayload,
   SkillsPayload,
   SlashCommand,
+  BrowserServiceSettingsUpdate,
   TalentCatalogPayload,
   TranscriptionSettingsUpdate,
   TtsSettingsUpdate,
@@ -47,6 +48,7 @@ import type {
   WorkspacesPayload,
   WebuiThreadPersistedPayload,
   WorkspaceScopePayload,
+  BrowserStatusPayload,
 } from "./types";
 import { fetchWithTimeout } from "./http";
 
@@ -998,6 +1000,38 @@ export async function requestEngineRestart(
   await request<{ ok: boolean }>(`${base}/api/desktop/restart`, token);
 }
 
+// -- 内置浏览器服务 ---------------------------------------------------------
+
+export async function fetchBrowserStatus(
+  token: string,
+  base: string = "",
+): Promise<BrowserStatusPayload> {
+  return request<BrowserStatusPayload>(`${base}/api/browser/status`, token);
+}
+
+/** 确保浏览器服务就绪（复用用户的 / 拉起常驻实例）；url 非空时直接开新标签页。
+ * 注意：gateway 的 HTTP 层基于 websockets 库，只接受 GET（POST 在解析阶段被拒）。 */
+export async function startBrowserService(
+  token: string,
+  url?: string,
+  base: string = "",
+): Promise<BrowserStatusPayload> {
+  const query = url ? `?url=${encodeURIComponent(url)}` : "";
+  return request<BrowserStatusPayload>(
+    `${base}/api/browser/start${query}`,
+    token,
+    undefined,
+    30_000,
+  );
+}
+
+export async function stopBrowserService(
+  token: string,
+  base: string = "",
+): Promise<BrowserStatusPayload> {
+  return request<BrowserStatusPayload>(`${base}/api/browser/stop`, token);
+}
+
 /** 微信扫码登录：一张登录二维码（qrcode_id 用于后续轮询）。 */
 export interface WeixinLoginQr {
   qrcode_id: string;
@@ -1353,6 +1387,24 @@ export async function updateSystemIoSettings(
   query.set("allowActions", update.allowActions.join(","));
   return request<SettingsPayload>(
     `${base}/api/settings/system-io/update?${query}`,
+    token,
+  );
+}
+
+export async function updateBrowserServiceSettings(
+  token: string,
+  update: BrowserServiceSettingsUpdate,
+  base: string = "",
+): Promise<SettingsPayload> {
+  const query = new URLSearchParams();
+  if (update.cdpPort !== null && update.cdpPort !== undefined) {
+    query.set("cdpPort", String(update.cdpPort));
+  } else {
+    query.set("cdpPort", "");
+  }
+  query.set("headless", String(update.headless));
+  return request<SettingsPayload>(
+    `${base}/api/settings/browser-service/update?${query}`,
     token,
   );
 }

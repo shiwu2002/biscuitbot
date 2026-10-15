@@ -167,6 +167,7 @@
       "visionCapture": "截圖",
       "webSearch": "網頁搜尋",
       "webBehavior": "行為",
+      "browserService": "內建瀏覽器服務",
       "identity": "身分",
       "webuiSafety": "WebUI 安全",
       "capabilities": "能力",
@@ -211,6 +212,8 @@
       "maxResults": "最大結果數",
       "timeout": "逾時",
       "jinaReader": "Jina 閱讀器",
+      "browserServicePort": "CDP 偵錯連接埠",
+      "browserServiceVisible": "啟動時顯示瀏覽器視窗",
       "imageGeneration": "圖片生成",
       "imageProvider": "圖片供應商",
       "imageProviderStatus": "供應商狀態",
@@ -282,6 +285,9 @@
       "maxResults": "每次 web_search 呼叫返回的結果數。",
       "timeout": "搜尋供應商請求逾時前的秒數。",
       "jinaReader": "可用時為 web_fetch 使用 Jina Reader。",
+      "browserServicePort": "託管實例的瀏覽器偵錯連接埠；留空使用預設 9222（被佔用時自動順延）。桌面端優先使用內嵌瀏覽器視窗，此連接埠僅作兜底。",
+      "browserServiceVisible": "關閉時瀏覽器在背景無頭執行；開啟後可看到智慧代理人操作瀏覽器的真實視窗。",
+      "browserServiceSaveHint": "儲存後重啟引擎生效（正在執行的瀏覽器實例不受影響）。",
       "imageGeneration": "配置圖片供應商後，在聊天中開放 generate_image。",
       "imageProvider": "選擇 generate_image 使用的註冊供應商。",
       "imageProviderStatus": "圖片生成會重用「供應商」中的憑證。",
@@ -355,6 +361,7 @@
       "expanded": "展開",
       "on": "開啟",
       "off": "關閉",
+      "browserServicePortDefault": "預設 9222",
       "defaultPermission": "預設權限",
       "fullAccess": "完全訪問權限",
       "guardStandard": "標準",
@@ -1037,7 +1044,8 @@
       "toggleTheme": "從頂部切換主題",
       "settings": "開啟設定",
       "sessionInfo": "會話詳情",
-      "assets": "會話資產"
+      "assets": "會話資產",
+      "browser": "內建瀏覽器"
     },
     "sessionInfo": {
       "title": "會話",
@@ -1287,6 +1295,33 @@
   "downloadToast": {
     "success": "《{{name}}》下載成功",
     "started": "已開始下載《{{name}}》"
+  },
+  "browser": {
+    "title": "內建瀏覽器",
+    "subtitle": "應用內存取網址；智慧代理自動化預設使用同一瀏覽器實例",
+    "back": "返回會話",
+    "refresh": "重新整理狀態",
+    "statusTitle": "瀏覽器服務",
+    "mode": {
+      "embedded": "內嵌視窗",
+      "external": "複用本機瀏覽器",
+      "managed": "託管實例",
+      "stopped": "未執行"
+    },
+    "state": "狀態",
+    "stateRunning": "執行中",
+    "stateStopped": "未執行",
+    "endpoint": "CDP 端點",
+    "currentUrl": "目前頁面",
+    "agentSharing": "智慧代理自動化正共用此瀏覽器實例，操作即時可見。",
+    "openUrl": "開啟網址",
+    "urlPlaceholder": "https://example.com",
+    "openAction": "開啟",
+    "desktopHint": "將在應用內嵌瀏覽器視窗中開啟（獨立於主介面，登入狀態持久保存）。",
+    "remoteHint": "目前為瀏覽器存取模式：將啟動/複用託管常駐瀏覽器實例。",
+    "focusWindow": "開啟 / 聚焦瀏覽器視窗",
+    "closeWindow": "關閉",
+    "externalNote": "正在複用你自己啟動的瀏覽器，不會替你關閉。"
   },
   "filePreview": {
     "aria": "檔案預覽",

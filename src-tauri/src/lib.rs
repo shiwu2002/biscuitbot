@@ -265,7 +265,7 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     }
 }
 
-/// 选一个本机空闲 TCP 端口（探测时立刻释放，存在极小竞态，POC 可接受）。
+/// 选一个本机空闲 TCP 端口（探测时立刻释放，存在极小竞态，可接受）。
 fn free_local_port() -> Option<u16> {
     std::net::TcpListener::bind(("127.0.0.1", 0))
         .ok()?
@@ -275,7 +275,33 @@ fn free_local_port() -> Option<u16> {
         .into()
 }
 
-/// POC：打开「内置浏览器」窗口。
+/// 内嵌浏览器窗口的 CDP 端口文件：``~/.xianaibot/browser-cdp-port``。
+///
+/// gateway 侧 ``xianaibot.browser.manager`` 读取该文件附着内嵌窗口（embedded
+/// 模式）；窗口关闭时由壳删除，避免 gateway 附着到已死的端口。
+fn embedded_port_file() -> Option<std::path::PathBuf> {
+    std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .ok()
+        .map(|home| std::path::Path::new(&home).join(".xianaibot").join("browser-cdp-port"))
+}
+
+fn write_embedded_port_file(port: u16) {
+    if let Some(path) = embedded_port_file() {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(&path, port.to_string());
+    }
+}
+
+fn remove_embedded_port_file() {
+    if let Some(path) = embedded_port_file() {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// 打开「内置浏览器」窗口（幂等；已存在则聚焦并可选导航）。
 ///
 /// 关键设计：与主窗口**完全隔离**的 WebView2 环境——
 /// - 独立 `data_directory`（app_local_data_dir/browser-profile）→ 独立浏览器
@@ -287,14 +313,32 @@ fn free_local_port() -> Option<u16> {
 /// 默认的 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，
 /// 否则右键菜单/弹窗行为会变化。
 ///
-/// 端口写入 `%TEMP%/xianaibot-browser-cdp-port` 供 gateway / POC 验证读取。
+/// 端口写入 ``~/.xianaibot/browser-cdp-port``，gateway 的浏览器管理器据此以
+/// embedded 模式附着（智能体自动化默认走内嵌窗口，与用户同屏共享登录态）。
 #[tauri::command]
-fn open_browser_window(app: AppHandle) -> Result<(), String> {
+fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), String> {
+    let target_url: Option<Url> = match url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(raw) => {
+            let with_scheme = if raw.contains("://") {
+                raw.to_string()
+            } else {
+                format!("https://{raw}")
+            };
+            Some(tauri::Url::parse(&with_scheme).map_err(|e| e.to_string())?)
+        }
+        None => None,
+    };
+
     if let Some(win) = app.get_webview_window("browser") {
         let _ = win.show();
+        let _ = win.unminimize();
         let _ = win.set_focus();
+        if let Some(parsed) = target_url {
+            let _ = win.navigate(parsed);
+        }
         return Ok(());
     }
+
     let port = free_local_port().ok_or("no free local port")?;
     let browser_args = format!(
         "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
@@ -304,28 +348,47 @@ fn open_browser_window(app: AppHandle) -> Result<(), String> {
         .app_local_data_dir()
         .map_err(|e| e.to_string())?
         .join("browser-profile");
-    let url = tauri::Url::parse("https://example.com/").map_err(|e| e.to_string())?;
+    let initial_url =
+        target_url.unwrap_or_else(|| tauri::Url::parse("https://example.com/").unwrap());
 
-    tauri::WebviewWindowBuilder::new(
-        &app,
-        "browser",
-        tauri::WebviewUrl::External(url),
-    )
-    .title("夏奈儿 · 内置浏览器（POC）")
-    .inner_size(1280.0, 860.0)
-    .min_inner_size(640.0, 480.0)
-    .center()
-    .data_directory(data_dir)
-    .additional_browser_args(&browser_args)
-    .build()
-    .map_err(|e| e.to_string())?;
+    let window = tauri::WebviewWindowBuilder::new(&app, "browser", tauri::WebviewUrl::External(initial_url))
+        .title("夏奈儿 · 内置浏览器")
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(640.0, 480.0)
+        .center()
+        .data_directory(data_dir)
+        .additional_browser_args(&browser_args)
+        .build()
+        .map_err(|e| e.to_string())?;
 
-    let port_file = std::env::temp_dir().join("xianaibot-browser-cdp-port");
-    let _ = std::fs::write(&port_file, port.to_string());
+    // 窗口销毁时清理端口文件，gateway 才不会附着到已死的端口。
+    let app_for_close = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Destroyed { .. }
+        ) {
+            remove_embedded_port_file();
+            let _ = &app_for_close;
+        }
+    });
+
+    write_embedded_port_file(port);
     eprintln!(
         "[xianaibot] browser window created, CDP port {port} written to {}",
-        port_file.display()
+        embedded_port_file().map(|p| p.display().to_string()).unwrap_or_default()
     );
+    Ok(())
+}
+
+/// 关闭「内置浏览器」窗口（gateway 的 stop 对 embedded 模式只断开 CDP，
+/// 真正关窗由本命令负责）。
+#[tauri::command]
+fn close_browser_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("browser") {
+        // Destroyed 事件回调里已清理端口文件
+        win.close().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -384,19 +447,13 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![retry_gateway, open_browser_window])
+        .invoke_handler(tauri::generate_handler![
+            retry_gateway,
+            open_browser_window,
+            close_browser_window
+        ])
         .setup(|app| {
             spawn_sidecar(app.handle());
-
-            // POC：启动 1s 后自动打开内置浏览器窗口（验证 WebView2 独立环境 +
-            // CDP 调试端口）。验证通过后此调用移除，改由 WebUI 显式触发。
-            let poc_app = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_millis(1000));
-                if let Err(err) = open_browser_window(poc_app) {
-                    eprintln!("[xianaibot] POC browser window failed: {err}");
-                }
-            });
 
             // 关闭主窗口 → 隐藏到托盘（不退出进程，gateway 继续跑自动化任务）。
             if let Some(window) = app.get_webview_window("main") {

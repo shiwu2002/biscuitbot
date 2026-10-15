@@ -387,6 +387,25 @@ def _lazy_default(module_path: str, class_name: str) -> Any:
     return getattr(module, class_name)()
 
 
+class BrowserServiceConfig(Base):
+    """内置浏览器服务（常驻共享浏览器）配置。
+
+    环境变量 ``XIANAIBOT_BROWSER_CDP_PORT`` / ``XIANAIBOT_BROWSER_HEADLESS``
+    优先于本段配置（保持向后兼容）。
+    """
+
+    cdp_port: int | None = Field(
+        default=None,
+        ge=1024,
+        le=65535,
+        description="CDP 调试端口；空 = 默认 9222（被占用时自动顺延）。",
+    )
+    headless: bool = Field(
+        default=True,
+        description="托管实例是否无头运行；False = 启动时显示浏览器窗口。",
+    )
+
+
 class ToolsConfig(Base):
     """工具配置。
 
@@ -420,6 +439,7 @@ class ToolsConfig(Base):
     system_io: SystemIoToolConfig = Field(
         default_factory=lambda: _lazy_default("xianaibot.agent.tools.system_io", "SystemIoToolConfig"),
     )
+    browser_service: BrowserServiceConfig = Field(default_factory=BrowserServiceConfig)
     restrict_to_workspace: bool = False  # 策略意图：尽可能将工具访问限制在工作区内
     guard_level: str = Field(
         default="standard",

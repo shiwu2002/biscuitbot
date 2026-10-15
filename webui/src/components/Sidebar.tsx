@@ -3,6 +3,7 @@ import {
   Archive,
   BookOpen,
   CalendarClock,
+  Globe,
   LayoutDashboard,
   Menu,
   Search,
@@ -47,9 +48,11 @@ interface SidebarProps {
   onOpenEmployees: () => void;
   /** 打开个人知识库视图（上传/检索文档与图片）。 */
   onOpenKnowledge: () => void;
+  /** 打开内置浏览器驾驶舱视图（应用内浏览网址 / 智能体共享浏览器）。 */
+  onOpenBrowser: () => void;
   /** 数字人员工目录：用于会话行显示绑定的员工头像/代号（ChatList）。 */
   employees?: Employee[];
-  activeUtility?: "skills" | "capabilities" | "automations" | "employees" | "dashboard" | "knowledge" | null;
+  activeUtility?: "skills" | "capabilities" | "automations" | "employees" | "dashboard" | "knowledge" | "browser" | null;
   onToggleArchived: () => void;
   onCollapse: () => void;
   onExpand?: () => void;
@@ -178,6 +181,13 @@ export function Sidebar(props: SidebarProps) {
           onClick={props.onOpenKnowledge}
           active={props.activeUtility === "knowledge"}
           icon={<BookOpen className="h-4 w-4" />}
+        />
+        <SidebarActionButton
+          collapsed={collapsed}
+          label={t("sidebar.browser", { defaultValue: "内置浏览器" })}
+          onClick={props.onOpenBrowser}
+          active={props.activeUtility === "browser"}
+          icon={<Globe className="h-4 w-4" />}
         />
         {props.archivedCount ? (
           <SidebarActionButton

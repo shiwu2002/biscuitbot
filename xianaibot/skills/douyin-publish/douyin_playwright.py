@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-抖音创作者中心 - Playwright + Chromium v15 (反检测增强版)
-新增：
+抖音创作者中心 - Playwright + Chromium v16 (共享浏览器版)
+- 通过 CDP 连接内置浏览器服务的常驻实例（共享登录态，不再各自 launch）
+- 本机没有可用 CDP 浏览器时，用共享 profile（~/.xianaibot/browser-profile）拉起一个
 - playwright-stealth 反指纹检测（navigator/webgl/chrome runtime 等）
-- 更多浏览器反检测启动参数
-- 随机化 viewport
-- 模拟人类操作的随机延迟
-- 鼠标移动模拟
+- 模拟人类操作的随机延迟 / 鼠标移动模拟
 """
+import os
+import shutil
+import subprocess
 import sys
 import time
 import random
+import urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 from playwright_stealth import Stealth
 
 UPLOAD_URL = "https://creator.douyin.com/creator-micro/content/upload"
-USER_DATA_DIR = str(Path.home() / ".xianaibot/workspace/douyin_profile")
+# 与内置浏览器服务（xianaibot.browser.manager）共享同一 profile，登录态互通
+SHARED_PROFILE_DIR = str(Path.home() / ".xianaibot" / "browser-profile")
+CDP_PROBE_PORTS = [9222, 9223, 9224, 9225]
 
 # 反检测 Stealth 配置（针对中文/macOS 优化）
 STEALTH = Stealth(
@@ -47,7 +51,7 @@ STEALTH = Stealth(
     webgl_vendor_override="Apple Inc.",
 )
 
-# 更多反检测启动参数
+# 拉起共享浏览器时附加的反检测参数
 ANTI_DETECT_ARGS = [
     # 基础反检测
     "--disable-blink-features=AutomationControlled",
@@ -78,6 +82,112 @@ ANTI_DETECT_ARGS = [
 
 def wprint(msg):
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+def _probe_cdp(port: int) -> bool:
+    """探测 127.0.0.1:{port} 是否是活的 CDP 服务。"""
+    try:
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/json/version", timeout=1.5
+        ) as resp:
+            return resp.status == 200 and b"Browser" in resp.read()
+    except Exception:
+        return False
+
+def probe_cdp_port() -> int | None:
+    """找到本机已运行的 CDP 浏览器端口（环境变量指定端口优先）。"""
+    env_raw = os.environ.get("XIANAIBOT_BROWSER_CDP_PORT", "").strip()
+    ports = [int(env_raw)] if env_raw.isdigit() else []
+    ports += [p for p in CDP_PROBE_PORTS if p not in ports]
+    for port in ports:
+        if _probe_cdp(port):
+            return port
+    return None
+
+def find_browser_executable() -> str | None:
+    """按优先级找本机的 Chrome/Edge 可执行文件。"""
+    override = os.environ.get("XIANAIBOT_BROWSER_EXECUTABLE", "").strip()
+    if override and Path(override).is_file():
+        return override
+    candidates: list[str] = []
+    if sys.platform == "win32":
+        program_dirs = [
+            os.environ.get("ProgramFiles", r"C:\Program Files"),
+            os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"),
+            os.environ.get("LocalAppData", ""),
+        ]
+        for base in filter(None, program_dirs):
+            candidates.append(str(Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe"))
+            candidates.append(str(Path(base) / "Microsoft" / "Edge" / "Application" / "msedge.exe"))
+    elif sys.platform == "darwin":
+        candidates.extend([
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        ])
+    else:
+        candidates.extend(["google-chrome", "google-chrome-stable", "microsoft-edge"])
+    for path in candidates:
+        if Path(path).is_file():
+            return path
+    for name in ("chrome", "google-chrome", "msedge", "microsoft-edge"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+def launch_shared_browser(headless: bool) -> int:
+    """没有可用 CDP 浏览器时，用共享 profile 拉起常驻实例并等待调试端口就绪。"""
+    exe = find_browser_executable()
+    if not exe:
+        raise RuntimeError("未找到 Chrome/Edge，无法启动共享浏览器")
+    Path(SHARED_PROFILE_DIR).mkdir(parents=True, exist_ok=True)
+    env_raw = os.environ.get("XIANAIBOT_BROWSER_CDP_PORT", "").strip()
+    preferred = int(env_raw) if env_raw.isdigit() else CDP_PROBE_PORTS[0]
+    for port in range(preferred, preferred + 6):
+        if _probe_cdp(port):
+            return port
+        args = [
+            exe,
+            f"--remote-debugging-port={port}",
+            f"--user-data-dir={SHARED_PROFILE_DIR}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-session-crashed-bubble",
+            "--window-size=1440,900",
+            *ANTI_DETECT_ARGS,
+        ]
+        if headless:
+            args.append("--headless=new")
+        args.append("about:blank")
+        try:
+            subprocess.Popen(  # noqa: S603
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                stdin=subprocess.DEVNULL,
+            )
+        except OSError as exc:
+            wprint(f"⚠️ 启动浏览器失败: {exc}")
+            continue
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if _probe_cdp(port):
+                wprint(f"🌐 共享浏览器已就绪 (CDP :{port})")
+                return port
+            time.sleep(0.25)
+    raise RuntimeError("共享浏览器启动失败（CDP 端口未就绪）")
+
+def connect_browser(p, headless: bool):
+    """连接共享常驻浏览器：优先复用已运行的 CDP 实例，否则拉起一个。
+
+    返回 playwright Browser 对象。注意：不要对它调用 close()——
+    进程退出即断开连接，共享浏览器实例保持常驻（登录态持久化在共享 profile）。
+    """
+    port = probe_cdp_port()
+    if port is not None:
+        wprint(f"🔗 复用已运行的浏览器 (CDP :{port})")
+    else:
+        port = launch_shared_browser(headless)
+    return p.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
 
 def rand_sleep(base, spread=0.5):
     """带随机抖动的等待"""
@@ -234,37 +344,18 @@ def publish_images(image_paths: list[str], title: str, sms_code: str = None,
         wprint(f"📱 验证码: {sms_code}")
 
     with sync_playwright() as p:
+        browser = connect_browser(p, headless)
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = context.new_page()
+
         # 可选：hook playwright context 自动对所有 page 应用 stealth
         # 这里手动对 page 应用，更精确
-
         vw = {"width": 1440 + random.randint(-40, 40),
               "height": 900 + random.randint(-20, 20)}
-
-        context = p.chromium.launch_persistent_context(
-            user_data_dir=USER_DATA_DIR,
-            headless=headless,
-            args=ANTI_DETECT_ARGS,
-            viewport=vw,
-            locale="zh-CN",
-            timezone_id="Asia/Shanghai",
-            # 模拟真实 User-Agent（可选，stealth 会自动处理）
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/131.0.0.0 Safari/537.36"
-            ),
-            # 设备像素比
-            device_scale_factor=2,
-            is_mobile=False,
-            has_touch=False,
-            # 权限
-            permissions=["geolocation"],
-            geolocation={"latitude": 39.9042, "longitude": 116.4074},  # 北京
-            # 颜色方案
-            color_scheme="light",
-        )
-
-        page = context.new_page()
+        try:
+            page.set_viewport_size(vw)
+        except Exception:
+            pass
 
         # 🛡️ 应用 playwright-stealth
         STEALTH.apply_stealth_sync(page)
@@ -337,7 +428,7 @@ def publish_images(image_paths: list[str], title: str, sms_code: str = None,
                 break
         if not img_input:
             wprint("❌ 无图片 input")
-            context.close()
+            page.close()
             return
         img_input.set_input_files(abs_paths)
         wprint(f"   ✅ {len(abs_paths)} 张已选")
@@ -408,7 +499,7 @@ def publish_images(image_paths: list[str], title: str, sms_code: str = None,
                 rand_sleep(5)
             except:
                 wprint("   ❌ 未找到发布按钮")
-                context.close()
+                page.close()
                 return
 
         screenshot(page, "04_publish_clicked")
@@ -456,8 +547,7 @@ def publish_images(image_paths: list[str], title: str, sms_code: str = None,
         rand_sleep(3)
         wprint(f"📍 最终: {page.url}")
         screenshot(page, "99_final")
-        wprint("🏁 流程结束!")
-        context.close()
+        wprint("🏁 流程结束!（共享浏览器保持运行，标签页保留供人工检查）")
 
 
 if __name__ == "__main__":

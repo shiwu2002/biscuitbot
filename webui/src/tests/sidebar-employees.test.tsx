@@ -34,6 +34,7 @@ function renderSidebar(overrides: {
     onOpenDashboard: vi.fn(),
     onOpenEmployees: overrides.onOpenEmployees ?? vi.fn(),
     onOpenKnowledge: vi.fn(),
+    onOpenBrowser: vi.fn(),
     onToggleArchived: vi.fn(),
     onCollapse: vi.fn(),
     employees: overrides.employees,
