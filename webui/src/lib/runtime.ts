@@ -63,10 +63,16 @@ declare global {
   }
 }
 
-/** `withGlobalTauri` 注入的 `window.__TAURI__` 中，我们只用 `core.invoke`。 */
+/** `withGlobalTauri` 注入的 `window.__TAURI__`：我们只用 `core.invoke` 和 `event.listen`。 */
 interface TauriHostGlobal {
   core?: {
     invoke?: (cmd: string, args?: unknown) => Promise<unknown>;
+  };
+  event?: {
+    listen?: (
+      event: string,
+      handler: (event: { payload: unknown }) => void,
+    ) => Promise<() => void>;
   };
 }
 

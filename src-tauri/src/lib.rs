@@ -12,7 +12,7 @@ use std::sync::Mutex;
 
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, RunEvent, Url};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, Url};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
@@ -322,45 +322,46 @@ fn browser_webview_args(port: u16) -> String {
     )
 }
 
-/// 在主窗口内创建「内置浏览器」抽屉 webview（幂等；已存在则更新位置并按需导航）。
-///
-/// 关键设计：
-/// - 抽屉是主窗口里的**独立子 webview**（Tauri 多 webview，需 unstable feature），
-///   原生渲染零卡顿；位置/尺寸由前端 React 布局给出（逻辑像素）。
-/// - 与主 UI **完全隔离**的 WebView2 环境——独立 `data_directory`
-///   （app_local_data_dir/browser-profile）→ 独立浏览器进程与登录态；
-/// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
-///   只作用于该独立环境的浏览器进程，CDP 不会暴露主 UI webview。注意该参数
-///   会**整体替换** Tauri 默认值，必须带上默认的 `--disable-features=...` 三项。
-/// - 端口写入 ``~/.xianaibot/browser-cdp-port``，gateway 的浏览器管理器据此以
-///   embedded 模式附着（智能体自动化默认走抽屉，与用户同屏共享登录态）。
-/// 注意：**必须 async** —— 同步命令在主线程执行，而 add_child/set_bounds 的
-/// wry 内部需要主线程处理 IPC 应答，同步命令会与自身形成死锁（前端 invoke
-/// 永远挂起）。async 命令跑在 tokio 线程池，主线程保持空闲。
-#[tauri::command]
-async fn open_browser_drawer(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-    url: Option<String>,
-) -> Result<(), String> {
-    let target_url = parse_target_url(url.as_deref())?;
-    let Some(window) = app.get_window("main") else {
-        return Err("main window not found".to_string());
-    };
+/// 「内置浏览器」独立窗口的标签。
+const BROWSER_WINDOW: &str = "browser";
+/// 浏览器窗口销毁时通知主界面收起控制栏的事件名。
+const BROWSER_WINDOW_CLOSED_EVENT: &str = "browser-window-closed";
+/// 浏览器窗口默认尺寸（逻辑像素；实际打开时按主窗口所在显示器夹取）。
+const BROWSER_DEFAULT_WIDTH: f64 = 1180.0;
+const BROWSER_DEFAULT_HEIGHT: f64 = 820.0;
+/// 窗口与屏幕边缘/主窗口之间留的间隙（物理像素）。
+const BROWSER_WINDOW_GAP: f64 = 8.0;
 
-    // 已存在：更新 bounds（必要时同步导航），不再重复创建。
-    if let Some(existing) = app.get_webview("browser-drawer") {
-        let _ = existing.set_bounds(tauri::Rect {
-            position: tauri::LogicalPosition::new(x, y).into(),
-            size: tauri::LogicalSize::new(width, height).into(),
-        });
+/// 打开「内置浏览器」**独立窗口**（幂等；已存在则聚焦并可选导航）。
+///
+/// 形态：顶层原生窗口（不是主窗口里的子 webview）——自带标题栏，可拖动、
+/// 缩放、贴边吸附，因此能和主窗口并排同屏，像 IDE 里拖出来的工具窗。
+/// 关键收益：**彻底不依赖前端量矩形**。位置/尺寸交给操作系统，不存在
+/// 「原生子 webview 与前端占位元素错位 → 矩形盖住界面吞掉点击」这类问题。
+///
+/// 环境隔离与自动化共享（沿用既有设计，gateway 侧无需改动）：
+/// - 独立 `data_directory`（app_local_data_dir/browser-profile）→ 独立浏览器
+///   进程与登录态，与主 UI 完全隔离；
+/// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
+///   只作用于该独立环境的浏览器进程。注意该参数会**整体替换** Tauri 默认值，
+///   必须带上默认的 `--disable-features=...` 三项；
+/// - 端口写入 ``~/.xianaibot/browser-cdp-port``，gateway 的浏览器管理器据此以
+///   embedded 模式附着（智能体自动化默认走这个窗口，与用户同屏共享登录态）；
+///   窗口销毁时删除，避免 gateway 附着到已死的端口。
+///
+/// 打开位置：贴主窗口右侧并排（同高），按主窗口所在显示器可用区夹取。
+#[tauri::command]
+async fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), String> {
+    let target_url = parse_target_url(url.as_deref())?;
+
+    // 已存在：聚焦 + 按需导航，不重复创建。
+    if let Some(existing) = app.get_webview_window(BROWSER_WINDOW) {
+        let _ = existing.show();
+        let _ = existing.unminimize();
+        let _ = existing.set_focus();
         if let Some(parsed) = target_url {
             let _ = existing.navigate(parsed);
         }
-        let _ = existing.show();
         return Ok(());
     }
 
@@ -373,24 +374,63 @@ async fn open_browser_drawer(
     let initial_url = target_url
         .unwrap_or_else(|| tauri::Url::parse("about:blank").expect("about:blank is valid"));
 
-    let builder = tauri::webview::WebviewBuilder::new(
-        "browser-drawer",
+    // 「新标签页 / 新窗口」请求处理（`target="_blank"`、`window.open()` 等）。
+    //
+    // 必须显式注册：wry 0.55 在**没有** new-window 处理器时走
+    // `args.SetHandled(true)` 分支（wry/src/webview2/mod.rs 的
+    // `add_NewWindowRequested`），即把请求直接丢弃——不导航、不报错、不留痕，
+    // 表现为「同标签链接能点、新标签链接点了没反应」。
+    // 单窗口语义 → 拒绝弹窗，就地导航到目标地址。
+    let nav_app = app.clone();
+
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        BROWSER_WINDOW,
         tauri::WebviewUrl::External(initial_url),
     )
+    .title("夏奈儿 · 内置浏览器")
+    .inner_size(BROWSER_DEFAULT_WIDTH, BROWSER_DEFAULT_HEIGHT)
+    .min_inner_size(480.0, 360.0)
+    // 先摆好位置再显示，避免在默认位置闪一下。
+    .visible(false)
     .data_directory(data_dir)
-    .additional_browser_args(&browser_webview_args(port));
+    .additional_browser_args(&browser_webview_args(port))
+    .on_new_window(move |url, _features| {
+        if matches!(url.scheme(), "http" | "https") {
+            if let Some(win) = nav_app.get_webview_window(BROWSER_WINDOW) {
+                let _ = win.navigate(url);
+            }
+        }
+        tauri::webview::NewWindowResponse::Deny
+    })
+    // 站点标题同步到窗口标题，方便任务栏/窗口列表里辨认。
+    .on_document_title_changed(|window, title| {
+        let title = title.trim().to_string();
+        let label = if title.is_empty() {
+            "夏奈儿 · 内置浏览器".to_string()
+        } else {
+            format!("{title} · 夏奈儿")
+        };
+        let _ = window.set_title(&label);
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
 
-    window
-        .add_child(
-            builder,
-            tauri::LogicalPosition::new(x, y),
-            tauri::LogicalSize::new(width, height),
-        )
-        .map_err(|e| e.to_string())?;
+    place_browser_window(&app, &window);
+    let _ = window.show();
+
+    // 窗口销毁 → 清理端口文件 + 通知主界面收起控制栏（用户点窗口〔X〕也要同步）。
+    let app_for_close = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed { .. }) {
+            remove_embedded_port_file();
+            let _ = app_for_close.emit_to("main", BROWSER_WINDOW_CLOSED_EVENT, ());
+        }
+    });
 
     write_embedded_port_file(port);
     eprintln!(
-        "[xianaibot] browser drawer created, CDP port {port} written to {}",
+        "[xianaibot] browser window created, CDP port {port} written to {}",
         embedded_port_file()
             .map(|p| p.display().to_string())
             .unwrap_or_default()
@@ -398,34 +438,152 @@ async fn open_browser_drawer(
     Ok(())
 }
 
-/// 更新抽屉 webview 的位置与尺寸（前端布局/窗口缩放时同步）。
+/// 把浏览器窗口摆到主窗口右侧并排（同高），按主窗口所在显示器可用区夹取。
+///
+/// 全程用**物理像素**：outer_position / outer_size / current_monitor 都是物理量，
+/// 不做逻辑↔物理换算，避免 125%/150% 缩放下的偏移误差。
+fn place_browser_window(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let Some(main) = app.get_webview_window("main") else {
+        let _ = window.center();
+        return;
+    };
+    let (Ok(main_pos), Ok(main_size)) = (main.outer_position(), main.outer_size()) else {
+        let _ = window.center();
+        return;
+    };
+
+    let mut width = BROWSER_DEFAULT_WIDTH;
+    let mut height = main_size.height as f64;
+    let mut x = main_pos.x as f64 + main_size.width as f64 + BROWSER_WINDOW_GAP;
+    let mut y = main_pos.y as f64;
+
+    if let Ok(Some(monitor)) = main.current_monitor() {
+        let m_pos = monitor.position();
+        let m_size = monitor.size();
+        let left = m_pos.x as f64;
+        let top = m_pos.y as f64;
+        let right = left + m_size.width as f64;
+        let bottom = top + m_size.height as f64;
+
+        // 宽度别超过显示器；右侧放不下就回收，至少不越界。
+        width = width.min(right - left - BROWSER_WINDOW_GAP * 2.0);
+        if x + width > right - BROWSER_WINDOW_GAP {
+            x = right - BROWSER_WINDOW_GAP - width;
+        }
+        if x < left + BROWSER_WINDOW_GAP {
+            x = left + BROWSER_WINDOW_GAP;
+        }
+        // 高度对齐主窗口，同样夹取进可用区。
+        height = height.min(bottom - top - BROWSER_WINDOW_GAP * 2.0);
+        if y + height > bottom - BROWSER_WINDOW_GAP {
+            y = bottom - BROWSER_WINDOW_GAP - height;
+        }
+        if y < top + BROWSER_WINDOW_GAP {
+            y = top + BROWSER_WINDOW_GAP;
+        }
+    }
+
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+        x.round() as i32,
+        y.round() as i32,
+    ));
+    let _ = window.set_size(tauri::PhysicalSize::new(
+        width.round() as u32,
+        height.round() as u32,
+    ));
+}
+
+/// 让浏览器窗口导航到指定地址（主界面控制栏的地址输入用）。
 #[tauri::command]
-async fn update_browser_drawer(
-    app: AppHandle,
-    x: f64,
-    y: f64,
-    width: f64,
-    height: f64,
-) -> Result<(), String> {
-    if let Some(webview) = app.get_webview("browser-drawer") {
-        webview
-            .set_bounds(tauri::Rect {
-                position: tauri::LogicalPosition::new(x, y).into(),
-                size: tauri::LogicalSize::new(width, height).into(),
-            })
-            .map_err(|e| e.to_string())?;
+async fn navigate_browser_window(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = parse_target_url(Some(url.as_str()))?.ok_or("empty url")?;
+    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+        return Err("browser window not open".to_string());
+    };
+    window.navigate(parsed).map_err(|e| e.to_string())
+}
+
+/// 刷新浏览器窗口当前页。
+#[tauri::command]
+async fn reload_browser_window(app: AppHandle) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+        return Err("browser window not open".to_string());
+    };
+    window.reload().map_err(|e| e.to_string())
+}
+
+/// 浏览器窗口前进/后退（`direction` 取 "back" | "forward"）。
+#[tauri::command]
+async fn browser_window_history(app: AppHandle, direction: String) -> Result<(), String> {
+    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+        return Err("browser window not open".to_string());
+    };
+    let script = match direction.as_str() {
+        "back" => "history.back()",
+        "forward" => "history.forward()",
+        _ => return Err("unknown direction".to_string()),
+    };
+    window.eval(script).map_err(|e| e.to_string())
+}
+
+/// 用系统默认程序打开一个 URL。
+///
+/// 刻意不用 `tauri_plugin_shell` 的 `Shell::open`——该 API 在 2.x 已废弃（官方
+/// 指向 tauri-plugin-opener），而为一个「在系统浏览器打开」引入新插件不划算；
+/// 三个平台各一条命令足矣。
+fn open_url_in_system_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        use std::os::windows::process::CommandExt;
+        let mut c = std::process::Command::new("cmd");
+        // 第二个参数是 start 的窗口标题占位；CREATE_NO_WINDOW(0x0800) 防黑框闪现。
+        c.args(["/C", "start", "", url]);
+        c.creation_flags(0x0800);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        c.arg(url);
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(url);
+        c
+    };
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+/// 用系统默认浏览器打开当前页（拿不到当前页时回退到传入的 `url`）。
+#[tauri::command]
+async fn open_browser_external(app: AppHandle, url: Option<String>) -> Result<(), String> {
+    let explicit = url.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let target = match explicit {
+        Some(raw) => raw.to_string(),
+        None => app
+            .get_webview_window(BROWSER_WINDOW)
+            .and_then(|w| w.url().ok())
+            .map(|u| u.to_string())
+            .ok_or("no url")?,
+    };
+    open_url_in_system_browser(&target)
+}
+
+/// 关闭「内置浏览器」窗口（端口文件由窗口 Destroyed 回调清理）。
+#[tauri::command]
+async fn close_browser_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(BROWSER_WINDOW) {
+        window.close().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-/// 关闭抽屉 webview 并清理 CDP 端口文件。
+/// 浏览器窗口当前是否打开（WebUI 重新加载后据此恢复控制栏状态）。
 #[tauri::command]
-async fn close_browser_drawer(app: AppHandle) -> Result<(), String> {
-    if let Some(webview) = app.get_webview("browser-drawer") {
-        webview.close().map_err(|e| e.to_string())?;
-    }
-    remove_embedded_port_file();
-    Ok(())
+async fn browser_window_open(app: AppHandle) -> bool {
+    app.get_webview_window(BROWSER_WINDOW).is_some()
 }
 
 /// 创建系统托盘图标，提供「打开 xianaibot / 退出」菜单。
@@ -485,9 +643,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             retry_gateway,
-            open_browser_drawer,
-            update_browser_drawer,
-            close_browser_drawer
+            open_browser_window,
+            close_browser_window,
+            navigate_browser_window,
+            reload_browser_window,
+            browser_window_history,
+            open_browser_external,
+            browser_window_open
         ])
         .setup(|app| {
             spawn_sidecar(app.handle());

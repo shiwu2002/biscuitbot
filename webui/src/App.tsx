@@ -19,7 +19,18 @@ import { SkillHubView } from "@/components/settings/SkillHubView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
 import { BrowserView } from "@/components/browser/BrowserView";
-import { BROWSER_DRAWER_WIDTH, BrowserDrawer } from "@/components/browser/BrowserDrawer";
+import { BrowserBar } from "@/components/browser/BrowserBar";
+import {
+  browserWindowHistory,
+  closeBrowserWindow,
+  isBrowserWindowOpen,
+  navigateBrowserWindow,
+  onBrowserWindowClosed,
+  openBrowserExternal,
+  openBrowserWindow,
+  reloadBrowserWindow,
+  supportsBrowserWindow,
+} from "@/lib/browser-window";
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
@@ -88,6 +99,17 @@ const SIDEBAR_RAIL_WIDTH = 56;
 const MOBILE_SIDEBAR_WIDTH = `min(${SIDEBAR_WIDTH}px, calc(100vw - 0.75rem))`;
 const TOKEN_REFRESH_MARGIN_MS = 30_000;
 const TOKEN_REFRESH_MIN_DELAY_MS = 5_000;
+/** 上次浏览过的地址：下次开内置浏览器窗口时直接回到那一页。 */
+const BROWSER_LAST_URL_KEY = "xianaibot.browser.lastUrl";
+
+function readLastBrowserUrl(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return window.localStorage.getItem(BROWSER_LAST_URL_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 type ShellView = "chat" | "dashboard" | "settings" | "automations" | "skills" | "capabilities" | "employees" | "employee-chat" | "talent-market" | "skill-hub" | "knowledge" | "browser";
 type ShellRoute = {
   view: ShellView;
@@ -1356,52 +1378,99 @@ function Shell({
     navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
   }, [activeKey, navigate]);
 
-  /** 内置浏览器抽屉（对话右侧，原生 WebView2 子 webview）。 */
-  const [browserDrawerOpen, setBrowserDrawerOpen] = useState(false);
-  /** 抽屉打开时要求浏览器导航到的地址（browser_request 场景携带）。 */
-  const [browserDrawerUrl, setBrowserDrawerUrl] = useState<string | null>(null);
+  /** 内置浏览器：**独立原生窗口**（不是主窗口里的子 webview），可与主窗口并排同屏。
+   * 这里只跟踪「窗口是否打开」给控制栏用；位置/尺寸由操作系统管理，前端不参与。 */
+  const [browserWindowOpen, setBrowserWindowOpen] = useState(false);
+  /** 浏览器窗口当前页面地址（控制栏回填 + 「系统浏览器打开」兜底用）。 */
+  const [browserUrl, setBrowserUrl] = useState(readLastBrowserUrl);
 
-  /** 侧边栏「内置浏览器」：桌面端在对话右侧展开/收起浏览器抽屉；
+  // 记住上次地址：下次开窗直接回到那一页，而不是落在空白 about:blank。
+  useEffect(() => {
+    if (!browserUrl) return;
+    try {
+      window.localStorage.setItem(BROWSER_LAST_URL_KEY, browserUrl);
+    } catch {
+      // localStorage 不可用（隐私模式等）时忽略，不影响浏览。
+    }
+  }, [browserUrl]);
+
+  const browserSupported = supportsBrowserWindow();
+
+  const showBrowserWindow = useCallback(
+    (url?: string | null) => {
+      if (url) setBrowserUrl(url);
+      void openBrowserWindow(url ?? null)
+        .then(() => setBrowserWindowOpen(true))
+        .catch(() => {});
+    },
+    [],
+  );
+
+  const hideBrowserWindow = useCallback(() => {
+    setBrowserWindowOpen(false);
+    void closeBrowserWindow().catch(() => {});
+  }, []);
+
+  /** 侧边栏 / 聊天头部的「内置浏览器」入口：桌面端开合独立浏览器窗口；
    * 非桌面端（浏览器访问 WebUI）保留驾驶舱页（托管实例控制）。 */
   const onOpenBrowser = useCallback(() => {
     setSessionSearchOpen(false);
     setMobileSidebarOpen(false);
-    if (isNativeSurface) {
-      setBrowserDrawerUrl(null);
-      if (view !== "chat") {
-        navigate({ view: "chat", activeKey, settingsSection: "overview" });
-        setBrowserDrawerOpen(true);
-      } else {
-        setBrowserDrawerOpen((prev) => !prev);
+    if (browserSupported) {
+      if (browserWindowOpen) {
+        hideBrowserWindow();
+        return;
       }
-    } else {
-      navigate({ view: "browser", activeKey, settingsSection: "overview" });
+      // 首次打开若无历史地址，窗口先落到 about:blank，聚焦控制栏地址框让用户输入。
+      showBrowserWindow(browserUrl || null);
+      return;
     }
-  }, [activeKey, view, isNativeSurface, navigate]);
+    navigate({ view: "browser", activeKey, settingsSection: "overview" });
+  }, [
+    activeKey,
+    navigate,
+    browserSupported,
+    browserWindowOpen,
+    browserUrl,
+    showBrowserWindow,
+    hideBrowserWindow,
+  ]);
 
-  /** 智能体请求浏览器（browser_request）或产生浏览器活动（browser_activity）：
-   * 桌面端自动在对话右侧展开内置浏览器抽屉（原生 WebView2，同屏实时）。 */
-  const openBrowserDrawerRef = useRef<(url?: string) => void>(() => {});
-  openBrowserDrawerRef.current = (url?: string) => {
-    setBrowserDrawerUrl(url ?? null);
-    setBrowserDrawerOpen(true);
-    if (view !== "chat") {
-      navigate({ view: "chat", activeKey, settingsSection: "overview" });
-    }
-  };
+  // 页面加载/重载后恢复控制栏状态；用户点浏览器窗口自己的〔X〕也要同步收起。
+  useEffect(() => {
+    if (!browserSupported) return;
+    let cancelled = false;
+    void isBrowserWindowOpen().then((open) => {
+      if (!cancelled && open) setBrowserWindowOpen(true);
+    });
+    const offClosed = onBrowserWindowClosed(() => setBrowserWindowOpen(false));
+    return () => {
+      cancelled = true;
+      offClosed();
+    };
+  }, [browserSupported]);
+
+  /** 智能体请求浏览器（browser_request：内嵌窗口未开时需要弹出来）→ 打开窗口；
+   * 浏览器活动 / 状态推送 → 只同步当前地址，不强行弹窗打扰用户。 */
   useEffect(() => {
     const offRequest = client.onBrowserRequest(() => {
-      openBrowserDrawerRef.current();
+      showBrowserWindow(null);
+      if (view !== "chat") {
+        navigate({ view: "chat", activeKey, settingsSection: "overview" });
+      }
     });
     const offActivity = client.onBrowserActivity(({ url }) => {
-      // 智能体正在操作浏览器且抽屉未开：自动展开（含当前页面地址）。
-      openBrowserDrawerRef.current(url);
+      if (url) setBrowserUrl(url);
+    });
+    const offStatus = client.onBrowserStatus((payload) => {
+      if (payload.url && payload.url !== "about:blank") setBrowserUrl(payload.url);
     });
     return () => {
       offRequest();
       offActivity();
+      offStatus();
     };
-  }, [client, activeKey, navigate, view]);
+  }, [client, activeKey, navigate, view, showBrowserWindow]);
 
   const onOpenAutomations = useCallback(() => {
     setSessionSearchOpen(false);
@@ -1724,6 +1793,8 @@ function Shell({
    * 员工专属页内嵌 ThreadShell 复用同一份，保证行为一致。 */
   /** 头部「内置浏览器」小图标：桌面端开合右侧抽屉，非桌面端进驾驶舱页。
    * 智能体请求浏览器（browser_request）时也会自动展开抽屉。 */
+  /** 头部「内置浏览器」小图标：桌面端开合独立浏览器窗口，非桌面端进驾驶舱页。
+   * 智能体请求浏览器（browser_request）时也会自动开窗。 */
   const browserAction = useMemo(
     () => (
       <Button
@@ -1734,13 +1805,33 @@ function Shell({
         onClick={onOpenBrowser}
         className={cn(
           "host-no-drag h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground",
-          browserDrawerOpen && "bg-accent/40 text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]",
+          browserWindowOpen && "bg-accent/40 text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]",
         )}
       >
         <Globe className="h-4 w-4" aria-hidden />
       </Button>
     ),
-    [onOpenBrowser, browserDrawerOpen, t],
+    [onOpenBrowser, browserWindowOpen, t],
+  );
+
+  /** 浏览器控制栏：仅桌面端、且浏览器窗口已打开时显示（渲染在对话头部下方）。 */
+  const browserBar = useMemo(
+    () =>
+      browserSupported && browserWindowOpen ? (
+        <BrowserBar
+          url={browserUrl}
+          onNavigate={(next) => {
+            setBrowserUrl(next);
+            void navigateBrowserWindow(next).catch(() => {});
+          }}
+          onBack={() => void browserWindowHistory("back").catch(() => {})}
+          onForward={() => void browserWindowHistory("forward").catch(() => {})}
+          onReload={() => void reloadBrowserWindow().catch(() => {})}
+          onOpenExternal={() => void openBrowserExternal(browserUrl || null).catch(() => {})}
+          onClose={hideBrowserWindow}
+        />
+      ) : undefined,
+    [browserSupported, browserWindowOpen, browserUrl, hideBrowserWindow],
   );
 
   const shellHostProps: Omit<ThreadShellProps, "session" | "title"> = useMemo(
@@ -1941,26 +2032,17 @@ function Shell({
         >
             <div
               className={cn(
-                "absolute inset-y-0 left-0 flex flex-col",
+                "absolute inset-y-0 left-0 right-0 flex flex-col",
                 view !== "chat" && "invisible pointer-events-none",
               )}
-              style={{ right: browserDrawerOpen && view === "chat" ? BROWSER_DRAWER_WIDTH : 0 }}
             >
               <ThreadShell
                 session={activeSession}
                 title={headerTitle}
                 {...shellHostProps}
+                browserBar={browserBar}
               />
             </div>
-            {browserDrawerOpen && view === "chat" ? (
-              <BrowserDrawer
-                open
-                url={browserDrawerUrl}
-                onNavigateUrl={setBrowserDrawerUrl}
-                hostChromeActive={showHostChrome}
-                onClose={() => setBrowserDrawerOpen(false)}
-              />
-            ) : null}
             {view === "employees" ? (
               <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <EmployeesView

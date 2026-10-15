@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-window-history"
+description = "Enables the browser_window_history command without any pre-configured scope."
+commands.allow = ["browser_window_history"]
+
+[[permission]]
+identifier = "deny-browser-window-history"
+description = "Denies the browser_window_history command without any pre-configured scope."
+commands.deny = ["browser_window_history"]

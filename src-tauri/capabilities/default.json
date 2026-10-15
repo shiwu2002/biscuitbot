@@ -21,8 +21,12 @@
     "process:default",
     "dialog:allow-open",
     "allow-retry-gateway",
-    "allow-open-browser-drawer",
-    "allow-update-browser-drawer",
-    "allow-close-browser-drawer"
+    "allow-open-browser-window",
+    "allow-close-browser-window",
+    "allow-navigate-browser-window",
+    "allow-reload-browser-window",
+    "allow-browser-window-history",
+    "allow-open-browser-external",
+    "allow-browser-window-open"
   ]
 }

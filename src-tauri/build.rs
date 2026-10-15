@@ -6,9 +6,13 @@ fn main() {
         tauri_build::Attributes::new().app_manifest(
             tauri_build::AppManifest::new().commands(&[
                 "retry_gateway",
-                "open_browser_drawer",
-                "update_browser_drawer",
-                "close_browser_drawer",
+                "open_browser_window",
+                "close_browser_window",
+                "navigate_browser_window",
+                "reload_browser_window",
+                "browser_window_history",
+                "open_browser_external",
+                "browser_window_open",
             ]),
         ),
     )

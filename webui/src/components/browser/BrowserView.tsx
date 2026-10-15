@@ -37,11 +37,11 @@ const MODE_STYLES: Record<string, string> = {
 /**
  * 内置浏览器驾驶舱视图（侧边栏「浏览器」入口）。
  *
- * 桌面端：浏览器本体是 Tauri 壳的原生 WebView2 窗口（独立 profile + CDP
- * 调试端口），本页负责状态展示与窗口的打开/聚焦/关闭；智能体自动化通过
- * playwright MCP 附着同一 CDP 端口，与用户同屏操作。
- * 非桌面端（浏览器访问 WebUI / 服务器部署）：退化为托管常驻实例
- * （REST /api/browser/start|stop）。
+ * **仅非桌面端使用**（浏览器直接访问 WebUI / 服务器部署）：退化为托管常驻
+ * 实例控制（REST /api/browser/start|stop）。
+ *
+ * 桌面端不走这里：浏览器是**独立原生窗口**（`open_browser_window`），可与主窗口
+ * 并排同屏，主界面只保留一条紧凑控制栏（BrowserBar）。
  */
 export function BrowserView({
   onBackToChat,
@@ -95,8 +95,8 @@ export function BrowserView({
     async (url?: string) => {
       setBusy(true);
       try {
-        // 驾驶舱页仅用于非桌面端（浏览器访问 WebUI），统一走 REST 启动/复用
-        // 托管实例；桌面端的浏览器入口是对话右侧抽屉（BrowserDrawer）。
+        // 驾驶舱页仅用于非桌面端（浏览器访问 WebUI）。桌面端的浏览器入口是
+        // 独立的原生浏览器窗口（BrowserBar 遥控，见 lib/browser-window.ts）。
         const payload = await startBrowserService(token, url);
         setStatus(payload);
         setError(null);
