@@ -21,8 +21,7 @@
         "resizable": true,
         "decorations": false,
         "center": true,
-        "dragDropEnabled": false,
-        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9333"
+        "dragDropEnabled": false
       }
     ],
     "security": {
