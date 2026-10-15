@@ -265,6 +265,70 @@ async fn run_sidecar_once(app: &AppHandle) -> SidecarOutcome {
     }
 }
 
+/// 选一个本机空闲 TCP 端口（探测时立刻释放，存在极小竞态，POC 可接受）。
+fn free_local_port() -> Option<u16> {
+    std::net::TcpListener::bind(("127.0.0.1", 0))
+        .ok()?
+        .local_addr()
+        .ok()?
+        .port()
+        .into()
+}
+
+/// POC：打开「内置浏览器」窗口。
+///
+/// 关键设计：与主窗口**完全隔离**的 WebView2 环境——
+/// - 独立 `data_directory`（app_local_data_dir/browser-profile）→ 独立浏览器
+///   进程与登录态，不影响主 UI；
+/// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
+///   只作用于该独立环境的浏览器进程，CDP 不会暴露主 UI webview。
+///
+/// 注意：`additional_browser_args` 会**整体替换** Tauri 默认参数，因此必须带上
+/// 默认的 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，
+/// 否则右键菜单/弹窗行为会变化。
+///
+/// 端口写入 `%TEMP%/xianaibot-browser-cdp-port` 供 gateway / POC 验证读取。
+#[tauri::command]
+fn open_browser_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("browser") {
+        let _ = win.show();
+        let _ = win.set_focus();
+        return Ok(());
+    }
+    let port = free_local_port().ok_or("no free local port")?;
+    let browser_args = format!(
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
+    );
+    let data_dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("browser-profile");
+    let url = tauri::Url::parse("https://example.com/").map_err(|e| e.to_string())?;
+
+    tauri::WebviewWindowBuilder::new(
+        &app,
+        "browser",
+        tauri::WebviewUrl::External(url),
+    )
+    .title("夏奈儿 · 内置浏览器（POC）")
+    .inner_size(1280.0, 860.0)
+    .min_inner_size(640.0, 480.0)
+    .center()
+    .data_directory(data_dir)
+    .additional_browser_args(&browser_args)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    let port_file = std::env::temp_dir().join("xianaibot-browser-cdp-port");
+    let _ = std::fs::write(&port_file, port.to_string());
+    eprintln!(
+        "[xianaibot] browser window created, CDP port {port} written to {}",
+        port_file.display()
+    );
+    Ok(())
+}
+
 /// 创建系统托盘图标，提供「打开 xianaibot / 退出」菜单。
 ///
 /// icon 复用窗口默认图标；``TrayIconBuilder::build`` 内部会将 ``TrayIcon`` clone
@@ -320,9 +384,19 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![retry_gateway])
+        .invoke_handler(tauri::generate_handler![retry_gateway, open_browser_window])
         .setup(|app| {
             spawn_sidecar(app.handle());
+
+            // POC：启动 1s 后自动打开内置浏览器窗口（验证 WebView2 独立环境 +
+            // CDP 调试端口）。验证通过后此调用移除，改由 WebUI 显式触发。
+            let poc_app = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+                if let Err(err) = open_browser_window(poc_app) {
+                    eprintln!("[xianaibot] POC browser window failed: {err}");
+                }
+            });
 
             // 关闭主窗口 → 隐藏到托盘（不退出进程，gateway 继续跑自动化任务）。
             if let Some(window) = app.get_webview_window("main") {
