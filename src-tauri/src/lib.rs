@@ -275,10 +275,10 @@ fn free_local_port() -> Option<u16> {
         .into()
 }
 
-/// 内嵌浏览器窗口的 CDP 端口文件：``~/.xianaibot/browser-cdp-port``。
+/// 内嵌浏览器抽屉 webview 的 CDP 端口文件：``~/.xianaibot/browser-cdp-port``。
 ///
-/// gateway 侧 ``xianaibot.browser.manager`` 读取该文件附着内嵌窗口（embedded
-/// 模式）；窗口关闭时由壳删除，避免 gateway 附着到已死的端口。
+/// gateway 侧 ``xianaibot.browser.manager`` 读取该文件附着内嵌浏览器（embedded
+/// 模式）；抽屉关闭时由壳删除，避免 gateway 附着到已死的端口。
 fn embedded_port_file() -> Option<std::path::PathBuf> {
     std::env::var("USERPROFILE")
         .or_else(|_| std::env::var("HOME"))
@@ -301,94 +301,130 @@ fn remove_embedded_port_file() {
     }
 }
 
-/// 打开「内置浏览器」窗口（幂等；已存在则聚焦并可选导航）。
-///
-/// 关键设计：与主窗口**完全隔离**的 WebView2 环境——
-/// - 独立 `data_directory`（app_local_data_dir/browser-profile）→ 独立浏览器
-///   进程与登录态，不影响主 UI；
-/// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
-///   只作用于该独立环境的浏览器进程，CDP 不会暴露主 UI webview。
-///
-/// 注意：`additional_browser_args` 会**整体替换** Tauri 默认参数，因此必须带上
-/// 默认的 `--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection`，
-/// 否则右键菜单/弹窗行为会变化。
-///
-/// 端口写入 ``~/.xianaibot/browser-cdp-port``，gateway 的浏览器管理器据此以
-/// embedded 模式附着（智能体自动化默认走内嵌窗口，与用户同屏共享登录态）。
-#[tauri::command]
-fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), String> {
-    let target_url: Option<Url> = match url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
-        Some(raw) => {
-            let with_scheme = if raw.contains("://") {
-                raw.to_string()
+/// 解析用户输入的目标网址（缺 scheme 时补 https://）。
+fn parse_target_url(raw: Option<&str>) -> Result<Option<Url>, String> {
+    match raw.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(text) => {
+            let with_scheme = if text.contains("://") {
+                text.to_string()
             } else {
-                format!("https://{raw}")
+                format!("https://{text}")
             };
-            Some(tauri::Url::parse(&with_scheme).map_err(|e| e.to_string())?)
+            tauri::Url::parse(&with_scheme).map(Some).map_err(|e| e.to_string())
         }
-        None => None,
+        None => Ok(None),
+    }
+}
+
+fn browser_webview_args(port: u16) -> String {
+    format!(
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
+    )
+}
+
+/// 在主窗口内创建「内置浏览器」抽屉 webview（幂等；已存在则更新位置并按需导航）。
+///
+/// 关键设计：
+/// - 抽屉是主窗口里的**独立子 webview**（Tauri 多 webview，需 unstable feature），
+///   原生渲染零卡顿；位置/尺寸由前端 React 布局给出（逻辑像素）。
+/// - 与主 UI **完全隔离**的 WebView2 环境——独立 `data_directory`
+///   （app_local_data_dir/browser-profile）→ 独立浏览器进程与登录态；
+/// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
+///   只作用于该独立环境的浏览器进程，CDP 不会暴露主 UI webview。注意该参数
+///   会**整体替换** Tauri 默认值，必须带上默认的 `--disable-features=...` 三项。
+/// - 端口写入 ``~/.xianaibot/browser-cdp-port``，gateway 的浏览器管理器据此以
+///   embedded 模式附着（智能体自动化默认走抽屉，与用户同屏共享登录态）。
+/// 注意：**必须 async** —— 同步命令在主线程执行，而 add_child/set_bounds 的
+/// wry 内部需要主线程处理 IPC 应答，同步命令会与自身形成死锁（前端 invoke
+/// 永远挂起）。async 命令跑在 tokio 线程池，主线程保持空闲。
+#[tauri::command]
+async fn open_browser_drawer(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    url: Option<String>,
+) -> Result<(), String> {
+    let target_url = parse_target_url(url.as_deref())?;
+    let Some(window) = app.get_window("main") else {
+        return Err("main window not found".to_string());
     };
 
-    if let Some(win) = app.get_webview_window("browser") {
-        let _ = win.show();
-        let _ = win.unminimize();
-        let _ = win.set_focus();
+    // 已存在：更新 bounds（必要时同步导航），不再重复创建。
+    if let Some(existing) = app.get_webview("browser-drawer") {
+        let _ = existing.set_bounds(tauri::Rect {
+            position: tauri::LogicalPosition::new(x, y).into(),
+            size: tauri::LogicalSize::new(width, height).into(),
+        });
         if let Some(parsed) = target_url {
-            let _ = win.navigate(parsed);
+            let _ = existing.navigate(parsed);
         }
+        let _ = existing.show();
         return Ok(());
     }
 
     let port = free_local_port().ok_or("no free local port")?;
-    let browser_args = format!(
-        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port={port}"
-    );
     let data_dir = app
         .path()
         .app_local_data_dir()
         .map_err(|e| e.to_string())?
         .join("browser-profile");
-    let initial_url =
-        target_url.unwrap_or_else(|| tauri::Url::parse("https://example.com/").unwrap());
+    let initial_url = target_url
+        .unwrap_or_else(|| tauri::Url::parse("about:blank").expect("about:blank is valid"));
 
-    let window = tauri::WebviewWindowBuilder::new(&app, "browser", tauri::WebviewUrl::External(initial_url))
-        .title("夏奈儿 · 内置浏览器")
-        .inner_size(1280.0, 860.0)
-        .min_inner_size(640.0, 480.0)
-        .center()
-        .data_directory(data_dir)
-        .additional_browser_args(&browser_args)
-        .build()
+    let builder = tauri::webview::WebviewBuilder::new(
+        "browser-drawer",
+        tauri::WebviewUrl::External(initial_url),
+    )
+    .data_directory(data_dir)
+    .additional_browser_args(&browser_webview_args(port));
+
+    window
+        .add_child(
+            builder,
+            tauri::LogicalPosition::new(x, y),
+            tauri::LogicalSize::new(width, height),
+        )
         .map_err(|e| e.to_string())?;
-
-    // 窗口销毁时清理端口文件，gateway 才不会附着到已死的端口。
-    let app_for_close = app.clone();
-    window.on_window_event(move |event| {
-        if matches!(
-            event,
-            tauri::WindowEvent::Destroyed { .. }
-        ) {
-            remove_embedded_port_file();
-            let _ = &app_for_close;
-        }
-    });
 
     write_embedded_port_file(port);
     eprintln!(
-        "[xianaibot] browser window created, CDP port {port} written to {}",
-        embedded_port_file().map(|p| p.display().to_string()).unwrap_or_default()
+        "[xianaibot] browser drawer created, CDP port {port} written to {}",
+        embedded_port_file()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
     );
     Ok(())
 }
 
-/// 关闭「内置浏览器」窗口（gateway 的 stop 对 embedded 模式只断开 CDP，
-/// 真正关窗由本命令负责）。
+/// 更新抽屉 webview 的位置与尺寸（前端布局/窗口缩放时同步）。
 #[tauri::command]
-fn close_browser_window(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("browser") {
-        // Destroyed 事件回调里已清理端口文件
-        win.close().map_err(|e| e.to_string())?;
+async fn update_browser_drawer(
+    app: AppHandle,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    if let Some(webview) = app.get_webview("browser-drawer") {
+        webview
+            .set_bounds(tauri::Rect {
+                position: tauri::LogicalPosition::new(x, y).into(),
+                size: tauri::LogicalSize::new(width, height).into(),
+            })
+            .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+/// 关闭抽屉 webview 并清理 CDP 端口文件。
+#[tauri::command]
+async fn close_browser_drawer(app: AppHandle) -> Result<(), String> {
+    if let Some(webview) = app.get_webview("browser-drawer") {
+        webview.close().map_err(|e| e.to_string())?;
+    }
+    remove_embedded_port_file();
     Ok(())
 }
 
@@ -449,8 +485,9 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             retry_gateway,
-            open_browser_window,
-            close_browser_window
+            open_browser_drawer,
+            update_browser_drawer,
+            close_browser_drawer
         ])
         .setup(|app| {
             spawn_sidecar(app.handle());
@@ -480,6 +517,7 @@ pub fn run() {
         // 现于此处显式 show/focus 主窗口。
         RunEvent::Reopen { .. } => reveal_main_window(app_handle),
         RunEvent::ExitRequested { .. } | RunEvent::Exit => {
+            remove_embedded_port_file();
             if let Some(state) = app_handle.try_state::<SidecarState>() {
                 state.exiting.store(true, Ordering::SeqCst);
                 if let Some(child) = state.child.lock().unwrap().take() {

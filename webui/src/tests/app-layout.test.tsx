@@ -212,6 +212,7 @@ vi.mock("@/lib/xianaibot-client", () => {
     onError = () => () => {};
     onChat = () => () => {};
     onBrowserRequest = () => () => {};
+    onBrowserActivity = () => () => {};
     onSessionUpdate = (handler: (chatId: string, scope?: string) => void) => {
       sessionUpdateHandlers.add(handler);
       return () => sessionUpdateHandlers.delete(handler);

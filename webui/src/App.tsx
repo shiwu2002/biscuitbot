@@ -19,6 +19,7 @@ import { SkillHubView } from "@/components/settings/SkillHubView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
 import { BrowserView } from "@/components/browser/BrowserView";
+import { BROWSER_DRAWER_WIDTH, BrowserDrawer } from "@/components/browser/BrowserDrawer";
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
 import { ThreadShell, type ThreadShellProps } from "@/components/thread/ThreadShell";
 import { WelcomeSetup, hasSkippedSetup } from "@/components/setup/WelcomeSetup";
@@ -839,7 +840,7 @@ function Shell({
     const currentRoute = readShellRoute();
     // 该守卫只针对会话路由（activeKey 是会话 key）：员工专属页等视图的
     // activeKey 是员工 id 而非会话 key，不受会话失效重置影响。
-    if (currentRoute.view !== "chat") return;
+    if (view !== "chat") return;
     if (sessions.some((session) => session.key === activeKey)) {
       // Clear the pending flag once the session is confirmed in the list
       if (pendingCreatedKeyRef.current === activeKey) {
@@ -850,7 +851,7 @@ function Shell({
     // If this key was just created, don't reset it - wait for the next refresh cycle
     if (pendingCreatedKeyRef.current === activeKey) return;
     navigate(
-      currentRoute.view === "chat"
+      view === "chat"
         ? defaultShellRoute()
         : {
             ...currentRoute,
@@ -1355,28 +1356,52 @@ function Shell({
     navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
   }, [activeKey, navigate]);
 
+  /** 内置浏览器抽屉（对话右侧，原生 WebView2 子 webview）。 */
+  const [browserDrawerOpen, setBrowserDrawerOpen] = useState(false);
+  /** 抽屉打开时要求浏览器导航到的地址（browser_request 场景携带）。 */
+  const [browserDrawerUrl, setBrowserDrawerUrl] = useState<string | null>(null);
+
+  /** 侧边栏「内置浏览器」：桌面端在对话右侧展开/收起浏览器抽屉；
+   * 非桌面端（浏览器访问 WebUI）保留驾驶舱页（托管实例控制）。 */
   const onOpenBrowser = useCallback(() => {
     setSessionSearchOpen(false);
-    navigate({ view: "browser", activeKey, settingsSection: "overview" });
     setMobileSidebarOpen(false);
-  }, [activeKey, navigate]);
+    if (isNativeSurface) {
+      setBrowserDrawerUrl(null);
+      if (view !== "chat") {
+        navigate({ view: "chat", activeKey, settingsSection: "overview" });
+        setBrowserDrawerOpen(true);
+      } else {
+        setBrowserDrawerOpen((prev) => !prev);
+      }
+    } else {
+      navigate({ view: "browser", activeKey, settingsSection: "overview" });
+    }
+  }, [activeKey, view, isNativeSurface, navigate]);
 
-  /** 智能体请求浏览器（browser_request）：桌面端自动唤起内嵌浏览器窗口。 */
-  const openBrowserWindowRef = useRef<(url?: string) => Promise<void>>(async () => {});
-  openBrowserWindowRef.current = async (url?: string) => {
-    const invoke = window.__TAURI__?.core?.invoke;
-    if (!invoke) return;
-    try {
-      await invoke("open_browser_window", { url: url ?? null });
-    } catch (err) {
-      console.warn("open_browser_window failed", err);
+  /** 智能体请求浏览器（browser_request）或产生浏览器活动（browser_activity）：
+   * 桌面端自动在对话右侧展开内置浏览器抽屉（原生 WebView2，同屏实时）。 */
+  const openBrowserDrawerRef = useRef<(url?: string) => void>(() => {});
+  openBrowserDrawerRef.current = (url?: string) => {
+    setBrowserDrawerUrl(url ?? null);
+    setBrowserDrawerOpen(true);
+    if (view !== "chat") {
+      navigate({ view: "chat", activeKey, settingsSection: "overview" });
     }
   };
   useEffect(() => {
-    return client.onBrowserRequest(() => {
-      void openBrowserWindowRef.current();
+    const offRequest = client.onBrowserRequest(() => {
+      openBrowserDrawerRef.current();
     });
-  }, [client]);
+    const offActivity = client.onBrowserActivity(({ url }) => {
+      // 智能体正在操作浏览器且抽屉未开：自动展开（含当前页面地址）。
+      openBrowserDrawerRef.current(url);
+    });
+    return () => {
+      offRequest();
+      offActivity();
+    };
+  }, [client, activeKey, navigate, view]);
 
   const onOpenAutomations = useCallback(() => {
     setSessionSearchOpen(false);
@@ -1894,9 +1919,10 @@ function Shell({
         >
             <div
               className={cn(
-                "absolute inset-0 flex flex-col",
+                "absolute inset-y-0 left-0 flex flex-col",
                 view !== "chat" && "invisible pointer-events-none",
               )}
+              style={{ right: browserDrawerOpen && view === "chat" ? BROWSER_DRAWER_WIDTH : 0 }}
             >
               <ThreadShell
                 session={activeSession}
@@ -1904,6 +1930,14 @@ function Shell({
                 {...shellHostProps}
               />
             </div>
+            {browserDrawerOpen && view === "chat" ? (
+              <BrowserDrawer
+                open
+                initialUrl={browserDrawerUrl}
+                hostChromeActive={showHostChrome}
+                onClose={() => setBrowserDrawerOpen(false)}
+              />
+            ) : null}
             {view === "employees" ? (
               <div className="absolute inset-0 flex flex-col cyber-shell-bg">
                 <EmployeesView

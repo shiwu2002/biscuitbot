@@ -1323,6 +1323,14 @@
     "closeWindow": "關閉",
     "externalNote": "正在複用你自己啟動的瀏覽器，不會替你關閉。"
   },
+  "browserDrawer": {
+    "address": "瀏覽器地址欄",
+    "addressPlaceholder": "輸入網址後按 Enter",
+    "refresh": "重新整理目前頁面",
+    "close": "關閉瀏覽器側邊抽屜",
+    "content": "瀏覽器內容區",
+    "idle": "尚未開啟頁面"
+  },
   "filePreview": {
     "aria": "檔案預覽",
     "close": "關閉檔案預覽",

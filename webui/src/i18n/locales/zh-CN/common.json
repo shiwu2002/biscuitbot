@@ -1323,6 +1323,14 @@
     "closeWindow": "关闭",
     "externalNote": "正在复用你自己启动的浏览器，不会替你关闭。"
   },
+  "browserDrawer": {
+    "address": "浏览器地址栏",
+    "addressPlaceholder": "输入网址后回车",
+    "refresh": "刷新当前页面",
+    "close": "关闭浏览器抽屉",
+    "content": "浏览器内容区",
+    "idle": "尚未打开页面"
+  },
   "filePreview": {
     "aria": "文件预览",
     "close": "关闭文件预览",

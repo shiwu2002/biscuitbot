@@ -19,6 +19,10 @@
     "shell:allow-kill",
     "shell:allow-execute",
     "process:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "allow-retry-gateway",
+    "allow-open-browser-drawer",
+    "allow-update-browser-drawer",
+    "allow-close-browser-drawer"
   ]
 }

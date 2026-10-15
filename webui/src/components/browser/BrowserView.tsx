@@ -95,13 +95,10 @@ export function BrowserView({
     async (url?: string) => {
       setBusy(true);
       try {
-        const invoke = tauriInvoke();
-        if (invoke) {
-          await invoke("open_browser_window", { url: url ?? null });
-        } else {
-          const payload = await startBrowserService(token, url);
-          setStatus(payload);
-        }
+        // 驾驶舱页仅用于非桌面端（浏览器访问 WebUI），统一走 REST 启动/复用
+        // 托管实例；桌面端的浏览器入口是对话右侧抽屉（BrowserDrawer）。
+        const payload = await startBrowserService(token, url);
+        setStatus(payload);
         setError(null);
       } catch (e) {
         setError((e as Error).message);
@@ -116,13 +113,8 @@ export function BrowserView({
   const closeWindow = useCallback(async () => {
     setBusy(true);
     try {
-      const invoke = tauriInvoke();
-      if (invoke) {
-        await invoke("close_browser_window");
-      } else {
-        const payload = await stopBrowserService(token);
-        setStatus(payload);
-      }
+      const payload = await stopBrowserService(token);
+      setStatus(payload);
       setError(null);
     } catch (e) {
       setError((e as Error).message);

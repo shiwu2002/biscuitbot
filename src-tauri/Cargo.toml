@@ -1,6 +1,6 @@
 [package]
 name = "xianaibot"
-version = "4.0.14"
+version = "4.0.15"
 description = "夏奈儿（XiaNaiBot）智能体桌面端：启动无头 gateway sidecar 并加载其 WebUI"
 authors = ["xianaibot"]
 edition = "2021"
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri = { version = "2", features = ["tray-icon", "image-png", "unstable"] }
 tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
 tauri-plugin-dialog = "2"
