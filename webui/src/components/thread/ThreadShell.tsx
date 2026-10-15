@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Activity, Package } from "lucide-react";
 
@@ -124,6 +124,8 @@ export interface ThreadShellProps {
   onWorkspaceScopeChange?: (scope: WorkspaceScopePayload) => void;
   settingsSnapshot?: SettingsPayload | null;
   onOpenModelSettings?: () => void;
+  /** 内置浏览器入口（渲染在头部右侧按钮组最前）。 */
+  browserAction?: ReactNode;
 }
 
 function toModelBadgeLabel(modelName: string | null): string | null {
@@ -281,6 +283,7 @@ export function ThreadShell({
   onWorkspaceScopeChange,
   settingsSnapshot = null,
   onOpenModelSettings,
+  browserAction,
 }: ThreadShellProps) {
   const { t } = useTranslation();
   const chatId = session?.chatId ?? null;
@@ -894,6 +897,7 @@ export function ThreadShell({
             promptNavigatorAction={promptNavigatorAction}
             sessionInfoAction={sessionInfoAction}
             assetsAction={assetsAction}
+            browserAction={browserAction}
             traceAction={
               <Button
                 variant="ghost"

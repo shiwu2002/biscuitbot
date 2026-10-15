@@ -1329,8 +1329,11 @@
     "refresh": "刷新当前页面",
     "close": "关闭浏览器抽屉",
     "content": "浏览器内容区",
-    "idle": "尚未打开页面"
+    "idle": "尚未打开页面",
+    "placeholderTitle": "内置浏览器",
+    "placeholderHint": "在上方地址栏输入网址开始浏览；智能体执行浏览器任务时，操作画面也会实时显示在这里。"
   },
+  "browserEntry": "内置浏览器",
   "filePreview": {
     "aria": "文件预览",
     "close": "关闭文件预览",

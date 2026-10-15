@@ -32,18 +32,25 @@ export const BROWSER_DRAWER_WIDTH = 480;
  * 同一主窗口里创建的**原生 WebView2 子 webview**（独立 profile + CDP 调试
  * 端口）——内容区 div 只负责占位，原生 webview 精确覆盖其矩形；智能体经
  * playwright CDP 附着后操作直接发生在这个可见区域，同屏实时。
+ *
+ * 生命周期（占位优先）：抽屉打开且还没有目标网址时**不创建**原生 webview，
+ * 内容区显示起始占位（避免空白 about:blank 原生页让用户以为界面无响应）；
+ * 用户在地址栏提交网址或智能体请求浏览器（url prop）时才创建/导航。
  * 非桌面端：不做抽屉（智能体走托管实例）。
  */
 export function BrowserDrawer({
   open,
-  initialUrl,
+  url,
+  onNavigateUrl,
   hostChromeActive,
   onClose,
 }: {
   /** 抽屉是否展开（由 App 控制；仅 chat 视图渲染）。 */
   open: boolean;
-  /** 打开抽屉时要求浏览器导航到的地址（browser_request 自动唤起场景）。 */
-  initialUrl?: string | null;
+  /** 当前目标网址（单一数据源在 App：地址栏提交与智能体请求都写这里）。 */
+  url: string | null;
+  /** 用户在地址栏提交新网址时回调（App 更新 url prop）。 */
+  onNavigateUrl: (url: string) => void;
   hostChromeActive?: boolean;
   onClose: () => void;
 }) {
@@ -58,6 +65,10 @@ export function BrowserDrawer({
   const [urlDraft, setUrlDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 原生 webview 是否已创建（决定内容区显示占位还是被原生页覆盖）。 */
+  const [hasNative, setHasNative] = useState(false);
+  /** 已导航到的网址（避免同址重复导航）。 */
+  const lastNavRef = useRef<string | null>(null);
 
   const invoke = tauriInvoke();
 
@@ -71,8 +82,8 @@ export function BrowserDrawer({
       })
       .catch(() => {});
     const offStatus = client.onBrowserStatus((payload) => setStatus(payload));
-    const offActivity = client.onBrowserActivity(({ url }) => {
-      if (url) setCurrentUrl(url);
+    const offActivity = client.onBrowserActivity(({ url: active }) => {
+      if (active) setCurrentUrl(active);
     });
     return () => {
       cancelled = true;
@@ -105,24 +116,37 @@ export function BrowserDrawer({
   }, [open]);
 
   // -- 原生 webview 生命周期 ------------------------------------------------
-  // 首次打开：open_browser_drawer（携带 initialUrl）；此后 rect 变化只同步
-  // bounds（update_browser_drawer），避免重复导航丢失用户浏览状态。
-  const createdRef = useRef(false);
+  // 未创建且有目标网址 → 创建（open_browser_drawer 幂等：已存在则更新 bounds
+  // 并按需导航）；已创建且 url 变化 → 再次调用同一命令完成导航；其余 rect
+  // 变化只同步 bounds（update_browser_drawer）。
   useEffect(() => {
     if (!open || !rect || !invoke) return;
     if (rect.width < 50 || rect.height < 50) return;
-    if (!createdRef.current) {
-      createdRef.current = true;
-      void invoke("open_browser_drawer", {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        url: initialUrl ?? null,
-      }).catch((err: unknown) => {
-        createdRef.current = false;
-        console.warn("open_browser_drawer failed", err);
-      });
+    if (!hasNative && !url) return; // 占位优先：无网址不创建原生 webview
+    const args = {
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      url: url ?? null,
+    };
+    if (!hasNative) {
+      void invoke("open_browser_drawer", args)
+        .then(() => {
+          lastNavRef.current = url ?? null;
+          setHasNative(true);
+        })
+        .catch((err: unknown) => {
+          console.warn("open_browser_drawer failed", err);
+        });
+    } else if (url && url !== lastNavRef.current) {
+      void invoke("open_browser_drawer", args)
+        .then(() => {
+          lastNavRef.current = url;
+        })
+        .catch((err: unknown) => {
+          console.warn("open_browser_drawer navigate failed", err);
+        });
     } else {
       void invoke("update_browser_drawer", {
         x: rect.x,
@@ -131,12 +155,13 @@ export function BrowserDrawer({
         height: rect.height,
       }).catch(() => {});
     }
-  }, [invoke, open, rect, initialUrl]);
+  }, [invoke, open, rect, url, hasNative]);
 
-  // open 翻转为 false（抽屉收起）→ 关掉原生 webview。
+  // open 翻转为 false（抽屉收起）→ 关掉原生 webview 并复位。
   useEffect(() => {
     if (open || !invoke) return;
-    createdRef.current = false;
+    setHasNative(false);
+    lastNavRef.current = null;
     void invoke("close_browser_drawer").catch(() => {});
   }, [invoke, open]);
 
@@ -148,31 +173,30 @@ export function BrowserDrawer({
     };
   }, []);
 
-  // -- 导航动作（经 gateway CDP：附着 embedded 并导航） --------------------
+  // -- 导航动作：Rust 命令负责原生导航；REST 仅确保 manager 附着（供智能体） --
   const navigate = useCallback(
-    async (raw: string) => {
+    (raw: string) => {
       const target = raw.trim();
       if (!target) return;
       setBusy(true);
       try {
-        const payload = await startBrowserService(token, target);
-        setStatus(payload);
+        onNavigateUrl(target);
         setCurrentUrl(target);
         setUrlDraft("");
         setError(null);
-      } catch (e) {
-        setError((e as Error).message);
       } finally {
         setBusy(false);
       }
+      // 附着失败不阻塞本地导航（智能体侧下次 ensure_started 会重试）。
+      startBrowserService(token).catch(() => {});
     },
-    [token],
+    [onNavigateUrl, token],
   );
 
   const refreshCurrent = useCallback(() => {
-    const target = currentUrl || status?.url || "";
-    if (target && target !== "about:blank") void navigate(target);
-  }, [currentUrl, navigate, status?.url]);
+    const target = currentUrl || url || status?.url || "";
+    if (target && target !== "about:blank") navigate(target);
+  }, [currentUrl, navigate, status?.url, url]);
 
   const running = status?.running ?? false;
   const mode = status?.mode ?? "stopped";
@@ -199,7 +223,7 @@ export function BrowserDrawer({
           className="h-8 flex-1 rounded-full text-[13px]"
           onChange={(event) => setUrlDraft(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter" && urlDraft.trim()) void navigate(urlDraft.trim());
+            if (event.key === "Enter" && urlDraft.trim()) navigate(urlDraft.trim());
           }}
         />
         <Button
@@ -244,12 +268,29 @@ export function BrowserDrawer({
         ) : null}
       </div>
 
-      {/* 内容占位区：原生 WebView2 精确覆盖此矩形 */}
+      {/* 内容区：有原生 webview 时被其精确覆盖；否则显示起始占位 */}
       <div
         ref={contentRef}
         className="relative min-h-0 flex-1 bg-card"
         aria-label={tx("browserDrawer.content", "浏览器内容区")}
-      />
+      >
+        {!hasNative ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[hsl(var(--cyber-glow)/0.12)] shadow-[0_0_18px_hsl(var(--cyber-glow-soft)/0.4)]">
+              <Globe className="h-6 w-6 text-primary" aria-hidden />
+            </div>
+            <p className="text-sm font-medium text-foreground">
+              {tx("browserDrawer.placeholderTitle", "内置浏览器")}
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              {tx(
+                "browserDrawer.placeholderHint",
+                "在上方地址栏输入网址开始浏览；智能体执行浏览器任务时，操作画面也会实时显示在这里。",
+              )}
+            </p>
+          </div>
+        ) : null}
+      </div>
 
       {error ? (
         <p className="border-t border-destructive/30 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">

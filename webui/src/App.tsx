@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Moon, PanelLeft, Sun } from "lucide-react";
+import { Globe, Moon, PanelLeft, Sun } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { AnalyticsDashboardView } from "@/components/dashboard/AnalyticsDashboardView";
 import { DeleteConfirm } from "@/components/DeleteConfirm";
@@ -1700,7 +1700,6 @@ function Shell({
     onOpenEmployees,
     onOpenKnowledge,
     onOpenDashboard,
-    onOpenBrowser,
     employees,
     onOpenSearch: onOpenSessionSearch,
     activeUtility:
@@ -1723,6 +1722,27 @@ function Shell({
   const hostSidebarCollapsed = showHostChrome && !hostSidebarOpen;
   /** 主聊天视图 ThreadShell 的宿主 props（session/title 由各调用点单独传入）。
    * 员工专属页内嵌 ThreadShell 复用同一份，保证行为一致。 */
+  /** 头部「内置浏览器」小图标：桌面端开合右侧抽屉，非桌面端进驾驶舱页。
+   * 智能体请求浏览器（browser_request）时也会自动展开抽屉。 */
+  const browserAction = useMemo(
+    () => (
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={t("browserEntry", { defaultValue: "内置浏览器" })}
+        title={t("browserEntry", { defaultValue: "内置浏览器" })}
+        onClick={onOpenBrowser}
+        className={cn(
+          "host-no-drag h-8 w-8 rounded-full text-muted-foreground/85 hover:bg-accent/40 hover:text-foreground",
+          browserDrawerOpen && "bg-accent/40 text-foreground shadow-[0_0_0_1px_hsl(var(--cyber-glow)/0.35)]",
+        )}
+      >
+        <Globe className="h-4 w-4" aria-hidden />
+      </Button>
+    ),
+    [onOpenBrowser, browserDrawerOpen, t],
+  );
+
   const shellHostProps: Omit<ThreadShellProps, "session" | "title"> = useMemo(
     () => ({
       onToggleSidebar: toggleSidebar,
@@ -1749,6 +1769,7 @@ function Shell({
       onSelectEmployee,
       onOpenEmployee,
       skills,
+      browserAction,
     }),
     [
       toggleSidebar,
@@ -1773,6 +1794,7 @@ function Shell({
       onSelectEmployee,
       onOpenEmployee,
       skills,
+      browserAction,
     ],
   );
   const showHostSidebarPreview =
@@ -1933,7 +1955,8 @@ function Shell({
             {browserDrawerOpen && view === "chat" ? (
               <BrowserDrawer
                 open
-                initialUrl={browserDrawerUrl}
+                url={browserDrawerUrl}
+                onNavigateUrl={setBrowserDrawerUrl}
                 hostChromeActive={showHostChrome}
                 onClose={() => setBrowserDrawerOpen(false)}
               />

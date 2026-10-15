@@ -18,6 +18,8 @@ interface ThreadHeaderProps {
   sessionInfoAction?: ReactNode;
   traceAction?: ReactNode;
   assetsAction?: ReactNode;
+  /** 内置浏览器小图标入口（聊天页头部，按需开合抽屉）。 */
+  browserAction?: ReactNode;
 }
 
 export function ThreadHeader({
@@ -33,6 +35,7 @@ export function ThreadHeader({
   sessionInfoAction,
   traceAction,
   assetsAction,
+  browserAction,
 }: ThreadHeaderProps) {
   const { t } = useTranslation();
 
@@ -84,6 +87,7 @@ export function ThreadHeader({
       </div>
 
       <div className="relative z-10 ml-auto flex shrink-0 items-center gap-1">
+        {browserAction}
         {sessionInfoAction}
         {promptNavigatorAction}
         {assetsAction}

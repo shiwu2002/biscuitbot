@@ -1329,8 +1329,11 @@
     "refresh": "重新整理目前頁面",
     "close": "關閉瀏覽器側邊抽屜",
     "content": "瀏覽器內容區",
-    "idle": "尚未開啟頁面"
+    "idle": "尚未開啟頁面",
+    "placeholderTitle": "內建瀏覽器",
+    "placeholderHint": "在上方地址欄輸入網址開始瀏覽；智慧代理執行瀏覽器任務時，操作畫面也會即時顯示在這裡。"
   },
+  "browserEntry": "內建瀏覽器",
   "filePreview": {
     "aria": "檔案預覽",
     "close": "關閉檔案預覽",
