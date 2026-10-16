@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-browser-window-current-url"
+description = "Enables the browser_window_current_url command without any pre-configured scope."
+commands.allow = ["browser_window_current_url"]
+
+[[permission]]
+identifier = "deny-browser-window-current-url"
+description = "Denies the browser_window_current_url command without any pre-configured scope."
+commands.deny = ["browser_window_current_url"]

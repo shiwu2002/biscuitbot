@@ -1323,15 +1323,6 @@
     "closeWindow": "关闭",
     "externalNote": "正在复用你自己启动的浏览器，不会替你关闭。"
   },
-  "browserBar": {
-    "address": "浏览器地址栏",
-    "placeholder": "输入网址后回车",
-    "back": "后退",
-    "forward": "前进",
-    "reload": "刷新当前页面",
-    "external": "用系统浏览器打开",
-    "close": "关闭浏览器窗口"
-  },
   "browserEntry": "内置浏览器",
   "filePreview": {
     "aria": "文件预览",

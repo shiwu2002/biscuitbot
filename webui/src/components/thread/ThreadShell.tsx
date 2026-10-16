@@ -113,8 +113,6 @@ export interface ThreadShellProps {
   /** 桌面宿主顶栏（拖拽层 + 窗口控制按钮）存在时为 true：
    * 右侧文件预览面板需让出顶部 44px，避免头部按钮被遮挡。 */
   hostChromeActive?: boolean;
-  /** 内置浏览器控制栏（独立浏览器窗口打开时由 App 传入，渲染在头部下方）。 */
-  browserBar?: ReactNode;
   hostChromeTitleInset?: boolean;
   hideThemeButton?: boolean;
   hideHeader?: boolean;
@@ -275,7 +273,6 @@ export function ThreadShell({
   hideSidebarToggleForHostChrome = false,
   hostChromeActive = false,
   hostChromeTitleInset = false,
-  browserBar,
   hideThemeButton = false,
   hideHeader = false,
   workspaceScope = null,
@@ -915,7 +912,6 @@ export function ThreadShell({
             }
           />
         ) : null}
-        {browserBar}
         <ThreadViewport
           ref={viewportRef}
           messages={displayMessages}

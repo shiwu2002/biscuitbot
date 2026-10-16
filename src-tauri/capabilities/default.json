@@ -23,10 +23,6 @@
     "allow-retry-gateway",
     "allow-open-browser-window",
     "allow-close-browser-window",
-    "allow-navigate-browser-window",
-    "allow-reload-browser-window",
-    "allow-browser-window-history",
-    "allow-open-browser-external",
     "allow-browser-window-open"
   ]
 }

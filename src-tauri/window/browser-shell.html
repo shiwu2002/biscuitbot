@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>夏奈儿 · 内置浏览器</title>
+    <style>
+      /* 内置浏览器窗口的工具栏（browser-chrome webview）。
+         风格与启动加载页（index.html）同源：深色 HUD + 青光强调色。 */
+      :root {
+        color-scheme: dark;
+        --cyber-glow: 190 98% 68%;
+        --bar-bg: hsl(215 32% 8.5%);
+        --btn-fg: #94a3b8;
+        --btn-hover-bg: rgb(148 163 184 / 0.12);
+        --btn-active: #e2e8f0;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; overflow: hidden; }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+        background: var(--bar-bg);
+        color: #e2e8f0;
+        user-select: none;
+        cursor: default;
+        overflow: hidden;
+      }
+      .toolbar {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        height: 48px;
+        padding: 0 4px 0 8px;
+        background: var(--bar-bg);
+        border-bottom: 1px solid hsl(var(--cyber-glow) / 0.1);
+      }
+      .tool-btn {
+        width: 30px;
+        height: 30px;
+        flex: none;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        border-radius: 7px;
+        background: transparent;
+        color: var(--btn-fg);
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .tool-btn:hover:not(:disabled) {
+        background: var(--btn-hover-bg);
+        color: var(--btn-active);
+      }
+      .tool-btn:active:not(:disabled) {
+        background: rgb(148 163 184 / 0.2);
+      }
+      .tool-btn:disabled {
+        opacity: 0.35;
+        cursor: default;
+      }
+      .tool-btn svg { width: 16px; height: 16px; }
+      /* 地址胶囊：居中、限宽，聚焦时亮青光描边 */
+      .address-wrap {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        justify-content: center;
+        padding: 0 6px;
+      }
+      .address-pill {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: min(760px, 100%);
+        height: 31px;
+        padding: 0 13px;
+        border-radius: 999px;
+        background: rgb(148 163 184 / 0.1);
+        border: 1px solid rgb(148 163 184 / 0.14);
+        transition: border-color 0.15s, background 0.15s;
+      }
+      .address-pill:focus-within {
+        border-color: hsl(var(--cyber-glow) / 0.45);
+        background: rgb(148 163 184 / 0.06);
+      }
+      .address-pill svg { width: 13px; height: 13px; flex: none; color: hsl(var(--cyber-glow)); }
+      #address {
+        flex: 1;
+        min-width: 0;
+        border: none;
+        outline: none;
+        background: transparent;
+        color: #e2e8f0;
+        font-family: inherit;
+        font-size: 12.5px;
+        letter-spacing: 0.01em;
+        padding: 0;
+        cursor: text;
+        user-select: text;
+      }
+      #address::placeholder { color: rgb(148 163 184 / 0.55); }
+      /* 未编辑时地址居中显示（豆包/Chrome 风格），聚焦编辑时靠左 */
+      .address-pill:not(.editing) #address { text-align: center; }
+      /* 窗口控制（最小化/最大化/关闭）：无边框窗口的自绘控制键 */
+      .win-controls {
+        display: flex;
+        align-items: center;
+        gap: 2px;
+        padding-left: 4px;
+      }
+      .win-btn {
+        width: 34px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--btn-fg);
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .win-btn:hover { background: var(--btn-hover-bg); color: var(--btn-active); }
+      .win-btn svg { width: 14px; height: 14px; }
+      .win-btn.close:hover {
+        background: rgb(239 68 68 / 0.85);
+        color: #fff;
+      }
+      .divider {
+        width: 1px;
+        height: 16px;
+        margin: 0 6px 0 8px;
+        background: rgb(148 163 184 / 0.18);
+      }
+      /* 加载进度细线：贴工具栏底边，来回扫掠 */
+      .progress {
+        position: absolute;
+        left: 0;
+        bottom: -1px;
+        height: 2px;
+        width: 30%;
+        border-radius: 2px;
+        background: linear-gradient(90deg, transparent, hsl(var(--cyber-glow)), transparent);
+        box-shadow: 0 0 8px hsl(var(--cyber-glow) / 0.8);
+        opacity: 0;
+        transition: opacity 0.15s;
+        pointer-events: none;
+        animation: sweep 1.1s ease-in-out infinite;
+      }
+      .toolbar.loading .progress { opacity: 1; }
+      .spin { display: none; animation: rot 0.9s linear infinite; }
+      .toolbar.loading .icon-globe { display: none; }
+      .toolbar.loading .spin { display: block; }
+      .hidden { display: none !important; }
+      @keyframes sweep {
+        0% { transform: translateX(-110%); }
+        100% { transform: translateX(380%); }
+      }
+      @keyframes rot { to { transform: rotate(360deg); } }
+      @media (prefers-reduced-motion: reduce) {
+        .progress, .spin { animation: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar" id="toolbar" data-tauri-drag-region>
+      <button class="tool-btn" id="btn-back" title="后退" aria-label="后退" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
+      <button class="tool-btn" id="btn-forward" title="前进" aria-label="前进" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6" />
+        </svg>
+      </button>
+      <button class="tool-btn" id="btn-reload" title="刷新" aria-label="刷新">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+          <path d="M21 3v6h-6" />
+        </svg>
+      </button>
+
+      <div class="address-wrap">
+        <div class="address-pill" id="pill">
+          <svg class="icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M3 12h18" />
+            <path d="M12 3a14.5 14.5 0 0 1 0 18a14.5 14.5 0 0 1 0-18" />
+          </svg>
+          <svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden>
+            <path d="M21 12a9 9 0 1 1-9-9" />
+          </svg>
+          <input
+            id="address"
+            type="text"
+            spellcheck="false"
+            autocomplete="off"
+            placeholder="输入网址或搜索词，回车打开"
+            aria-label="地址栏"
+          />
+        </div>
+      </div>
+
+      <button class="tool-btn" id="btn-external" title="用系统浏览器打开" aria-label="用系统浏览器打开">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 4h6v6" />
+          <path d="M20 4l-9 9" />
+          <path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6" />
+        </svg>
+      </button>
+
+      <div class="divider" data-tauri-drag-region></div>
+
+      <div class="win-controls">
+        <button class="win-btn" id="btn-min" title="最小化" aria-label="最小化">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M5 12h14" />
+          </svg>
+        </button>
+        <button class="win-btn" id="btn-max" title="最大化 / 还原" aria-label="最大化 / 还原">
+          <svg id="icon-max" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="5" y="5" width="14" height="14" rx="1.5" />
+          </svg>
+          <svg id="icon-restore" class="hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="4" y="8" width="12" height="12" rx="1.5" />
+            <path d="M8 4h11a1 1 0 0 1 1 1v11" />
+          </svg>
+        </button>
+        <button class="win-btn close" id="btn-close" title="关闭" aria-label="关闭">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6L6 18" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="progress" id="progress"></div>
+    </div>
+
+    <script>
+      // 桌面壳（withGlobalTauri）在本地页面注入 __TAURI__；直接用浏览器打开时
+      // 全部做可空调用兜底（静态预览不报错）。
+      const tauri = window.__TAURI__;
+      const invoke = tauri?.core?.invoke
+        ? tauri.core.invoke.bind(tauri.core)
+        : null;
+      const listen = tauri?.event?.listen
+        ? tauri.event.listen.bind(tauri.event)
+        : null;
+      const appWindow = tauri?.window?.getCurrentWindow?.() ?? null;
+
+      const toolbar = document.getElementById("toolbar");
+      const pill = document.getElementById("pill");
+      const address = document.getElementById("address");
+      const btnBack = document.getElementById("btn-back");
+      const btnForward = document.getElementById("btn-forward");
+      const btnReload = document.getElementById("btn-reload");
+      const btnExternal = document.getElementById("btn-external");
+      const btnMin = document.getElementById("btn-min");
+      const btnMax = document.getElementById("btn-max");
+      const btnClose = document.getElementById("btn-close");
+      const iconMax = document.getElementById("icon-max");
+      const iconRestore = document.getElementById("icon-restore");
+
+      let currentUrl = "";
+      /** 用户正在编辑时不要用页面地址覆盖输入框。 */
+      let editing = false;
+      /** wry 查不到 history 位置，只能近似：发生过真实页面加载（非 about:blank）
+          才点亮前进/后退；到历史边界时按钮是空操作，无副作用。 */
+      let navigated = false;
+
+      function displayUrl(url) {
+        return url && url.endsWith("browser-shell.html") ? "" : url || "";
+      }
+
+      function setUrl(url) {
+        currentUrl = url ?? "";
+        if (currentUrl && currentUrl !== "about:blank") navigated = true;
+        btnBack.disabled = !navigated;
+        btnForward.disabled = !navigated;
+        if (!editing) address.value = displayUrl(currentUrl);
+      }
+
+      function setLoading(loading) {
+        toolbar.classList.toggle("loading", !!loading);
+        btnReload.disabled = !!loading;
+      }
+
+      // 输入解析：带 scheme 直达；像域名（有点、无空格）补 https://；
+      // 其余当搜索词走 Bing（豆包式「地址栏即搜索框」）。
+      function normalizeInput(raw) {
+        const text = raw.trim();
+        if (!text) return null;
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return text;
+        if (/\s/.test(text) || !text.includes(".")) {
+          return "https://www.bing.com/search?q=" + encodeURIComponent(text);
+        }
+        return "https://" + text;
+      }
+
+      function navigateDraft() {
+        if (!invoke) return;
+        const target = normalizeInput(address.value);
+        if (target) invoke("navigate_browser_window", { url: target }).catch(() => {});
+        address.blur();
+      }
+
+      function focusAddress() {
+        editing = true;
+        pill.classList.add("editing");
+        address.focus();
+        address.select();
+      }
+
+      address.addEventListener("focus", () => {
+        editing = true;
+        pill.classList.add("editing");
+        address.select();
+      });
+      address.addEventListener("blur", () => {
+        editing = false;
+        pill.classList.remove("editing");
+        address.value = displayUrl(currentUrl);
+      });
+      address.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") navigateDraft();
+        if (event.key === "Escape") address.blur();
+      });
+      // Ctrl+L / Alt+D 聚焦地址栏（浏览器惯例）。
+      window.addEventListener("keydown", (event) => {
+        if ((event.ctrlKey && event.key.toLowerCase() === "l") || (event.altKey && event.key === "d")) {
+          event.preventDefault();
+          focusAddress();
+        }
+      });
+
+      /** 安全执行 Tauri Window 方法：Promise 失败静默，非桌面宿主下无操作。 */
+      function safeWindowCall(fn) {
+        try {
+          const result = fn();
+          if (result && typeof result.catch === "function") result.catch(() => {});
+        } catch {
+          // 非 Tauri 宿主（静态预览）时忽略。
+        }
+      }
+
+      btnBack.addEventListener("click", () => invoke?.("browser_window_history", { direction: "back" }).catch(() => {}));
+      btnForward.addEventListener("click", () => invoke?.("browser_window_history", { direction: "forward" }).catch(() => {}));
+      btnReload.addEventListener("click", () => invoke?.("reload_browser_window").catch(() => {}));
+      btnExternal.addEventListener("click", () => invoke?.("open_browser_external").catch(() => {}));
+      btnMin.addEventListener("click", () => safeWindowCall(() => appWindow?.minimize()));
+      btnMax.addEventListener("click", () => safeWindowCall(() => appWindow?.toggleMaximize()));
+      btnClose.addEventListener("click", () => invoke?.("close_browser_window").catch(() => {}));
+
+      async function refreshMaxIcon() {
+        try {
+          const max = await appWindow?.isMaximized?.();
+          if (typeof max !== "boolean") return;
+          iconMax.classList.toggle("hidden", max);
+          iconRestore.classList.toggle("hidden", !max);
+        } catch {
+          // 查不到状态时保持默认图标。
+        }
+      }
+      btnMax.addEventListener("click", () => setTimeout(refreshMaxIcon, 120));
+      appWindow?.onResized?.(refreshMaxIcon);
+      void refreshMaxIcon();
+
+      // 页面地址变化（Rust 侧 on_navigation / page load 推送）。
+      listen?.("browser-window-url-changed", (event) => {
+        setUrl(String(event.payload ?? ""));
+      });
+      listen?.("browser-window-loading", (event) => setLoading(event.payload));
+      listen?.("browser-window-focus-address", () => focusAddress());
+
+      // 初始化：拿当前页地址回填（工具栏加载通常早于首个页面加载完成，
+      // 之后以推送事件为准）；空白页时自动聚焦地址栏，提示输入。
+      if (invoke) {
+        invoke("browser_window_current_url")
+          .then((url) => {
+            setUrl(url);
+            if (!url || url === "about:blank") focusAddress();
+          })
+          .catch(() => {});
+      }
+      </script>
+  </body>
+</html>

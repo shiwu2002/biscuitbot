@@ -324,8 +324,20 @@ fn browser_webview_args(port: u16) -> String {
 
 /// 「内置浏览器」独立窗口的标签。
 const BROWSER_WINDOW: &str = "browser";
-/// 浏览器窗口销毁时通知主界面收起控制栏的事件名。
+/// 浏览器窗口内「工具栏」webview 的标签（加载本壳的 `browser-shell.html`）。
+const BROWSER_CHROME: &str = "browser-chrome";
+/// 浏览器窗口内「目标页面」webview 的标签（加载外部网址）。
+const BROWSER_PAGE: &str = "browser-page";
+/// 工具栏高度（逻辑像素；布局时按窗口缩放换算为物理像素）。
+const BROWSER_CHROME_HEIGHT: f64 = 48.0;
+/// 浏览器窗口销毁时通知主界面同步入口状态的事件名。
 const BROWSER_WINDOW_CLOSED_EVENT: &str = "browser-window-closed";
+/// 目标页面 URL 变化 → 推给工具栏地址栏（载荷为 URL 字符串）。
+const BROWSER_WINDOW_URL_EVENT: &str = "browser-window-url-changed";
+/// 目标页面加载开始/结束 → 推给工具栏显示进度（载荷为 bool）。
+const BROWSER_WINDOW_LOADING_EVENT: &str = "browser-window-loading";
+/// 开窗但未带地址 → 让工具栏地址框聚焦（豆包式「空标签页」体验）。
+const BROWSER_WINDOW_FOCUS_ADDRESS_EVENT: &str = "browser-window-focus-address";
 /// 浏览器窗口默认尺寸（逻辑像素；实际打开时按主窗口所在显示器夹取）。
 const BROWSER_DEFAULT_WIDTH: f64 = 1180.0;
 const BROWSER_DEFAULT_HEIGHT: f64 = 820.0;
@@ -334,14 +346,23 @@ const BROWSER_WINDOW_GAP: f64 = 8.0;
 
 /// 打开「内置浏览器」**独立窗口**（幂等；已存在则聚焦并可选导航）。
 ///
-/// 形态：顶层原生窗口（不是主窗口里的子 webview）——自带标题栏，可拖动、
-/// 缩放、贴边吸附，因此能和主窗口并排同屏，像 IDE 里拖出来的工具窗。
+/// 形态参考豆包 / Trae 的内置浏览器：**顶层无边框原生窗口**，窗口内自带完整
+/// 浏览器 chrome——地址栏、前进/后退/刷新、系统浏览器打开、窗口控制（最小化/
+/// 最大化/关闭）全部住在窗口自己的工具栏里，主界面不再放任何遥控条。
+///
+/// 实现上是一个窗口挂**两个 webview**（tauri `unstable` 多 webview）：
+/// - `browser-chrome`（工具栏）：加载本壳静态页 `browser-shell.html`
+///   （`frontendDist` = `window/`），本地源因此持有 IPC 权限（见
+///   `capabilities/browser-chrome.json`）；
+/// - `browser-page`（页面）：加载目标网址，铺满工具栏以下全部空间。
+///
 /// 关键收益：**彻底不依赖前端量矩形**。位置/尺寸交给操作系统，不存在
-/// 「原生子 webview 与前端占位元素错位 → 矩形盖住界面吞掉点击」这类问题。
+/// 「原生子 webview 与前端占位元素错位 → 矩形盖住界面吞掉点击」这类问题；
+/// 窗口 resize 时由 Rust 侧重新铺排两个 webview（`layout_browser_webviews`）。
 ///
 /// 环境隔离与自动化共享（沿用既有设计，gateway 侧无需改动）：
 /// - 独立 `data_directory`（app_local_data_dir/browser-profile）→ 独立浏览器
-///   进程与登录态，与主 UI 完全隔离；
+///   进程与登录态，与主 UI 完全隔离；两个 webview 同目录同参数 → 同进程环境；
 /// - `additional_browser_args` 追加 `--remote-debugging-port=<动态空闲端口>`，
 ///   只作用于该独立环境的浏览器进程。注意该参数会**整体替换** Tauri 默认值，
 ///   必须带上默认的 `--disable-features=...` 三项；
@@ -355,12 +376,17 @@ async fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), 
     let target_url = parse_target_url(url.as_deref())?;
 
     // 已存在：聚焦 + 按需导航，不重复创建。
-    if let Some(existing) = app.get_webview_window(BROWSER_WINDOW) {
+    if let Some(existing) = app.get_window(BROWSER_WINDOW) {
         let _ = existing.show();
         let _ = existing.unminimize();
         let _ = existing.set_focus();
         if let Some(parsed) = target_url {
-            let _ = existing.navigate(parsed);
+            if let Some(page) = app.get_webview(BROWSER_PAGE) {
+                let _ = page.navigate(parsed);
+            }
+        } else {
+            // 没带地址：让工具栏地址框聚焦，提示用户输入。
+            let _ = app.emit_to(BROWSER_CHROME, BROWSER_WINDOW_FOCUS_ADDRESS_EVENT, ());
         }
         return Ok(());
     }
@@ -380,53 +406,113 @@ async fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), 
     // `args.SetHandled(true)` 分支（wry/src/webview2/mod.rs 的
     // `add_NewWindowRequested`），即把请求直接丢弃——不导航、不报错、不留痕，
     // 表现为「同标签链接能点、新标签链接点了没反应」。
-    // 单窗口语义 → 拒绝弹窗，就地导航到目标地址。
+    // 单窗口语义 → 拒绝弹窗，就地导航页面 webview。
+    let new_window_app = app.clone();
     let nav_app = app.clone();
+    let load_app = app.clone();
 
-    let window = tauri::WebviewWindowBuilder::new(
-        &app,
-        BROWSER_WINDOW,
+    let browser_args = browser_webview_args(port);
+
+    // 工具栏 webview：本地静态页，风格与启动加载页一致（深色 HUD）。
+    let chrome = tauri::webview::WebviewBuilder::new(
+        BROWSER_CHROME,
+        tauri::WebviewUrl::App("browser-shell.html".into()),
+    )
+    .additional_browser_args(&browser_args)
+    .data_directory(data_dir.clone());
+
+    // 页面 webview：目标站点本体。
+    let page = tauri::webview::WebviewBuilder::new(
+        BROWSER_PAGE,
         tauri::WebviewUrl::External(initial_url),
     )
-    .title("夏奈儿 · 内置浏览器")
-    .inner_size(BROWSER_DEFAULT_WIDTH, BROWSER_DEFAULT_HEIGHT)
-    .min_inner_size(480.0, 360.0)
-    // 先摆好位置再显示，避免在默认位置闪一下。
-    .visible(false)
+    .additional_browser_args(&browser_args)
     .data_directory(data_dir)
-    .additional_browser_args(&browser_webview_args(port))
     .on_new_window(move |url, _features| {
         if matches!(url.scheme(), "http" | "https") {
-            if let Some(win) = nav_app.get_webview_window(BROWSER_WINDOW) {
-                let _ = win.navigate(url);
+            if let Some(page) = new_window_app.get_webview(BROWSER_PAGE) {
+                let _ = page.navigate(url);
             }
         }
         tauri::webview::NewWindowResponse::Deny
     })
-    // 站点标题同步到窗口标题，方便任务栏/窗口列表里辨认。
-    .on_document_title_changed(|window, title| {
+    // 导航 → 同步工具栏地址栏（on_navigation 抓不到 SPA pushState 路由，
+    // 由下方 page load 事件兜底）。
+    .on_navigation(move |url| {
+        let _ = nav_app.emit_to(BROWSER_CHROME, BROWSER_WINDOW_URL_EVENT, url.to_string());
+        true
+    })
+    .on_page_load(move |_webview, payload| {
+        // 页面加载开始/结束 → 工具栏进度条；Finished 时再同步一次地址。
+        let started = matches!(payload.event(), tauri::webview::PageLoadEvent::Started);
+        let _ = load_app.emit_to(BROWSER_CHROME, BROWSER_WINDOW_LOADING_EVENT, started);
+        if !started {
+            let _ = load_app.emit_to(
+                BROWSER_CHROME,
+                BROWSER_WINDOW_URL_EVENT,
+                payload.url().to_string(),
+            );
+        }
+    })
+    // 站点标题同步到窗口标题，方便任务栏/窗口列表里辨认（无边框窗口自身不显示）。
+    .on_document_title_changed(|webview, title| {
         let title = title.trim().to_string();
         let label = if title.is_empty() {
             "夏奈儿 · 内置浏览器".to_string()
         } else {
             format!("{title} · 夏奈儿")
         };
-        let _ = window.set_title(&label);
-    })
-    .build()
-    .map_err(|e| e.to_string())?;
+        let _ = webview.window().set_title(&label);
+    });
+
+    // 无边框窗口：chrome 完全交给工具栏 webview（拖拽区 + 窗口控制都在里面）。
+    let window = tauri::window::WindowBuilder::new(&app, BROWSER_WINDOW)
+        .title("夏奈儿 · 内置浏览器")
+        .inner_size(BROWSER_DEFAULT_WIDTH, BROWSER_DEFAULT_HEIGHT)
+        .min_inner_size(480.0, 360.0 + BROWSER_CHROME_HEIGHT)
+        // 先摆好位置再显示，避免在默认位置闪一下。
+        .visible(false)
+        .decorations(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // 按当前窗口尺寸铺排两个 webview（此刻窗口隐藏，无闪烁）。
+    {
+        let scale = window.scale_factor().unwrap_or(1.0);
+        if let Ok(inner) = window.inner_size() {
+            let chrome_h = ((BROWSER_CHROME_HEIGHT * scale).round() as u32).min(inner.height);
+            let width = inner.width;
+            let _ = window.add_child(
+                chrome,
+                tauri::PhysicalPosition::new(0, 0),
+                tauri::PhysicalSize::new(width, chrome_h),
+            );
+            let _ = window.add_child(
+                page,
+                tauri::PhysicalPosition::new(0, chrome_h as i32),
+                tauri::PhysicalSize::new(width, inner.height - chrome_h),
+            );
+        }
+    }
+
+    // 窗口尺寸/位置变化 → 双 webview 重新铺满；销毁 → 清理端口文件 +
+    // 通知主界面同步入口状态（用户点工具栏〔X〕也要同步）。
+    let app_for_event = app.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Resized(_) => {
+            if let Some(win) = app_for_event.get_window(BROWSER_WINDOW) {
+                layout_browser_webviews(&win);
+            }
+        }
+        tauri::WindowEvent::Destroyed { .. } => {
+            remove_embedded_port_file();
+            let _ = app_for_event.emit_to("main", BROWSER_WINDOW_CLOSED_EVENT, ());
+        }
+        _ => {}
+    });
 
     place_browser_window(&app, &window);
     let _ = window.show();
-
-    // 窗口销毁 → 清理端口文件 + 通知主界面收起控制栏（用户点窗口〔X〕也要同步）。
-    let app_for_close = app.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed { .. }) {
-            remove_embedded_port_file();
-            let _ = app_for_close.emit_to("main", BROWSER_WINDOW_CLOSED_EVENT, ());
-        }
-    });
 
     write_embedded_port_file(port);
     eprintln!(
@@ -438,11 +524,38 @@ async fn open_browser_window(app: AppHandle, url: Option<String>) -> Result<(), 
     Ok(())
 }
 
+/// 双 webview 布局：工具栏铺顶部（恒定逻辑高），页面占余下全部。
+/// 全程用**物理像素**（inner_size / scale_factor 都是物理量），避免
+/// 125%/150% 缩放下的换算误差。
+fn layout_browser_webviews(window: &tauri::Window) {
+    let Ok(scale) = window.scale_factor() else {
+        return;
+    };
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    let width = size.width;
+    let chrome_h = ((BROWSER_CHROME_HEIGHT * scale).round() as u32).min(size.height);
+
+    if let Some(chrome) = window.get_webview(BROWSER_CHROME) {
+        let _ = chrome.set_bounds(tauri::Rect {
+            position: tauri::PhysicalPosition::new(0, 0).into(),
+            size: tauri::PhysicalSize::new(width, chrome_h).into(),
+        });
+    }
+    if let Some(page) = window.get_webview(BROWSER_PAGE) {
+        let _ = page.set_bounds(tauri::Rect {
+            position: tauri::PhysicalPosition::new(0, chrome_h as i32).into(),
+            size: tauri::PhysicalSize::new(width, size.height - chrome_h).into(),
+        });
+    }
+}
+
 /// 把浏览器窗口摆到主窗口右侧并排（同高），按主窗口所在显示器可用区夹取。
 ///
 /// 全程用**物理像素**：outer_position / outer_size / current_monitor 都是物理量，
 /// 不做逻辑↔物理换算，避免 125%/150% 缩放下的偏移误差。
-fn place_browser_window(app: &AppHandle, window: &tauri::WebviewWindow) {
+fn place_browser_window(app: &AppHandle, window: &tauri::Window) {
     let Some(main) = app.get_webview_window("main") else {
         let _ = window.center();
         return;
@@ -493,29 +606,29 @@ fn place_browser_window(app: &AppHandle, window: &tauri::WebviewWindow) {
     ));
 }
 
-/// 让浏览器窗口导航到指定地址（主界面控制栏的地址输入用）。
+/// 让浏览器窗口的页面 webview 导航到指定地址（工具栏地址栏用）。
 #[tauri::command]
 async fn navigate_browser_window(app: AppHandle, url: String) -> Result<(), String> {
     let parsed = parse_target_url(Some(url.as_str()))?.ok_or("empty url")?;
-    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+    let Some(page) = app.get_webview(BROWSER_PAGE) else {
         return Err("browser window not open".to_string());
     };
-    window.navigate(parsed).map_err(|e| e.to_string())
+    page.navigate(parsed).map_err(|e| e.to_string())
 }
 
 /// 刷新浏览器窗口当前页。
 #[tauri::command]
 async fn reload_browser_window(app: AppHandle) -> Result<(), String> {
-    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+    let Some(page) = app.get_webview(BROWSER_PAGE) else {
         return Err("browser window not open".to_string());
     };
-    window.reload().map_err(|e| e.to_string())
+    page.reload().map_err(|e| e.to_string())
 }
 
 /// 浏览器窗口前进/后退（`direction` 取 "back" | "forward"）。
 #[tauri::command]
 async fn browser_window_history(app: AppHandle, direction: String) -> Result<(), String> {
-    let Some(window) = app.get_webview_window(BROWSER_WINDOW) else {
+    let Some(page) = app.get_webview(BROWSER_PAGE) else {
         return Err("browser window not open".to_string());
     };
     let script = match direction.as_str() {
@@ -523,7 +636,7 @@ async fn browser_window_history(app: AppHandle, direction: String) -> Result<(),
         "forward" => "history.forward()",
         _ => return Err("unknown direction".to_string()),
     };
-    window.eval(script).map_err(|e| e.to_string())
+    page.eval(script).map_err(|e| e.to_string())
 }
 
 /// 用系统默认程序打开一个 URL。
@@ -563,7 +676,7 @@ async fn open_browser_external(app: AppHandle, url: Option<String>) -> Result<()
     let target = match explicit {
         Some(raw) => raw.to_string(),
         None => app
-            .get_webview_window(BROWSER_WINDOW)
+            .get_webview(BROWSER_PAGE)
             .and_then(|w| w.url().ok())
             .map(|u| u.to_string())
             .ok_or("no url")?,
@@ -574,16 +687,25 @@ async fn open_browser_external(app: AppHandle, url: Option<String>) -> Result<()
 /// 关闭「内置浏览器」窗口（端口文件由窗口 Destroyed 回调清理）。
 #[tauri::command]
 async fn close_browser_window(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window(BROWSER_WINDOW) {
+    if let Some(window) = app.get_window(BROWSER_WINDOW) {
         window.close().map_err(|e| e.to_string())?;
     }
     Ok(())
 }
 
-/// 浏览器窗口当前是否打开（WebUI 重新加载后据此恢复控制栏状态）。
+/// 浏览器窗口当前是否打开（WebUI 重新加载后据此恢复入口高亮状态）。
 #[tauri::command]
 async fn browser_window_open(app: AppHandle) -> bool {
-    app.get_webview_window(BROWSER_WINDOW).is_some()
+    app.get_window(BROWSER_WINDOW).is_some()
+}
+
+/// 浏览器窗口页面 webview 的当前地址（工具栏地址栏初始化用）。
+#[tauri::command]
+async fn browser_window_current_url(app: AppHandle) -> Result<String, String> {
+    let Some(page) = app.get_webview(BROWSER_PAGE) else {
+        return Err("browser window not open".to_string());
+    };
+    page.url().map(|u| u.to_string()).map_err(|e| e.to_string())
 }
 
 /// 创建系统托盘图标，提供「打开 xianaibot / 退出」菜单。
@@ -649,7 +771,8 @@ pub fn run() {
             reload_browser_window,
             browser_window_history,
             open_browser_external,
-            browser_window_open
+            browser_window_open,
+            browser_window_current_url
         ])
         .setup(|app| {
             spawn_sidecar(app.handle());

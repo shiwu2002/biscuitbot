@@ -40,8 +40,8 @@ const MODE_STYLES: Record<string, string> = {
  * **仅非桌面端使用**（浏览器直接访问 WebUI / 服务器部署）：退化为托管常驻
  * 实例控制（REST /api/browser/start|stop）。
  *
- * 桌面端不走这里：浏览器是**独立原生窗口**（`open_browser_window`），可与主窗口
- * 并排同屏，主界面只保留一条紧凑控制栏（BrowserBar）。
+ * 桌面端不走这里：浏览器是**独立原生窗口**（`open_browser_window`，自带
+ * 地址栏工具栏），可与主窗口并排同屏。
  */
 export function BrowserView({
   onBackToChat,
@@ -96,7 +96,7 @@ export function BrowserView({
       setBusy(true);
       try {
         // 驾驶舱页仅用于非桌面端（浏览器访问 WebUI）。桌面端的浏览器入口是
-        // 独立的原生浏览器窗口（BrowserBar 遥控，见 lib/browser-window.ts）。
+        // 独立的原生浏览器窗口（自带工具栏，见 lib/browser-window.ts）。
         const payload = await startBrowserService(token, url);
         setStatus(payload);
         setError(null);

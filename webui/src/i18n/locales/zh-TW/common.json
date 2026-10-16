@@ -1323,15 +1323,6 @@
     "closeWindow": "關閉",
     "externalNote": "正在複用你自己啟動的瀏覽器，不會替你關閉。"
   },
-  "browserBar": {
-    "address": "瀏覽器地址欄",
-    "placeholder": "輸入網址後按 Enter",
-    "back": "上一頁",
-    "forward": "下一頁",
-    "reload": "重新整理目前頁面",
-    "external": "用系統瀏覽器開啟",
-    "close": "關閉瀏覽器視窗"
-  },
   "browserEntry": "內建瀏覽器",
   "filePreview": {
     "aria": "檔案預覽",

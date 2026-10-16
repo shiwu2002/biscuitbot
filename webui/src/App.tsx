@@ -19,16 +19,11 @@ import { SkillHubView } from "@/components/settings/SkillHubView";
 import { EmployeesView } from "@/components/settings/EmployeesView";
 import { EmployeeChatView } from "@/components/employees/EmployeeChatView";
 import { BrowserView } from "@/components/browser/BrowserView";
-import { BrowserBar } from "@/components/browser/BrowserBar";
 import {
-  browserWindowHistory,
   closeBrowserWindow,
   isBrowserWindowOpen,
-  navigateBrowserWindow,
   onBrowserWindowClosed,
-  openBrowserExternal,
   openBrowserWindow,
-  reloadBrowserWindow,
   supportsBrowserWindow,
 } from "@/lib/browser-window";
 import { KnowledgeView } from "@/components/knowledge/KnowledgeView";
@@ -1378,10 +1373,11 @@ function Shell({
     navigate({ view: "dashboard", activeKey, settingsSection: "overview" });
   }, [activeKey, navigate]);
 
-  /** 内置浏览器：**独立原生窗口**（不是主窗口里的子 webview），可与主窗口并排同屏。
-   * 这里只跟踪「窗口是否打开」给控制栏用；位置/尺寸由操作系统管理，前端不参与。 */
+  /** 内置浏览器：**独立原生窗口**（无边框、自带地址栏工具栏，见
+   * src-tauri/window/browser-shell.html），可与主窗口并排同屏。
+   * 这里只跟踪「窗口是否打开」给头部入口高亮用；导航交互全在浏览器窗口里。 */
   const [browserWindowOpen, setBrowserWindowOpen] = useState(false);
-  /** 浏览器窗口当前页面地址（控制栏回填 + 「系统浏览器打开」兜底用）。 */
+  /** 最近浏览的页面地址：下次开窗直接回到那一页，而不是落在空白 about:blank。 */
   const [browserUrl, setBrowserUrl] = useState(readLastBrowserUrl);
 
   // 记住上次地址：下次开窗直接回到那一页，而不是落在空白 about:blank。
@@ -1421,7 +1417,7 @@ function Shell({
         hideBrowserWindow();
         return;
       }
-      // 首次打开若无历史地址，窗口先落到 about:blank，聚焦控制栏地址框让用户输入。
+      // 首次打开若无历史地址，窗口落在 about:blank，浏览器窗口自己聚焦地址栏。
       showBrowserWindow(browserUrl || null);
       return;
     }
@@ -1436,7 +1432,7 @@ function Shell({
     hideBrowserWindow,
   ]);
 
-  // 页面加载/重载后恢复控制栏状态；用户点浏览器窗口自己的〔X〕也要同步收起。
+  // 页面加载/重载后恢复入口高亮状态；用户点浏览器窗口工具栏的〔X〕也要同步。
   useEffect(() => {
     if (!browserSupported) return;
     let cancelled = false;
@@ -1791,8 +1787,6 @@ function Shell({
   const hostSidebarCollapsed = showHostChrome && !hostSidebarOpen;
   /** 主聊天视图 ThreadShell 的宿主 props（session/title 由各调用点单独传入）。
    * 员工专属页内嵌 ThreadShell 复用同一份，保证行为一致。 */
-  /** 头部「内置浏览器」小图标：桌面端开合右侧抽屉，非桌面端进驾驶舱页。
-   * 智能体请求浏览器（browser_request）时也会自动展开抽屉。 */
   /** 头部「内置浏览器」小图标：桌面端开合独立浏览器窗口，非桌面端进驾驶舱页。
    * 智能体请求浏览器（browser_request）时也会自动开窗。 */
   const browserAction = useMemo(
@@ -1812,26 +1806,6 @@ function Shell({
       </Button>
     ),
     [onOpenBrowser, browserWindowOpen, t],
-  );
-
-  /** 浏览器控制栏：仅桌面端、且浏览器窗口已打开时显示（渲染在对话头部下方）。 */
-  const browserBar = useMemo(
-    () =>
-      browserSupported && browserWindowOpen ? (
-        <BrowserBar
-          url={browserUrl}
-          onNavigate={(next) => {
-            setBrowserUrl(next);
-            void navigateBrowserWindow(next).catch(() => {});
-          }}
-          onBack={() => void browserWindowHistory("back").catch(() => {})}
-          onForward={() => void browserWindowHistory("forward").catch(() => {})}
-          onReload={() => void reloadBrowserWindow().catch(() => {})}
-          onOpenExternal={() => void openBrowserExternal(browserUrl || null).catch(() => {})}
-          onClose={hideBrowserWindow}
-        />
-      ) : undefined,
-    [browserSupported, browserWindowOpen, browserUrl, hideBrowserWindow],
   );
 
   const shellHostProps: Omit<ThreadShellProps, "session" | "title"> = useMemo(
@@ -2040,7 +2014,6 @@ function Shell({
                 session={activeSession}
                 title={headerTitle}
                 {...shellHostProps}
-                browserBar={browserBar}
               />
             </div>
             {view === "employees" ? (

@@ -1,0 +1,22 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser-chrome",
+  "description": "内置浏览器窗口工具栏（browser-shell.html）能力：导航命令 + 无边框窗口的拖拽与最小化/最大化控制",
+  "windows": ["browser"],
+  "webviews": ["browser-chrome"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-start-dragging",
+    "allow-navigate-browser-window",
+    "allow-reload-browser-window",
+    "allow-browser-window-history",
+    "allow-open-browser-external",
+    "allow-close-browser-window",
+    "allow-browser-window-current-url"
+  ]
+}
